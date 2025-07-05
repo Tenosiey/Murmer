@@ -1,0 +1,20 @@
+version: '3.9'
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: murmer
+      POSTGRES_PASSWORD: murmer
+      POSTGRES_DB: murmer
+    volumes:
+      - db_data:/var/lib/postgresql/data
+  server:
+    build: ./murmer_server
+    environment:
+      DATABASE_URL: postgres://murmer:murmer@db:5432/murmer
+    depends_on:
+      - db
+    ports:
+      - "3001:3001"
+volumes:
+  db_data:
