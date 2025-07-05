@@ -1,16 +1,19 @@
 use axum::{
-    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, State},
+    Router,
+    extract::{
+        State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
+    },
     response::IntoResponse,
     routing::get,
-    Router,
 };
 use futures::{SinkExt, StreamExt};
 use std::{env, net::SocketAddr, sync::Arc};
+use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio_postgres::{Client, NoTls};
 use tracing::{error, info};
 use tracing_subscriber;
-use tokio::net::TcpListener;
 
 struct AppState {
     tx: broadcast::Sender<String>,
@@ -23,7 +26,23 @@ async fn main() {
     let (tx, _rx) = broadcast::channel::<String>(100);
 
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
-    let (db_client, connection) = tokio_postgres::connect(&db_url, NoTls).await.expect("connect db");
+    // Connect to the database with simple retry logic so that the server
+    // doesn't panic if Postgres is still starting up when this container
+    // begins. This can happen when using Docker Compose.
+    let (db_client, connection) = {
+        let mut attempts = 0u8;
+        loop {
+            match tokio_postgres::connect(&db_url, NoTls).await {
+                Ok(result) => break result,
+                Err(e) if attempts < 30 => {
+                    attempts += 1;
+                    tracing::warn!("database not ready ({e}), retrying...");
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+                Err(e) => panic!("connect db: {e}"),
+            }
+        }
+    };
     tokio::spawn(async move {
         if let Err(e) = connection.await {
             eprintln!("db connection error: {e}");
@@ -35,7 +54,10 @@ async fn main() {
         )
         .await
         .unwrap();
-    let state = Arc::new(AppState { tx: tx.clone(), db: Arc::new(db_client) });
+    let state = Arc::new(AppState {
+        tx: tx.clone(),
+        db: Arc::new(db_client),
+    });
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
@@ -45,9 +67,7 @@ async fn main() {
     info!("WebSocket server running on {addr}");
 
     let listener = TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app)
-        .await
-        .unwrap();
+    axum::serve(listener, app).await.unwrap();
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
