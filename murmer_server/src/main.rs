@@ -8,6 +8,7 @@ use futures::{SinkExt, StreamExt};
 use std::{env, net::SocketAddr, sync::Arc};
 use tokio::sync::broadcast;
 use tokio_postgres::{Client, NoTls};
+use tracing::{error, info};
 use tracing_subscriber;
 use tokio::net::TcpListener;
 
@@ -41,7 +42,7 @@ async fn main() {
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
-    println!("WebSocket server running on {addr}");
+    info!("WebSocket server running on {addr}");
 
     let listener = TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app)
@@ -54,6 +55,7 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) ->
 }
 
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
+    info!("Client connected");
     let (mut sender, mut receiver) = socket.split();
     let mut rx = state.tx.subscribe();
 
@@ -80,12 +82,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     });
 
     while let Some(Ok(Message::Text(text))) = receiver.next().await {
-        let _ = state
+        info!("Received message: {text}");
+        if let Err(e) = state
             .db
             .execute("INSERT INTO messages (content) VALUES ($1)", &[&text])
-            .await;
+            .await
+        {
+            error!("db insert error: {e}");
+        }
         let _ = state.tx.send(text);
     }
 
     send_task.abort();
+    info!("Client disconnected");
 }
