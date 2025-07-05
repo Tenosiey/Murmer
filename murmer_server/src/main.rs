@@ -8,6 +8,7 @@ use axum::{
     routing::get,
 };
 use futures::{SinkExt, StreamExt};
+use serde_json::Value;
 use std::{env, net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
@@ -103,12 +104,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     while let Some(Ok(Message::Text(text))) = receiver.next().await {
         info!("Received message: {text}");
-        if let Err(e) = state
-            .db
-            .execute("INSERT INTO messages (content) VALUES ($1)", &[&text])
-            .await
-        {
-            error!("db insert error: {e}");
+        let ty = serde_json::from_str::<Value>(&text)
+            .ok()
+            .and_then(|v| v.get("type").and_then(|t| t.as_str().map(|s| s.to_owned())));
+        if matches!(ty.as_deref(), Some("chat")) {
+            if let Err(e) = state
+                .db
+                .execute("INSERT INTO messages (content) VALUES ($1)", &[&text])
+                .await
+            {
+                error!("db insert error: {e}");
+            }
         }
         let _ = state.tx.send(text);
     }
