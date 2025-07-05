@@ -1,13 +1,24 @@
 import { writable } from 'svelte/store';
 
 export interface Message {
+  type: string;
   user: string;
-  text: string;
+  text?: string;
+  [key: string]: unknown;
 }
 
 function createChatStore() {
   const { subscribe, update, set } = writable<Message[]>([]);
   let socket: WebSocket | null = null;
+  const handlers: Record<string, (msg: Message) => void> = {};
+
+  function on(type: string, cb: (msg: Message) => void) {
+    handlers[type] = cb;
+  }
+
+  function off(type: string) {
+    delete handlers[type];
+  }
 
   function connect(url: string) {
     if (socket) return;
@@ -20,7 +31,11 @@ function createChatStore() {
       if (import.meta.env.DEV) console.log('Received:', ev.data);
       try {
         const msg: Message = JSON.parse(ev.data);
-        update((m) => [...m, msg]);
+        if (msg.type === 'chat') {
+          update((m) => [...m, msg]);
+        } else if (msg.type && handlers[msg.type]) {
+          handlers[msg.type](msg);
+        }
       } catch (_) {}
     });
     socket.addEventListener('close', () => {
@@ -35,11 +50,17 @@ function createChatStore() {
   function send(user: string, text: string) {
     if (socket && socket.readyState === WebSocket.OPEN) {
       if (import.meta.env.DEV) console.log('Sending:', { user, text });
-      socket.send(JSON.stringify({ user, text }));
+      socket.send(JSON.stringify({ type: 'chat', user, text }));
     }
   }
 
-  return { subscribe, connect, send, clear: () => set([]) };
+  function sendRaw(data: any) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(data));
+    }
+  }
+
+  return { subscribe, connect, send, sendRaw, on, off, clear: () => set([]) };
 }
 
 export const chat = createChatStore();
