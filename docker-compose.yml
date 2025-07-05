@@ -1,7 +1,7 @@
-version: '3.9'
 services:
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: murmer
       POSTGRES_PASSWORD: murmer
@@ -10,6 +10,7 @@ services:
       - db_data:/var/lib/postgresql/data
   server:
     build: ./murmer_server
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgres://murmer:murmer@db:5432/murmer
     depends_on:
