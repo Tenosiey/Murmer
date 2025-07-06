@@ -1,42 +1,55 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 
+export interface ServerEntry {
+  url: string;
+  name: string;
+}
+
 const STORAGE_KEY = 'murmer_servers';
 const SELECTED_KEY = 'murmer_selected_server';
 
-function loadServers(): string[] {
+function loadServers(): ServerEntry[] {
   if (!browser) return [];
   const data = localStorage.getItem(STORAGE_KEY);
   try {
-    return data ? JSON.parse(data) : [];
+    if (!data) return [];
+    const parsed = JSON.parse(data);
+    if (Array.isArray(parsed)) {
+      if (parsed.length && typeof parsed[0] === 'string') {
+        return (parsed as string[]).map((url) => ({ url, name: url }));
+      }
+      return parsed as ServerEntry[];
+    }
+    return [];
   } catch {
     return [];
   }
 }
 
-function persist(list: string[]) {
+function persist(list: ServerEntry[]) {
   if (browser) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
   }
 }
 
-const { subscribe, update } = writable<string[]>(loadServers());
+const { subscribe, update } = writable<ServerEntry[]>(loadServers());
 
 export const servers = {
   subscribe,
-  add(server: string) {
+  add(entry: ServerEntry) {
     update((list) => {
-      if (!list.includes(server)) {
-        const newList = [...list, server];
+      if (!list.some((s) => s.url === entry.url)) {
+        const newList = [...list, entry];
         persist(newList);
         return newList;
       }
       return list;
     });
   },
-  remove(server: string) {
+  remove(url: string) {
     update((list) => {
-      const newList = list.filter((s) => s !== server);
+      const newList = list.filter((s) => s.url !== url);
       persist(newList);
       return newList;
     });
