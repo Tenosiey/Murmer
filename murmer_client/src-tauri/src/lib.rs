@@ -6,51 +6,62 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    use tauri::{CustomMenuItem, SystemTray, SystemTrayEvent, SystemTrayMenu, Manager};
-
-    let open = CustomMenuItem::new("open", "\u00d6ffnen");
-    let quit = CustomMenuItem::new("quit", "Schlie\u00dfen");
-    let tray_menu = SystemTrayMenu::new().add_item(open).add_item(quit);
-    let tray = SystemTray::new().with_menu(tray_menu);
+    use tauri::{
+        menu::{MenuBuilder, MenuItemBuilder},
+        tray::{TrayIconBuilder, TrayIconEvent},
+        Manager,
+    };
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .system_tray(tray)
-        .on_system_tray_event(|app, event| match event {
-            SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
-                "open" => {
-                    if let Some(window) = app.get_window("main") {
-                        window.show().ok();
-                        window.set_focus().ok();
-                    }
-                }
-                "quit" => app.exit(0),
-                _ => {}
-            },
-            SystemTrayEvent::DoubleClick { .. } => {
-                if let Some(window) = app.get_window("main") {
-                    window.show().ok();
-                    window.set_focus().ok();
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            // create tray menu
+            let open = MenuItemBuilder::with_id("open", "Öffnen").build(app)?;
+            let quit = MenuItemBuilder::with_id("quit", "Schließen").build(app)?;
+            let tray_menu = MenuBuilder::new(app).item(&open).item(&quit).build()?;
+            TrayIconBuilder::new().menu(&tray_menu).build(app)?;
+            Ok(())
+        })
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "open" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
             }
+            "quit" => app.exit(0),
             _ => {}
         })
-        .on_window_event(|event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
-                let window = event.window().clone();
+        .on_tray_icon_event(|app, event| {
+            if let TrayIconEvent::DoubleClick { .. } = event {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let window_clone = window.clone();
                 api.prevent_close();
-                tauri::api::dialog::ask(
-                    Some(&window),
-                    "Beenden?",
-                    "M\u00f6chtest du den Client minimieren oder schlie\u00dfen?",
-                    move |minimize| {
+                window
+                    .app_handle()
+                    .dialog()
+                    .message("Möchtest du den Client minimieren oder schließen?")
+                    .title("Beenden?")
+                    .buttons(MessageDialogButtons::OkCancelCustom(
+                        "Minimieren".into(),
+                        "Schließen".into(),
+                    ))
+                    .show(move |minimize| {
                         if minimize {
-                            window.hide().ok();
+                            let _ = window_clone.hide();
                         } else {
                             std::process::exit(0);
                         }
-                    },
-                );
+                    });
             }
         })
         .invoke_handler(tauri::generate_handler![greet])
