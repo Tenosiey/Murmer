@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, afterUpdate } from 'svelte';
   import { chat } from '$lib/stores/chat';
   import { session } from '$lib/stores/session';
   import { voice } from '$lib/stores/voice';
@@ -52,6 +52,16 @@
     voice.leave();
     inVoice = false;
   }
+
+  let messagesContainer: HTMLDivElement;
+  let lastLength = 0;
+
+  afterUpdate(() => {
+    if (messagesContainer && $chat.length !== lastLength) {
+      lastLength = $chat.length;
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+  });
 </script>
 
   <div class="flex h-screen">
@@ -66,7 +76,7 @@
           </button>
         {/each}
       </div>
-      <div class="flex-1 overflow-y-auto mb-4 space-y-2">
+      <div class="flex-1 overflow-y-auto mb-4 space-y-2" bind:this={messagesContainer}>
         {#each $chat as msg}
           <div class="whitespace-pre-wrap"><b>{msg.user}:</b> {msg.text}</div>
         {/each}
