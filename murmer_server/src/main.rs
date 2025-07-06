@@ -9,7 +9,12 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt};
 use serde_json::Value;
-use std::{collections::HashSet, env, net::SocketAddr, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    env,
+    net::SocketAddr,
+    sync::Arc,
+};
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, broadcast};
 use tokio_postgres::{Client, NoTls};
@@ -28,8 +33,38 @@ async fn broadcast_users(state: &Arc<AppState>) {
     }
 }
 
+async fn get_or_create_channel(state: &Arc<AppState>, name: &str) -> broadcast::Sender<String> {
+    let mut channels = state.channels.lock().await;
+    channels
+        .entry(name.to_string())
+        .or_insert_with(|| broadcast::channel::<String>(100).0)
+        .clone()
+}
+
+async fn send_history(
+    db: &Client,
+    sender: &mut futures::stream::SplitSink<WebSocket, Message>,
+    channel: &str,
+) {
+    if let Ok(rows) = db
+        .query(
+            "SELECT content FROM messages WHERE channel = $1 ORDER BY id",
+            &[&channel],
+        )
+        .await
+    {
+        for row in rows {
+            let content: String = row.get(0);
+            if sender.send(Message::Text(content)).await.is_err() {
+                break;
+            }
+        }
+    }
+}
+
 struct AppState {
     tx: broadcast::Sender<String>,
+    channels: Arc<Mutex<HashMap<String, broadcast::Sender<String>>>>,
     db: Arc<Client>,
     users: Arc<Mutex<HashSet<String>>>,
 }
@@ -64,12 +99,13 @@ async fn main() {
     });
     db_client
         .batch_execute(
-            "CREATE TABLE IF NOT EXISTS messages (id SERIAL PRIMARY KEY, content TEXT NOT NULL)",
+            "CREATE TABLE IF NOT EXISTS messages (id SERIAL PRIMARY KEY, channel TEXT NOT NULL, content TEXT NOT NULL)",
         )
         .await
         .unwrap();
     let state = Arc::new(AppState {
         tx: tx.clone(),
+        channels: Arc::new(Mutex::new(HashMap::new())),
         db: Arc::new(db_client),
         users: Arc::new(Mutex::new(HashSet::new())),
     });
@@ -92,64 +128,84 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) ->
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     info!("Client connected");
     let (mut sender, mut receiver) = socket.split();
-    let mut rx = state.tx.subscribe();
+    let mut global_rx = state.tx.subscribe();
+    let mut channel = String::from("general");
+    let mut chan_tx = get_or_create_channel(&state, &channel).await;
+    let mut chan_rx = chan_tx.subscribe();
     let mut user_name: Option<String> = None;
 
-    // send previous messages from DB
-    if let Ok(rows) = state
-        .db
-        .query("SELECT content FROM messages ORDER BY id", &[])
-        .await
-    {
-        for row in rows {
-            let content: String = row.get(0);
-            if sender.send(Message::Text(content)).await.is_err() {
-                return;
-            }
-        }
-    }
+    send_history(&state.db, &mut sender, &channel).await;
 
-    let send_task = tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            if sender.send(Message::Text(msg)).await.is_err() {
-                break;
-            }
-        }
-    });
-
-    while let Some(Ok(Message::Text(text))) = receiver.next().await {
-        info!("Received message: {text}");
-        if let Ok(v) = serde_json::from_str::<Value>(&text) {
-            if let Some(t) = v.get("type").and_then(|t| t.as_str()) {
-                match t {
-                    "presence" => {
-                        if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
-                            {
-                                let mut users = state.users.lock().await;
-                                users.insert(u.to_string());
+    loop {
+        tokio::select! {
+            Some(result) = receiver.next() => {
+                let text = match result {
+                    Ok(Message::Text(t)) => t,
+                    _ => break,
+                };
+                info!("Received message: {text}");
+                if let Ok(mut v) = serde_json::from_str::<Value>(&text) {
+                    if let Some(t) = v.get("type").and_then(|t| t.as_str()) {
+                        match t {
+                            "presence" => {
+                                if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
+                                    {
+                                        let mut users = state.users.lock().await;
+                                        users.insert(u.to_string());
+                                    }
+                                    broadcast_users(&state).await;
+                                    user_name = Some(u.to_string());
+                                }
                             }
-                            broadcast_users(&state).await;
-                            user_name = Some(u.to_string());
+                            "join" => {
+                                if let Some(ch) = v.get("channel").and_then(|c| c.as_str()) {
+                                    channel = ch.to_string();
+                                    chan_tx = get_or_create_channel(&state, &channel).await;
+                                    chan_rx = chan_tx.subscribe();
+                                    send_history(&state.db, &mut sender, &channel).await;
+                                }
+                            }
+                            "chat" => {
+                                v["channel"] = Value::String(channel.clone());
+                                let out = serde_json::to_string(&v).unwrap_or(text.clone());
+                                if let Err(e) = state
+                                    .db
+                                    .execute(
+                                        "INSERT INTO messages (channel, content) VALUES ($1, $2)",
+                                        &[&channel, &out],
+                                    )
+                                    .await
+                                {
+                                    error!("db insert error: {e}");
+                                }
+                                let _ = chan_tx.send(out);
+                            }
+                            _ => {}
                         }
-                        continue;
                     }
-                    "chat" => {
-                        if let Err(e) = state
-                            .db
-                            .execute("INSERT INTO messages (content) VALUES ($1)", &[&text])
-                            .await
-                        {
-                            error!("db insert error: {e}");
-                        }
+                }
+            }
+            result = chan_rx.recv() => {
+                match result {
+                    Ok(msg) => {
+                        if sender.send(Message::Text(msg)).await.is_err() { break; }
                     }
-                    _ => {}
+                    Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(_) => break,
+                }
+            }
+            result = global_rx.recv() => {
+                match result {
+                    Ok(msg) => {
+                        if sender.send(Message::Text(msg)).await.is_err() { break; }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(_) => break,
                 }
             }
         }
-        let _ = state.tx.send(text);
     }
 
-    send_task.abort();
     if let Some(name) = user_name {
         let mut users = state.users.lock().await;
         users.remove(&name);

@@ -8,6 +8,8 @@
   import { get } from 'svelte/store';
   let message = '';
   let inVoice = false;
+  const channels = ['general', 'random'];
+  let currentChannel = 'general';
 
   function stream(node: HTMLAudioElement, media: MediaStream) {
     node.srcObject = media;
@@ -23,12 +25,20 @@
     chat.connect(url, () => {
       const u = get(session).user;
       if (u) chat.sendRaw({ type: 'presence', user: u });
+      chat.sendRaw({ type: 'join', channel: currentChannel });
     });
   });
 
   function send() {
     chat.send($session.user ?? 'anon', message);
     message = '';
+  }
+
+  function joinChannel(ch: string) {
+    if (ch === currentChannel) return;
+    currentChannel = ch;
+    chat.clear();
+    chat.sendRaw({ type: 'join', channel: ch });
   }
 
   function joinVoice() {
@@ -47,6 +57,15 @@
   <div class="flex h-screen">
     <div class="flex flex-col flex-1 p-4">
       <h1 class="text-xl font-bold mb-4">Text Channel</h1>
+      <div class="mb-4 space-x-2">
+        {#each channels as ch}
+          <button
+            class="px-2 py-1 rounded {ch === currentChannel ? 'bg-blue-500 text-white' : 'bg-gray-200'}"
+            on:click={() => joinChannel(ch)}>
+            {ch}
+          </button>
+        {/each}
+      </div>
       <div class="flex-1 overflow-y-auto mb-4 space-y-2">
         {#each $chat as msg}
           <div><b>{msg.user}:</b> {msg.text}</div>
