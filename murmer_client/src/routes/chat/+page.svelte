@@ -6,6 +6,7 @@
   import { selectedServer } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
   import { get } from 'svelte/store';
+  import { goto } from '$app/navigation';
   let message = '';
   let inVoice = false;
   const channels = ['general', 'random'];
@@ -21,6 +22,10 @@
   }
 
   onMount(() => {
+    if (!get(session).user) {
+      goto('/login');
+      return;
+    }
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
     chat.connect(url, () => {
       const u = get(session).user;
@@ -54,6 +59,11 @@
     inVoice = false;
   }
 
+  function logout() {
+    session.set({ user: null });
+    goto('/login');
+  }
+
   let messagesContainer: HTMLDivElement;
   let lastLength = 0;
 
@@ -67,7 +77,14 @@
 
   <div class="flex h-screen">
     <div class="flex flex-col flex-1 p-4">
-      <h1 class="text-xl font-bold mb-4">Text Channel</h1>
+      <div class="flex items-center justify-between mb-4">
+        <h1 class="text-xl font-bold">Text Channel</h1>
+        <div class="space-x-2 flex items-center">
+          <span class="text-sm">{$session.user}</span>
+          <button class="bg-gray-300 px-2 py-1 rounded" on:click={logout}
+            >Logout</button>
+        </div>
+      </div>
       <div class="mb-4 space-x-2">
         {#each channels as ch}
           <button

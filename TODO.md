@@ -21,7 +21,7 @@ Use the checkboxes to track progress.
 
 ### 🛠️ Other Features
 
-- [ ] Remember user nicknames (locally or server-side)
+- [x] Remember user nicknames (locally or server-side)
 - [ ] Implement launcher and update checker
 - [ ] Add a logo for the app
 
