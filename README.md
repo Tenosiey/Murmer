@@ -1,6 +1,6 @@
 # Murmer
 
-Murmer is a minimal voice and text chat prototype built with Tauri and SvelteKit.
+Murmer is a **self-hostable** minimal voice and text chat prototype built with Tauri and SvelteKit.
 
 ## Prerequisites
 - [Rust](https://www.rust-lang.org/tools/install)
