@@ -30,6 +30,7 @@
   });
 
   function send() {
+    if (message.trim() === '') return;
     chat.send($session.user ?? 'anon', message);
     message = '';
   }
