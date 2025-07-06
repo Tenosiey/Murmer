@@ -9,9 +9,7 @@ Use the checkboxes to track progress.
 
 ### 🗨️ Chat Features
 
-- [ ] Send messages with Enter key
 - [ ] Support Markdown formatting in text chat
-- [ ] Support newlines in chat with Shift+Enter
 - [ ] Allow sending images in chat
 - [ ] Enable deleting messages
 
@@ -24,7 +22,6 @@ Use the checkboxes to track progress.
 ### 🛠️ Other Features
 
 - [ ] Remember user nicknames (locally or server-side)
-- [x] Assign a name to the server
 - [ ] Implement launcher and update checker
 - [ ] Add a logo for the app
 
