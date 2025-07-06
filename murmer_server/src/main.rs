@@ -9,16 +9,29 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt};
 use serde_json::Value;
-use std::{env, net::SocketAddr, sync::Arc};
+use std::{collections::HashSet, env, net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;
-use tokio::sync::broadcast;
+use tokio::sync::{Mutex, broadcast};
 use tokio_postgres::{Client, NoTls};
 use tracing::{error, info};
 use tracing_subscriber;
 
+async fn broadcast_users(state: &Arc<AppState>) {
+    let users = state.users.lock().await;
+    let list: Vec<String> = users.iter().cloned().collect();
+    drop(users);
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "online-users",
+        "users": list,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
 struct AppState {
     tx: broadcast::Sender<String>,
     db: Arc<Client>,
+    users: Arc<Mutex<HashSet<String>>>,
 }
 
 #[tokio::main]
@@ -58,6 +71,7 @@ async fn main() {
     let state = Arc::new(AppState {
         tx: tx.clone(),
         db: Arc::new(db_client),
+        users: Arc::new(Mutex::new(HashSet::new())),
     });
 
     let app = Router::new()
@@ -79,6 +93,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     info!("Client connected");
     let (mut sender, mut receiver) = socket.split();
     let mut rx = state.tx.subscribe();
+    let mut user_name: Option<String> = None;
 
     // send previous messages from DB
     if let Ok(rows) = state
@@ -104,21 +119,42 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     while let Some(Ok(Message::Text(text))) = receiver.next().await {
         info!("Received message: {text}");
-        let ty = serde_json::from_str::<Value>(&text)
-            .ok()
-            .and_then(|v| v.get("type").and_then(|t| t.as_str().map(|s| s.to_owned())));
-        if matches!(ty.as_deref(), Some("chat")) {
-            if let Err(e) = state
-                .db
-                .execute("INSERT INTO messages (content) VALUES ($1)", &[&text])
-                .await
-            {
-                error!("db insert error: {e}");
+        if let Ok(v) = serde_json::from_str::<Value>(&text) {
+            if let Some(t) = v.get("type").and_then(|t| t.as_str()) {
+                match t {
+                    "presence" => {
+                        if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
+                            {
+                                let mut users = state.users.lock().await;
+                                users.insert(u.to_string());
+                            }
+                            broadcast_users(&state).await;
+                            user_name = Some(u.to_string());
+                        }
+                        continue;
+                    }
+                    "chat" => {
+                        if let Err(e) = state
+                            .db
+                            .execute("INSERT INTO messages (content) VALUES ($1)", &[&text])
+                            .await
+                        {
+                            error!("db insert error: {e}");
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
         let _ = state.tx.send(text);
     }
 
     send_task.abort();
+    if let Some(name) = user_name {
+        let mut users = state.users.lock().await;
+        users.remove(&name);
+        drop(users);
+        broadcast_users(&state).await;
+    }
     info!("Client disconnected");
 }

@@ -20,12 +20,13 @@ function createChatStore() {
     delete handlers[type];
   }
 
-  function connect(url: string) {
+  function connect(url: string, onOpen?: () => void) {
     if (socket) return;
     if (import.meta.env.DEV) console.log('Connecting to WebSocket', url);
     socket = new WebSocket(url);
     socket.addEventListener('open', () => {
       if (import.meta.env.DEV) console.log('WebSocket connection opened');
+      if (onOpen) onOpen();
     });
     socket.addEventListener('message', (ev) => {
       if (import.meta.env.DEV) console.log('Received:', ev.data);
