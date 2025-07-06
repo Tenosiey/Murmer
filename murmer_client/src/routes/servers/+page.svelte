@@ -30,6 +30,10 @@
     selectedServer.set(server.url);
     goto('/chat');
   }
+
+  function removeServer(url: string) {
+    servers.remove(url);
+  }
 </script>
 
 <div class="p-4">
@@ -41,9 +45,19 @@
   </div>
   <ul>
     {#each $servers as server}
-      <li class="mb-2">
-        <button class="bg-gray-200 p-2 rounded w-full text-left" on:click={() => join(server)} title={server.url}>
+      <li class="mb-2 flex space-x-2">
+        <button
+          class="bg-gray-200 p-2 rounded flex-1 text-left"
+          on:click={() => join(server)}
+          title={server.url}
+        >
           {server.name}
+        </button>
+        <button
+          class="bg-red-500 text-white px-2 rounded"
+          on:click={() => removeServer(server.url)}
+        >
+          Delete
         </button>
       </li>
     {/each}
