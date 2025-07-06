@@ -19,7 +19,7 @@ This launches the desktop app.
 ### Prerequisite
 Docker is required to host a server.
 
-Use Docker Compose to run the server together with Postgres and MinIO:
+Use Docker Compose to run the server together with Postgres:
 ```bash
 docker compose up --build
 ```
@@ -28,23 +28,12 @@ The `DATABASE_URL` used by the server is defined in `docker-compose.yml`.
 
 ### Image Uploads
 
-The server stores uploaded images in a MinIO bucket. Configure the following environment variables when running the server:
+Uploaded images are stored on disk under an `uploads/` directory. Set `PUBLIC_URL` to the base URL clients use to access files (defaults to `http://localhost:3001`). Files can then be fetched from `<PUBLIC_URL>/files/<filename>`.
 
-```
-MINIO_ENDPOINT=<http://localhost:9000>
-MINIO_BUCKET=<bucket-name>
-MINIO_PUBLIC_URL=<public-base-url>
-AWS_ACCESS_KEY_ID=<access-key>
-AWS_SECRET_ACCESS_KEY=<secret-key>
-AWS_REGION=<aws-region>
-```
-
-`MINIO_PUBLIC_URL` should be the base URL clients use to access objects. The server creates the bucket at startup if it doesn't already exist.
-
-`docker-compose.yml` starts a MinIO instance with the default `minioadmin` credentials and uses a bucket named `murmer`.
+`docker-compose.yml` mounts a volume for the uploads directory so files persist between restarts.
 
 ## Docker
-A `docker-compose.yml` runs the Rust server alongside Postgres and MinIO. The client is run locally without Docker.
+A `docker-compose.yml` runs the Rust server alongside Postgres. The client is run locally without Docker.
 
 ## Notes
 This project is an early prototype demonstrating login, server selection, text chat and a stub for voice communication via WebRTC.
