@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-axum = { version = "0.7", features = ["ws"] }
+axum = { version = "0.7", features = ["ws", "multipart"] }
 tokio = { version = "1", features = ["full"] }
 hyper = "1"
 tracing-subscriber = "0.3"
@@ -12,3 +12,6 @@ tracing = "0.1"
 futures = "0.3"
 tokio-postgres = "0.7"
 serde_json = "1"
+aws-config = "1"
+aws-sdk-s3 = { version = "1", default-features = false, features = ["behavior-version-latest", "rustls"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }

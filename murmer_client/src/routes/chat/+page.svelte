@@ -14,6 +14,7 @@
     return stats ? stats.strength : 0;
   }
   let message = '';
+  let fileInput: HTMLInputElement;
   let inVoice = false;
   const channels = ['general', 'random'];
   let currentChannel = 'general';
@@ -44,6 +45,23 @@
     if (message.trim() === '') return;
     chat.send($session.user ?? 'anon', message);
     message = '';
+  }
+
+  async function sendImage() {
+    const file = fileInput?.files?.[0];
+    if (!file) return;
+    const base = (get(selectedServer) ?? 'ws://localhost:3001').replace(/^ws/, 'http');
+    const form = new FormData();
+    form.append('file', file);
+    try {
+      const res = await fetch(base + '/upload', { method: 'POST', body: form });
+      const data = await res.json();
+      chat.sendRaw({ type: 'chat', user: $session.user ?? 'anon', image: data.url });
+    } catch (e) {
+      console.error('upload failed', e);
+    } finally {
+      if (fileInput) fileInput.value = '';
+    }
   }
 
   function joinChannel(ch: string) {
@@ -102,7 +120,13 @@
       </div>
       <div class="flex-1 overflow-y-auto mb-4 space-y-2" bind:this={messagesContainer}>
         {#each $chat as msg}
-          <div class="whitespace-pre-wrap"><b>{msg.user}:</b> {msg.text}</div>
+          <div class="whitespace-pre-wrap">
+            <b>{msg.user}:</b>
+            {#if msg.text}{msg.text}{/if}
+            {#if msg.image}
+              <img src={msg.image as string} alt="" class="max-w-xs block mt-1" />
+            {/if}
+          </div>
         {/each}
       </div>
       <div class="flex space-x-2">
@@ -118,7 +142,9 @@
             }
           }}
         ></textarea>
+        <input type="file" bind:this={fileInput} accept="image/*" class="self-center" />
         <button class="bg-blue-500 text-white px-4 py-2 rounded" on:click={send}>Send</button>
+        <button class="bg-blue-500 text-white px-4 py-2 rounded" on:click={sendImage}>Img</button>
       </div>
       {#if inVoice}
         <button class="mt-4 bg-red-500 text-white px-4 py-2 rounded self-start" on:click={leaveVoice}>

@@ -1,11 +1,13 @@
+use aws_config;
+use aws_sdk_s3::{Client as S3Client, types::ByteStream};
 use axum::{
-    Router,
+    Json, Router,
     extract::{
-        State,
+        Multipart, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    response::IntoResponse,
-    routing::get,
+    response::{IntoResponse, Response},
+    routing::{get, post},
 };
 use futures::{SinkExt, StreamExt};
 use serde_json::Value;
@@ -80,6 +82,9 @@ struct AppState {
     db: Arc<Client>,
     users: Arc<Mutex<HashSet<String>>>,
     voice_users: Arc<Mutex<HashSet<String>>>,
+    s3: Arc<S3Client>,
+    bucket: String,
+    public_url: String,
 }
 
 #[tokio::main]
@@ -123,16 +128,31 @@ ALTER TABLE messages
         )
         .await
         .unwrap();
+
+    let minio_endpoint = env::var("MINIO_ENDPOINT").expect("MINIO_ENDPOINT not set");
+    let bucket = env::var("MINIO_BUCKET").unwrap_or_else(|_| "murmer".to_string());
+    let public_url = env::var("MINIO_PUBLIC_URL").unwrap_or_else(|_| minio_endpoint.clone());
+
+    let aws_config = aws_config::from_env()
+        .endpoint_url(minio_endpoint)
+        .load()
+        .await;
+    let s3_client = Arc::new(S3Client::new(&aws_config));
+
     let state = Arc::new(AppState {
         tx: tx.clone(),
         channels: Arc::new(Mutex::new(HashMap::new())),
         db: Arc::new(db_client),
         users: Arc::new(Mutex::new(HashSet::new())),
         voice_users: Arc::new(Mutex::new(HashSet::new())),
+        s3: s3_client,
+        bucket,
+        public_url,
     });
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
+        .route("/upload", post(upload))
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
@@ -144,6 +164,38 @@ ALTER TABLE messages
 
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_socket(socket, state))
+}
+
+async fn upload(State(state): State<Arc<AppState>>, mut multipart: Multipart) -> Response {
+    while let Ok(Some(field)) = multipart.next_field().await {
+        if let Ok(data) = field.bytes().await {
+            let filename = field
+                .file_name()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "upload".to_string());
+            let key = format!("{}-{}", chrono::Utc::now().timestamp_millis(), filename);
+            let body = ByteStream::from(data.to_vec());
+            match state
+                .s3
+                .put_object()
+                .bucket(&state.bucket)
+                .key(&key)
+                .body(body)
+                .send()
+                .await
+            {
+                Ok(_) => {
+                    let url = format!("{}/{}", state.public_url.trim_end_matches('/'), key);
+                    return Json(serde_json::json!({"url": url})).into_response();
+                }
+                Err(e) => {
+                    error!("upload error: {e}");
+                    return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                }
+            }
+        }
+    }
+    axum::http::StatusCode::BAD_REQUEST.into_response()
 }
 
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
