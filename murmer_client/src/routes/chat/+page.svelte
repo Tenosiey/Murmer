@@ -68,16 +68,22 @@
       </div>
       <div class="flex-1 overflow-y-auto mb-4 space-y-2">
         {#each $chat as msg}
-          <div><b>{msg.user}:</b> {msg.text}</div>
+          <div class="whitespace-pre-wrap"><b>{msg.user}:</b> {msg.text}</div>
         {/each}
       </div>
       <div class="flex space-x-2">
-        <input
+        <textarea
           class="flex-1 border p-2 rounded"
           bind:value={message}
+          rows="2"
           placeholder="Message"
-          on:keydown={(e) => e.key === 'Enter' && send()}
-        />
+          on:keydown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+        ></textarea>
         <button class="bg-blue-500 text-white px-4 py-2 rounded" on:click={send}>Send</button>
       </div>
       {#if inVoice}
