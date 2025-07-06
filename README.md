@@ -36,6 +36,7 @@ MINIO_BUCKET=<bucket-name>
 MINIO_PUBLIC_URL=<public-base-url>
 AWS_ACCESS_KEY_ID=<access-key>
 AWS_SECRET_ACCESS_KEY=<secret-key>
+AWS_REGION=<aws-region>
 ```
 
 `MINIO_PUBLIC_URL` should be the base URL clients use to access objects. The bucket is created separately.
