@@ -1,4 +1,4 @@
-use aws_config;
+use aws_config::BehaviorVersion;
 use aws_sdk_s3::{Client as S3Client, primitives::ByteStream};
 use axum::{
     Json, Router,
@@ -133,7 +133,7 @@ ALTER TABLE messages
     let bucket = env::var("MINIO_BUCKET").unwrap_or_else(|_| "murmer".to_string());
     let public_url = env::var("MINIO_PUBLIC_URL").unwrap_or_else(|_| minio_endpoint.clone());
 
-    let aws_config = aws_config::from_env()
+    let aws_config = aws_config::defaults(BehaviorVersion::latest())
         .endpoint_url(minio_endpoint)
         .load()
         .await;
