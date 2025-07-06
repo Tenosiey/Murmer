@@ -53,7 +53,12 @@
         {/each}
       </div>
       <div class="flex space-x-2">
-        <input class="flex-1 border p-2 rounded" bind:value={message} placeholder="Message" />
+        <input
+          class="flex-1 border p-2 rounded"
+          bind:value={message}
+          placeholder="Message"
+          on:keydown={(e) => e.key === 'Enter' && send()}
+        />
         <button class="bg-blue-500 text-white px-4 py-2 rounded" on:click={send}>Send</button>
       </div>
       {#if inVoice}
