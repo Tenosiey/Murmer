@@ -88,12 +88,29 @@ struct AppState {
 }
 
 async fn ensure_bucket(client: &S3Client, bucket: &str) {
-    match client.head_bucket().bucket(bucket).send().await {
-        Ok(_) => info!("bucket {bucket} exists"),
-        Err(_) => match client.create_bucket().bucket(bucket).send().await {
-            Ok(_) => info!("created bucket {bucket}"),
-            Err(e) => error!("failed to create bucket {bucket}: {e}"),
-        },
+    let mut attempts = 0u8;
+    loop {
+        match client.head_bucket().bucket(bucket).send().await {
+            Ok(_) => {
+                info!("bucket {bucket} exists");
+                break;
+            }
+            Err(_) => match client.create_bucket().bucket(bucket).send().await {
+                Ok(_) => {
+                    info!("created bucket {bucket}");
+                    break;
+                }
+                Err(e) if attempts < 30 => {
+                    attempts += 1;
+                    tracing::warn!("failed to ensure bucket ({e}), retrying...");
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+                Err(e) => {
+                    error!("failed to create bucket {bucket}: {e}");
+                    break;
+                }
+            },
+        }
     }
 }
 
