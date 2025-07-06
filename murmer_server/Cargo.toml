@@ -12,6 +12,5 @@ tracing = "0.1"
 futures = "0.3"
 tokio-postgres = "0.7"
 serde_json = "1"
-aws-config = "1"
-aws-sdk-s3 = { version = "1", default-features = false, features = ["behavior-version-latest", "rustls"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tower-http = { version = "0.5", features = ["fs"] }

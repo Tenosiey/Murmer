@@ -1,5 +1,3 @@
-use aws_config::BehaviorVersion;
-use aws_sdk_s3::{Client as S3Client, primitives::ByteStream};
 use axum::{
     Json, Router,
     extract::{
@@ -15,11 +13,13 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     net::SocketAddr,
+    path::PathBuf,
     sync::Arc,
 };
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, broadcast};
 use tokio_postgres::{Client, NoTls};
+use tower_http::services::ServeDir;
 use tracing::{error, info};
 use tracing_subscriber;
 
@@ -82,36 +82,8 @@ struct AppState {
     db: Arc<Client>,
     users: Arc<Mutex<HashSet<String>>>,
     voice_users: Arc<Mutex<HashSet<String>>>,
-    s3: Arc<S3Client>,
-    bucket: String,
+    upload_dir: PathBuf,
     public_url: String,
-}
-
-async fn ensure_bucket(client: &S3Client, bucket: &str) {
-    let mut attempts = 0u8;
-    loop {
-        match client.head_bucket().bucket(bucket).send().await {
-            Ok(_) => {
-                info!("bucket {bucket} exists");
-                break;
-            }
-            Err(_) => match client.create_bucket().bucket(bucket).send().await {
-                Ok(_) => {
-                    info!("created bucket {bucket}");
-                    break;
-                }
-                Err(e) if attempts < 30 => {
-                    attempts += 1;
-                    tracing::warn!("failed to ensure bucket ({e}), retrying...");
-                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                }
-                Err(e) => {
-                    error!("failed to create bucket {bucket}: {e}");
-                    break;
-                }
-            },
-        }
-    }
 }
 
 #[tokio::main]
@@ -156,16 +128,11 @@ ALTER TABLE messages
         .await
         .unwrap();
 
-    let minio_endpoint = env::var("MINIO_ENDPOINT").expect("MINIO_ENDPOINT not set");
-    let bucket = env::var("MINIO_BUCKET").unwrap_or_else(|_| "murmer".to_string());
-    let public_url = env::var("MINIO_PUBLIC_URL").unwrap_or_else(|_| minio_endpoint.clone());
-
-    let aws_config = aws_config::defaults(BehaviorVersion::latest())
-        .endpoint_url(minio_endpoint)
-        .load()
-        .await;
-    let s3_client = Arc::new(S3Client::new(&aws_config));
-    ensure_bucket(&s3_client, &bucket).await;
+    let public_url = env::var("PUBLIC_URL").unwrap_or_else(|_| "http://localhost:3001".to_string());
+    let upload_dir = env::var("UPLOAD_DIR").unwrap_or_else(|_| "uploads".to_string());
+    if let Err(e) = tokio::fs::create_dir_all(&upload_dir).await {
+        panic!("create uploads dir: {e}");
+    }
 
     let state = Arc::new(AppState {
         tx: tx.clone(),
@@ -173,14 +140,14 @@ ALTER TABLE messages
         db: Arc::new(db_client),
         users: Arc::new(Mutex::new(HashSet::new())),
         voice_users: Arc::new(Mutex::new(HashSet::new())),
-        s3: s3_client,
-        bucket,
+        upload_dir: PathBuf::from(upload_dir.clone()),
         public_url,
     });
 
     let app = Router::new()
         .route("/ws", get(ws_handler))
         .route("/upload", post(upload))
+        .nest_service("/files", ServeDir::new(upload_dir))
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
@@ -202,18 +169,10 @@ async fn upload(State(state): State<Arc<AppState>>, mut multipart: Multipart) ->
             .unwrap_or_else(|| "upload".to_string());
         if let Ok(data) = field.bytes().await {
             let key = format!("{}-{}", chrono::Utc::now().timestamp_millis(), filename);
-            let body = ByteStream::from(data.to_vec());
-            match state
-                .s3
-                .put_object()
-                .bucket(&state.bucket)
-                .key(&key)
-                .body(body)
-                .send()
-                .await
-            {
+            let path = state.upload_dir.join(&key);
+            match tokio::fs::write(&path, &data).await {
                 Ok(_) => {
-                    let url = format!("{}/{}", state.public_url.trim_end_matches('/'), key);
+                    let url = format!("{}/files/{}", state.public_url.trim_end_matches('/'), key);
                     return Json(serde_json::json!({"url": url})).into_response();
                 }
                 Err(e) => {
