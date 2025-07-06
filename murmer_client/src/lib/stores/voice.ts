@@ -1,15 +1,23 @@
-import { writable } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 import type { Message } from './chat';
 import { chat } from './chat';
 
 export interface RemotePeer {
   id: string;
   stream: MediaStream;
+  stats?: ConnectionStats;
+}
+
+export interface ConnectionStats {
+  rtt: number;
+  jitter: number;
+  strength: number; // 1-5 bars
 }
 
 function createVoiceStore() {
   const { subscribe, update, set } = writable<RemotePeer[]>([]);
   const peers: Record<string, RTCPeerConnection> = {};
+  const statsIntervals: Record<string, number> = {};
   let localStream: MediaStream | null = null;
   let userName: string | null = null;
 
@@ -22,8 +30,63 @@ function createVoiceStore() {
     if (pc) {
       pc.close();
       delete peers[id];
+      const interval = statsIntervals[id];
+      if (interval) {
+        clearInterval(interval);
+        delete statsIntervals[id];
+      }
     }
     update((p) => p.filter((r) => r.id !== id));
+  }
+
+  async function updateStats(id: string) {
+    const pc = peers[id];
+    if (!pc) return;
+    try {
+      const reports = await pc.getStats();
+      let rtt = 0;
+      let jitter = 0;
+      reports.forEach((report) => {
+        // RTT from candidate pair
+        if (
+          report.type === 'candidate-pair' &&
+          (report as any).state === 'succeeded' &&
+          (report as any).currentRoundTripTime != null
+        ) {
+          rtt = (report as any).currentRoundTripTime * 1000;
+        }
+        // Jitter from remote inbound audio
+        if (
+          report.type === 'remote-inbound-rtp' &&
+          (report as any).kind === 'audio' &&
+          (report as any).jitter != null
+        ) {
+          jitter = (report as any).jitter * 1000;
+        }
+      });
+      const strength =
+        rtt === 0
+          ? 5
+          : rtt < 50
+          ? 5
+          : rtt < 100
+          ? 4
+          : rtt < 200
+          ? 3
+          : rtt < 400
+          ? 2
+          : 1;
+      update((list) => {
+        const peer = list.find((p) => p.id === id);
+        if (peer) {
+          peer.stats = { rtt, jitter, strength };
+          return [...list];
+        }
+        return list;
+      });
+    } catch {
+      // ignore stats errors
+    }
   }
 
   async function createPeer(id: string, initiator: boolean) {
@@ -64,6 +127,7 @@ function createVoiceStore() {
         cleanupPeer(id);
       }
     };
+    statsIntervals[id] = window.setInterval(() => updateStats(id), 1000);
     if (initiator && userName) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -156,3 +220,11 @@ function createVoiceStore() {
 }
 
 export const voice = createVoiceStore();
+
+export const voiceStats = derived(voice, ($voice) => {
+  const map: Record<string, ConnectionStats> = {};
+  for (const p of $voice) {
+    if (p.stats) map[p.id] = p.stats;
+  }
+  return map;
+});
