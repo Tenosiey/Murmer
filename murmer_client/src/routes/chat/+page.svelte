@@ -5,6 +5,7 @@
   import { voice } from '$lib/stores/voice';
   import { selectedServer } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
+  import { voiceUsers } from '$lib/stores/voiceUsers';
   import { get } from 'svelte/store';
   let message = '';
   let inVoice = false;
@@ -113,8 +114,14 @@
     </div>
     <div class="w-48 p-4 border-l overflow-y-auto">
       <h2 class="text-lg font-bold mb-2">Online</h2>
-      <ul class="space-y-1">
+      <ul class="space-y-1 mb-4">
         {#each $onlineUsers as user}
+          <li>{user}</li>
+        {/each}
+      </ul>
+      <h2 class="text-lg font-bold mb-2">Voice</h2>
+      <ul class="space-y-1">
+        {#each $voiceUsers as user}
           <li>{user}</li>
         {/each}
       </ul>
