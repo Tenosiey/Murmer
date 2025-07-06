@@ -39,7 +39,7 @@ AWS_SECRET_ACCESS_KEY=<secret-key>
 AWS_REGION=<aws-region>
 ```
 
-`MINIO_PUBLIC_URL` should be the base URL clients use to access objects. The bucket is created separately.
+`MINIO_PUBLIC_URL` should be the base URL clients use to access objects. The server creates the bucket at startup if it doesn't already exist.
 
 `docker-compose.yml` starts a MinIO instance with the default `minioadmin` credentials and uses a bucket named `murmer`.
 

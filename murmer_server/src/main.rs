@@ -87,6 +87,16 @@ struct AppState {
     public_url: String,
 }
 
+async fn ensure_bucket(client: &S3Client, bucket: &str) {
+    match client.head_bucket().bucket(bucket).send().await {
+        Ok(_) => info!("bucket {bucket} exists"),
+        Err(_) => match client.create_bucket().bucket(bucket).send().await {
+            Ok(_) => info!("created bucket {bucket}"),
+            Err(e) => error!("failed to create bucket {bucket}: {e}"),
+        },
+    }
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
@@ -138,6 +148,7 @@ ALTER TABLE messages
         .load()
         .await;
     let s3_client = Arc::new(S3Client::new(&aws_config));
+    ensure_bucket(&s3_client, &bucket).await;
 
     let state = Arc::new(AppState {
         tx: tx.clone(),
