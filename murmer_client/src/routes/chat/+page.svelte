@@ -41,7 +41,7 @@
     });
   });
 
-  function send() {
+  function sendText() {
     if (message.trim() === '') return;
     chat.send($session.user ?? 'anon', message);
     message = '';
@@ -68,6 +68,14 @@
     } finally {
       if (fileInput) fileInput.value = '';
     }
+  }
+
+  async function send() {
+    const file = fileInput?.files?.[0];
+    const hasMessage = message.trim() !== '';
+    if (!file && !hasMessage) return;
+    if (file) await sendImage();
+    if (hasMessage) sendText();
   }
 
   function joinChannel(ch: string) {
@@ -150,7 +158,6 @@
         ></textarea>
         <input type="file" bind:this={fileInput} accept="image/*" class="self-center" />
         <button class="bg-blue-500 text-white px-4 py-2 rounded" on:click={send}>Send</button>
-        <button class="bg-blue-500 text-white px-4 py-2 rounded" on:click={sendImage}>Img</button>
       </div>
       {#if inVoice}
         <button class="mt-4 bg-red-500 text-white px-4 py-2 rounded self-start" on:click={leaveVoice}>
