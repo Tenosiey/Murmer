@@ -3,6 +3,8 @@
   import { chat } from '$lib/stores/chat';
   import { session } from '$lib/stores/session';
   import { voice } from '$lib/stores/voice';
+  import { selectedServer } from '$lib/stores/servers';
+  import { get } from 'svelte/store';
   let message = '';
   let inVoice = false;
 
@@ -16,7 +18,8 @@
   }
 
   onMount(() => {
-    chat.connect('ws://localhost:3001/ws');
+    const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
+    chat.connect(url);
   });
 
   function send() {

@@ -1,17 +1,45 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  let servers = ['Example Server'];
-  function join() {
+  import { servers, selectedServer } from '$lib/stores/servers';
+  import { get } from 'svelte/store';
+
+  let newServer = '';
+
+  function normalize(input: string): string {
+    let url = input.trim();
+    if (!/^wss?:\/\//.test(url)) {
+      if (/^https?:\/\//.test(url)) {
+        url = url.replace(/^http/, 'ws');
+      } else {
+        url = `ws://${url.replace(/\/$/, '')}/ws`;
+      }
+    }
+    return url;
+  }
+
+  function add() {
+    if (newServer.trim()) {
+      servers.add(normalize(newServer));
+      newServer = '';
+    }
+  }
+
+  function join(server: string) {
+    selectedServer.set(server);
     goto('/chat');
   }
 </script>
 
 <div class="p-4">
   <h1 class="text-xl font-bold mb-4">Servers</h1>
+  <div class="mb-4 flex space-x-2">
+    <input class="border p-2 rounded flex-1" bind:value={newServer} placeholder="host:port or ws://url" />
+    <button class="bg-blue-500 text-white px-4 py-2 rounded" on:click={add}>Add</button>
+  </div>
   <ul>
-    {#each servers as server}
+    {#each $servers as server}
       <li class="mb-2">
-        <button class="bg-gray-200 p-2 rounded w-full text-left" on:click={join}>{server}</button>
+        <button class="bg-gray-200 p-2 rounded w-full text-left" on:click={() => join(server)}>{server}</button>
       </li>
     {/each}
   </ul>

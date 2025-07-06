@@ -19,7 +19,10 @@ This launches the desktop app.
 cd murmer_server
 cargo run
 ```
-The server exposes a WebSocket endpoint at `ws://localhost:3001/ws` used by the client for chat.
+The server exposes a WebSocket endpoint at `ws://localhost:3001/ws`.
+The client can store multiple server URLs and connect to any of them via the
+"Servers" screen. Added servers are persisted locally so favorites remain after
+restart.
 
 ### Using Docker with Postgres
 To run the server together with a Postgres database, use Docker Compose:
