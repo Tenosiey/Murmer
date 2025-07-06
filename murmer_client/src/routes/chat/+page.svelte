@@ -49,13 +49,19 @@
 
   async function sendImage() {
     const file = fileInput?.files?.[0];
-    if (!file) return;
+    if (!file) {
+      if (import.meta.env.DEV) console.log('sendImage: no file selected');
+      return;
+    }
     const base = (get(selectedServer) ?? 'ws://localhost:3001').replace(/^ws/, 'http');
     const form = new FormData();
     form.append('file', file);
+    if (import.meta.env.DEV) console.log('Uploading image to', base + '/upload', file);
     try {
       const res = await fetch(base + '/upload', { method: 'POST', body: form });
+      if (import.meta.env.DEV) console.log('Upload response status:', res.status);
       const data = await res.json();
+      if (import.meta.env.DEV) console.log('Upload response data:', data);
       chat.sendRaw({ type: 'chat', user: $session.user ?? 'anon', image: data.url });
     } catch (e) {
       console.error('upload failed', e);
