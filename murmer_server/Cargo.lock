@@ -537,6 +537,7 @@ dependencies = [
  "axum",
  "futures",
  "hyper",
+ "serde_json",
  "tokio",
  "tokio-postgres",
  "tracing",
