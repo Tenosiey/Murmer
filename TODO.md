@@ -38,7 +38,7 @@ _(no known bugs yet)_
 
 ## 💡 Future Ideas
 
-_(add new feature ideas here)_
+- [ ] Add Screen Share / Game Share function
 
 ---
 
