@@ -21,6 +21,10 @@ function createVoiceStore() {
   let localStream: MediaStream | null = null;
   let userName: string | null = null;
 
+  // sounds for join/leave events
+  const joinSound = new Audio('/sounds/join.mp3');
+  const leaveSound = new Audio('/sounds/leave.mp3');
+
   const config: RTCConfiguration = {
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   };
@@ -175,6 +179,12 @@ function createVoiceStore() {
   function handleJoin(msg: Message) {
     if (!userName || msg.user === userName) return;
     createPeer(msg.user as string, true);
+    try {
+      joinSound.currentTime = 0;
+      joinSound.play();
+    } catch {
+      // ignore play errors
+    }
   }
 
   async function handleOffer(msg: Message) {
@@ -214,6 +224,12 @@ function createVoiceStore() {
   function handleLeave(msg: Message) {
     if (!userName) return;
     cleanupPeer(msg.user as string);
+    try {
+      leaveSound.currentTime = 0;
+      leaveSound.play();
+    } catch {
+      // ignore play errors
+    }
   }
 
   return { subscribe, join, leave };
