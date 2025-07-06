@@ -33,6 +33,18 @@ async fn broadcast_users(state: &Arc<AppState>) {
     }
 }
 
+async fn broadcast_voice(state: &Arc<AppState>) {
+    let v = state.voice_users.lock().await;
+    let list: Vec<String> = v.iter().cloned().collect();
+    drop(v);
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "voice-users",
+        "users": list,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
 async fn get_or_create_channel(state: &Arc<AppState>, name: &str) -> broadcast::Sender<String> {
     let mut channels = state.channels.lock().await;
     channels
@@ -67,6 +79,7 @@ struct AppState {
     channels: Arc<Mutex<HashMap<String, broadcast::Sender<String>>>>,
     db: Arc<Client>,
     users: Arc<Mutex<HashSet<String>>>,
+    voice_users: Arc<Mutex<HashSet<String>>>,
 }
 
 #[tokio::main]
@@ -115,6 +128,7 @@ ALTER TABLE messages
         channels: Arc::new(Mutex::new(HashMap::new())),
         db: Arc::new(db_client),
         users: Arc::new(Mutex::new(HashSet::new())),
+        voice_users: Arc::new(Mutex::new(HashSet::new())),
     });
 
     let app = Router::new()
@@ -142,6 +156,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let mut user_name: Option<String> = None;
 
     send_history(&state.db, &mut sender, &channel).await;
+    broadcast_voice(&state).await;
 
     loop {
         tokio::select! {
@@ -187,6 +202,25 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 }
                                 let _ = chan_tx.send(out);
                             }
+                            "voice-join" => {
+                                if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
+                                    let mut voice = state.voice_users.lock().await;
+                                    voice.insert(u.to_string());
+                                }
+                                broadcast_voice(&state).await;
+                                let _ = state.tx.send(text.clone());
+                            }
+                            "voice-leave" => {
+                                if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
+                                    let mut voice = state.voice_users.lock().await;
+                                    voice.remove(u);
+                                }
+                                broadcast_voice(&state).await;
+                                let _ = state.tx.send(text.clone());
+                            }
+                            "voice-offer" | "voice-answer" | "voice-candidate" => {
+                                let _ = state.tx.send(text.clone());
+                            }
                             _ => {}
                         }
                     }
@@ -218,6 +252,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         users.remove(&name);
         drop(users);
         broadcast_users(&state).await;
+        let mut voice = state.voice_users.lock().await;
+        if voice.remove(&name) {
+            drop(voice);
+            broadcast_voice(&state).await;
+        } else {
+            drop(voice);
+        }
     }
     info!("Client disconnected");
 }
