@@ -9,12 +9,12 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
   minio:
-    image: minio/minio
+    image: minio/minio:latest
     command: server /data --console-address ":9001"
     restart: unless-stopped
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: Sicheres
+      MINIO_ROOT_PASSWORD: Passwort
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -28,8 +28,8 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_BUCKET: murmer
       MINIO_PUBLIC_URL: http://localhost:9000
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_ACCESS_KEY_ID: Sicheres
+      AWS_SECRET_ACCESS_KEY: Passwort
       AWS_REGION: us-east-1
     depends_on:
       - db
