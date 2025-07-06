@@ -18,8 +18,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // create tray menu
-            let open = MenuItemBuilder::with_id("open", "Öffnen").build(app)?;
-            let quit = MenuItemBuilder::with_id("quit", "Schließen").build(app)?;
+            let open = MenuItemBuilder::with_id("open", "Open").build(app)?;
+            let quit = MenuItemBuilder::with_id("quit", "Close").build(app)?;
             let tray_menu = MenuBuilder::new(app).item(&open).item(&quit).build()?;
             TrayIconBuilder::new().menu(&tray_menu).build(app)?;
             Ok(())
@@ -49,11 +49,11 @@ pub fn run() {
                 window
                     .app_handle()
                     .dialog()
-                    .message("Möchtest du den Client minimieren oder schließen?")
-                    .title("Beenden?")
+                    .message("Do you want to minimize or close the client?")
+                    .title("Quit?")
                     .buttons(MessageDialogButtons::OkCancelCustom(
-                        "Minimieren".into(),
-                        "Schließen".into(),
+                        "Minimize".into(),
+                        "Close".into(),
                     ))
                     .show(move |minimize| {
                         if minimize {
