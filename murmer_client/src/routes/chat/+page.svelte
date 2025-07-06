@@ -2,12 +2,17 @@
   import { onMount, afterUpdate } from 'svelte';
   import { chat } from '$lib/stores/chat';
   import { session } from '$lib/stores/session';
-  import { voice } from '$lib/stores/voice';
+  import { voice, voiceStats } from '$lib/stores/voice';
   import { selectedServer } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
   import { voiceUsers } from '$lib/stores/voiceUsers';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
+  import ConnectionBars from '$lib/components/ConnectionBars.svelte';
+  function strength(user: string): number {
+    const stats = get(voiceStats)[user];
+    return stats ? stats.strength : 0;
+  }
   let message = '';
   let inVoice = false;
   const channels = ['general', 'random'];
@@ -139,7 +144,12 @@
       <h2 class="text-lg font-bold mb-2">Voice</h2>
       <ul class="space-y-1">
         {#each $voiceUsers as user}
-          <li>{user}</li>
+          <li class="flex items-center">
+            <span>{user}</span>
+            {#if user !== $session.user}
+              <ConnectionBars strength={strength(user)} />
+            {/if}
+          </li>
         {/each}
       </ul>
     </div>
