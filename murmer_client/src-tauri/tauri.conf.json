@@ -9,18 +9,21 @@
 		"beforeBuildCommand": "npm run build",
 		"frontendDist": "../build"
 	},
-	"app": {
-		"windows": [
-			{
-				"title": "murmer_client",
-				"width": 800,
-				"height": 600
-			}
-		],
-		"security": {
-			"csp": null
-		}
-	},
+        "app": {
+                "windows": [
+                        {
+                                "title": "murmer_client",
+                                "width": 800,
+                                "height": 600
+                        }
+                ],
+                "trayIcon": {
+                        "iconPath": "icons/icon.png"
+                },
+                "security": {
+                        "csp": null
+                }
+        },
 	"bundle": {
 		"active": true,
 		"targets": "all",
