@@ -99,7 +99,14 @@ async fn main() {
     });
     db_client
         .batch_execute(
-            "CREATE TABLE IF NOT EXISTS messages (id SERIAL PRIMARY KEY, channel TEXT NOT NULL, content TEXT NOT NULL)",
+            r#"CREATE TABLE IF NOT EXISTS messages (
+    id SERIAL PRIMARY KEY,
+    channel TEXT NOT NULL,
+    content TEXT NOT NULL
+);
+ALTER TABLE messages
+    ADD COLUMN IF NOT EXISTS channel TEXT NOT NULL DEFAULT 'general';
+"#,
         )
         .await
         .unwrap();
