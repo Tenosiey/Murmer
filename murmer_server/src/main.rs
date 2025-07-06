@@ -1,5 +1,5 @@
 use aws_config;
-use aws_sdk_s3::{Client as S3Client, types::ByteStream};
+use aws_sdk_s3::{Client as S3Client, primitives::ByteStream};
 use axum::{
     Json, Router,
     extract::{
@@ -168,11 +168,11 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) ->
 
 async fn upload(State(state): State<Arc<AppState>>, mut multipart: Multipart) -> Response {
     while let Ok(Some(field)) = multipart.next_field().await {
+        let filename = field
+            .file_name()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "upload".to_string());
         if let Ok(data) = field.bytes().await {
-            let filename = field
-                .file_name()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "upload".to_string());
             let key = format!("{}-{}", chrono::Utc::now().timestamp_millis(), filename);
             let body = ByteStream::from(data.to_vec());
             match state
