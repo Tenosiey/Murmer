@@ -15,13 +15,10 @@ Use the checkboxes to track progress.
 
 ### 🎤 Voice Features
 
-- [ ] Show who is currently online in voice channels
-- [ ] Make it clearer in the UI when the user is in a voice channel
 - [ ] Add quality bars to display connection strength (like Discord)
 
 ### 🛠️ Other Features
 
-- [x] Remember user nicknames (locally or server-side)
 - [ ] Implement launcher and update checker
 - [ ] Add a logo for the app
 
