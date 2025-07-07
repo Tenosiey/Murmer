@@ -19,6 +19,7 @@ use std::{
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, broadcast};
 use tokio_postgres::{Client, NoTls};
+use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tracing::{error, info};
 use tracing_subscriber;
@@ -141,10 +142,13 @@ ALTER TABLE messages
         upload_dir: PathBuf::from(upload_dir.clone()),
     });
 
+    let cors = CorsLayer::permissive();
+
     let app = Router::new()
         .route("/ws", get(ws_handler))
         .route("/upload", post(upload))
         .nest_service("/files", ServeDir::new(upload_dir))
+        .layer(cors)
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
