@@ -71,7 +71,9 @@
       }
       const data = await res.json();
       if (import.meta.env.DEV) console.log('Upload response data:', data);
-      chat.sendRaw({ type: 'chat', user: $session.user ?? 'anon', image: data.url });
+      const url = data.url as string;
+      const img = url.startsWith('http') ? url : base + url;
+      chat.sendRaw({ type: 'chat', user: $session.user ?? 'anon', image: img });
     } catch (e) {
       console.error('upload failed', e);
     } finally {
@@ -147,7 +149,13 @@
             <b>{msg.user}:</b>
             {#if msg.text}{msg.text}{/if}
             {#if msg.image}
-              <img src={msg.image as string} alt="" class="max-w-xs block mt-1" />
+              <a
+                href={msg.image as string}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="block text-blue-600 underline mt-1"
+                >{msg.image}</a
+              >
             {/if}
           </div>
         {/each}
