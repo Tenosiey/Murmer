@@ -13,7 +13,6 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://murmer:murmer@db:5432/murmer
-      PUBLIC_URL: http://localhost:3001
       UPLOAD_DIR: /app/uploads
     depends_on:
       - db

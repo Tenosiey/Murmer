@@ -83,7 +83,6 @@ struct AppState {
     users: Arc<Mutex<HashSet<String>>>,
     voice_users: Arc<Mutex<HashSet<String>>>,
     upload_dir: PathBuf,
-    public_url: String,
 }
 
 #[tokio::main]
@@ -128,7 +127,6 @@ ALTER TABLE messages
         .await
         .unwrap();
 
-    let public_url = env::var("PUBLIC_URL").unwrap_or_else(|_| "http://localhost:3001".to_string());
     let upload_dir = env::var("UPLOAD_DIR").unwrap_or_else(|_| "uploads".to_string());
     if let Err(e) = tokio::fs::create_dir_all(&upload_dir).await {
         panic!("create uploads dir: {e}");
@@ -141,7 +139,6 @@ ALTER TABLE messages
         users: Arc::new(Mutex::new(HashSet::new())),
         voice_users: Arc::new(Mutex::new(HashSet::new())),
         upload_dir: PathBuf::from(upload_dir.clone()),
-        public_url,
     });
 
     let app = Router::new()
@@ -172,7 +169,7 @@ async fn upload(State(state): State<Arc<AppState>>, mut multipart: Multipart) ->
             let path = state.upload_dir.join(&key);
             match tokio::fs::write(&path, &data).await {
                 Ok(_) => {
-                    let url = format!("{}/files/{}", state.public_url.trim_end_matches('/'), key);
+                    let url = format!("/files/{}", key);
                     return Json(serde_json::json!({"url": url})).into_response();
                 }
                 Err(e) => {
