@@ -1,6 +1,7 @@
-import { writable, derived } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 import type { Message } from "./chat";
 import { chat } from "./chat";
+import { settings } from "./settings";
 
 export interface RemotePeer {
 	id: string;
@@ -153,8 +154,12 @@ function createVoiceStore() {
 		chat.on("voice-answer", handleAnswer);
 		chat.on("voice-candidate", handleCandidate);
 		chat.on("voice-leave", handleLeave);
-		localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-		chat.sendRaw({ type: "voice-join", user });
+                const deviceId = get(settings).inputDeviceId;
+                const constraints: MediaStreamConstraints = {
+                        audio: deviceId ? { deviceId: { exact: deviceId } } : true
+                };
+                localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                chat.sendRaw({ type: "voice-join", user });
 	}
 
 	function leave() {

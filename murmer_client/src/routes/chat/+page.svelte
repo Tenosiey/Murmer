@@ -3,6 +3,7 @@
   import { chat } from '$lib/stores/chat';
   import { session } from '$lib/stores/session';
   import { voice, voiceStats } from '$lib/stores/voice';
+  import { settings } from '$lib/stores/settings';
   import { selectedServer } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
   import { voiceUsers } from '$lib/stores/voiceUsers';
@@ -187,7 +188,7 @@
       {/if}
 
       {#each $voice as peer (peer.id)}
-        <audio autoplay use:stream={peer.stream}></audio>
+        <audio autoplay use:stream={peer.stream} volume={$settings.volume}></audio>
       {/each}
     </div>
     <div class="w-48 p-4 border-l overflow-y-auto">
