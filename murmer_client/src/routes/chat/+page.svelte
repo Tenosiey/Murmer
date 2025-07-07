@@ -149,7 +149,13 @@
             <b>{msg.user}:</b>
             {#if msg.text}{msg.text}{/if}
             {#if msg.image}
-              <img src={msg.image as string} alt="" class="max-w-xs block mt-1" />
+              <a
+                href={msg.image as string}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="block text-blue-600 underline mt-1"
+                >{msg.image}</a
+              >
             {/if}
           </div>
         {/each}
