@@ -71,7 +71,9 @@
       }
       const data = await res.json();
       if (import.meta.env.DEV) console.log('Upload response data:', data);
-      chat.sendRaw({ type: 'chat', user: $session.user ?? 'anon', image: data.url });
+      const url = data.url as string;
+      const img = url.startsWith('http') ? url : base + url;
+      chat.sendRaw({ type: 'chat', user: $session.user ?? 'anon', image: img });
     } catch (e) {
       console.error('upload failed', e);
     } finally {
