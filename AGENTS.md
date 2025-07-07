@@ -11,7 +11,7 @@ It is split into a Tauri/SvelteKit client and a Rust server.
 Each subfolder contains its own `AGENTS.md` with more details.
 
 ## Getting Started
-1. Install [Rust](https://www.rust-lang.org/tools/install) and [Node.js](https://nodejs.org) v18 or newer.
+1. Install [Rust](https://www.rust-lang.org/tools/install) and [Node.js](https://nodejs.org) 22+.
 2. See `README.md` for quick commands to run the client and server.
 
 ## Validation
