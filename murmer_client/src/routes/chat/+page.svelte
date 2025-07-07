@@ -53,13 +53,22 @@
       if (import.meta.env.DEV) console.log('sendImage: no file selected');
       return;
     }
-    const base = (get(selectedServer) ?? 'ws://localhost:3001').replace(/^ws/, 'http');
+    const selected = get(selectedServer) ?? 'ws://localhost:3001/ws';
+    const u = new URL(selected);
+    // convert ws:// -> http:// and strip trailing "/ws" from the path so that
+    // requests target the HTTP API root rather than the WebSocket endpoint
+    u.protocol = u.protocol.replace('ws', 'http');
+    if (u.pathname.endsWith('/ws')) u.pathname = u.pathname.slice(0, -3);
+    const base = u.toString().replace(/\/$/, '');
     const form = new FormData();
     form.append('file', file);
     if (import.meta.env.DEV) console.log('Uploading image to', base + '/upload', file);
     try {
       const res = await fetch(base + '/upload', { method: 'POST', body: form });
       if (import.meta.env.DEV) console.log('Upload response status:', res.status);
+      if (!res.ok) {
+        throw new Error(`upload failed with status ${res.status}`);
+      }
       const data = await res.json();
       if (import.meta.env.DEV) console.log('Upload response data:', data);
       chat.sendRaw({ type: 'chat', user: $session.user ?? 'anon', image: data.url });
