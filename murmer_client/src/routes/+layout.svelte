@@ -1,6 +1,6 @@
 <script lang="ts">
   import '../app.css';
-  const version = '2025.07.09-alpha.1';
+  const version = '2025.7.9-alpha.1';
 </script>
 
 <slot />
