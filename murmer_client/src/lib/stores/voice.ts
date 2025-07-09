@@ -1,6 +1,7 @@
 import { writable, derived } from "svelte/store";
 import type { Message } from "./chat";
 import { chat } from "./chat";
+import { volume } from './settings';
 
 export interface RemotePeer {
 	id: string;
@@ -22,8 +23,12 @@ function createVoiceStore() {
 	let userName: string | null = null;
 
 	// sounds for join/leave events
-	const joinSound = new Audio("/sounds/user_join_voice_sound.mp3");
-	const leaveSound = new Audio("/sounds/user_leave_voice_sound.mp3");
+        const joinSound = new Audio("/sounds/user_join_voice_sound.mp3");
+        const leaveSound = new Audio("/sounds/user_leave_voice_sound.mp3");
+        volume.subscribe((v) => {
+                joinSound.volume = v;
+                leaveSound.volume = v;
+        });
 
 	const config: RTCConfiguration = {
 		iceServers: [{ urls: "stun:stun.l.google.com:19302" }],

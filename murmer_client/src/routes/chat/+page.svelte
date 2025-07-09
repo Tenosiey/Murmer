@@ -6,6 +6,7 @@
   import { selectedServer } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
   import { voiceUsers } from '$lib/stores/voiceUsers';
+  import { volume } from '$lib/stores/settings';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
@@ -23,9 +24,15 @@
 
   function stream(node: HTMLAudioElement, media: MediaStream) {
     node.srcObject = media;
+    const unsub = volume.subscribe((v) => {
+      node.volume = v;
+    });
     return {
       update(newStream: MediaStream) {
         node.srcObject = newStream;
+      },
+      destroy() {
+        unsub();
       }
     };
   }
