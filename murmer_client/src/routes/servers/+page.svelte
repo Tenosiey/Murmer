@@ -4,6 +4,7 @@
   import { session } from '$lib/stores/session';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
+  import SettingsModal from '$lib/components/SettingsModal.svelte';
 
   onMount(() => {
     if (!get(session).user) goto('/login');
@@ -11,6 +12,7 @@
 
   let newServer = '';
   let newName = '';
+  let settingsOpen = false;
 
   function normalize(input: string): string {
     let url = input.trim();
@@ -45,6 +47,14 @@
     session.set({ user: null });
     goto('/login');
   }
+
+  function openSettings() {
+    settingsOpen = true;
+  }
+
+  function closeSettings() {
+    settingsOpen = false;
+  }
 </script>
 
 <div class="p-4">
@@ -52,9 +62,11 @@
     <h1 class="text-xl font-bold">Servers</h1>
     <div class="space-x-2 flex items-center">
       <span class="text-sm">{$session.user}</span>
+      <button class="bg-gray-300 px-2 py-1 rounded" on:click={openSettings}>Settings</button>
       <button class="bg-gray-300 px-2 py-1 rounded" on:click={logout}>Logout</button>
     </div>
   </div>
+  <SettingsModal open={settingsOpen} close={closeSettings} />
   <div class="mb-4 flex space-x-2">
     <input class="border p-2 rounded flex-1" bind:value={newName} placeholder="Server name" />
     <input class="border p-2 rounded flex-1" bind:value={newServer} placeholder="host:port or ws://url" />
