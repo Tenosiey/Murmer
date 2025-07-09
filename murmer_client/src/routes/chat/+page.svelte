@@ -9,6 +9,7 @@
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
+  import SettingsModal from '$lib/components/SettingsModal.svelte';
   function strength(user: string): number {
     const stats = get(voiceStats)[user];
     return stats ? stats.strength : 0;
@@ -16,6 +17,7 @@
   let message = '';
   let fileInput: HTMLInputElement;
   let inVoice = false;
+  let settingsOpen = false;
   const channels = ['general', 'random'];
   let currentChannel = 'general';
 
@@ -113,6 +115,14 @@
     goto('/login');
   }
 
+  function openSettings() {
+    settingsOpen = true;
+  }
+
+  function closeSettings() {
+    settingsOpen = false;
+  }
+
   let messagesContainer: HTMLDivElement;
   let lastLength = 0;
 
@@ -130,10 +140,11 @@
         <h1 class="text-xl font-bold">Text Channel</h1>
         <div class="space-x-2 flex items-center">
           <span class="text-sm">{$session.user}</span>
-          <button class="bg-gray-300 px-2 py-1 rounded" on:click={logout}
-            >Logout</button>
+          <button class="bg-gray-300 px-2 py-1 rounded" on:click={openSettings}>Settings</button>
+          <button class="bg-gray-300 px-2 py-1 rounded" on:click={logout}>Logout</button>
         </div>
       </div>
+      <SettingsModal open={settingsOpen} close={closeSettings} />
       <div class="mb-4 space-x-2">
         {#each channels as ch}
           <button
