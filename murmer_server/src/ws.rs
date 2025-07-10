@@ -88,7 +88,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             }
                             "chat" => {
                                 v["channel"] = Value::String(channel.clone());
-                                let out = serde_json::to_string(&v).unwrap_or(text.clone());
+                                let out = serde_json::to_string(&v).unwrap_or_else(|_| text.to_string());
                                 if let Err(e) = state
                                     .db
                                     .execute(
@@ -107,7 +107,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     voice.insert(u.to_string());
                                 }
                                 broadcast_voice(&state).await;
-                                let _ = state.tx.send(text.clone());
+                                let _ = state.tx.send(text.to_string());
                             }
                             "voice-leave" => {
                                 if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
@@ -115,10 +115,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     voice.remove(u);
                                 }
                                 broadcast_voice(&state).await;
-                                let _ = state.tx.send(text.clone());
+                                let _ = state.tx.send(text.to_string());
                             }
                             "voice-offer" | "voice-answer" | "voice-candidate" => {
-                                let _ = state.tx.send(text.clone());
+                                let _ = state.tx.send(text.to_string());
                             }
                             _ => {}
                         }
@@ -128,7 +128,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             result = chan_rx.recv() => {
                 match result {
                     Ok(msg) => {
-                        if sender.send(Message::Text(msg)).await.is_err() { break; }
+                        if sender.send(Message::Text(msg.into())).await.is_err() { break; }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(_) => break,
@@ -137,7 +137,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             result = global_rx.recv() => {
                 match result {
                     Ok(msg) => {
-                        if sender.send(Message::Text(msg)).await.is_err() { break; }
+                        if sender.send(Message::Text(msg.into())).await.is_err() { break; }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(_) => break,

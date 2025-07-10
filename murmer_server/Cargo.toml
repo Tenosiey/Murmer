@@ -4,13 +4,13 @@ version = "2025.7.9-alpha.1"
 edition = "2024"
 
 [dependencies]
-axum = { version = "0.7", features = ["ws", "multipart"] }
+axum = { version = "0.8", features = ["ws", "multipart"] }
 tokio = { version = "1", features = ["full"] }
 hyper = "1"
-tracing-subscriber = "0.3"
-tracing = "0.1"
+tracing-subscriber = "0.3.19"
+tracing = "0.1.41"
 futures = "0.3"
-tokio-postgres = "0.7"
+tokio-postgres = "0.7.13"
 serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-tower-http = { version = "0.5", features = ["fs", "cors"] }
+tower-http = { version = "0.6.6", features = ["fs", "cors"] }
