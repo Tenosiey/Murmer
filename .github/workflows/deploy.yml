@@ -1,0 +1,28 @@
+name: Deploy to VPS
+
+on:
+  release:
+    types: [published]
+  # Optional: Only on master
+  workflow_dispatch: # To allow manual trigger as well
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.8.1
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Deploy to VPS
+        run: |
+          ssh -o StrictHostKeyChecking=no root@116.203.92.70 << 'EOF'
+            cd /root/Murmer/murmer_server
+            git pull origin master
+            docker compose up --build -d
+          EOF
