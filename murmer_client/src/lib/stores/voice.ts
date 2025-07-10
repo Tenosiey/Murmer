@@ -10,11 +10,16 @@ export interface RemotePeer {
 }
 
 export interface ConnectionStats {
-	rtt: number;
-	jitter: number;
-	strength: number; // 1-5 bars
+        rtt: number;
+        jitter: number;
+        strength: number; // 1-5 bars
 }
 
+/**
+ * Manages WebRTC voice connections between multiple peers.
+ * Handles signaling over the chat WebSocket and keeps a list of
+ * active remote streams with periodically updated connection stats.
+ */
 function createVoiceStore() {
 	const { subscribe, update, set } = writable<RemotePeer[]>([]);
 	const peers: Record<string, RTCPeerConnection> = {};
@@ -34,7 +39,8 @@ function createVoiceStore() {
 		iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 	};
 
-	function cleanupPeer(id: string) {
+        /// Remove an existing peer connection and associated stats interval.
+        function cleanupPeer(id: string) {
 		const pc = peers[id];
 		if (pc) {
 			pc.close();
@@ -48,7 +54,8 @@ function createVoiceStore() {
 		update((p) => p.filter((r) => r.id !== id));
 	}
 
-	async function updateStats(id: string) {
+        /// Query WebRTC statistics and update strength metrics for a peer.
+        async function updateStats(id: string) {
 		const pc = peers[id];
 		if (!pc) return;
 		try {
@@ -98,7 +105,9 @@ function createVoiceStore() {
 		}
 	}
 
-	async function createPeer(id: string, initiator: boolean) {
+        /// Create or return an existing RTCPeerConnection for the given user.
+        /// When `initiator` is true an SDP offer is sent after setup.
+        async function createPeer(id: string, initiator: boolean) {
 		if (peers[id]) return peers[id];
 		const pc = new RTCPeerConnection(config);
 		peers[id] = pc;
@@ -150,7 +159,9 @@ function createVoiceStore() {
 		return pc;
 	}
 
-	async function join(user: string) {
+        /// Join the voice channel using the given username.
+        /// Attaches all required event handlers and starts capturing audio.
+        async function join(user: string) {
 		if (userName) return;
 		userName = user;
 		chat.on("voice-join", handleJoin);
@@ -162,7 +173,8 @@ function createVoiceStore() {
 		chat.sendRaw({ type: "voice-join", user });
 	}
 
-	function leave() {
+        /// Leave the voice channel and clean up all peers.
+        function leave() {
 		if (!userName) return;
 		chat.sendRaw({ type: "voice-leave", user: userName });
 		for (const id of Object.keys(peers)) {

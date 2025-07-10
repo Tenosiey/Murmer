@@ -19,6 +19,13 @@ use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tracing::info;
 
+/// Shared application state passed to handlers.
+/// - `tx`: broadcast channel for global events (online users, voice updates).
+/// - `channels`: per-text-channel broadcast senders.
+/// - `db`: PostgreSQL client for persisting chat history.
+/// - `users`: set of currently connected chat users.
+/// - `voice_users`: set of users active in voice chat.
+/// - `upload_dir`: directory where uploaded files are stored.
 pub struct AppState {
     pub tx: broadcast::Sender<String>,
     pub channels: Arc<Mutex<HashMap<String, broadcast::Sender<String>>>>,
@@ -31,6 +38,9 @@ pub struct AppState {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
+    // The server requires a PostgreSQL database connection string via
+    // `DATABASE_URL`. Uploaded files are stored under `UPLOAD_DIR`
+    // (defaults to "uploads" if unset).
     let (tx, _rx) = broadcast::channel::<String>(100);
 
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL not set");

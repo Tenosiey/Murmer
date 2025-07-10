@@ -8,3 +8,11 @@ This directory contains the WebSocket server built with Axum. The code is split 
 - `upload.rs` – multipart file upload endpoint.
 
 Run the server with `cargo run` or use the Docker Compose setup from the repository root.
+
+## Environment
+The server reads the following environment variables:
+
+- `DATABASE_URL` – PostgreSQL connection string
+- `UPLOAD_DIR` – directory where uploaded files are stored (defaults to `uploads`)
+
+These are configured automatically when running via `docker compose`.
