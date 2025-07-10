@@ -2,9 +2,8 @@ name: Deploy to VPS
 
 on:
   release:
-    types: [published]
-  # Optional: Only on master
-  workflow_dispatch: # To allow manual trigger as well
+    types: [published] # Trigger when a release is published
+  workflow_dispatch: # Allow manual trigger too
 
 jobs:
   deploy:
@@ -14,15 +13,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.8.1
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
-
-      - name: Deploy to VPS
-        run: |
-          ssh -o StrictHostKeyChecking=no root@116.203.92.70 << 'EOF'
+          host: 116.203.92.70
+          username: root
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22 # change if your SSH uses a different port
+          script: |
+            echo "Changing to project directory..."
             cd /root/Murmer/murmer_server
-            git pull origin master
+
+            echo "Pulling latest changes from master..."
+            git fetch origin master
+            git reset --hard origin/master
+
+            echo "Rebuilding and starting Docker containers..."
             docker compose up --build -d
-          EOF
+
+            echo "Deployment successful 🎉"
