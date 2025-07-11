@@ -41,7 +41,7 @@ ALTER TABLE messages
 }
 
 use axum::extract::ws::{Message, WebSocket};
-use futures::{SinkExt, StreamExt};
+use futures::SinkExt;
 
 pub async fn send_history(
     db: &Client,
@@ -57,7 +57,7 @@ pub async fn send_history(
     {
         for row in rows {
             let content: String = row.get(0);
-            if sender.send(Message::Text(content)).await.is_err() {
+            if sender.send(Message::Text(content.into())).await.is_err() {
                 break;
             }
         }
