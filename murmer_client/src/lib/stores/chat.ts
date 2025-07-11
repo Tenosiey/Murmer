@@ -4,6 +4,7 @@ export interface Message {
   type: string;
   user: string;
   text?: string;
+  time?: string;
   [key: string]: unknown;
 }
 
@@ -33,6 +34,7 @@ function createChatStore() {
       try {
         const msg: Message = JSON.parse(ev.data);
         if (msg.type === 'chat') {
+          if (!msg.time) msg.time = new Date().toLocaleTimeString();
           update((m) => [...m, msg]);
         } else if (msg.type && handlers[msg.type]) {
           handlers[msg.type](msg);
@@ -50,8 +52,9 @@ function createChatStore() {
 
   function send(user: string, text: string) {
     if (socket && socket.readyState === WebSocket.OPEN) {
-      if (import.meta.env.DEV) console.log('Sending:', { user, text });
-      socket.send(JSON.stringify({ type: 'chat', user, text }));
+      const payload = { type: 'chat', user, text, time: new Date().toLocaleTimeString() };
+      if (import.meta.env.DEV) console.log('Sending:', payload);
+      socket.send(JSON.stringify(payload));
     }
   }
 

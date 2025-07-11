@@ -22,6 +22,10 @@
   const channels = ['general', 'random'];
   let currentChannel = 'general';
 
+  function isCode(text: string): boolean {
+    return /^```[\s\S]*```$/.test(text.trim());
+  }
+
   function stream(node: HTMLAudioElement, media: MediaStream) {
     node.srcObject = media;
     const unsub = volume.subscribe((v) => {
@@ -83,7 +87,12 @@
       if (import.meta.env.DEV) console.log('Upload response data:', data);
       const url = data.url as string;
       const img = url.startsWith('http') ? url : base + url;
-      chat.sendRaw({ type: 'chat', user: $session.user ?? 'anon', image: img });
+      chat.sendRaw({
+        type: 'chat',
+        user: $session.user ?? 'anon',
+        image: img,
+        time: new Date().toLocaleTimeString()
+      });
     } catch (e) {
       console.error('upload failed', e);
     } finally {
@@ -172,17 +181,21 @@
       <SettingsModal open={settingsOpen} close={closeSettings} />
       <div class="messages" bind:this={messagesContainer}>
         {#each $chat as msg}
-          <div>
-            <b>{msg.user}:</b>
-            {#if msg.text}{msg.text}{/if}
-            {#if msg.image}
-              <a
-                href={msg.image as string}
-                target="_blank"
-                rel="noopener noreferrer"
-                >{msg.image}</a
-              >
-            {/if}
+          <div class="message">
+            <span class="timestamp">{msg.time}</span>
+            <span class="username">{msg.user}</span>
+            <span class="content">
+              {#if msg.text}
+                {#if isCode(msg.text)}
+                  <pre><code>{msg.text.trim().slice(3, -3)}</code></pre>
+                {:else}
+                  {msg.text}
+                {/if}
+              {/if}
+              {#if msg.image}
+                <img src={msg.image as string} alt="" />
+              {/if}
+            </span>
           </div>
         {/each}
       </div>
@@ -199,16 +212,13 @@
           }}
         ></textarea>
         <input type="file" bind:this={fileInput} accept="image/*" />
-        <button on:click={send}>Send</button>
+        <button class="send" on:click={send}>Send</button>
       </div>
+
       {#if inVoice}
-        <button on:click={leaveVoice}>
-          Leave Voice
-        </button>
+        <button class="join-voice" on:click={leaveVoice}>Leave Voice</button>
       {:else}
-        <button on:click={joinVoice}>
-          Join Voice
-        </button>
+        <button class="join-voice" on:click={joinVoice}>Join Voice</button>
       {/if}
 
       {#each $voice as peer (peer.id)}
@@ -219,13 +229,14 @@
       <h2>Online</h2>
       <ul>
         {#each $onlineUsers as user}
-          <li>{user}</li>
+          <li><span class="status online"></span>{user}</li>
         {/each}
       </ul>
       <h2>Voice</h2>
       <ul>
         {#each $voiceUsers as user}
           <li>
+            <span class="status voice"></span>
             <span>{user}</span>
             {#if user !== $session.user}
               <ConnectionBars strength={strength(user)} />
@@ -241,51 +252,179 @@
     display: flex;
     height: 100vh;
   }
+
   .channels {
-    width: 120px;
-    margin-right: 1rem;
+    width: 140px;
+    background: var(--color-panel);
+    padding: 0.5rem;
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
   }
+
   .channels button {
     width: 100%;
+    padding: 0.4rem 0.2rem;
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+    text-align: left;
+    border-radius: 4px;
+    transition: background 0.2s ease;
   }
+
+  .channels button:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
   .channels button.active {
-    font-weight: bold;
+    background: var(--color-accent);
   }
+
   .chat {
     flex: 1;
     display: flex;
     flex-direction: column;
+    background: #181825;
+    padding: 0.5rem;
   }
+
   .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 0.5rem;
   }
+
   .actions {
     display: flex;
     align-items: center;
     gap: 0.25rem;
   }
+
   .icon {
     background: none;
     border: none;
+    color: var(--color-text);
     cursor: pointer;
     font-size: 1.2rem;
+    transition: color 0.2s;
   }
+
+  .icon:hover {
+    color: var(--color-accent-alt);
+  }
+
   .messages {
     flex: 1;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-right: 0.5rem;
   }
+
+  .message {
+    display: flex;
+    flex-direction: column;
+    background: var(--color-panel);
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+  }
+
+  .timestamp {
+    font-size: 0.75rem;
+    color: #a1a1aa;
+  }
+
+  .username {
+    font-weight: 600;
+  }
+
+  .content img {
+    max-width: 100%;
+    border-radius: 4px;
+    margin-top: 0.25rem;
+  }
+
+  textarea {
+    width: 100%;
+    resize: none;
+    padding: 0.5rem;
+    background: #2e2e40;
+    border: 1px solid #444;
+    color: var(--color-text);
+  }
+
+  .send {
+    margin-left: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--color-accent);
+    border: none;
+    color: white;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+
+  .send:hover {
+    background: var(--color-accent-alt);
+  }
+
+  .join-voice {
+    position: fixed;
+    bottom: 1rem;
+    left: 1rem;
+    padding: 0.6rem 1rem;
+    background: var(--color-accent-alt);
+    color: white;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+    transition: background 0.2s ease, transform 0.1s;
+  }
+
+  .join-voice:hover {
+    background: var(--color-accent);
+    transform: scale(1.05);
+  }
+
   .sidebar {
     width: 200px;
-    margin-left: 1rem;
-    position: sticky;
-    top: 0;
-    height: 100vh;
-    overflow-y: auto;
+    margin-left: 0.5rem;
+    background: var(--color-panel);
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .sidebar ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .sidebar li {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .status {
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .status.online {
+    background: #22c55e;
+  }
+
+  .status.voice {
+    background: #0ea5e9;
   }
 </style>
