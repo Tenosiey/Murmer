@@ -1,5 +1,5 @@
 <script lang="ts">
-  const version = '2025.7.9-alpha.1';
+  const version = '2025.7.11-alpha.1';
 </script>
 
 <style>
