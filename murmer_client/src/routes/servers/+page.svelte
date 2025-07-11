@@ -58,12 +58,12 @@
 </script>
 
 <div>
-  <div>
+  <div class="header">
     <h1>Servers</h1>
-    <div>
-      <span>{$session.user}</span>
-      <button on:click={openSettings}>Settings</button>
-      <button on:click={logout}>Logout</button>
+    <div class="actions">
+      <span class="user">{$session.user}</span>
+      <button class="icon" on:click={openSettings} title="Settings">⚙️</button>
+      <button class="icon" on:click={logout} title="Logout">🚪</button>
     </div>
   </div>
   <SettingsModal open={settingsOpen} close={closeSettings} />
@@ -86,3 +86,23 @@
     {/each}
   </ul>
 </div>
+
+<style>
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .icon {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.2rem;
+  }
+</style>
