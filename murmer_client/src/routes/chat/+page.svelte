@@ -141,29 +141,27 @@
   });
 </script>
 
-  <div class="flex h-screen">
-    <div class="flex flex-col flex-1 p-4">
-      <div class="flex items-center justify-between mb-4">
-        <h1 class="text-xl font-bold">Text Channel</h1>
-        <div class="space-x-2 flex items-center">
-          <span class="text-sm">{$session.user}</span>
-          <button class="bg-gray-300 px-2 py-1 rounded" on:click={openSettings}>Settings</button>
-          <button class="bg-gray-300 px-2 py-1 rounded" on:click={logout}>Logout</button>
+  <div>
+    <div>
+      <div>
+        <h1>Text Channel</h1>
+        <div>
+          <span>{$session.user}</span>
+          <button on:click={openSettings}>Settings</button>
+          <button on:click={logout}>Logout</button>
         </div>
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
-      <div class="mb-4 space-x-2">
+      <div>
         {#each channels as ch}
-          <button
-            class="px-2 py-1 rounded {ch === currentChannel ? 'bg-blue-500 text-white' : 'bg-gray-200'}"
-            on:click={() => joinChannel(ch)}>
+          <button on:click={() => joinChannel(ch)}>
             {ch}
           </button>
         {/each}
       </div>
-      <div class="flex-1 overflow-y-auto mb-4 space-y-2" bind:this={messagesContainer}>
+      <div bind:this={messagesContainer}>
         {#each $chat as msg}
-          <div class="whitespace-pre-wrap">
+          <div>
             <b>{msg.user}:</b>
             {#if msg.text}{msg.text}{/if}
             {#if msg.image}
@@ -171,16 +169,14 @@
                 href={msg.image as string}
                 target="_blank"
                 rel="noopener noreferrer"
-                class="block text-blue-600 underline mt-1"
                 >{msg.image}</a
               >
             {/if}
           </div>
         {/each}
       </div>
-      <div class="flex space-x-2">
+      <div>
         <textarea
-          class="flex-1 border p-2 rounded"
           bind:value={message}
           rows="2"
           placeholder="Message"
@@ -191,15 +187,15 @@
             }
           }}
         ></textarea>
-        <input type="file" bind:this={fileInput} accept="image/*" class="self-center" />
-        <button class="bg-blue-500 text-white px-4 py-2 rounded" on:click={send}>Send</button>
+        <input type="file" bind:this={fileInput} accept="image/*" />
+        <button on:click={send}>Send</button>
       </div>
       {#if inVoice}
-        <button class="mt-4 bg-red-500 text-white px-4 py-2 rounded self-start" on:click={leaveVoice}>
+        <button on:click={leaveVoice}>
           Leave Voice
         </button>
       {:else}
-        <button class="mt-4 bg-green-500 text-white px-4 py-2 rounded self-start" on:click={joinVoice}>
+        <button on:click={joinVoice}>
           Join Voice
         </button>
       {/if}
@@ -208,17 +204,17 @@
         <audio autoplay use:stream={peer.stream}></audio>
       {/each}
     </div>
-    <div class="w-48 p-4 border-l overflow-y-auto">
-      <h2 class="text-lg font-bold mb-2">Online</h2>
-      <ul class="space-y-1 mb-4">
+    <div>
+      <h2>Online</h2>
+      <ul>
         {#each $onlineUsers as user}
           <li>{user}</li>
         {/each}
       </ul>
-      <h2 class="text-lg font-bold mb-2">Voice</h2>
-      <ul class="space-y-1">
+      <h2>Voice</h2>
+      <ul>
         {#each $voiceUsers as user}
-          <li class="flex items-center">
+          <li>
             <span>{user}</span>
             {#if user !== $session.user}
               <ConnectionBars strength={strength(user)} />

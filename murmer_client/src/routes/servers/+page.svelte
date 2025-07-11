@@ -57,37 +57,31 @@
   }
 </script>
 
-<div class="p-4">
-  <div class="flex items-center justify-between mb-4">
-    <h1 class="text-xl font-bold">Servers</h1>
-    <div class="space-x-2 flex items-center">
-      <span class="text-sm">{$session.user}</span>
-      <button class="bg-gray-300 px-2 py-1 rounded" on:click={openSettings}>Settings</button>
-      <button class="bg-gray-300 px-2 py-1 rounded" on:click={logout}>Logout</button>
+<div>
+  <div>
+    <h1>Servers</h1>
+    <div>
+      <span>{$session.user}</span>
+      <button on:click={openSettings}>Settings</button>
+      <button on:click={logout}>Logout</button>
     </div>
   </div>
   <SettingsModal open={settingsOpen} close={closeSettings} />
-  <div class="mb-4 flex space-x-2">
-    <input class="border p-2 rounded flex-1" bind:value={newName} placeholder="Server name" />
-    <input class="border p-2 rounded flex-1" bind:value={newServer} placeholder="host:port or ws://url" />
-    <button class="bg-blue-500 text-white px-4 py-2 rounded" on:click={add}>Add</button>
+  <div>
+    <input bind:value={newName} placeholder="Server name" />
+    <input bind:value={newServer} placeholder="host:port or ws://url" />
+    <button on:click={add}>Add</button>
   </div>
   <ul>
     {#each $servers as server}
-      <li class="mb-2 flex space-x-2">
+      <li>
         <button
-          class="bg-gray-200 p-2 rounded flex-1 text-left"
           on:click={() => join(server)}
           title={server.url}
         >
           {server.name}
         </button>
-        <button
-          class="bg-red-500 text-white px-2 rounded"
-          on:click={() => removeServer(server.url)}
-        >
-          Delete
-        </button>
+        <button on:click={() => removeServer(server.url)}>Delete</button>
       </li>
     {/each}
   </ul>
