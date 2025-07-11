@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, afterUpdate } from 'svelte';
+  import { onMount, afterUpdate, tick } from 'svelte';
   import { chat } from '$lib/stores/chat';
   import { session } from '$lib/stores/session';
   import { voice, voiceStats } from '$lib/stores/voice';
@@ -43,10 +43,11 @@
       return;
     }
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
-    chat.connect(url, () => {
+    chat.connect(url, async () => {
       const u = get(session).user;
       if (u) chat.sendRaw({ type: 'presence', user: u });
       chat.sendRaw({ type: 'join', channel: currentChannel });
+      await scrollBottom();
     });
   });
 
@@ -103,6 +104,7 @@
     currentChannel = ch;
     chat.clear();
     chat.sendRaw({ type: 'join', channel: ch });
+    scrollBottom();
   }
 
   function joinVoice() {
@@ -131,6 +133,12 @@
   }
 
   let messagesContainer: HTMLDivElement;
+  async function scrollBottom() {
+    await tick();
+    if (messagesContainer) {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+  }
   let lastLength = 0;
 
   afterUpdate(() => {
@@ -159,7 +167,7 @@
           </button>
         {/each}
       </div>
-      <div bind:this={messagesContainer}>
+      <div class="messages" bind:this={messagesContainer}>
         {#each $chat as msg}
           <div>
             <b>{msg.user}:</b>
@@ -228,12 +236,23 @@
 <style>
   .page {
     display: flex;
+    height: 100vh;
   }
   .chat {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .messages {
+    flex: 1;
+    overflow-y: auto;
   }
   .sidebar {
     width: 200px;
     margin-left: 1rem;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
   }
 </style>
