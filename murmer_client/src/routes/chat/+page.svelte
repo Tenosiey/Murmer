@@ -150,23 +150,26 @@
 </script>
 
   <div class="page">
+    <div class="channels">
+      {#each channels as ch}
+        <button
+          class:active={ch === currentChannel}
+          on:click={() => joinChannel(ch)}
+        >
+          {ch}
+        </button>
+      {/each}
+    </div>
     <div class="chat">
-      <div>
-        <h1>Text Channel</h1>
-        <div>
-          <span>{$session.user}</span>
-          <button on:click={openSettings}>Settings</button>
-          <button on:click={logout}>Logout</button>
+      <div class="header">
+        <h1>{currentChannel}</h1>
+        <div class="actions">
+          <span class="user">{$session.user}</span>
+          <button class="icon" on:click={openSettings} title="Settings">⚙️</button>
+          <button class="icon" on:click={logout} title="Logout">🚪</button>
         </div>
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
-      <div>
-        {#each channels as ch}
-          <button on:click={() => joinChannel(ch)}>
-            {ch}
-          </button>
-        {/each}
-      </div>
       <div class="messages" bind:this={messagesContainer}>
         {#each $chat as msg}
           <div>
@@ -238,10 +241,40 @@
     display: flex;
     height: 100vh;
   }
+  .channels {
+    width: 120px;
+    margin-right: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .channels button {
+    width: 100%;
+  }
+  .channels button.active {
+    font-weight: bold;
+  }
   .chat {
     flex: 1;
     display: flex;
     flex-direction: column;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .icon {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.2rem;
   }
   .messages {
     flex: 1;
