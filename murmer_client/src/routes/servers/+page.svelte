@@ -57,7 +57,7 @@
   }
 </script>
 
-<div>
+<div class="servers-page">
   <div class="header">
     <h1>Servers</h1>
     <div class="actions">
@@ -67,27 +67,69 @@
     </div>
   </div>
   <SettingsModal open={settingsOpen} close={closeSettings} />
-  <div>
+  <div class="add">
     <input bind:value={newName} placeholder="Server name" />
     <input bind:value={newServer} placeholder="host:port or ws://url" />
     <button on:click={add}>Add</button>
   </div>
-  <ul>
+  <ul class="list">
     {#each $servers as server}
       <li>
-        <button
-          on:click={() => join(server)}
-          title={server.url}
-        >
-          {server.name}
-        </button>
-        <button on:click={() => removeServer(server.url)}>Delete</button>
+        <button on:click={() => join(server)} title={server.url}>{server.name}</button>
+        <button class="del" on:click={() => removeServer(server.url)}>Delete</button>
       </li>
     {/each}
   </ul>
 </div>
 
 <style>
+  .servers-page {
+    max-width: 500px;
+    margin: 2rem auto;
+    padding: 1rem;
+    background: var(--color-panel);
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  }
+
+  .add {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  input {
+    padding: 0.4rem;
+    background: #2e2e40;
+    border: 1px solid #444;
+    color: var(--color-text);
+    flex: 1;
+  }
+
+  button {
+    padding: 0.4rem 0.6rem;
+    background: var(--color-accent);
+    border: none;
+    color: white;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+
+  button.del {
+    background: #b91c1c;
+  }
+
+  button:hover {
+    background: var(--color-accent-alt);
+  }
+
+  .list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.25rem;
+  }
+
   .header {
     display: flex;
     justify-content: space-between;
