@@ -141,8 +141,8 @@
   });
 </script>
 
-  <div>
-    <div>
+  <div class="page">
+    <div class="chat">
       <div>
         <h1>Text Channel</h1>
         <div>
@@ -203,8 +203,8 @@
       {#each $voice as peer (peer.id)}
         <audio autoplay use:stream={peer.stream}></audio>
       {/each}
-    </div>
-    <div>
+  </div>
+  <div class="sidebar">
       <h2>Online</h2>
       <ul>
         {#each $onlineUsers as user}
@@ -222,5 +222,18 @@
           </li>
         {/each}
       </ul>
-    </div>
   </div>
+</div>
+
+<style>
+  .page {
+    display: flex;
+  }
+  .chat {
+    flex: 1;
+  }
+  .sidebar {
+    width: 200px;
+    margin-left: 1rem;
+  }
+</style>
