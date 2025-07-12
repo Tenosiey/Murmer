@@ -1,5 +1,5 @@
 <script lang="ts">
-  const version = '2025.7.11-alpha.1';
+  import { VERSION } from '$lib/version';
 </script>
 
 <style>
@@ -45,4 +45,4 @@
 
 <slot />
 
-<div class="version">{version}</div>
+<div class="version">{VERSION}</div>
