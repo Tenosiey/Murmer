@@ -48,9 +48,6 @@
     }
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
     const entry = servers.get(url);
-    historyEnd = false;
-    loadingHistory = false;
-    lastLength = 0;
     chat.connect(url, async () => {
       const u = get(session).user;
       if (u) chat.sendRaw({ type: 'presence', user: u, password: entry?.password });
@@ -121,9 +118,6 @@
     if (ch === currentChannel) return;
     currentChannel = ch;
     chat.clear();
-    historyEnd = false;
-    loadingHistory = false;
-    lastLength = 0;
     chat.sendRaw({ type: 'join', channel: ch });
     scrollBottom();
   }
@@ -161,8 +155,6 @@
   }
 
   let messagesContainer: HTMLDivElement;
-  let loadingHistory = false;
-  let historyEnd = false;
   async function scrollBottom() {
     await tick();
     if (messagesContainer) {
@@ -170,35 +162,13 @@
     }
   }
   let lastLength = 0;
+
   afterUpdate(() => {
     if (messagesContainer && $chat.length !== lastLength) {
-      const nearBottom =
-        messagesContainer.scrollTop + messagesContainer.clientHeight >=
-        messagesContainer.scrollHeight - 20;
       lastLength = $chat.length;
-      if (nearBottom) {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-      }
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
   });
-
-  async function onScroll() {
-    if (
-      messagesContainer &&
-      messagesContainer.scrollTop < 20 &&
-      !loadingHistory &&
-      !historyEnd
-    ) {
-      loadingHistory = true;
-      const before = messagesContainer.scrollHeight;
-      const loaded = await chat.loadOlder(currentChannel);
-      await tick();
-      const after = messagesContainer.scrollHeight;
-      messagesContainer.scrollTop = after - before;
-      if (loaded === 0) historyEnd = true;
-      loadingHistory = false;
-    }
-  }
 </script>
 
   <div class="page">
@@ -223,10 +193,7 @@
         </div>
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
-      <div class="messages" bind:this={messagesContainer} on:scroll={onScroll}>
-        {#if loadingHistory}
-          <div class="loading-spinner"></div>
-        {/if}
+      <div class="messages" bind:this={messagesContainer}>
         {#each $chat as msg}
           <div class="message">
             <span class="timestamp">{msg.time}</span>
@@ -479,20 +446,5 @@
 
   .status.voice {
     background: #0ea5e9;
-  }
-
-  .loading-spinner {
-    width: 24px;
-    height: 24px;
-    border: 3px solid rgba(255, 255, 255, 0.2);
-    border-top-color: var(--color-accent);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin: 0.5rem auto;
-  }
-
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
   }
 </style>

@@ -109,25 +109,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             "chat" => {
                                 v["channel"] = Value::String(channel.clone());
                                 let out = serde_json::to_string(&v).unwrap_or_else(|_| text.to_string());
-                                match state
+                                if let Err(e) = state
                                     .db
-                                    .query_one(
-                                        "INSERT INTO messages (channel, content) VALUES ($1, $2) RETURNING id",
+                                    .execute(
+                                        "INSERT INTO messages (channel, content) VALUES ($1, $2)",
                                         &[&channel, &out],
                                     )
                                     .await
                                 {
-                                    Ok(row) => {
-                                        let id: i64 = row.get(0);
-                                        let mut with_id = v;
-                                        with_id["id"] = Value::from(id);
-                                        let out_id = serde_json::to_string(&with_id).unwrap_or(out);
-                                        let _ = chan_tx.send(out_id);
-                                    }
-                                    Err(e) => {
-                                        error!("db insert error: {e}");
-                                    }
+                                    error!("db insert error: {e}");
                                 }
+                                let _ = chan_tx.send(out);
                             }
                             "voice-join" => {
                                 if let Some(u) = v.get("user").and_then(|u| u.as_str()) {

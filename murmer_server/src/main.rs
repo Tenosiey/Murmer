@@ -1,5 +1,4 @@
 mod db;
-mod history;
 mod upload;
 mod ws;
 
@@ -70,7 +69,6 @@ async fn main() {
     let app = Router::new()
         .route("/ws", get(ws::ws_handler))
         .route("/upload", post(upload::upload))
-        .route("/history", get(history::history))
         .nest_service("/files", ServeDir::new(upload_dir))
         .layer(cors)
         .with_state(state);
