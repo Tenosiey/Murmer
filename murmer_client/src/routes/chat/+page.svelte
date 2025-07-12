@@ -361,6 +361,7 @@
 
   .content {
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .content img {
