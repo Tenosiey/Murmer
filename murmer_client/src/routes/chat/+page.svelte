@@ -50,9 +50,8 @@
     }
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
     const entry = servers.get(url);
-    chat.connect(url, async () => {
-      const u = get(session).user;
-      if (u) chat.sendRaw({ type: 'presence', user: u, password: entry?.password });
+    const u = get(session).user;
+    chat.connect(url, u, entry?.password, async () => {
       chat.sendRaw({ type: 'join', channel: currentChannel });
       ping.start();
       await scrollBottom();

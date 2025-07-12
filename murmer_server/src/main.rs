@@ -34,6 +34,7 @@ pub struct AppState {
     pub voice_users: Arc<Mutex<HashSet<String>>>,
     pub upload_dir: PathBuf,
     pub password: Option<String>,
+    pub admins: HashSet<String>,
 }
 
 #[tokio::main]
@@ -53,6 +54,10 @@ async fn main() {
     }
 
     let password = env::var("SERVER_PASSWORD").ok();
+    let admins: HashSet<String> = env::var("ADMIN_KEYS")
+        .ok()
+        .map(|v| v.split(',').map(|s| s.trim().to_string()).collect())
+        .unwrap_or_default();
 
     let state = Arc::new(AppState {
         tx: tx.clone(),
@@ -62,6 +67,7 @@ async fn main() {
         voice_users: Arc::new(Mutex::new(HashSet::new())),
         upload_dir: PathBuf::from(upload_dir.clone()),
         password,
+        admins,
     });
 
     let cors = CorsLayer::permissive();
