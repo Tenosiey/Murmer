@@ -10,7 +10,6 @@ Use the checkboxes to track progress.
 ### 🗨️ Chat Features
 
 - [ ] Support Markdown formatting in text chat
-- [ ] Allow sending images in chat
 - [ ] Enable deleting messages
 
 ### 🎤 Voice Features
