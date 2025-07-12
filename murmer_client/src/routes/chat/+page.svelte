@@ -48,6 +48,7 @@
     }
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
     const entry = servers.get(url);
+    chat.clear();
     historyEnd = false;
     loadingHistory = false;
     lastLength = 0;
