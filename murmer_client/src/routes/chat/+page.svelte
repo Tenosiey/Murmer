@@ -340,7 +340,7 @@
 
   .username {
     font-weight: 600;
-    color: pink;
+    color: #7c3aed;
   }
 
   .content {
