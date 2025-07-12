@@ -1,7 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use bincode;
 use dirs;
-use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
+use ed25519_dalek::{Signer, SigningKey};
 use once_cell::sync::OnceCell;
 use rand::rngs::OsRng;
 use std::fs;
