@@ -3,7 +3,7 @@
   import { chat } from '$lib/stores/chat';
   import { session } from '$lib/stores/session';
   import { voice, voiceStats } from '$lib/stores/voice';
-  import { selectedServer } from '$lib/stores/servers';
+  import { selectedServer, servers } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
   import { voiceUsers } from '$lib/stores/voiceUsers';
   import { volume } from '$lib/stores/settings';
@@ -47,9 +47,10 @@
       return;
     }
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
+    const entry = servers.get(url);
     chat.connect(url, async () => {
       const u = get(session).user;
-      if (u) chat.sendRaw({ type: 'presence', user: u });
+      if (u) chat.sendRaw({ type: 'presence', user: u, password: entry?.password });
       chat.sendRaw({ type: 'join', channel: currentChannel });
       await scrollBottom();
     });

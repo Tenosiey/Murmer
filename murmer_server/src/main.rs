@@ -33,6 +33,7 @@ pub struct AppState {
     pub users: Arc<Mutex<HashSet<String>>>,
     pub voice_users: Arc<Mutex<HashSet<String>>>,
     pub upload_dir: PathBuf,
+    pub password: Option<String>,
 }
 
 #[tokio::main]
@@ -51,6 +52,8 @@ async fn main() {
         panic!("create uploads dir: {e}");
     }
 
+    let password = env::var("SERVER_PASSWORD").ok();
+
     let state = Arc::new(AppState {
         tx: tx.clone(),
         channels: Arc::new(Mutex::new(HashMap::new())),
@@ -58,6 +61,7 @@ async fn main() {
         users: Arc::new(Mutex::new(HashSet::new())),
         voice_users: Arc::new(Mutex::new(HashSet::new())),
         upload_dir: PathBuf::from(upload_dir.clone()),
+        password,
     });
 
     let cors = CorsLayer::permissive();

@@ -14,5 +14,6 @@ The server reads the following environment variables:
 
 - `DATABASE_URL` – PostgreSQL connection string
 - `UPLOAD_DIR` – directory where uploaded files are stored (defaults to `uploads`)
+- `SERVER_PASSWORD` – optional password required to connect via WebSocket
 
 These are configured automatically when running via `docker compose`.

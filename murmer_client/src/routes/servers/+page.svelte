@@ -12,6 +12,7 @@
 
   let newServer = '';
   let newName = '';
+  let newPassword = '';
   let settingsOpen = false;
 
   function normalize(input: string): string {
@@ -28,9 +29,12 @@
 
   function add() {
     if (newServer.trim()) {
-      servers.add({ url: normalize(newServer), name: newName.trim() || newServer });
+      const entry: ServerEntry = { url: normalize(newServer), name: newName.trim() || newServer };
+      if (newPassword.trim()) entry.password = newPassword;
+      servers.add(entry);
       newServer = '';
       newName = '';
+      newPassword = '';
     }
   }
 
@@ -70,6 +74,7 @@
   <div class="add">
     <input bind:value={newName} placeholder="Server name" />
     <input bind:value={newServer} placeholder="host:port or ws://url" />
+    <input type="password" bind:value={newPassword} placeholder="Password (optional)" />
     <button on:click={add}>Add</button>
   </div>
   <ul class="list">
