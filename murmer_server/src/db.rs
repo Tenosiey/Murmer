@@ -42,23 +42,42 @@ ALTER TABLE messages
 
 use axum::extract::ws::{Message, WebSocket};
 use futures::SinkExt;
+use serde_json::Value;
+
+pub async fn fetch_messages(
+    db: &Client,
+    channel: &str,
+    before: i64,
+    limit: i64,
+) -> Vec<(i64, String)> {
+    if let Ok(rows) = db
+        .query(
+            "SELECT id, content FROM messages WHERE channel = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
+            &[&channel, &before, &limit],
+        )
+        .await
+    {
+        rows.iter()
+            .map(|row| (row.get::<_, i64>(0), row.get::<_, String>(1)))
+            .collect()
+    } else {
+        Vec::new()
+    }
+}
 
 pub async fn send_history(
     db: &Client,
     sender: &mut futures::stream::SplitSink<WebSocket, Message>,
     channel: &str,
 ) {
-    if let Ok(rows) = db
-        .query(
-            "SELECT content FROM messages WHERE channel = $1 ORDER BY id",
-            &[&channel],
-        )
-        .await
-    {
-        for row in rows {
-            let content: String = row.get(0);
-            if sender.send(Message::Text(content.into())).await.is_err() {
-                break;
+    let msgs = fetch_messages(db, channel, i64::MAX, 25).await;
+    for (id, content) in msgs.into_iter().rev() {
+        if let Ok(mut v) = serde_json::from_str::<Value>(&content) {
+            v["id"] = Value::from(id);
+            if let Ok(out) = serde_json::to_string(&v) {
+                if sender.send(Message::Text(out.into())).await.is_err() {
+                    break;
+                }
             }
         }
     }
