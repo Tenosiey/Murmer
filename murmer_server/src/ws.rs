@@ -123,7 +123,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             "ping" => {
                                 let id = v.get("id").cloned().unwrap_or(Value::Null);
                                 let msg = serde_json::json!({ "type": "pong", "id": id });
-                                let _ = sender.send(Message::Text(msg.to_string())).await;
+                                let _ = sender
+                                    .send(Message::Text(msg.to_string().into()))
+                                    .await;
                             }
                             "voice-join" => {
                                 if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
