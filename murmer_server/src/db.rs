@@ -52,7 +52,7 @@ pub async fn fetch_messages(
 ) -> Vec<(i64, String)> {
     if let Ok(rows) = db
         .query(
-            "SELECT id, content FROM messages WHERE channel = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
+            "SELECT id::BIGINT, content FROM messages WHERE channel = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
             &[&channel, &before, &limit],
         )
         .await
