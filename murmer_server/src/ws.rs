@@ -88,7 +88,18 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             Some(result) = receiver.next() => {
                 let text = match result {
                     Ok(Message::Text(t)) => t,
-                    _ => break,
+                    Ok(Message::Ping(p)) => {
+                        let _ = sender.send(Message::Pong(p)).await;
+                        continue;
+                    }
+                    Ok(Message::Pong(_)) => {
+                        continue;
+                    }
+                    Ok(Message::Binary(_)) => {
+                        continue;
+                    }
+                    Ok(Message::Close(_)) => break,
+                    Err(_) => break,
                 };
                 info!("Received message: {text}");
                 if let Ok(mut v) = serde_json::from_str::<Value>(&text) {
