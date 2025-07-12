@@ -56,6 +56,7 @@
       const u = get(session).user;
       if (u) chat.sendRaw({ type: 'presence', user: u, password: entry?.password });
       chat.sendRaw({ type: 'join', channel: currentChannel });
+      await chat.loadOlder(currentChannel);
       await scrollBottom();
     });
   });
@@ -118,7 +119,7 @@
     if (hasMessage) sendText();
   }
 
-  function joinChannel(ch: string) {
+  async function joinChannel(ch: string) {
     if (ch === currentChannel) return;
     currentChannel = ch;
     chat.clear();
@@ -126,6 +127,7 @@
     loadingHistory = false;
     lastLength = 0;
     chat.sendRaw({ type: 'join', channel: ch });
+    await chat.loadOlder(ch);
     scrollBottom();
   }
 
