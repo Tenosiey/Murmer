@@ -19,3 +19,30 @@ volume.subscribe((value) => {
     localStorage.setItem(STORAGE_KEY, String(value));
   }
 });
+
+// Persist selected input and output devices
+const IN_KEY = 'murmer_input_device';
+const OUT_KEY = 'murmer_output_device';
+
+let initialInput: string | null = null;
+let initialOutput: string | null = null;
+
+if (browser) {
+  initialInput = localStorage.getItem(IN_KEY);
+  initialOutput = localStorage.getItem(OUT_KEY);
+}
+
+export const inputDeviceId = writable<string | null>(initialInput);
+export const outputDeviceId = writable<string | null>(initialOutput);
+
+inputDeviceId.subscribe((value) => {
+  if (!browser) return;
+  if (value) localStorage.setItem(IN_KEY, value);
+  else localStorage.removeItem(IN_KEY);
+});
+
+outputDeviceId.subscribe((value) => {
+  if (!browser) return;
+  if (value) localStorage.setItem(OUT_KEY, value);
+  else localStorage.removeItem(OUT_KEY);
+});
