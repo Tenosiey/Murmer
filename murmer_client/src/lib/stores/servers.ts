@@ -1,9 +1,10 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import { browser } from '$app/environment';
 
 export interface ServerEntry {
   url: string;
   name: string;
+  password?: string;
 }
 
 const STORAGE_KEY = 'murmer_servers';
@@ -33,7 +34,8 @@ function persist(list: ServerEntry[]) {
   }
 }
 
-const { subscribe, update } = writable<ServerEntry[]>(loadServers());
+const internal = writable<ServerEntry[]>(loadServers());
+const { subscribe, update } = internal;
 
 export const servers = {
   subscribe,
@@ -53,6 +55,9 @@ export const servers = {
       persist(newList);
       return newList;
     });
+  },
+  get(url: string): ServerEntry | undefined {
+    return get(internal).find((s) => s.url === url);
   }
 };
 
