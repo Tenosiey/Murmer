@@ -14,6 +14,7 @@ npm install
 npm run tauri dev
 ```
 This launches the desktop app.
+On first launch the client generates an Ed25519 keypair stored in the user's configuration directory.
 
 ## Running the server
 ### Prerequisite
@@ -26,6 +27,7 @@ docker compose up --build
 The server exposes a WebSocket endpoint at `ws://localhost:3001/ws`. The client can store multiple server URLs and connect to any of them via the "Servers" screen. Added servers are persisted locally so favorites remain after restart.
 The `DATABASE_URL` used by the server is defined in `docker-compose.yml`.
 If you set the `SERVER_PASSWORD` environment variable in `docker-compose.yml`, the server will require clients to provide that password when connecting.
+The server also supports admin authentication using Ed25519 keypairs. Set `ADMIN_KEYS` to a comma separated list of hex-encoded public keys to grant admin access.
 
 ### Image Uploads
 

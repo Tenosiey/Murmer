@@ -10,7 +10,10 @@ use axum::{
     },
     response::IntoResponse,
 };
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use futures::{SinkExt, StreamExt};
+use hex;
+use rand::RngCore;
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -63,7 +66,19 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let mut chan_rx = chan_tx.subscribe();
     let mut user_name: Option<String> = None;
 
-    let mut authenticated = state.password.is_none();
+    let mut authenticated = false;
+    let mut is_admin = false;
+    let mut nonce = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut nonce);
+    let nonce_hex = hex::encode(nonce);
+    let challenge = serde_json::json!({"type": "challenge", "nonce": nonce_hex});
+    if sender
+        .send(Message::Text(challenge.to_string().into()))
+        .await
+        .is_err()
+    {
+        return;
+    }
 
     db::send_all_history(&state.db, &mut sender).await;
     broadcast_voice(&state).await;
@@ -96,7 +111,91 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             break;
                                         }
                                     }
+                                    let pk_str = match v.get("publicKey").and_then(|p| p.as_str()) {
+                                        Some(s) => s,
+                                        None => {
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"missing-key\"}".into()))
+                                                .await;
+                                            break;
+                                        }
+                                    };
+                                    let sig_str = match v.get("signature").and_then(|s| s.as_str()) {
+                                        Some(s) => s,
+                                        None => {
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"missing-signature\"}".into()))
+                                                .await;
+                                            break;
+                                        }
+                                    };
+                                    let nonce_field = match v.get("nonce").and_then(|n| n.as_str()) {
+                                        Some(n) => n,
+                                        None => {
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"missing-nonce\"}".into()))
+                                                .await;
+                                            break;
+                                        }
+                                    };
+                                    if nonce_field != nonce_hex {
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-nonce\"}".into()))
+                                            .await;
+                                        break;
+                                    }
+                                    let pk_bytes = match hex::decode(pk_str) {
+                                        Ok(b) => b,
+                                        Err(_) => {
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-key\"}".into()))
+                                                .await;
+                                            break;
+                                        }
+                                    };
+                                    let sig_bytes = match hex::decode(sig_str) {
+                                        Ok(b) => b,
+                                        Err(_) => {
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature\"}".into()))
+                                                .await;
+                                            break;
+                                        }
+                                    };
+                                    let pk_array: [u8; 32] = match pk_bytes.as_slice().try_into() {
+                                        Ok(a) => a,
+                                        Err(_) => {
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-key\"}".into()))
+                                                .await;
+                                            break;
+                                        }
+                                    };
+                                    let sig_array: [u8; 64] = match sig_bytes.as_slice().try_into() {
+                                        Ok(a) => a,
+                                        Err(_) => {
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature\"}".into()))
+                                                .await;
+                                            break;
+                                        }
+                                    };
+                                    let verified = VerifyingKey::from_bytes(&pk_array)
+                                        .and_then(|pk| {
+                                            let sig = Signature::from_bytes(&sig_array);
+                                            pk.verify(nonce_hex.as_bytes(), &sig)
+                                        })
+                                        .is_ok();
+                                    if !verified {
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature\"}".into()))
+                                            .await;
+                                        break;
+                                    }
                                     authenticated = true;
+                                    if state.admins.contains(pk_str) {
+                                        is_admin = true;
+                                    }
                                 }
                                 if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
                                     {

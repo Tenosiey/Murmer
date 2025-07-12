@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store';
+import { invoke } from '@tauri-apps/api/core';
 
 export interface Message {
   type: string;
@@ -22,7 +23,12 @@ function createChatStore() {
     delete handlers[type];
   }
 
-  function connect(url: string, onOpen?: () => void) {
+  let currentUser: string | null = null;
+  let currentPassword: string | undefined;
+
+  function connect(url: string, user: string | null, password: string | undefined, onOpen?: () => void) {
+    currentUser = user;
+    currentPassword = password;
     if (socket) {
       if (currentUrl === url) return;
       socket.close();
@@ -36,13 +42,31 @@ function createChatStore() {
       if (import.meta.env.DEV) console.log('WebSocket connection opened');
       if (onOpen) onOpen();
     });
-    socket.addEventListener('message', (ev) => {
+    socket.addEventListener('message', async (ev) => {
       if (import.meta.env.DEV) console.log('Received:', ev.data);
       try {
         const msg: Message = JSON.parse(ev.data);
         if (msg.type === 'chat') {
           if (!msg.time) msg.time = new Date().toLocaleTimeString();
           update((m) => [...m, msg]);
+        } else if (msg.type === 'challenge') {
+          const nonce = msg.nonce as string;
+          try {
+            const publicKey = await invoke<string>('get_public_key');
+            const signature = await invoke<string>('sign_data', { data: nonce });
+            socket?.send(
+              JSON.stringify({
+                type: 'presence',
+                user: currentUser,
+                nonce,
+                publicKey,
+                signature,
+                password: currentPassword
+              })
+            );
+          } catch (e) {
+            console.error('signing failed', e);
+          }
         } else if (msg.type && handlers[msg.type]) {
           handlers[msg.type](msg);
         }
