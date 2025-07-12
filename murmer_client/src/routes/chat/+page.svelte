@@ -342,6 +342,10 @@
     font-weight: 600;
   }
 
+  .content {
+    white-space: pre-wrap;
+  }
+
   .content img {
     max-width: min(100%, 500px);
     max-height: 500px;
