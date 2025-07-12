@@ -1,7 +1,23 @@
-# Tauri + SvelteKit + TypeScript
+# Murmer Client
 
-This template should help get you started developing with Tauri, SvelteKit and TypeScript in Vite.
+This directory contains the desktop client built with Tauri and SvelteKit.
 
-## Recommended IDE Setup
+## Development
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+Install dependencies and launch the app:
+
+```bash
+npm install
+npm run tauri dev
+```
+
+Running `npm run tauri dev` starts the SvelteKit dev server and opens the Tauri shell with hot reloading.
+
+## Stores
+
+Several Svelte stores persist client state:
+
+- **servers** – the list of known Murmer server URLs. You can manage this list on the Servers page. Entries are saved to `localStorage`.
+- **session** – holds the currently logged in user name. Clearing this store logs the user out.
+
+Use `npm run check` to run TypeScript and Svelte checks.

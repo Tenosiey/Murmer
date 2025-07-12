@@ -1,6 +1,14 @@
+//! Database connection helpers and functions for loading chat history.
+//!
+//! The server persists all chat messages in a single `messages` table with a
+//! `channel` column to distinguish between channels. These helpers create the
+//! table on startup and provide utility functions to fetch history for clients.
+
 use tokio_postgres::{Client, NoTls};
 use tracing::warn;
 
+/// Initialize a PostgreSQL [`Client`] and ensure the `messages` table exists.
+/// The connection is retried for a few seconds if the database is not ready.
 pub async fn init(db_url: &str) -> Client {
     let (client, connection) = {
         let mut attempts = 0u8;
@@ -30,8 +38,6 @@ pub async fn init(db_url: &str) -> Client {
     channel TEXT NOT NULL,
     content TEXT NOT NULL
 );
-ALTER TABLE messages
-    ADD COLUMN IF NOT EXISTS channel TEXT NOT NULL DEFAULT 'general';
 "#,
         )
         .await
@@ -43,6 +49,7 @@ ALTER TABLE messages
 use axum::extract::ws::{Message, WebSocket};
 use futures::SinkExt;
 
+/// Send all messages from the given channel over the provided WebSocket.
 pub async fn send_history(
     db: &Client,
     sender: &mut futures::stream::SplitSink<WebSocket, Message>,
@@ -64,6 +71,7 @@ pub async fn send_history(
     }
 }
 
+/// Send the full message history across all channels.
 pub async fn send_all_history(
     db: &Client,
     sender: &mut futures::stream::SplitSink<WebSocket, Message>,

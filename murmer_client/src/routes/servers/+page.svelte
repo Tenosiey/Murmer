@@ -5,6 +5,7 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
+  import { normalizeServerUrl } from '$lib/utils';
 
   onMount(() => {
     if (!get(session).user) goto('/login');
@@ -15,21 +16,10 @@
   let newPassword = '';
   let settingsOpen = false;
 
-  function normalize(input: string): string {
-    let url = input.trim();
-    if (!/^wss?:\/\//.test(url)) {
-      if (/^https?:\/\//.test(url)) {
-        url = url.replace(/^http/, 'ws');
-      } else {
-        url = `ws://${url.replace(/\/$/, '')}/ws`;
-      }
-    }
-    return url;
-  }
 
   function add() {
     if (newServer.trim()) {
-      const entry: ServerEntry = { url: normalize(newServer), name: newName.trim() || newServer };
+      const entry: ServerEntry = { url: normalizeServerUrl(newServer), name: newName.trim() || newServer };
       if (newPassword.trim()) entry.password = newPassword;
       servers.add(entry);
       newServer = '';
