@@ -134,6 +134,13 @@
     inVoice = false;
   }
 
+  function leaveServer() {
+    chat.disconnect();
+    voice.leave();
+    selectedServer.set(null);
+    goto('/servers');
+  }
+
   function logout() {
     session.set({ user: null });
     goto('/login');
@@ -181,6 +188,7 @@
         <div class="actions">
           <span class="user">{$session.user}</span>
           <button class="icon" on:click={openSettings} title="Settings">⚙️</button>
+          <button class="icon" on:click={leaveServer} title="Leave Server">⬅️</button>
           <button class="icon" on:click={logout} title="Logout">🚪</button>
         </div>
       </div>
