@@ -340,10 +340,16 @@
 
   .username {
     font-weight: 600;
+    color: #7c3aed;
+  }
+
+  .content {
+    white-space: pre-wrap;
   }
 
   .content img {
-    max-width: 100%;
+    max-width: min(100%, 500px);
+    max-height: 500px;
     border-radius: 4px;
     margin-top: 0.25rem;
   }
