@@ -1,3 +1,8 @@
+//! WebSocket handler and helper utilities.
+//!
+//! Messages are JSON objects with a `type` field. Clients authenticate with a
+//! presence message and then send chat or voice events.
+
 use axum::{
     extract::{
         State,
@@ -13,6 +18,7 @@ use tracing::{error, info};
 
 use crate::{AppState, db};
 
+/// Broadcast the current list of online users to all connected clients.
 async fn broadcast_users(state: &Arc<AppState>) {
     let users = state.users.lock().await;
     let list: Vec<String> = users.iter().cloned().collect();
@@ -25,6 +31,7 @@ async fn broadcast_users(state: &Arc<AppState>) {
     }
 }
 
+/// Broadcast the users currently in the voice channel to all clients.
 async fn broadcast_voice(state: &Arc<AppState>) {
     let v = state.voice_users.lock().await;
     let list: Vec<String> = v.iter().cloned().collect();
@@ -37,6 +44,7 @@ async fn broadcast_voice(state: &Arc<AppState>) {
     }
 }
 
+/// Retrieve the broadcast channel for the given chat room, creating it if necessary.
 async fn get_or_create_channel(state: &Arc<AppState>, name: &str) -> broadcast::Sender<String> {
     let mut channels = state.channels.lock().await;
     channels
@@ -45,6 +53,7 @@ async fn get_or_create_channel(state: &Arc<AppState>, name: &str) -> broadcast::
         .clone()
 }
 
+/// Main WebSocket loop handling incoming messages and broadcasting events.
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     info!("Client connected");
     let (mut sender, mut receiver) = socket.split();
@@ -146,9 +155,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             "voice-offer" | "voice-answer" | "voice-candidate" => {
                                 let _ = state.tx.send(text.to_string());
                             }
-                            _ => {}
+                            _ => {
+                                error!("unknown message type: {t}");
+                            }
                         }
                     }
+                } else {
+                    error!("invalid json message: {text}");
                 }
             }
             result = chan_rx.recv() => {
@@ -188,6 +201,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     info!("Client disconnected");
 }
 
+/// Axum handler that upgrades the HTTP connection to a WebSocket and
+/// spawns [`handle_socket`] for message processing.
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
