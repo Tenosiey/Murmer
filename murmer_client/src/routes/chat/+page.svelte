@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, afterUpdate, tick } from 'svelte';
+  import { onMount, onDestroy, afterUpdate, tick } from 'svelte';
   import { chat } from '$lib/stores/chat';
   import { session } from '$lib/stores/session';
   import { voice, voiceStats } from '$lib/stores/voice';
@@ -54,6 +54,11 @@
       chat.sendRaw({ type: 'join', channel: currentChannel });
       await scrollBottom();
     });
+  });
+
+  onDestroy(() => {
+    chat.disconnect();
+    voice.leave();
   });
 
   function sendText() {

@@ -11,6 +11,7 @@ export interface Message {
 function createChatStore() {
   const { subscribe, update, set } = writable<Message[]>([]);
   let socket: WebSocket | null = null;
+  let currentUrl: string | null = null;
   const handlers: Record<string, (msg: Message) => void> = {};
 
   function on(type: string, cb: (msg: Message) => void) {
@@ -22,7 +23,12 @@ function createChatStore() {
   }
 
   function connect(url: string, onOpen?: () => void) {
-    if (socket) return;
+    if (socket) {
+      if (currentUrl === url) return;
+      socket.close();
+      socket = null;
+    }
+    currentUrl = url;
     if (import.meta.env.DEV) console.log('Connecting to WebSocket', url);
     socket = new WebSocket(url);
     socket.addEventListener('open', () => {
@@ -44,6 +50,7 @@ function createChatStore() {
     socket.addEventListener('close', () => {
       if (import.meta.env.DEV) console.log('WebSocket connection closed');
       socket = null;
+      currentUrl = null;
     });
     socket.addEventListener('error', (e) => {
       if (import.meta.env.DEV) console.error('WebSocket error', e);
@@ -64,7 +71,14 @@ function createChatStore() {
     }
   }
 
-  return { subscribe, connect, send, sendRaw, on, off, clear: () => set([]) };
+  function disconnect() {
+    if (socket) {
+      socket.close();
+      // 'close' event handler will reset state
+    }
+  }
+
+  return { subscribe, connect, send, sendRaw, on, off, disconnect, clear: () => set([]) };
 }
 
 export const chat = createChatStore();
