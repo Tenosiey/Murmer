@@ -92,7 +92,9 @@ function createChatStore() {
     if (u.pathname.endsWith('/ws')) u.pathname = u.pathname.slice(0, -3);
     u.pathname += '/history';
     u.searchParams.set('channel', channel);
-    u.searchParams.set('before', String(oldest));
+    if (Number.isFinite(oldest)) {
+      u.searchParams.set('before', String(oldest));
+    }
     try {
       const res = await fetch(u.toString());
       if (!res.ok) return 0;
