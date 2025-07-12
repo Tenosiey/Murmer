@@ -99,6 +99,8 @@
 
   .add {
     display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: 0.5rem;
     margin-bottom: 1rem;
   }
@@ -108,7 +110,11 @@
     background: #2e2e40;
     border: 1px solid #444;
     color: var(--color-text);
-    flex: 1;
+    width: 100%;
+  }
+
+  .add button {
+    width: 100%;
   }
 
   button {
