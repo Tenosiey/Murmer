@@ -4,7 +4,7 @@ This repository hosts **Murmer**, a minimal voice and text chat prototype.
 It is split into a Tauri/SvelteKit client and a Rust server.
 
 ## Repository Structure
-- `murmer_client/` – desktop client built with Tauri and SvelteKit.
+- `Murmer/` – desktop client built with Tauri and SvelteKit.
 - `murmer_server/` – Rust WebSocket server that persists chat messages to Postgres.
 - `docker-compose.yml` – runs the server together with Postgres.
 
@@ -16,7 +16,7 @@ Each subfolder contains its own `AGENTS.md` with more details.
 
 ## Validation
 - There is currently no automated test suite.
-- Run `npm run check` inside `murmer_client` to perform Svelte/TypeScript checks.
+- Run `npm run check` inside `Murmer` to perform Svelte/TypeScript checks.
 - Format Rust code with `cargo fmt` before committing.
 
 ## Docker

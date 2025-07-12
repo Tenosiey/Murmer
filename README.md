@@ -9,7 +9,7 @@ Murmer is a **self-hostable** minimal voice and text chat prototype built with T
 
 ## Running the client
 ```bash
-cd murmer_client
+cd Murmer
 npm install
 npm run tauri dev
 ```

@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    murmer_client_lib::run()
+    murmer_lib::run()
 }

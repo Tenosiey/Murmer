@@ -1,4 +1,4 @@
-# murmer_client Guide
+# Murmer Guide
 
 This directory contains the Tauri/SvelteKit desktop client.
 
