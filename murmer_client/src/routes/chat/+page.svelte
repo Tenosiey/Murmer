@@ -117,7 +117,6 @@
   function joinChannel(ch: string) {
     if (ch === currentChannel) return;
     currentChannel = ch;
-    chat.clear();
     chat.sendRaw({ type: 'join', channel: ch });
     scrollBottom();
   }
@@ -164,9 +163,12 @@
   let lastLength = 0;
 
   afterUpdate(() => {
-    if (messagesContainer && $chat.length !== lastLength) {
-      lastLength = $chat.length;
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    if (messagesContainer) {
+      const filteredLength = $chat.filter(m => (m.channel ?? 'general') === currentChannel).length;
+      if (filteredLength !== lastLength) {
+        lastLength = filteredLength;
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
     }
   });
 </script>
@@ -194,7 +196,7 @@
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
       <div class="messages" bind:this={messagesContainer}>
-        {#each $chat as msg}
+        {#each $chat.filter(m => (m.channel ?? 'general') === currentChannel) as msg}
           <div class="message">
             <span class="timestamp">{msg.time}</span>
             <span class="username">{msg.user}</span>

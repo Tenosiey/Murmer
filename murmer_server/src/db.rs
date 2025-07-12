@@ -63,3 +63,20 @@ pub async fn send_history(
         }
     }
 }
+
+pub async fn send_all_history(
+    db: &Client,
+    sender: &mut futures::stream::SplitSink<WebSocket, Message>,
+) {
+    if let Ok(rows) = db
+        .query("SELECT content FROM messages ORDER BY id", &[])
+        .await
+    {
+        for row in rows {
+            let content: String = row.get(0);
+            if sender.send(Message::Text(content.into())).await.is_err() {
+                break;
+            }
+        }
+    }
+}
