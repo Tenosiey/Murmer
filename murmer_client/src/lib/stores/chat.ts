@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 
 export interface Message {
+  id?: number;
   type: string;
   user: string;
   text?: string;
@@ -13,6 +14,8 @@ function createChatStore() {
   let socket: WebSocket | null = null;
   let currentUrl: string | null = null;
   const handlers: Record<string, (msg: Message) => void> = {};
+  let oldest = Infinity;
+  const seen = new Set<number>();
 
   function on(type: string, cb: (msg: Message) => void) {
     handlers[type] = cb;
@@ -41,7 +44,11 @@ function createChatStore() {
         const msg: Message = JSON.parse(ev.data);
         if (msg.type === 'chat') {
           if (!msg.time) msg.time = new Date().toLocaleTimeString();
-          update((m) => [...m, msg]);
+          if (msg.id === undefined || !seen.has(msg.id)) {
+            if (msg.id !== undefined) seen.add(msg.id);
+            update((m) => [...m, msg]);
+            if (msg.id !== undefined && msg.id < oldest) oldest = msg.id;
+          }
         } else if (msg.type && handlers[msg.type]) {
           handlers[msg.type](msg);
         }
@@ -78,7 +85,54 @@ function createChatStore() {
     }
   }
 
-  return { subscribe, connect, send, sendRaw, on, off, disconnect, clear: () => set([]) };
+  async function loadOlder(channel: string) {
+    if (!currentUrl) return 0;
+    const u = new URL(currentUrl);
+    u.protocol = u.protocol.replace('ws', 'http');
+    if (u.pathname.endsWith('/ws')) u.pathname = u.pathname.slice(0, -3);
+    u.pathname += '/history';
+    u.searchParams.set('channel', channel);
+    u.searchParams.set('before', String(oldest));
+    try {
+      const res = await fetch(u.toString());
+      if (!res.ok) return 0;
+      const msgs: Message[] = await res.json();
+      if (msgs.length) {
+        const filtered: Message[] = [];
+        msgs.forEach((m) => {
+          if (m.id !== undefined) {
+            if (seen.has(m.id)) return;
+            seen.add(m.id);
+            if (m.id < oldest) oldest = m.id;
+          }
+          filtered.push(m);
+        });
+        if (filtered.length) {
+          update((cur) => [...filtered.reverse(), ...cur]);
+        }
+      }
+      return msgs.length;
+    } catch (e) {
+      if (import.meta.env.DEV) console.error('loadOlder failed', e);
+      return 0;
+    }
+  }
+
+  return {
+    subscribe,
+    connect,
+    send,
+    sendRaw,
+    on,
+    off,
+    disconnect,
+    loadOlder,
+    clear: () => {
+      oldest = Infinity;
+      seen.clear();
+      set([]);
+    }
+  };
 }
 
 export const chat = createChatStore();

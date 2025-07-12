@@ -635,6 +635,7 @@ dependencies = [
  "chrono",
  "futures",
  "hyper",
+ "serde",
  "serde_json",
  "tokio",
  "tokio-postgres",
