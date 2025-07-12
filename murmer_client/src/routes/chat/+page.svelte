@@ -6,7 +6,7 @@
   import { selectedServer, servers } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
   import { voiceUsers } from '$lib/stores/voiceUsers';
-  import { volume } from '$lib/stores/settings';
+  import { volume, outputDeviceId } from '$lib/stores/settings';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
@@ -41,15 +41,29 @@
 
   function stream(node: HTMLAudioElement, media: MediaStream) {
     node.srcObject = media;
-    const unsub = volume.subscribe((v) => {
+    const unsubVol = volume.subscribe((v) => {
       node.volume = v;
     });
+    const applySink = async (id: string | null) => {
+      if ((node as any).setSinkId) {
+        try {
+          await (node as any).setSinkId(id || '');
+        } catch (e) {
+          console.error('Failed to set output device', e);
+        }
+      }
+    };
+    const unsubOut = outputDeviceId.subscribe((id) => {
+      applySink(id);
+    });
+    applySink($outputDeviceId);
     return {
       update(newStream: MediaStream) {
         node.srcObject = newStream;
       },
       destroy() {
-        unsub();
+        unsubVol();
+        unsubOut();
       }
     };
   }
