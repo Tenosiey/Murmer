@@ -54,6 +54,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let mut chan_rx = chan_tx.subscribe();
     let mut user_name: Option<String> = None;
 
+    let mut authenticated = state.password.is_none();
+
     db::send_history(&state.db, &mut sender, &channel).await;
     broadcast_voice(&state).await;
 
@@ -67,8 +69,26 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                 info!("Received message: {text}");
                 if let Ok(mut v) = serde_json::from_str::<Value>(&text) {
                     if let Some(t) = v.get("type").and_then(|t| t.as_str()) {
+                        if !authenticated && t != "presence" {
+                            let _ = sender
+                                .send(Message::Text("{\"type\":\"error\",\"message\":\"unauthenticated\"}".into()))
+                                .await;
+                            break;
+                        }
                         match t {
                             "presence" => {
+                                if !authenticated {
+                                    if let Some(required) = &state.password {
+                                        let provided = v.get("password").and_then(|p| p.as_str());
+                                        if provided != Some(required) {
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-password\"}".into()))
+                                                .await;
+                                            break;
+                                        }
+                                    }
+                                    authenticated = true;
+                                }
                                 if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
                                     {
                                         let mut users = state.users.lock().await;

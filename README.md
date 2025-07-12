@@ -25,6 +25,7 @@ docker compose up --build
 ```
 The server exposes a WebSocket endpoint at `ws://localhost:3001/ws`. The client can store multiple server URLs and connect to any of them via the "Servers" screen. Added servers are persisted locally so favorites remain after restart.
 The `DATABASE_URL` used by the server is defined in `docker-compose.yml`.
+If you set the `SERVER_PASSWORD` environment variable in `docker-compose.yml`, the server will require clients to provide that password when connecting.
 
 ### Image Uploads
 

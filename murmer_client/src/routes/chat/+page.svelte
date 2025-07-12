@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { onMount, afterUpdate, tick } from 'svelte';
+  import { onMount, onDestroy, afterUpdate, tick } from 'svelte';
   import { chat } from '$lib/stores/chat';
   import { session } from '$lib/stores/session';
   import { voice, voiceStats } from '$lib/stores/voice';
-  import { selectedServer } from '$lib/stores/servers';
+  import { selectedServer, servers } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
   import { voiceUsers } from '$lib/stores/voiceUsers';
   import { volume } from '$lib/stores/settings';
@@ -47,12 +47,18 @@
       return;
     }
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
+    const entry = servers.get(url);
     chat.connect(url, async () => {
       const u = get(session).user;
-      if (u) chat.sendRaw({ type: 'presence', user: u });
+      if (u) chat.sendRaw({ type: 'presence', user: u, password: entry?.password });
       chat.sendRaw({ type: 'join', channel: currentChannel });
       await scrollBottom();
     });
+  });
+
+  onDestroy(() => {
+    chat.disconnect();
+    voice.leave();
   });
 
   function sendText() {
@@ -128,6 +134,13 @@
     inVoice = false;
   }
 
+  function leaveServer() {
+    chat.disconnect();
+    voice.leave();
+    selectedServer.set(null);
+    goto('/servers');
+  }
+
   function logout() {
     session.set({ user: null });
     goto('/login');
@@ -175,6 +188,7 @@
         <div class="actions">
           <span class="user">{$session.user}</span>
           <button class="icon" on:click={openSettings} title="Settings">⚙️</button>
+          <button class="icon" on:click={leaveServer} title="Leave Server">⬅️</button>
           <button class="icon" on:click={logout} title="Logout">🚪</button>
         </div>
       </div>

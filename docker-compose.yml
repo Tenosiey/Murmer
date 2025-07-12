@@ -14,6 +14,8 @@ services:
     environment:
       DATABASE_URL: postgres://murmer:murmer@db:5432/murmer
       UPLOAD_DIR: /app/uploads
+      # Uncomment to require a password for WebSocket connections
+      # SERVER_PASSWORD: changeme
     depends_on:
       - db
     ports:
