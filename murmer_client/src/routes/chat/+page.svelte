@@ -19,6 +19,17 @@
   }
   let message = '';
   let fileInput: HTMLInputElement;
+  let messageInput: HTMLTextAreaElement;
+
+  function autoResize() {
+    if (messageInput) {
+      messageInput.style.height = 'auto';
+      const h = Math.min(messageInput.scrollHeight, 400);
+      messageInput.style.height = h + 'px';
+    }
+  }
+
+  $: autoResize();
   let inVoice = false;
   let settingsOpen = false;
   const channels = ['general', 'random'];
@@ -223,8 +234,10 @@
       <div>
         <textarea
           bind:value={message}
-          rows="2"
+          bind:this={messageInput}
+          rows="1"
           placeholder="Message"
+          on:input={autoResize}
           on:keydown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
@@ -344,6 +357,7 @@
     flex-direction: column;
     gap: 0.5rem;
     padding-right: 0.5rem;
+    padding-bottom: 0.5rem;
   }
 
   .message {
@@ -383,6 +397,8 @@
     background: #2e2e40;
     border: 1px solid #444;
     color: var(--color-text);
+    overflow-y: auto;
+    max-height: 400px;
   }
 
   .send {
