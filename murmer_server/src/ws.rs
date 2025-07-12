@@ -56,7 +56,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     let mut authenticated = state.password.is_none();
 
-    db::send_history(&state.db, &mut sender, &channel).await;
+    db::send_all_history(&state.db, &mut sender).await;
     broadcast_voice(&state).await;
 
     loop {
@@ -103,7 +103,6 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     channel = ch.to_string();
                                     chan_tx = get_or_create_channel(&state, &channel).await;
                                     chan_rx = chan_tx.subscribe();
-                                    db::send_history(&state.db, &mut sender, &channel).await;
                                 }
                             }
                             "chat" => {
@@ -120,6 +119,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     error!("db insert error: {e}");
                                 }
                                 let _ = chan_tx.send(out);
+                            }
+                            "ping" => {
+                                let id = v.get("id").cloned().unwrap_or(Value::Null);
+                                let msg = serde_json::json!({ "type": "pong", "id": id });
+                                let _ = sender
+                                    .send(Message::Text(msg.to_string().into()))
+                                    .await;
                             }
                             "voice-join" => {
                                 if let Some(u) = v.get("user").and_then(|u| u.as_str()) {

@@ -11,6 +11,8 @@
   import { goto } from '$app/navigation';
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
+  import PingDot from '$lib/components/PingDot.svelte';
+  import { ping } from '$lib/stores/ping';
   function strength(user: string): number {
     const stats = get(voiceStats)[user];
     return stats ? stats.strength : 0;
@@ -52,6 +54,7 @@
       const u = get(session).user;
       if (u) chat.sendRaw({ type: 'presence', user: u, password: entry?.password });
       chat.sendRaw({ type: 'join', channel: currentChannel });
+      ping.start();
       await scrollBottom();
     });
   });
@@ -59,6 +62,7 @@
   onDestroy(() => {
     chat.disconnect();
     voice.leave();
+    ping.stop();
   });
 
   function sendText() {
@@ -117,7 +121,6 @@
   function joinChannel(ch: string) {
     if (ch === currentChannel) return;
     currentChannel = ch;
-    chat.clear();
     chat.sendRaw({ type: 'join', channel: ch });
     scrollBottom();
   }
@@ -164,9 +167,12 @@
   let lastLength = 0;
 
   afterUpdate(() => {
-    if (messagesContainer && $chat.length !== lastLength) {
-      lastLength = $chat.length;
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    if (messagesContainer) {
+      const filteredLength = $chat.filter(m => (m.channel ?? 'general') === currentChannel).length;
+      if (filteredLength !== lastLength) {
+        lastLength = filteredLength;
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
     }
   });
 </script>
@@ -187,6 +193,7 @@
         <h1>{currentChannel}</h1>
         <div class="actions">
           <span class="user">{$session.user}</span>
+          <PingDot ping={$ping} />
           <button class="icon" on:click={openSettings} title="Settings">⚙️</button>
           <button class="icon" on:click={leaveServer} title="Leave Server">⬅️</button>
           <button class="icon" on:click={logout} title="Logout">🚪</button>
@@ -194,7 +201,7 @@
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
       <div class="messages" bind:this={messagesContainer}>
-        {#each $chat as msg}
+        {#each $chat.filter(m => (m.channel ?? 'general') === currentChannel) as msg}
           <div class="message">
             <span class="timestamp">{msg.time}</span>
             <span class="username">{msg.user}</span>
@@ -359,6 +366,7 @@
 
   .content {
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .content img {

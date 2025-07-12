@@ -28,6 +28,7 @@ function createChatStore() {
       socket.close();
       socket = null;
     }
+    set([]); // clear previous history when connecting to a server
     currentUrl = url;
     if (import.meta.env.DEV) console.log('Connecting to WebSocket', url);
     socket = new WebSocket(url);
@@ -76,6 +77,7 @@ function createChatStore() {
       socket.close();
       // 'close' event handler will reset state
     }
+    set([]); // clear chat history on disconnect
   }
 
   return { subscribe, connect, send, sendRaw, on, off, disconnect, clear: () => set([]) };

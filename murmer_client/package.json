@@ -1,6 +1,6 @@
 {
-  "name": "murmer_client",
-  "version": "2025.7.11-alpha.1",
+  "name": "murmer",
+  "version": "2025.7.12-alpha.1",
   "description": "",
   "type": "module",
   "scripts": {
@@ -20,10 +20,11 @@
     "@sveltejs/adapter-static": "^3.0.8",
     "@sveltejs/kit": "^2.22.5",
     "@sveltejs/vite-plugin-svelte": "^6.0.0",
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^20.11.0",
     "svelte": "^5.35.5",
     "svelte-check": "^4.2.2",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4",
-    "@tauri-apps/cli": "^2"
+    "vite": "^7.0.4"
   }
 }
