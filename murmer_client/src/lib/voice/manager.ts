@@ -1,5 +1,6 @@
 import { chat } from '../stores/chat';
-import { volume } from '../stores/settings';
+import { volume, inputDeviceId } from '../stores/settings';
+import { get } from 'svelte/store';
 import type { Message } from '../stores/chat';
 
 export interface RemotePeer {
@@ -148,7 +149,10 @@ export class VoiceManager {
     chat.on('voice-answer', (m) => this.handleAnswer(m));
     chat.on('voice-candidate', (m) => this.handleCandidate(m));
     chat.on('voice-leave', (m) => this.handleLeave(m, peersList));
-    this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const device = get(inputDeviceId);
+    const constraints: MediaStreamConstraints =
+      device ? { audio: { deviceId: { exact: device } } } : { audio: true };
+    this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
     chat.sendRaw({ type: 'voice-join', user });
   }
 
