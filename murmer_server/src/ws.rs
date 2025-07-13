@@ -117,13 +117,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             "chat" => {
                                 v["channel"] = Value::String(channel.clone());
                                 let out = serde_json::to_string(&v).unwrap_or_else(|_| text.to_string());
-                                if let Err(e) = state
-                                    .db
-                                    .execute(
-                                        "INSERT INTO messages (channel, content) VALUES ($1, $2)",
-                                        &[&channel, &out],
-                                    )
-                                    .await
+                                if let Err(e) = sqlx::query(
+                                    "INSERT INTO messages (channel, content) VALUES ($1, $2)"
+                                )
+                                .bind(&channel)
+                                .bind(&out)
+                                .execute(&state.db)
+                                .await
                                 {
                                     error!("db insert error: {e}");
                                 }

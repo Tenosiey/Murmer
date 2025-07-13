@@ -1,3 +1,4 @@
+mod auth;
 mod db;
 mod upload;
 mod ws;
@@ -22,18 +23,20 @@ use tracing::info;
 /// Shared application state passed to handlers.
 /// - `tx`: broadcast channel for global events (online users, voice updates).
 /// - `channels`: per-text-channel broadcast senders.
-/// - `db`: PostgreSQL client for persisting chat history.
+/// - `db`: PostgreSQL connection pool for persisting chat history and users.
 /// - `users`: set of currently connected chat users.
 /// - `voice_users`: set of users active in voice chat.
 /// - `upload_dir`: directory where uploaded files are stored.
+/// - `jwt_secret`: secret used to sign JWT tokens.
 pub struct AppState {
     pub tx: broadcast::Sender<String>,
     pub channels: Arc<Mutex<HashMap<String, broadcast::Sender<String>>>>,
-    pub db: Arc<tokio_postgres::Client>,
+    pub db: db::Db,
     pub users: Arc<Mutex<HashSet<String>>>,
     pub voice_users: Arc<Mutex<HashSet<String>>>,
     pub upload_dir: PathBuf,
     pub password: Option<String>,
+    pub jwt_secret: String,
 }
 
 #[tokio::main]
@@ -45,7 +48,7 @@ async fn main() {
     let (tx, _rx) = broadcast::channel::<String>(100);
 
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
-    let db_client = db::init(&db_url).await;
+    let db_pool = db::init(&db_url).await;
 
     let upload_dir = env::var("UPLOAD_DIR").unwrap_or_else(|_| "uploads".to_string());
     if let Err(e) = tokio::fs::create_dir_all(&upload_dir).await {
@@ -53,20 +56,27 @@ async fn main() {
     }
 
     let password = env::var("SERVER_PASSWORD").ok();
+    let jwt_secret = env::var("JWT_SECRET").unwrap_or_else(|_| "secret".into());
 
     let state = Arc::new(AppState {
         tx: tx.clone(),
         channels: Arc::new(Mutex::new(HashMap::new())),
-        db: Arc::new(db_client),
+        db: db_pool,
         users: Arc::new(Mutex::new(HashSet::new())),
         voice_users: Arc::new(Mutex::new(HashSet::new())),
         upload_dir: PathBuf::from(upload_dir.clone()),
         password,
+        jwt_secret,
     });
 
     let cors = CorsLayer::permissive();
 
     let app = Router::new()
+        .route("/register", post(auth::register))
+        .route("/login", post(auth::login))
+        .route("/users/:id/roles", post(auth::assign_role))
+        .route("/users", get(auth::list_users))
+        .route("/me", get(auth::me))
         .route("/ws", get(ws::ws_handler))
         .route("/upload", post(upload::upload))
         .nest_service("/files", ServeDir::new(upload_dir))
