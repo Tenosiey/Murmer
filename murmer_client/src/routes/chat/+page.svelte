@@ -14,6 +14,7 @@
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import PingDot from '$lib/components/PingDot.svelte';
   import { ping } from '$lib/stores/ping';
+  import { channels } from '$lib/stores/channels';
   import { loadKeyPair, sign } from '$lib/keypair';
   function strength(user: string): number {
     const stats = get(voiceStats)[user];
@@ -34,8 +35,12 @@
   $: autoResize();
   let inVoice = false;
   let settingsOpen = false;
-  const channels = ['general', 'random'];
   let currentChannel = 'general';
+
+  $: if ($channels.length && !$channels.includes(currentChannel)) {
+    currentChannel = $channels[0];
+    chat.sendRaw({ type: 'join', channel: currentChannel });
+  }
 
   function isCode(text: string): boolean {
     return /^```[\s\S]*```$/.test(text.trim());
@@ -184,6 +189,12 @@
     goto('/servers');
   }
 
+  function openChannelMenu(event: MouseEvent) {
+    event.preventDefault();
+    const name = prompt('New channel name');
+    if (name) channels.create(name);
+  }
+
   function logout() {
     session.set({ user: null });
     goto('/login');
@@ -218,8 +229,8 @@
 </script>
 
   <div class="page">
-    <div class="channels">
-      {#each channels as ch}
+    <div class="channels" role="navigation" on:contextmenu={openChannelMenu}>
+      {#each $channels as ch}
         <button
           class:active={ch === currentChannel}
           on:click={() => joinChannel(ch)}

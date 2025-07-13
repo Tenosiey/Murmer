@@ -42,6 +42,11 @@ CREATE TABLE IF NOT EXISTS roles (
     public_key TEXT PRIMARY KEY,
     role TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS channels (
+    name TEXT PRIMARY KEY
+);
+INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
+INSERT INTO channels (name) VALUES ('random') ON CONFLICT DO NOTHING;
 "#,
         )
         .await
@@ -108,6 +113,27 @@ pub async fn set_role(db: &Client, key: &str, role: &str) -> Result<(), tokio_po
         "INSERT INTO roles (public_key, role) VALUES ($1, $2) \
         ON CONFLICT (public_key) DO UPDATE SET role = EXCLUDED.role",
         &[&key, &role],
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Retrieve the list of text channels.
+pub async fn get_channels(db: &Client) -> Vec<String> {
+    match db
+        .query("SELECT name FROM channels ORDER BY name", &[])
+        .await
+    {
+        Ok(rows) => rows.into_iter().map(|row| row.get(0)).collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Insert a new channel if it does not already exist.
+pub async fn add_channel(db: &Client, name: &str) -> Result<(), tokio_postgres::Error> {
+    db.execute(
+        "INSERT INTO channels (name) VALUES ($1) ON CONFLICT DO NOTHING",
+        &[&name],
     )
     .await
     .map(|_| ())
