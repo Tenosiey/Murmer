@@ -10,6 +10,8 @@ use axum::{
     },
     response::IntoResponse,
 };
+use base64::{Engine as _, engine::general_purpose};
+use ed25519_dalek::{PublicKey, Signature, Verifier};
 use futures::{SinkExt, StreamExt};
 use serde_json::Value;
 use std::sync::Arc;
@@ -96,15 +98,51 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             break;
                                         }
                                     }
-                                    authenticated = true;
-                                }
-                                if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
-                                    {
-                                        let mut users = state.users.lock().await;
-                                        users.insert(u.to_string());
+                                    if let (Some(pk), Some(sig), Some(ts)) = (
+                                        v.get("publicKey").and_then(|p| p.as_str()),
+                                        v.get("signature").and_then(|s| s.as_str()),
+                                        v.get("timestamp").and_then(|t| t.as_str()),
+                                    ) {
+                                        if let (Ok(pk_bytes), Ok(sig_bytes)) = (
+                                            general_purpose::STANDARD.decode(pk),
+                                            general_purpose::STANDARD.decode(sig),
+                                        ) {
+                                            if pk_bytes.len() == 32 {
+                                                if let Ok(key) = PublicKey::from_bytes(&pk_bytes[..32]) {
+                                                    if let Ok(signature) = Signature::from_bytes(&sig_bytes) {
+                                                        let within = match ts.parse::<i64>() {
+                                                            Ok(num) => (chrono::Utc::now().timestamp_millis() - num).abs() < 60_000,
+                                                            Err(_) => false,
+                                                        };
+                                                        if within && key.verify(ts.as_bytes(), &signature).is_ok() {
+                                                            authenticated = true;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
-                                    broadcast_users(&state).await;
-                                    user_name = Some(u.to_string());
+                                }
+                                if authenticated {
+                                    if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
+                                        {
+                                            let mut users = state.users.lock().await;
+                                            users.insert(u.to_string());
+                                        }
+                                        broadcast_users(&state).await;
+                                        user_name = Some(u.to_string());
+                                        if let Some(pk) = v.get("publicKey").and_then(|p| p.as_str()) {
+                                            if let Some(role) = db::get_role(&state.db, pk).await {
+                                                let msg = serde_json::json!({"type": "role", "role": role});
+                                                let _ = sender.send(Message::Text(msg.to_string().into())).await;
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    let _ = sender
+                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature\"}".into()))
+                                        .await;
+                                    break;
                                 }
                             }
                             "join" => {

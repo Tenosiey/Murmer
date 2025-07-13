@@ -1,3 +1,4 @@
+mod admin;
 mod db;
 mod upload;
 mod ws;
@@ -34,6 +35,7 @@ pub struct AppState {
     pub voice_users: Arc<Mutex<HashSet<String>>>,
     pub upload_dir: PathBuf,
     pub password: Option<String>,
+    pub admin_token: Option<String>,
 }
 
 #[tokio::main]
@@ -53,6 +55,7 @@ async fn main() {
     }
 
     let password = env::var("SERVER_PASSWORD").ok();
+    let admin_token = env::var("ADMIN_TOKEN").ok();
 
     let state = Arc::new(AppState {
         tx: tx.clone(),
@@ -62,6 +65,7 @@ async fn main() {
         voice_users: Arc::new(Mutex::new(HashSet::new())),
         upload_dir: PathBuf::from(upload_dir.clone()),
         password,
+        admin_token,
     });
 
     let cors = CorsLayer::permissive();
@@ -69,6 +73,7 @@ async fn main() {
     let app = Router::new()
         .route("/ws", get(ws::ws_handler))
         .route("/upload", post(upload::upload))
+        .route("/role", post(admin::set_role))
         .nest_service("/files", ServeDir::new(upload_dir))
         .layer(cors)
         .with_state(state);

@@ -14,7 +14,8 @@
   "license": "MIT",
   "dependencies": {
     "@tauri-apps/api": "^2.6.0",
-    "@tauri-apps/plugin-opener": "^2.4.0"
+    "@tauri-apps/plugin-opener": "^2.4.0",
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.8",
