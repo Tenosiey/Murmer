@@ -13,6 +13,7 @@
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import PingDot from '$lib/components/PingDot.svelte';
   import { ping } from '$lib/stores/ping';
+  import { loadKeyPair, sign } from '$lib/keypair';
   function strength(user: string): number {
     const stats = get(voiceStats)[user];
     return stats ? stats.strength : 0;
@@ -77,7 +78,18 @@
     const entry = servers.get(url);
     chat.connect(url, async () => {
       const u = get(session).user;
-      if (u) chat.sendRaw({ type: 'presence', user: u, password: entry?.password });
+      if (u) {
+        const kp = loadKeyPair();
+        const ts = Date.now().toString();
+        chat.sendRaw({
+          type: 'presence',
+          user: u,
+          publicKey: kp.publicKey,
+          timestamp: ts,
+          signature: sign(ts, kp.secretKey),
+          password: entry?.password
+        });
+      }
       chat.sendRaw({ type: 'join', channel: currentChannel });
       ping.start();
       await scrollBottom();
