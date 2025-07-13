@@ -12,7 +12,7 @@ use axum::{
 };
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{PublicKey, Signature, Verifier};
-use futures::{SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt, stream::SplitSink};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -46,6 +46,33 @@ async fn broadcast_voice(state: &Arc<AppState>) {
     }
 }
 
+/// Broadcast a user's role to all connected clients.
+async fn broadcast_role(state: &Arc<AppState>, user: &str, role: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "role-update",
+        "user": user,
+        "role": role,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Send all known roles to a newly connected client.
+async fn send_all_roles(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    let roles = state.roles.lock().await.clone();
+    for (user, role) in roles {
+        if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+            "type": "role-update",
+            "user": user,
+            "role": role,
+        })) {
+            if sender.send(Message::Text(msg)).await.is_err() {
+                break;
+            }
+        }
+    }
+}
+
 /// Retrieve the broadcast channel for the given chat room, creating it if necessary.
 async fn get_or_create_channel(state: &Arc<AppState>, name: &str) -> broadcast::Sender<String> {
     let mut channels = state.channels.lock().await;
@@ -69,6 +96,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     db::send_all_history(&state.db, &mut sender).await;
     broadcast_voice(&state).await;
+    send_all_roles(&state, &mut sender).await;
 
     loop {
         tokio::select! {
@@ -132,9 +160,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         broadcast_users(&state).await;
                                         user_name = Some(u.to_string());
                                         if let Some(pk) = v.get("publicKey").and_then(|p| p.as_str()) {
+                                            {
+                                                let mut user_keys = state.user_keys.lock().await;
+                                                user_keys.insert(u.to_string(), pk.to_string());
+                                            }
                                             if let Some(role) = db::get_role(&state.db, pk).await {
-                                                let msg = serde_json::json!({"type": "role", "role": role});
-                                                let _ = sender.send(Message::Text(msg.to_string().into())).await;
+                                                {
+                                                    let mut roles = state.roles.lock().await;
+                                                    roles.insert(u.to_string(), role.clone());
+                                                }
+                                                broadcast_role(&state, u, &role).await;
                                             }
                                         }
                                     }
@@ -235,6 +270,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         } else {
             drop(voice);
         }
+        let mut roles = state.roles.lock().await;
+        roles.remove(&name);
+        drop(roles);
+        let mut keys = state.user_keys.lock().await;
+        keys.remove(&name);
     }
     info!("Client disconnected");
 }
