@@ -1,6 +1,6 @@
 <script lang="ts">
   import { volume, inputDeviceId, outputDeviceId } from '$lib/stores/settings';
-  import { VERSION } from '$lib/version';
+  import { APP_VERSION } from '$lib/version';
   import { onMount } from 'svelte';
   export let open: boolean;
   export let close: () => void;
@@ -31,9 +31,9 @@
       if (Array.isArray(releases) && releases.length > 0) {
         const stable = releases.find((r) => !r.prerelease);
         const pre = releases.find((r) => r.prerelease);
-        if (pre && pre.tag_name && pre.tag_name !== VERSION) {
+        if (pre && pre.tag_name && pre.tag_name !== APP_VERSION) {
           updateMessage = `Pre-release available: ${pre.tag_name}`;
-        } else if (stable && stable.tag_name && stable.tag_name !== VERSION) {
+        } else if (stable && stable.tag_name && stable.tag_name !== APP_VERSION) {
           updateMessage = `Update available: ${stable.tag_name}`;
         } else {
           updateMessage = 'You are running the latest version.';
