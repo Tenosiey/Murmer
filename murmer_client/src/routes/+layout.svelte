@@ -2,8 +2,14 @@
   import { APP_VERSION } from '$lib/version';
 </script>
 
+<svelte:head>
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Roboto:wght@400;500&display=swap"
+  />
+</svelte:head>
+
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Roboto:wght@400;500&display=swap');
 
   :global(:root) {
     --color-bg: #1e1e2e;
