@@ -10,7 +10,9 @@ use axum::{
     },
     response::IntoResponse,
 };
-use futures::{SinkExt, StreamExt};
+use base64::{Engine as _, engine::general_purpose};
+use ed25519_dalek::{PublicKey, Signature, Verifier};
+use futures::{SinkExt, StreamExt, stream::SplitSink};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -44,6 +46,33 @@ async fn broadcast_voice(state: &Arc<AppState>) {
     }
 }
 
+/// Broadcast a user's role to all connected clients.
+async fn broadcast_role(state: &Arc<AppState>, user: &str, role: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "role-update",
+        "user": user,
+        "role": role,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Send all known roles to a newly connected client.
+async fn send_all_roles(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    let roles = state.roles.lock().await.clone();
+    for (user, role) in roles {
+        if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+            "type": "role-update",
+            "user": user,
+            "role": role,
+        })) {
+            if sender.send(Message::Text(msg)).await.is_err() {
+                break;
+            }
+        }
+    }
+}
+
 /// Retrieve the broadcast channel for the given chat room, creating it if necessary.
 async fn get_or_create_channel(state: &Arc<AppState>, name: &str) -> broadcast::Sender<String> {
     let mut channels = state.channels.lock().await;
@@ -67,6 +96,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     db::send_all_history(&state.db, &mut sender).await;
     broadcast_voice(&state).await;
+    send_all_roles(&state, &mut sender).await;
 
     loop {
         tokio::select! {
@@ -96,15 +126,58 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             break;
                                         }
                                     }
-                                    authenticated = true;
-                                }
-                                if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
-                                    {
-                                        let mut users = state.users.lock().await;
-                                        users.insert(u.to_string());
+                                    if let (Some(pk), Some(sig), Some(ts)) = (
+                                        v.get("publicKey").and_then(|p| p.as_str()),
+                                        v.get("signature").and_then(|s| s.as_str()),
+                                        v.get("timestamp").and_then(|t| t.as_str()),
+                                    ) {
+                                        if let (Ok(pk_bytes), Ok(sig_bytes)) = (
+                                            general_purpose::STANDARD.decode(pk),
+                                            general_purpose::STANDARD.decode(sig),
+                                        ) {
+                                            if pk_bytes.len() == 32 {
+                                                if let Ok(key) = PublicKey::from_bytes(&pk_bytes[..32]) {
+                                                    if let Ok(signature) = Signature::from_bytes(&sig_bytes) {
+                                                        let within = match ts.parse::<i64>() {
+                                                            Ok(num) => (chrono::Utc::now().timestamp_millis() - num).abs() < 60_000,
+                                                            Err(_) => false,
+                                                        };
+                                                        if within && key.verify(ts.as_bytes(), &signature).is_ok() {
+                                                            authenticated = true;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
-                                    broadcast_users(&state).await;
-                                    user_name = Some(u.to_string());
+                                }
+                                if authenticated {
+                                    if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
+                                        {
+                                            let mut users = state.users.lock().await;
+                                            users.insert(u.to_string());
+                                        }
+                                        broadcast_users(&state).await;
+                                        user_name = Some(u.to_string());
+                                        if let Some(pk) = v.get("publicKey").and_then(|p| p.as_str()) {
+                                            {
+                                                let mut user_keys = state.user_keys.lock().await;
+                                                user_keys.insert(u.to_string(), pk.to_string());
+                                            }
+                                            if let Some(role) = db::get_role(&state.db, pk).await {
+                                                {
+                                                    let mut roles = state.roles.lock().await;
+                                                    roles.insert(u.to_string(), role.clone());
+                                                }
+                                                broadcast_role(&state, u, &role).await;
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    let _ = sender
+                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature\"}".into()))
+                                        .await;
+                                    break;
                                 }
                             }
                             "join" => {
@@ -197,6 +270,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         } else {
             drop(voice);
         }
+        // Keep role and key mappings so clients can display roles
+        // even when the user is offline.
     }
     info!("Client disconnected");
 }

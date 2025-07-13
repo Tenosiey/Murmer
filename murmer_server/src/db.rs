@@ -38,6 +38,10 @@ pub async fn init(db_url: &str) -> Client {
     channel TEXT NOT NULL,
     content TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS roles (
+    public_key TEXT PRIMARY KEY,
+    role TEXT NOT NULL
+);
 "#,
         )
         .await
@@ -87,4 +91,24 @@ pub async fn send_all_history(
             }
         }
     }
+}
+
+/// Get the role for a user by public key, if any.
+pub async fn get_role(db: &Client, key: &str) -> Option<String> {
+    db.query_opt("SELECT role FROM roles WHERE public_key = $1", &[&key])
+        .await
+        .ok()
+        .flatten()
+        .map(|row| row.get(0))
+}
+
+/// Insert or update a user's role.
+pub async fn set_role(db: &Client, key: &str, role: &str) -> Result<(), tokio_postgres::Error> {
+    db.execute(
+        "INSERT INTO roles (public_key, role) VALUES ($1, $2) \
+        ON CONFLICT (public_key) DO UPDATE SET role = EXCLUDED.role",
+        &[&key, &role],
+    )
+    .await
+    .map(|_| ())
 }

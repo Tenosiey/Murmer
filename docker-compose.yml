@@ -11,6 +11,9 @@ services:
   server:
     build: ./murmer_server
     restart: unless-stopped
+    # Load optional settings like ADMIN_TOKEN from a `.env` file
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgres://murmer:murmer@db:5432/murmer
       UPLOAD_DIR: /app/uploads

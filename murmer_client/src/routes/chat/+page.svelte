@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, afterUpdate, tick } from 'svelte';
   import { chat } from '$lib/stores/chat';
+  import { roles } from '$lib/stores/roles';
   import { session } from '$lib/stores/session';
   import { voice, voiceStats } from '$lib/stores/voice';
   import { selectedServer, servers } from '$lib/stores/servers';
@@ -13,6 +14,7 @@
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import PingDot from '$lib/components/PingDot.svelte';
   import { ping } from '$lib/stores/ping';
+  import { loadKeyPair, sign } from '$lib/keypair';
   function strength(user: string): number {
     const stats = get(voiceStats)[user];
     return stats ? stats.strength : 0;
@@ -73,11 +75,23 @@
       goto('/login');
       return;
     }
+    roles.set({});
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
     const entry = servers.get(url);
     chat.connect(url, async () => {
       const u = get(session).user;
-      if (u) chat.sendRaw({ type: 'presence', user: u, password: entry?.password });
+      if (u) {
+        const kp = loadKeyPair();
+        const ts = Date.now().toString();
+        chat.sendRaw({
+          type: 'presence',
+          user: u,
+          publicKey: kp.publicKey,
+          timestamp: ts,
+          signature: sign(ts, kp.secretKey),
+          password: entry?.password
+        });
+      }
       chat.sendRaw({ type: 'join', channel: currentChannel });
       ping.start();
       await scrollBottom();
@@ -88,6 +102,7 @@
     chat.disconnect();
     voice.leave();
     ping.stop();
+    roles.set({});
   });
 
   function sendText() {
@@ -230,6 +245,9 @@
           <div class="message">
             <span class="timestamp">{msg.time}</span>
             <span class="username">{msg.user}</span>
+            {#if $roles[msg.user]}
+              <span class="role">{$roles[msg.user]}</span>
+            {/if}
             <span class="content">
               {#if msg.text}
                 {#if isCode(msg.text)}
@@ -390,6 +408,12 @@
   .username {
     font-weight: 600;
     color: #7c3aed;
+  }
+
+  .role {
+    margin-left: 0.25rem;
+    font-size: 0.75rem;
+    color: #f97316;
   }
 
   .content {
