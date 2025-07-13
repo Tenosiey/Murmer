@@ -16,6 +16,7 @@ services:
       UPLOAD_DIR: /app/uploads
       # Uncomment to require a password for WebSocket connections
       # SERVER_PASSWORD: changeme
+      # ADMIN_TOKEN: my-admin-token
     depends_on:
       - db
     ports:
