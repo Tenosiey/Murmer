@@ -760,7 +760,7 @@ dependencies = [
 
 [[package]]
 name = "murmer_server"
-version = "2025.7.12-alpha.1"
+version = "2025.7.13-alpha.1"
 dependencies = [
  "axum",
  "axum-extra",
