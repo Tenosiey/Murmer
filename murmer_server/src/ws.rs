@@ -270,11 +270,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         } else {
             drop(voice);
         }
-        let mut roles = state.roles.lock().await;
-        roles.remove(&name);
-        drop(roles);
-        let mut keys = state.user_keys.lock().await;
-        keys.remove(&name);
+        // Keep role and key mappings so clients can display roles
+        // even when the user is offline.
     }
     info!("Client disconnected");
 }
