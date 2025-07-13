@@ -18,8 +18,7 @@ Use the checkboxes to track progress.
 
 ### 🛠️ Other Features
 
-- [ ] Implement launcher and update checker
-- [ ] Add a logo for the app
+- [ ] Implement auto updates
 
 ---
 
