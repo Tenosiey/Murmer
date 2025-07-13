@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { VERSION } from '$lib/version';
+  import { APP_VERSION } from '$lib/version';
 </script>
 
 <style>
@@ -45,4 +45,4 @@
 
 <slot />
 
-<div class="version">{VERSION}</div>
+<div class="version">{APP_VERSION}</div>
