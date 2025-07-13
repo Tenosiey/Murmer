@@ -24,15 +24,22 @@
     updateMessage = 'Checking...';
     try {
       const res = await fetch(
-        'https://api.github.com/repos/Tenosiey/Murmer/releases/latest'
+        'https://api.github.com/repos/Tenosiey/Murmer/releases?per_page=10'
       );
       if (!res.ok) throw new Error('request failed');
-      const data = await res.json();
-      const latest: string = data.tag_name || data.name;
-      if (latest && latest !== VERSION) {
-        updateMessage = `Update available: ${latest}`;
+      const releases = await res.json();
+      if (Array.isArray(releases) && releases.length > 0) {
+        const stable = releases.find((r) => !r.prerelease);
+        const pre = releases.find((r) => r.prerelease);
+        if (pre && pre.tag_name && pre.tag_name !== VERSION) {
+          updateMessage = `Pre-release available: ${pre.tag_name}`;
+        } else if (stable && stable.tag_name && stable.tag_name !== VERSION) {
+          updateMessage = `Update available: ${stable.tag_name}`;
+        } else {
+          updateMessage = 'You are running the latest version.';
+        }
       } else {
-        updateMessage = 'You are running the latest version.';
+        updateMessage = 'No releases found.';
       }
     } catch (e) {
       updateMessage = 'Failed to check for updates.';
