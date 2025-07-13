@@ -11,12 +11,14 @@ services:
   server:
     build: ./murmer_server
     restart: unless-stopped
+    # Load optional settings like ADMIN_TOKEN from a `.env` file
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgres://murmer:murmer@db:5432/murmer
       UPLOAD_DIR: /app/uploads
       # Uncomment to require a password for WebSocket connections
       # SERVER_PASSWORD: changeme
-      # ADMIN_TOKEN: my-admin-token
     depends_on:
       - db
     ports:
