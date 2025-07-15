@@ -1,3 +1,16 @@
+//! Murmer WebSocket server: provides text and voice chat over WebSocket with Postgres persistence.
+//!
+//! - `/ws`: WebSocket endpoint for chat and voice events.
+//! - `/upload`: HTTP endpoint for uploading files.
+//! - `/role`: HTTP endpoint for managing user roles (requires `ADMIN_TOKEN`).
+//!
+//! Configuration via environment variables:
+//! - `DATABASE_URL`: Postgres connection string (required).
+//! - `UPLOAD_DIR`: directory for storing uploads (default: `uploads`).
+//! - `SERVER_PASSWORD`: optional password for client authentication.
+//! - `ADMIN_TOKEN`: token for admin role management.
+//!
+//! Run with `cargo run` or via Docker Compose (`docker compose up --build`).
 mod admin;
 mod db;
 mod upload;

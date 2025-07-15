@@ -65,3 +65,28 @@ A `docker-compose.yml` runs the Rust server alongside Postgres. The client is ru
 
 ## Notes
 This project is an early prototype demonstrating login, server selection, text chat and a stub for voice communication via WebRTC.
+
+## Development Guides
+
+For more detailed information on development workflows, see:
+- [murmer_client/AGENTS.md](murmer_client/AGENTS.md) – guides for the Tauri/SvelteKit client.
+- [murmer_server/AGENTS.md](murmer_server/AGENTS.md) – guides for the Rust WebSocket server.
+
+## Building for production
+
+### Client
+Build and bundle the desktop application using Tauri:
+```bash
+cd murmer_client
+npm install
+npm run build         # build web assets
+npm run tauri build   # package native installer
+```
+Generated bundles are placed under `src-tauri/target/release/bundle`.
+
+### Server
+Compile the Rust server in release mode:
+```bash
+cargo build --release
+```
+The optimized binary is available at `murmer_server/target/release/murmer_server`.

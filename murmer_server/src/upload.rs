@@ -1,3 +1,6 @@
+//! HTTP handler for multipart file uploads.
+//!
+//! Exposes `POST /upload` to receive files and store them under the configured upload directory.
 use axum::{
     Json,
     extract::{Multipart, State},

@@ -1,3 +1,6 @@
+//! HTTP handler for setting user roles.
+//!
+//! Exposes `POST /role` to assign roles to users based on their public key (requires `ADMIN_TOKEN`).
 use axum::{
     extract::{Json, State},
     http::StatusCode,
