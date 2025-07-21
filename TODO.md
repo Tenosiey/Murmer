@@ -37,7 +37,7 @@ Use the checkboxes to track progress.
 - [ ] Scheduled voice events / calendar integration
 - [ ] Server invite links
 - [ ] Theme customization (dark/light)
-- [ ] Sanitize uploaded filenames to prevent path traversal
+- [x] Sanitize uploaded filenames to prevent path traversal
 
 ---
 
