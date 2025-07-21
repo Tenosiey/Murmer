@@ -6,7 +6,7 @@
   import { voice, voiceStats } from '$lib/stores/voice';
   import { selectedServer, servers } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
-  import { allUsers } from '$lib/stores/users';
+  import { allUsers, offlineUsers } from '$lib/stores/users';
   import { voiceUsers } from '$lib/stores/voiceUsers';
   import { volume, outputDeviceId } from '$lib/stores/settings';
   import { get } from 'svelte/store';
@@ -369,11 +369,21 @@
   </div>
   <div class="sidebar">
       <h2>Users</h2>
+      <h3>Online</h3>
       <ul>
-        {#each $allUsers as user}
+        {#each $onlineUsers as user}
           <li>
-            <span class="status { $onlineUsers.includes(user) ? 'online' : 'offline' }"></span>
-            <span class:offline={!$onlineUsers.includes(user)}>{user}</span>
+            <span class="status online"></span>
+            <span>{user}</span>
+          </li>
+        {/each}
+      </ul>
+      <h3>Offline</h3>
+      <ul>
+        {#each $offlineUsers as user}
+          <li>
+            <span class="status offline"></span>
+            <span class="offline">{user}</span>
           </li>
         {/each}
       </ul>
@@ -469,6 +479,25 @@
     gap: 0.5rem;
     padding-right: 0.5rem;
     padding-bottom: 0.5rem;
+    scrollbar-width: thin;
+  }
+
+  .messages::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .messages::-webkit-scrollbar-track {
+    background: var(--color-panel);
+  }
+
+  .messages::-webkit-scrollbar-thumb {
+    background: var(--color-accent);
+    border-radius: 4px;
+  }
+
+  .messages::-webkit-scrollbar-thumb:hover {
+    background: var(--color-accent-alt);
   }
 
   .input-row {
