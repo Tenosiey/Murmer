@@ -124,11 +124,26 @@
     background: var(--color-accent-alt);
   }
 
+  .list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
   .list li {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 0.25rem;
     margin-bottom: 0.25rem;
+    padding: 0.4rem;
+    background: #2e2e40;
+    border-radius: 4px;
+  }
+
+  .list li button:first-child {
+    flex-grow: 1;
+    text-align: left;
   }
 
   .header {
