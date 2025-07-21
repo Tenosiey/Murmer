@@ -37,6 +37,23 @@ async fn broadcast_users(state: &Arc<AppState>) {
     }
 }
 
+/// Send the current list of online and known users to a single client.
+async fn send_users(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    let users = state.users.lock().await;
+    let online: Vec<String> = users.iter().cloned().collect();
+    drop(users);
+    let known = state.known_users.lock().await;
+    let all: Vec<String> = known.iter().cloned().collect();
+    drop(known);
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "online-users",
+        "users": online,
+        "all": all,
+    })) {
+        let _ = sender.send(Message::Text(msg)).await;
+    }
+}
+
 /// Broadcast the users currently in the voice channel to all clients.
 async fn broadcast_voice(state: &Arc<AppState>) {
     let v = state.voice_users.lock().await;
@@ -123,7 +140,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     broadcast_voice(&state).await;
     send_all_roles(&state, &mut sender).await;
     send_channels(&state, &mut sender).await;
-    broadcast_users(&state).await;
+    send_users(&state, &mut sender).await;
 
     loop {
         tokio::select! {
