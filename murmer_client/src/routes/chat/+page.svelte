@@ -24,6 +24,18 @@
   let message = '';
   let fileInput: HTMLInputElement;
   let messageInput: HTMLTextAreaElement;
+  let previewUrl: string | null = null;
+
+  function handleFileChange() {
+    const file = fileInput?.files?.[0];
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      previewUrl = null;
+    }
+    if (file) {
+      previewUrl = URL.createObjectURL(file);
+    }
+  }
 
   function autoResize() {
     if (messageInput) {
@@ -153,6 +165,10 @@
       console.error('upload failed', e);
     } finally {
       if (fileInput) fileInput.value = '';
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        previewUrl = null;
+      }
     }
   }
 
@@ -289,7 +305,18 @@
             }
           }}
         ></textarea>
-        <input type="file" bind:this={fileInput} accept="image/*" />
+        <input
+          id="fileInputElem"
+          type="file"
+          class="file-input"
+          bind:this={fileInput}
+          accept="image/*"
+          on:change={handleFileChange}
+        />
+        <label for="fileInputElem" class="file-button">Upload</label>
+        {#if previewUrl}
+          <img src={previewUrl} alt="preview" class="preview" />
+        {/if}
         <button class="send" on:click={send}>Send</button>
         <div class="spacer"></div>
       </div>
@@ -464,6 +491,31 @@
     color: var(--color-text);
     overflow-y: auto;
     max-height: 400px;
+  }
+
+  .file-input {
+    display: none;
+  }
+
+  .file-button {
+    margin-left: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--color-accent);
+    border: none;
+    color: white;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+
+  .file-button:hover {
+    background: var(--color-accent-alt);
+  }
+
+  .preview {
+    margin-left: 0.5rem;
+    max-width: 80px;
+    max-height: 80px;
+    border-radius: 4px;
   }
 
   .send {
