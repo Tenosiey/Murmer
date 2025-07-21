@@ -313,28 +313,47 @@
           accept="image/*"
           on:change={handleFileChange}
         />
-        <label for="fileInputElem" class="file-button" title="Upload image">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
-            stroke="currentColor"
-            width="24"
-            height="24"
-            aria-hidden="true"
+        <div class="controls">
+          <button
+            type="button"
+            class="file-button"
+            title="Upload image"
+            aria-label="Upload image"
+            on:click={() => fileInput.click()}
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
-            />
-          </svg>
-        </label>
-        {#if previewUrl}
-          <img src={previewUrl} alt="preview" class="preview" />
-        {/if}
-        <button class="send" on:click={send}>Send</button>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
+              width="24"
+              height="24"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+              />
+            </svg>
+          </button>
+          {#if previewUrl}
+            <img src={previewUrl} alt="preview" class="preview" />
+          {/if}
+          <button class="send" on:click={send} title="Send message" aria-label="Send message">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="currentColor"
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              aria-hidden="true"
+            >
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+            </svg>
+          </button>
+        </div>
         <div class="spacer"></div>
       </div>
 
@@ -517,7 +536,9 @@
   .file-button,
   .send {
     margin-left: 0.5rem;
-    padding: 0.5rem 1rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
     background: var(--color-accent);
     border: none;
     color: white;
@@ -527,12 +548,16 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 4rem;
   }
 
   .file-button:hover,
   .send:hover {
     background: var(--color-accent-alt);
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
   }
 
   .preview {
