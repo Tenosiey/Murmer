@@ -514,7 +514,8 @@
     display: none;
   }
 
-  .file-button {
+  .file-button,
+  .send {
     margin-left: 0.5rem;
     padding: 0.5rem 1rem;
     background: var(--color-accent);
@@ -522,9 +523,15 @@
     color: white;
     cursor: pointer;
     transition: background 0.2s ease;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 4rem;
   }
 
-  .file-button:hover {
+  .file-button:hover,
+  .send:hover {
     background: var(--color-accent-alt);
   }
 
@@ -535,19 +542,6 @@
     border-radius: 4px;
   }
 
-  .send {
-    margin-left: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: var(--color-accent);
-    border: none;
-    color: white;
-    cursor: pointer;
-    transition: background 0.2s ease;
-  }
-
-  .send:hover {
-    background: var(--color-accent-alt);
-  }
 
   .join-voice {
     position: fixed;
