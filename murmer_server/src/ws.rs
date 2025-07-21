@@ -123,6 +123,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     broadcast_voice(&state).await;
     send_all_roles(&state, &mut sender).await;
     send_channels(&state, &mut sender).await;
+    broadcast_users(&state).await;
 
     loop {
         tokio::select! {
