@@ -1,12 +1,5 @@
 import { writable } from 'svelte/store';
-
-export interface Message {
-  type: string;
-  user: string;
-  text?: string;
-  time?: string;
-  [key: string]: unknown;
-}
+import type { Message } from '../types';
 
 function createChatStore() {
   const { subscribe, update, set } = writable<Message[]>([]);

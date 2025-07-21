@@ -1,19 +1,7 @@
 import { chat } from '../stores/chat';
 import { volume, inputDeviceId } from '../stores/settings';
 import { get } from 'svelte/store';
-import type { Message } from '../stores/chat';
-
-export interface RemotePeer {
-  id: string;
-  stream: MediaStream;
-  stats?: ConnectionStats;
-}
-
-export interface ConnectionStats {
-  rtt: number;
-  jitter: number;
-  strength: number; // 1-5 bars
-}
+import type { Message, RemotePeer, ConnectionStats } from '../types';
 
 /**
  * Handles WebRTC peer connections and signaling for voice chat.
