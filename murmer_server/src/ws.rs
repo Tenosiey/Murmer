@@ -23,11 +23,15 @@ use crate::{AppState, db};
 /// Broadcast the current list of online users to all connected clients.
 async fn broadcast_users(state: &Arc<AppState>) {
     let users = state.users.lock().await;
-    let list: Vec<String> = users.iter().cloned().collect();
+    let online: Vec<String> = users.iter().cloned().collect();
     drop(users);
+    let known = state.known_users.lock().await;
+    let all: Vec<String> = known.iter().cloned().collect();
+    drop(known);
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "online-users",
-        "users": list,
+        "users": online,
+        "all": all,
     })) {
         let _ = state.tx.send(msg);
     }
@@ -178,6 +182,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         {
                                             let mut users = state.users.lock().await;
                                             users.insert(u.to_string());
+                                        }
+                                        {
+                                            let mut known = state.known_users.lock().await;
+                                            known.insert(u.to_string());
                                         }
                                         broadcast_users(&state).await;
                                         user_name = Some(u.to_string());
