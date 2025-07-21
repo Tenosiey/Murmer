@@ -3,6 +3,9 @@ export function normalizeServerUrl(input: string): string {
   if (!/^wss?:\/\//.test(url)) {
     if (/^https?:\/\//.test(url)) {
       url = url.replace(/^http/, 'ws');
+      if (!/\/ws$/.test(url)) {
+        url = url.replace(/\/?$/, '/ws');
+      }
     } else {
       url = `ws://${url.replace(/\/$/, '')}/ws`;
     }

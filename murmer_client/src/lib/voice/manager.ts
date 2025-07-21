@@ -42,6 +42,9 @@ export class VoiceManager {
 
   subscribe(cb: (peers: RemotePeer[]) => void) {
     this.listeners.push(cb);
+    return () => {
+      this.listeners = this.listeners.filter((fn) => fn !== cb);
+    };
   }
 
   private emit(peers: RemotePeer[]) {
