@@ -274,7 +274,7 @@
           </div>
         {/each}
       </div>
-      <div>
+      <div class="input-row">
         <textarea
           bind:value={message}
           bind:this={messageInput}
@@ -290,6 +290,7 @@
         ></textarea>
         <input type="file" bind:this={fileInput} accept="image/*" />
         <button class="send" on:click={send}>Send</button>
+        <div class="spacer"></div>
       </div>
 
       {#if inVoice}
@@ -401,6 +402,17 @@
     gap: 0.5rem;
     padding-right: 0.5rem;
     padding-bottom: 0.5rem;
+  }
+
+  .input-row {
+    display: flex;
+    padding-right: 0.5rem;
+    align-items: flex-end;
+  }
+
+  .spacer {
+    width: 0.5rem;
+    flex-shrink: 0;
   }
 
   .message {
