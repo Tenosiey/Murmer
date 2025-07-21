@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import type { RemotePeer, ConnectionStats } from '../voice/manager';
+import type { RemotePeer, ConnectionStats } from '../types';
 import { VoiceManager } from '../voice/manager';
 
 const peers = writable<RemotePeer[]>([]);

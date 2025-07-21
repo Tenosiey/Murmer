@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
-import { chat, type Message } from './chat';
+import { chat } from './chat';
+import type { Message } from '../types';
 
 function createPingStore() {
   const { subscribe, set } = writable(0);

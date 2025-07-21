@@ -6,6 +6,7 @@
   import { voice, voiceStats } from '$lib/stores/voice';
   import { selectedServer, servers } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
+  import { allUsers } from '$lib/stores/users';
   import { voiceUsers } from '$lib/stores/voiceUsers';
   import { volume, outputDeviceId } from '$lib/stores/settings';
   import { get } from 'svelte/store';
@@ -14,6 +15,7 @@
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import PingDot from '$lib/components/PingDot.svelte';
   import { ping } from '$lib/stores/ping';
+  import { channels } from '$lib/stores/channels';
   import { loadKeyPair, sign } from '$lib/keypair';
   function strength(user: string): number {
     const stats = get(voiceStats)[user];
@@ -22,6 +24,18 @@
   let message = '';
   let fileInput: HTMLInputElement;
   let messageInput: HTMLTextAreaElement;
+  let previewUrl: string | null = null;
+
+  function handleFileChange() {
+    const file = fileInput?.files?.[0];
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      previewUrl = null;
+    }
+    if (file) {
+      previewUrl = URL.createObjectURL(file);
+    }
+  }
 
   function autoResize() {
     if (messageInput) {
@@ -34,8 +48,12 @@
   $: autoResize();
   let inVoice = false;
   let settingsOpen = false;
-  const channels = ['general', 'random'];
   let currentChannel = 'general';
+
+  $: if ($channels.length && !$channels.includes(currentChannel)) {
+    currentChannel = $channels[0];
+    chat.sendRaw({ type: 'join', channel: currentChannel });
+  }
 
   function isCode(text: string): boolean {
     return /^```[\s\S]*```$/.test(text.trim());
@@ -147,6 +165,10 @@
       console.error('upload failed', e);
     } finally {
       if (fileInput) fileInput.value = '';
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        previewUrl = null;
+      }
     }
   }
 
@@ -184,6 +206,12 @@
     goto('/servers');
   }
 
+  function openChannelMenu(event: MouseEvent) {
+    event.preventDefault();
+    const name = prompt('New channel name');
+    if (name) channels.create(name);
+  }
+
   function logout() {
     session.set({ user: null });
     goto('/login');
@@ -218,8 +246,8 @@
 </script>
 
   <div class="page">
-    <div class="channels">
-      {#each channels as ch}
+    <div class="channels" role="navigation" on:contextmenu={openChannelMenu}>
+      {#each $channels as ch}
         <button
           class:active={ch === currentChannel}
           on:click={() => joinChannel(ch)}
@@ -263,7 +291,7 @@
           </div>
         {/each}
       </div>
-      <div>
+      <div class="input-row">
         <textarea
           bind:value={message}
           bind:this={messageInput}
@@ -277,8 +305,56 @@
             }
           }}
         ></textarea>
-        <input type="file" bind:this={fileInput} accept="image/*" />
-        <button class="send" on:click={send}>Send</button>
+        <input
+          id="fileInputElem"
+          type="file"
+          class="file-input"
+          bind:this={fileInput}
+          accept="image/*"
+          on:change={handleFileChange}
+        />
+        <div class="controls">
+          <button
+            type="button"
+            class="file-button"
+            title="Upload image"
+            aria-label="Upload image"
+            on:click={() => fileInput.click()}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
+              width="24"
+              height="24"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+              />
+            </svg>
+          </button>
+          {#if previewUrl}
+            <img src={previewUrl} alt="preview" class="preview" />
+          {/if}
+          <button class="send" on:click={send} title="Send message" aria-label="Send message">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="currentColor"
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              aria-hidden="true"
+            >
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+            </svg>
+          </button>
+        </div>
+        <div class="spacer"></div>
       </div>
 
       {#if inVoice}
@@ -292,10 +368,13 @@
       {/each}
   </div>
   <div class="sidebar">
-      <h2>Online</h2>
+      <h2>Users</h2>
       <ul>
-        {#each $onlineUsers as user}
-          <li><span class="status online"></span>{user}</li>
+        {#each $allUsers as user}
+          <li>
+            <span class="status { $onlineUsers.includes(user) ? 'online' : 'offline' }"></span>
+            <span class:offline={!$onlineUsers.includes(user)}>{user}</span>
+          </li>
         {/each}
       </ul>
       <h2>Voice</h2>
@@ -392,6 +471,17 @@
     padding-bottom: 0.5rem;
   }
 
+  .input-row {
+    display: flex;
+    padding-right: 0.5rem;
+    align-items: flex-end;
+  }
+
+  .spacer {
+    width: 0.5rem;
+    flex-shrink: 0;
+  }
+
   .message {
     display: flex;
     flex-direction: column;
@@ -439,19 +529,44 @@
     max-height: 400px;
   }
 
+  .file-input {
+    display: none;
+  }
+
+  .file-button,
   .send {
     margin-left: 0.5rem;
-    padding: 0.5rem 1rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
     background: var(--color-accent);
     border: none;
     color: white;
     cursor: pointer;
     transition: background 0.2s ease;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
+  .file-button:hover,
   .send:hover {
     background: var(--color-accent-alt);
   }
+
+  .controls {
+    display: flex;
+    align-items: center;
+  }
+
+  .preview {
+    margin-left: 0.5rem;
+    max-width: 80px;
+    max-height: 80px;
+    border-radius: 4px;
+  }
+
 
   .join-voice {
     position: fixed;
@@ -502,8 +617,16 @@
     display: inline-block;
   }
 
-  .status.online {
+  :global(.status.online) {
     background: #22c55e;
+  }
+
+  :global(.status.offline) {
+    background: #6b7280;
+  }
+
+  :global(.offline) {
+    color: #9ca3af;
   }
 
   .status.voice {

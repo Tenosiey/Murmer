@@ -7,6 +7,12 @@ Murmer is a **self-hostable** minimal voice and text chat prototype built with T
 - [Node.js](https://nodejs.org) 22+
 - [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
 
+## Architecture
+The repository contains a Tauri/SvelteKit client and a Rust WebSocket server.
+The client lives under `murmer_client/` while the server code is in
+`murmer_server/`. The provided `docker-compose.yml` starts the server together
+with Postgres.
+
 ## Running the client
 ```bash
 cd murmer_client
@@ -16,8 +22,8 @@ npm run tauri dev
 This launches the desktop app.
 
 ## Running the server
-### Prerequisite
-Docker is required to host a server.
+### Prerequisites
+Docker is required to host the server.
 
 Use Docker Compose to run the server together with Postgres:
 ```bash
@@ -26,6 +32,10 @@ docker compose up --build
 The server exposes a WebSocket endpoint at `ws://localhost:3001/ws`. The client can store multiple server URLs and connect to any of them via the "Servers" screen. Added servers are persisted locally so favorites remain after restart.
 The `DATABASE_URL` used by the server is defined in `docker-compose.yml`.
 If you set the `SERVER_PASSWORD` environment variable in `docker-compose.yml`, the server will require clients to provide that password when connecting.
+
+On first launch the server creates a single text channel named `general`. Users
+can create additional channels as needed, but no other channels are included by
+default.
 
 ### Admin Roles
 
@@ -62,6 +72,10 @@ Uploaded images are stored on disk under an `uploads/` directory. The `/upload` 
 
 ## Docker
 A `docker-compose.yml` runs the Rust server alongside Postgres. The client is run locally without Docker.
+
+## Development
+Run `npm run check` in `murmer_client` to lint Svelte and TypeScript sources.
+Format the server code with `cargo fmt` before committing changes.
 
 ## Notes
 This project is an early prototype demonstrating login, server selection, text chat and a stub for voice communication via WebRTC.

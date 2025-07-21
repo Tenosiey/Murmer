@@ -1,25 +1,29 @@
 import { writable } from 'svelte/store';
-
-export interface Message {
-  type: string;
-  user: string;
-  text?: string;
-  time?: string;
-  [key: string]: unknown;
-}
+import type { Message } from '../types';
 
 function createChatStore() {
   const { subscribe, update, set } = writable<Message[]>([]);
   let socket: WebSocket | null = null;
   let currentUrl: string | null = null;
-  const handlers: Record<string, (msg: Message) => void> = {};
+  const handlers: Record<string, Array<(msg: Message) => void>> = {};
 
   function on(type: string, cb: (msg: Message) => void) {
-    handlers[type] = cb;
+    if (!handlers[type]) {
+      handlers[type] = [];
+    }
+    handlers[type].push(cb);
   }
 
-  function off(type: string) {
-    delete handlers[type];
+  function off(type: string, cb?: (msg: Message) => void) {
+    if (!handlers[type]) return;
+    if (cb) {
+      handlers[type] = handlers[type].filter((h) => h !== cb);
+      if (handlers[type].length === 0) {
+        delete handlers[type];
+      }
+    } else {
+      delete handlers[type];
+    }
   }
 
   function connect(url: string, onOpen?: () => void) {
@@ -44,7 +48,9 @@ function createChatStore() {
           if (!msg.time) msg.time = new Date().toLocaleTimeString();
           update((m) => [...m, msg]);
         } else if (msg.type && handlers[msg.type]) {
-          handlers[msg.type](msg);
+          for (const handler of handlers[msg.type]) {
+            handler(msg);
+          }
         }
       } catch (_) {}
     });

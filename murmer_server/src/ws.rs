@@ -23,13 +23,34 @@ use crate::{AppState, db};
 /// Broadcast the current list of online users to all connected clients.
 async fn broadcast_users(state: &Arc<AppState>) {
     let users = state.users.lock().await;
-    let list: Vec<String> = users.iter().cloned().collect();
+    let online: Vec<String> = users.iter().cloned().collect();
     drop(users);
+    let known = state.known_users.lock().await;
+    let all: Vec<String> = known.iter().cloned().collect();
+    drop(known);
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "online-users",
-        "users": list,
+        "users": online,
+        "all": all,
     })) {
         let _ = state.tx.send(msg);
+    }
+}
+
+/// Send the current list of online and known users to a single client.
+async fn send_users(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    let users = state.users.lock().await;
+    let online: Vec<String> = users.iter().cloned().collect();
+    drop(users);
+    let known = state.known_users.lock().await;
+    let all: Vec<String> = known.iter().cloned().collect();
+    drop(known);
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "online-users",
+        "users": online,
+        "all": all,
+    })) {
+        let _ = sender.send(Message::Text(msg)).await;
     }
 }
 
@@ -73,6 +94,27 @@ async fn send_all_roles(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket,
     }
 }
 
+/// Send the list of available channels to a client.
+async fn send_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    let list = db::get_channels(&state.db).await;
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "channel-list",
+        "channels": list,
+    })) {
+        let _ = sender.send(Message::Text(msg)).await;
+    }
+}
+
+/// Broadcast to all clients that a new channel was created.
+async fn broadcast_new_channel(state: &Arc<AppState>, name: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "channel-add",
+        "channel": name,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
 /// Retrieve the broadcast channel for the given chat room, creating it if necessary.
 async fn get_or_create_channel(state: &Arc<AppState>, name: &str) -> broadcast::Sender<String> {
     let mut channels = state.channels.lock().await;
@@ -97,6 +139,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     db::send_all_history(&state.db, &mut sender).await;
     broadcast_voice(&state).await;
     send_all_roles(&state, &mut sender).await;
+    send_channels(&state, &mut sender).await;
+    send_users(&state, &mut sender).await;
 
     loop {
         tokio::select! {
@@ -157,6 +201,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             let mut users = state.users.lock().await;
                                             users.insert(u.to_string());
                                         }
+                                        {
+                                            let mut known = state.known_users.lock().await;
+                                            known.insert(u.to_string());
+                                        }
                                         broadcast_users(&state).await;
                                         user_name = Some(u.to_string());
                                         if let Some(pk) = v.get("publicKey").and_then(|p| p.as_str()) {
@@ -185,6 +233,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     channel = ch.to_string();
                                     chan_tx = get_or_create_channel(&state, &channel).await;
                                     chan_rx = chan_tx.subscribe();
+                                }
+                            }
+                            "create-channel" => {
+                                if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    if let Err(e) = db::add_channel(&state.db, ch).await {
+                                        error!("db add channel error: {e}");
+                                    } else {
+                                        get_or_create_channel(&state, ch).await;
+                                        broadcast_new_channel(&state, ch).await;
+                                    }
                                 }
                             }
                             "chat" => {
