@@ -1,5 +1,7 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import type { Message } from '../types';
+import { session } from './session';
+import { notify } from '../notify';
 
 function createChatStore() {
   const { subscribe, update, set } = writable<Message[]>([]);
@@ -47,6 +49,10 @@ function createChatStore() {
         if (msg.type === 'chat') {
           if (!msg.time) msg.time = new Date().toLocaleTimeString();
           update((m) => [...m, msg]);
+          const current = get(session).user;
+          if (!current || msg.user !== current) {
+            notify('New message', `${msg.user}: ${msg.text ?? ''}`);
+          }
         } else if (msg.type && handlers[msg.type]) {
           for (const handler of handlers[msg.type]) {
             handler(msg);
