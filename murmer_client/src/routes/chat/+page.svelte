@@ -529,15 +529,15 @@
     display: inline-block;
   }
 
-  .status.online {
+  :global(.status.online) {
     background: #22c55e;
   }
 
-  .status.offline {
+  :global(.status.offline) {
     background: #6b7280;
   }
 
-  .offline {
+  :global(.offline) {
     color: #9ca3af;
   }
 
