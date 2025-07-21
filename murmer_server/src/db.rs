@@ -46,7 +46,6 @@ CREATE TABLE IF NOT EXISTS channels (
     name TEXT PRIMARY KEY
 );
 INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
-INSERT INTO channels (name) VALUES ('random') ON CONFLICT DO NOTHING;
 "#,
         )
         .await

@@ -27,6 +27,10 @@ The server exposes a WebSocket endpoint at `ws://localhost:3001/ws`. The client 
 The `DATABASE_URL` used by the server is defined in `docker-compose.yml`.
 If you set the `SERVER_PASSWORD` environment variable in `docker-compose.yml`, the server will require clients to provide that password when connecting.
 
+On first launch the server creates a single text channel named `general`. Users
+can create additional channels as needed, but no other channels are included by
+default.
+
 ### Admin Roles
 
 The server can assign custom roles to users. To enable this feature set the `ADMIN_TOKEN`
