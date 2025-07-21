@@ -469,6 +469,25 @@
     gap: 0.5rem;
     padding-right: 0.5rem;
     padding-bottom: 0.5rem;
+    scrollbar-width: thin;
+  }
+
+  .messages::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .messages::-webkit-scrollbar-track {
+    background: var(--color-panel);
+  }
+
+  .messages::-webkit-scrollbar-thumb {
+    background: var(--color-accent);
+    border-radius: 4px;
+  }
+
+  .messages::-webkit-scrollbar-thumb:hover {
+    background: var(--color-accent-alt);
   }
 
   .input-row {
