@@ -25,6 +25,7 @@ use tracing::info;
 /// - `channels`: per-text-channel broadcast senders.
 /// - `db`: PostgreSQL client for persisting chat history.
 /// - `users`: set of currently connected chat users.
+/// - `known_users`: set of all users that have ever joined while the server is running.
 /// - `voice_users`: set of users active in voice chat.
 /// - `upload_dir`: directory where uploaded files are stored.
 pub struct AppState {
@@ -32,6 +33,7 @@ pub struct AppState {
     pub channels: Arc<Mutex<HashMap<String, broadcast::Sender<String>>>>,
     pub db: Arc<tokio_postgres::Client>,
     pub users: Arc<Mutex<HashSet<String>>>,
+    pub known_users: Arc<Mutex<HashSet<String>>>,
     pub voice_users: Arc<Mutex<HashSet<String>>>,
     pub roles: Arc<Mutex<HashMap<String, String>>>,
     pub user_keys: Arc<Mutex<HashMap<String, String>>>,
@@ -64,6 +66,7 @@ async fn main() {
         channels: Arc::new(Mutex::new(HashMap::new())),
         db: Arc::new(db_client),
         users: Arc::new(Mutex::new(HashSet::new())),
+        known_users: Arc::new(Mutex::new(HashSet::new())),
         voice_users: Arc::new(Mutex::new(HashSet::new())),
         roles: Arc::new(Mutex::new(HashMap::new())),
         user_keys: Arc::new(Mutex::new(HashMap::new())),

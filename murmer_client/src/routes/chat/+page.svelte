@@ -6,6 +6,7 @@
   import { voice, voiceStats } from '$lib/stores/voice';
   import { selectedServer, servers } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
+  import { allUsers } from '$lib/stores/users';
   import { voiceUsers } from '$lib/stores/voiceUsers';
   import { volume, outputDeviceId } from '$lib/stores/settings';
   import { get } from 'svelte/store';
@@ -303,10 +304,13 @@
       {/each}
   </div>
   <div class="sidebar">
-      <h2>Online</h2>
+      <h2>Users</h2>
       <ul>
-        {#each $onlineUsers as user}
-          <li><span class="status online"></span>{user}</li>
+        {#each $allUsers as user}
+          <li>
+            <span class="status { $onlineUsers.includes(user) ? 'online' : 'offline' }"></span>
+            <span class:offline={!$onlineUsers.includes(user)}>{user}</span>
+          </li>
         {/each}
       </ul>
       <h2>Voice</h2>
@@ -515,6 +519,14 @@
 
   .status.online {
     background: #22c55e;
+  }
+
+  .status.offline {
+    background: #6b7280;
+  }
+
+  .offline {
+    color: #9ca3af;
   }
 
   .status.voice {
