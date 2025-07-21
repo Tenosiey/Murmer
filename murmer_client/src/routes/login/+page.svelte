@@ -18,11 +18,11 @@
   }
 </script>
 
-<div class="login-container">
+<form class="login-container" on:submit|preventDefault={login}>
   <h1>Login</h1>
-  <input bind:value={username} placeholder="Username" />
-  <button on:click={login}>Login</button>
-</div>
+  <input bind:value={username} placeholder="Username" autofocus />
+  <button type="submit">Login</button>
+</form>
 
 <style>
   .login-container {

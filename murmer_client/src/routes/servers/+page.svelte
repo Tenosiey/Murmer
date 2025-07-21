@@ -61,12 +61,12 @@
     </div>
   </div>
   <SettingsModal open={settingsOpen} close={closeSettings} />
-  <div class="add">
-    <input bind:value={newName} placeholder="Server name" />
+  <form class="add" on:submit|preventDefault={add}>
+    <input bind:value={newName} placeholder="Server name" autofocus />
     <input bind:value={newServer} placeholder="host:port or ws://url" />
     <input type="password" bind:value={newPassword} placeholder="Password (optional)" />
-    <button on:click={add}>Add</button>
-  </div>
+    <button type="submit">Add</button>
+  </form>
   <ul class="list">
     {#each $servers as server}
       <li>

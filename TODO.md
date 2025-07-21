@@ -17,6 +17,7 @@ Use the checkboxes to track progress.
 - [ ] Direct messages between users
 - [ ] Slash commands for quick actions
 - [ ] Ephemeral messages that auto-delete
+- [ ] Load chat history only for the selected channel
 
 ### 🎤 Voice Features
 
@@ -36,6 +37,7 @@ Use the checkboxes to track progress.
 - [ ] Scheduled voice events / calendar integration
 - [ ] Server invite links
 - [ ] Theme customization (dark/light)
+- [ ] Sanitize uploaded filenames to prevent path traversal
 
 ---
 
@@ -50,7 +52,6 @@ _(no known bugs yet)_
 - [ ] Add Screen Share / Game Share function
 - [ ] AI-powered chat summarization
 - [ ] Proximity voice channels for events
-- [ ] VR/AR meeting spaces
 - [ ] Offline LAN party mode without Internet
 
 ---
