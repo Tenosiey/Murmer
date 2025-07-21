@@ -313,7 +313,7 @@
           accept="image/*"
           on:change={handleFileChange}
         />
-        <label for="fileInputElem" class="file-button">Upload</label>
+        <label for="fileInputElem" class="file-button" title="Upload image">🖼️</label>
         {#if previewUrl}
           <img src={previewUrl} alt="preview" class="preview" />
         {/if}
