@@ -40,6 +40,30 @@
     color: var(--color-accent-alt);
   }
 
+  /* Global scrollbar styling */
+  :global(*) {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-accent) var(--color-panel);
+  }
+
+  :global(*::-webkit-scrollbar) {
+    width: 8px;
+    height: 8px;
+  }
+
+  :global(*::-webkit-scrollbar-track) {
+    background: var(--color-panel);
+  }
+
+  :global(*::-webkit-scrollbar-thumb) {
+    background: var(--color-accent);
+    border-radius: 4px;
+  }
+
+  :global(*::-webkit-scrollbar-thumb:hover) {
+    background: var(--color-accent-alt);
+  }
+
   .version {
     position: fixed;
     bottom: 0.5rem;
