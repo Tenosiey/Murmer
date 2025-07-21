@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 import { chat } from './chat';
-import type { Message } from './chat';
+import type { Message } from '../types';
 import { onlineUsers } from './online';
 
 function createAllUserStore() {

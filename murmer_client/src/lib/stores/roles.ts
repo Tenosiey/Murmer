@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
 import { chat } from './chat';
-import type { Message } from './chat';
+import type { Message } from '../types';
 
 function createRoleStore() {
   const { subscribe, update, set } = writable<Record<string, string>>({});
