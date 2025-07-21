@@ -11,14 +11,31 @@ Use the checkboxes to track progress.
 
 - [ ] Support Markdown formatting in text chat
 - [ ] Enable deleting messages
+- [ ] Support editing messages
+- [ ] Add reactions with emojis
+- [ ] Pin important messages in a channel
+- [ ] Direct messages between users
+- [ ] Slash commands for quick actions
+- [ ] Ephemeral messages that auto-delete
 
 ### 🎤 Voice Features
 
 - [ ] Add quality bars to display connection strength (like Discord)
+- [ ] Push-to-talk and voice activity detection
+- [ ] Noise suppression and echo cancellation
+- [ ] Optional spatial/3D audio
+- [ ] Record and play back voice messages
+- [ ] Real-time transcription of voice to text
 
 ### 🛠️ Other Features
 
 - [ ] Implement auto updates
+- [ ] Desktop notifications for @mentions
+- [ ] Search chat history
+- [ ] Customizable user roles & permissions
+- [ ] Scheduled voice events / calendar integration
+- [ ] Server invite links
+- [ ] Theme customization (dark/light)
 
 ---
 
@@ -31,6 +48,10 @@ _(no known bugs yet)_
 ## 💡 Future Ideas
 
 - [ ] Add Screen Share / Game Share function
+- [ ] AI-powered chat summarization
+- [ ] Proximity voice channels for events
+- [ ] VR/AR meeting spaces
+- [ ] Offline LAN party mode without Internet
 
 ---
 
