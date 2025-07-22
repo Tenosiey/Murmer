@@ -2,6 +2,13 @@
 
 Murmer is a **self-hostable** minimal voice and text chat prototype built with Tauri and SvelteKit.
 
+## Overview
+* Persistent text chat backed by PostgreSQL
+* Experimental voice chat using WebRTC
+* User roles with customizable colors
+* Image uploads stored on the server
+* Cross-platform client powered by Tauri
+
 ## Prerequisites
 - [Rust](https://www.rust-lang.org/tools/install)
 - [Node.js](https://nodejs.org) 22+
@@ -91,8 +98,15 @@ Format the server code with `cargo fmt` before committing changes.
    npm install
    npm run tauri build
    ```
-
    The built installer can be found in `murmer_client/src-tauri/target/release/bundle`.
+4. Build the server executable (optional):
+
+   ```bash
+   cd ../murmer_server
+   cargo build --release
+   ```
+
+   The binary will be at `murmer_server/target/release/murmer_server`.
 
 ## Contributing
 
