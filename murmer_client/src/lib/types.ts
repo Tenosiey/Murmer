@@ -20,3 +20,8 @@ export interface ConnectionStats {
   jitter: number;
   strength: number;
 }
+
+export interface RoleInfo {
+  role: string;
+  color?: string;
+}

@@ -18,7 +18,10 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{error, info};
 
-use crate::{AppState, db};
+use crate::{
+    AppState, db,
+    roles::{RoleInfo, default_color},
+};
 
 /// Broadcast the current list of online users to all connected clients.
 async fn broadcast_users(state: &Arc<AppState>) {
@@ -68,11 +71,12 @@ async fn broadcast_voice(state: &Arc<AppState>) {
 }
 
 /// Broadcast a user's role to all connected clients.
-async fn broadcast_role(state: &Arc<AppState>, user: &str, role: &str) {
+async fn broadcast_role(state: &Arc<AppState>, user: &str, info: &RoleInfo) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "role-update",
         "user": user,
-        "role": role,
+        "role": info.role,
+        "color": info.color,
     })) {
         let _ = state.tx.send(msg);
     }
@@ -81,11 +85,12 @@ async fn broadcast_role(state: &Arc<AppState>, user: &str, role: &str) {
 /// Send all known roles to a newly connected client.
 async fn send_all_roles(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let roles = state.roles.lock().await.clone();
-    for (user, role) in roles {
+    for (user, info) in roles {
         if let Ok(msg) = serde_json::to_string(&serde_json::json!({
             "type": "role-update",
             "user": user,
-            "role": role,
+            "role": info.role,
+            "color": info.color,
         })) {
             if sender.send(Message::Text(msg)).await.is_err() {
                 break;
@@ -212,12 +217,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                 let mut user_keys = state.user_keys.lock().await;
                                                 user_keys.insert(u.to_string(), pk.to_string());
                                             }
-                                            if let Some(role) = db::get_role(&state.db, pk).await {
+                                            if let Some((role, color)) = db::get_role(&state.db, pk).await {
+                                                let info = RoleInfo { role: role.clone(), color: color.or_else(|| default_color(&role)) };
                                                 {
                                                     let mut roles = state.roles.lock().await;
-                                                    roles.insert(u.to_string(), role.clone());
+                                                    roles.insert(u.to_string(), info.clone());
                                                 }
-                                                broadcast_role(&state, u, &role).await;
+                                                broadcast_role(&state, u, &info).await;
                                             }
                                         }
                                     }
