@@ -17,10 +17,13 @@
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { loadKeyPair, sign } from '$lib/keypair';
-  function strength(user: string): number {
-    const stats = get(voiceStats)[user];
-    return stats ? stats.strength : 0;
+  function pingToStrength(ms: number): number {
+    return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
   }
+
+  let serverStrength = 0;
+  $: serverStrength = pingToStrength($ping);
+
   let message = '';
   let fileInput: HTMLInputElement;
   let messageInput: HTMLTextAreaElement;
@@ -297,6 +300,7 @@
         <div class="actions">
           <span class="user">{$session.user}</span>
           <PingDot ping={$ping} />
+          <ConnectionBars strength={serverStrength} />
           <button class="icon" on:click={openSettings} title="Settings">⚙️</button>
           <button class="icon" on:click={leaveServer} title="Leave Server">⬅️</button>
           <button class="icon" on:click={logout} title="Logout">🚪</button>
@@ -463,9 +467,7 @@
                 >{$roles[user].role}</span
               >
             {/if}
-            {#if user !== $session.user}
-              <ConnectionBars strength={strength(user)} />
-            {/if}
+            <ConnectionBars strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)} />
           </li>
         {/each}
       </ul>
