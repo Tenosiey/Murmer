@@ -40,7 +40,8 @@ pub async fn init(db_url: &str) -> Client {
 );
 CREATE TABLE IF NOT EXISTS roles (
     public_key TEXT PRIMARY KEY,
-    role TEXT NOT NULL
+    role TEXT NOT NULL,
+    color TEXT
 );
 CREATE TABLE IF NOT EXISTS channels (
     name TEXT PRIMARY KEY
@@ -52,66 +53,94 @@ INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
         .unwrap();
 
     client
+        .batch_execute("ALTER TABLE roles ADD COLUMN IF NOT EXISTS color TEXT;")
+        .await
+        .ok();
+
+    client
 }
 
 use axum::extract::ws::{Message, WebSocket};
 use futures::SinkExt;
+use serde_json::Value;
+use tracing::error;
 
-/// Send all messages from the given channel over the provided WebSocket.
+/// Fetch a slice of messages from the database.
+pub async fn fetch_history(
+    db: &Client,
+    channel: &str,
+    before: Option<i64>,
+    limit: i64,
+) -> Result<Vec<(i64, String)>, tokio_postgres::Error> {
+    let rows = if let Some(id) = before {
+        let id32 = id as i32;
+        db.query(
+            "SELECT id::bigint, content FROM messages WHERE channel = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
+            &[&channel, &id32, &limit],
+        )
+        .await?
+    } else {
+        db.query(
+            "SELECT id::bigint, content FROM messages WHERE channel = $1 ORDER BY id DESC LIMIT $2",
+            &[&channel, &limit],
+        )
+        .await?
+    };
+    Ok(rows
+        .into_iter()
+        .map(|row| (row.get::<_, i64>(0), row.get(1)))
+        .collect())
+}
+
+/// Send a slice of messages over the WebSocket as a `history` payload.
 pub async fn send_history(
     db: &Client,
     sender: &mut futures::stream::SplitSink<WebSocket, Message>,
     channel: &str,
+    before: Option<i64>,
+    limit: i64,
 ) {
-    if let Ok(rows) = db
-        .query(
-            "SELECT content FROM messages WHERE channel = $1 ORDER BY id",
-            &[&channel],
-        )
-        .await
-    {
-        for row in rows {
-            let content: String = row.get(0);
-            if sender.send(Message::Text(content.into())).await.is_err() {
-                break;
+    match fetch_history(db, channel, before, limit).await {
+        Ok(rows) => {
+            let mut msgs = Vec::new();
+            for (id, content) in rows.into_iter().rev() {
+                if let Ok(mut val) = serde_json::from_str::<Value>(&content) {
+                    val["id"] = Value::from(id);
+                    msgs.push(val);
+                }
+            }
+            if !msgs.is_empty() {
+                let payload = serde_json::json!({"type": "history", "messages": msgs});
+                let _ = sender.send(Message::Text(payload.to_string().into())).await;
             }
         }
-    }
-}
-
-/// Send the full message history across all channels.
-pub async fn send_all_history(
-    db: &Client,
-    sender: &mut futures::stream::SplitSink<WebSocket, Message>,
-) {
-    if let Ok(rows) = db
-        .query("SELECT content FROM messages ORDER BY id", &[])
-        .await
-    {
-        for row in rows {
-            let content: String = row.get(0);
-            if sender.send(Message::Text(content.into())).await.is_err() {
-                break;
-            }
-        }
+        Err(e) => error!("db history error: {e}"),
     }
 }
 
 /// Get the role for a user by public key, if any.
-pub async fn get_role(db: &Client, key: &str) -> Option<String> {
-    db.query_opt("SELECT role FROM roles WHERE public_key = $1", &[&key])
-        .await
-        .ok()
-        .flatten()
-        .map(|row| row.get(0))
+pub async fn get_role(db: &Client, key: &str) -> Option<(String, Option<String>)> {
+    db.query_opt(
+        "SELECT role, color FROM roles WHERE public_key = $1",
+        &[&key],
+    )
+    .await
+    .ok()
+    .flatten()
+    .map(|row| (row.get(0), row.get(1)))
 }
 
 /// Insert or update a user's role.
-pub async fn set_role(db: &Client, key: &str, role: &str) -> Result<(), tokio_postgres::Error> {
+pub async fn set_role(
+    db: &Client,
+    key: &str,
+    role: &str,
+    color: Option<&str>,
+) -> Result<(), tokio_postgres::Error> {
     db.execute(
-        "INSERT INTO roles (public_key, role) VALUES ($1, $2) \
-        ON CONFLICT (public_key) DO UPDATE SET role = EXCLUDED.role",
-        &[&key, &role],
+        "INSERT INTO roles (public_key, role, color) VALUES ($1, $2, $3) \
+        ON CONFLICT (public_key) DO UPDATE SET role = EXCLUDED.role, color = EXCLUDED.color",
+        &[&key, &role, &color],
     )
     .await
     .map(|_| ())

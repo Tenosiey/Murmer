@@ -13,6 +13,7 @@
 //! Run with `cargo run` or via Docker Compose (`docker compose up --build`).
 mod admin;
 mod db;
+mod roles;
 mod upload;
 mod ws;
 
@@ -20,6 +21,7 @@ use axum::{
     Router,
     routing::{get, post},
 };
+use roles::RoleInfo;
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -48,7 +50,7 @@ pub struct AppState {
     pub users: Arc<Mutex<HashSet<String>>>,
     pub known_users: Arc<Mutex<HashSet<String>>>,
     pub voice_users: Arc<Mutex<HashSet<String>>>,
-    pub roles: Arc<Mutex<HashMap<String, String>>>,
+    pub roles: Arc<Mutex<HashMap<String, RoleInfo>>>,
     pub user_keys: Arc<Mutex<HashMap<String, String>>>,
     pub upload_dir: PathBuf,
     pub password: Option<String>,

@@ -16,9 +16,12 @@ use futures::{SinkExt, StreamExt, stream::SplitSink};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
-use crate::{AppState, db};
+use crate::{
+    AppState, db,
+    roles::{RoleInfo, default_color},
+};
 
 /// Broadcast the current list of online users to all connected clients.
 async fn broadcast_users(state: &Arc<AppState>) {
@@ -68,11 +71,12 @@ async fn broadcast_voice(state: &Arc<AppState>) {
 }
 
 /// Broadcast a user's role to all connected clients.
-async fn broadcast_role(state: &Arc<AppState>, user: &str, role: &str) {
+async fn broadcast_role(state: &Arc<AppState>, user: &str, info: &RoleInfo) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "role-update",
         "user": user,
-        "role": role,
+        "role": info.role,
+        "color": info.color,
     })) {
         let _ = state.tx.send(msg);
     }
@@ -81,11 +85,12 @@ async fn broadcast_role(state: &Arc<AppState>, user: &str, role: &str) {
 /// Send all known roles to a newly connected client.
 async fn send_all_roles(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let roles = state.roles.lock().await.clone();
-    for (user, role) in roles {
+    for (user, info) in roles {
         if let Ok(msg) = serde_json::to_string(&serde_json::json!({
             "type": "role-update",
             "user": user,
-            "role": role,
+            "role": info.role,
+            "color": info.color,
         })) {
             if sender.send(Message::Text(msg)).await.is_err() {
                 break;
@@ -136,12 +141,6 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     let mut authenticated = state.password.is_none();
 
-    db::send_history(&state.db, &mut sender, &channel).await;
-    broadcast_voice(&state).await;
-    send_all_roles(&state, &mut sender).await;
-    send_channels(&state, &mut sender).await;
-    send_users(&state, &mut sender).await;
-
     loop {
         tokio::select! {
             Some(result) = receiver.next() => {
@@ -149,9 +148,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     Ok(Message::Text(t)) => t,
                     _ => break,
                 };
-                info!("Received message: {text}");
                 if let Ok(mut v) = serde_json::from_str::<Value>(&text) {
                     if let Some(t) = v.get("type").and_then(|t| t.as_str()) {
+                        if t.starts_with("voice-") {
+                            debug!("Received voice message: {t}");
+                        } else {
+                            info!("Received message: {text}");
+                        }
                         if !authenticated && t != "presence" {
                             let _ = sender
                                 .send(Message::Text("{\"type\":\"error\",\"message\":\"unauthenticated\"}".into()))
@@ -212,14 +215,20 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                 let mut user_keys = state.user_keys.lock().await;
                                                 user_keys.insert(u.to_string(), pk.to_string());
                                             }
-                                            if let Some(role) = db::get_role(&state.db, pk).await {
+                                            if let Some((role, color)) = db::get_role(&state.db, pk).await {
+                                                let info = RoleInfo { role: role.clone(), color: color.or_else(|| default_color(&role)) };
                                                 {
                                                     let mut roles = state.roles.lock().await;
-                                                    roles.insert(u.to_string(), role.clone());
+                                                    roles.insert(u.to_string(), info.clone());
                                                 }
-                                                broadcast_role(&state, u, &role).await;
+                                                broadcast_role(&state, u, &info).await;
                                             }
                                         }
+                                        send_all_roles(&state, &mut sender).await;
+                                        send_channels(&state, &mut sender).await;
+                                        send_users(&state, &mut sender).await;
+                                        broadcast_voice(&state).await;
+                                        db::send_history(&state.db, &mut sender, &channel, None, 50).await;
                                     }
                                 } else {
                                     let _ = sender
@@ -233,8 +242,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     channel = ch.to_string();
                                     chan_tx = get_or_create_channel(&state, &channel).await;
                                     chan_rx = chan_tx.subscribe();
-                                    db::send_history(&state.db, &mut sender, &channel).await;
+                                    db::send_history(&state.db, &mut sender, &channel, None, 50).await;
                                 }
+                            }
+                            "load-history" => {
+                                let before = v.get("before").and_then(|b| b.as_i64());
+                                let limit = v.get("limit").and_then(|l| l.as_i64()).unwrap_or(50);
+                                db::send_history(&state.db, &mut sender, &channel, before, limit).await;
                             }
                             "create-channel" => {
                                 if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
@@ -249,17 +263,22 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             "chat" => {
                                 v["channel"] = Value::String(channel.clone());
                                 let out = serde_json::to_string(&v).unwrap_or_else(|_| text.to_string());
-                                if let Err(e) = state
+                                match state
                                     .db
-                                    .execute(
-                                        "INSERT INTO messages (channel, content) VALUES ($1, $2)",
+                                    .query_one(
+                                        "INSERT INTO messages (channel, content) VALUES ($1, $2) RETURNING id::bigint",
                                         &[&channel, &out],
                                     )
                                     .await
                                 {
-                                    error!("db insert error: {e}");
+                                    Ok(row) => {
+                                        let id: i64 = row.get(0);
+                                        v["id"] = Value::from(id);
+                                        let out_with_id = serde_json::to_string(&v).unwrap_or_else(|_| out.clone());
+                                        let _ = chan_tx.send(out_with_id);
+                                    }
+                                    Err(e) => error!("db insert error: {e}"),
                                 }
-                                let _ = chan_tx.send(out);
                             }
                             "ping" => {
                                 let id = v.get("id").cloned().unwrap_or(Value::Null);

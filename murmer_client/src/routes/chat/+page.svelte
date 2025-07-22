@@ -17,10 +17,13 @@
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { loadKeyPair, sign } from '$lib/keypair';
-  function strength(user: string): number {
-    const stats = get(voiceStats)[user];
-    return stats ? stats.strength : 0;
+  function pingToStrength(ms: number): number {
+    return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
   }
+
+  let serverStrength = 0;
+  $: serverStrength = pingToStrength($ping);
+
   let message = '';
   let fileInput: HTMLInputElement;
   let messageInput: HTMLTextAreaElement;
@@ -234,13 +237,47 @@
     }
   }
   let lastLength = 0;
+  let loadingHistory = false;
+  let prevHeight = 0;
+
+  function earliestId(): number | null {
+    let min: number | null = null;
+    for (const m of $chat) {
+      if ((m.channel ?? 'general') === currentChannel && typeof m.id === 'number') {
+        if (min === null || m.id! < min) min = m.id as number;
+      }
+    }
+    return min;
+  }
+
+  function onScroll() {
+    if (!messagesContainer || loadingHistory) return;
+    if (messagesContainer.scrollTop < 100) {
+      const id = earliestId();
+      if (id !== null && id > 1) {
+        loadingHistory = true;
+        prevHeight = messagesContainer.scrollHeight;
+        chat.loadHistory(currentChannel, id);
+      }
+    }
+  }
+
+  chat.on('history', async () => {
+    await tick();
+    if (messagesContainer) {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight - prevHeight;
+    }
+    loadingHistory = false;
+  });
 
   afterUpdate(() => {
     if (messagesContainer) {
       const filteredLength = $chat.filter(m => (m.channel ?? 'general') === currentChannel).length;
       if (filteredLength !== lastLength) {
         lastLength = filteredLength;
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        if (!loadingHistory) {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
       }
     }
   });
@@ -263,19 +300,22 @@
         <div class="actions">
           <span class="user">{$session.user}</span>
           <PingDot ping={$ping} />
+          <ConnectionBars strength={serverStrength} />
           <button class="icon" on:click={openSettings} title="Settings">⚙️</button>
           <button class="icon" on:click={leaveServer} title="Leave Server">⬅️</button>
           <button class="icon" on:click={logout} title="Logout">🚪</button>
         </div>
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
-      <div class="messages" bind:this={messagesContainer}>
+      <div class="messages" bind:this={messagesContainer} on:scroll={onScroll}>
         {#each $chat.filter(m => (m.channel ?? 'general') === currentChannel) as msg}
           <div class="message">
             <span class="timestamp">{msg.time}</span>
             <span class="username">{msg.user}</span>
-            {#if $roles[msg.user]}
-              <span class="role">{$roles[msg.user]}</span>
+            {#if msg.user && $roles[msg.user]}
+              <span class="role" style={$roles[msg.user].color ? `color: ${$roles[msg.user].color}` : ''}>
+                {$roles[msg.user].role}
+              </span>
             {/if}
             <span class="content">
               {#if msg.text}
@@ -375,7 +415,18 @@
         {#each $onlineUsers as user}
           <li>
             <span class="status online"></span>
-            <span>{user}</span>
+            <span
+              class="username"
+              style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
+              >{user}</span
+            >
+            {#if $roles[user]}
+              <span
+                class="role"
+                style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
+                >{$roles[user].role}</span
+              >
+            {/if}
           </li>
         {/each}
       </ul>
@@ -384,7 +435,18 @@
         {#each $offlineUsers as user}
           <li>
             <span class="status offline"></span>
-            <span class="offline">{user}</span>
+            <span
+              class="username"
+              style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
+              >{user}</span
+            >
+            {#if $roles[user]}
+              <span
+                class="role"
+                style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
+                >{$roles[user].role}</span
+              >
+            {/if}
           </li>
         {/each}
       </ul>
@@ -393,10 +455,19 @@
         {#each $voiceUsers as user}
           <li>
             <span class="status voice"></span>
-            <span>{user}</span>
-            {#if user !== $session.user}
-              <ConnectionBars strength={strength(user)} />
+            <span
+              class="username"
+              style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
+              >{user}</span
+            >
+            {#if $roles[user]}
+              <span
+                class="role"
+                style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
+                >{$roles[user].role}</span
+              >
             {/if}
+            <ConnectionBars strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)} />
           </li>
         {/each}
       </ul>
@@ -533,7 +604,6 @@
   .role {
     margin-left: 0.25rem;
     font-size: 0.75rem;
-    color: #f97316;
   }
 
   .content {
