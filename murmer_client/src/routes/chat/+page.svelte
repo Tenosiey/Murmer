@@ -411,7 +411,18 @@
         {#each $onlineUsers as user}
           <li>
             <span class="status online"></span>
-            <span>{user}</span>
+            <span
+              class="username"
+              style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
+              >{user}</span
+            >
+            {#if $roles[user]}
+              <span
+                class="role"
+                style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
+                >{$roles[user].role}</span
+              >
+            {/if}
           </li>
         {/each}
       </ul>
@@ -420,7 +431,18 @@
         {#each $offlineUsers as user}
           <li>
             <span class="status offline"></span>
-            <span class="offline">{user}</span>
+            <span
+              class="username"
+              style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
+              >{user}</span
+            >
+            {#if $roles[user]}
+              <span
+                class="role"
+                style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
+                >{$roles[user].role}</span
+              >
+            {/if}
           </li>
         {/each}
       </ul>
@@ -429,7 +451,18 @@
         {#each $voiceUsers as user}
           <li>
             <span class="status voice"></span>
-            <span>{user}</span>
+            <span
+              class="username"
+              style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
+              >{user}</span
+            >
+            {#if $roles[user]}
+              <span
+                class="role"
+                style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
+                >{$roles[user].role}</span
+              >
+            {/if}
             {#if user !== $session.user}
               <ConnectionBars strength={strength(user)} />
             {/if}
