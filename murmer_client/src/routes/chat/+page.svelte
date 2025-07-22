@@ -234,13 +234,47 @@
     }
   }
   let lastLength = 0;
+  let loadingHistory = false;
+  let prevHeight = 0;
+
+  function earliestId(): number | null {
+    let min: number | null = null;
+    for (const m of $chat) {
+      if ((m.channel ?? 'general') === currentChannel && typeof m.id === 'number') {
+        if (min === null || m.id! < min) min = m.id as number;
+      }
+    }
+    return min;
+  }
+
+  function onScroll() {
+    if (!messagesContainer || loadingHistory) return;
+    if (messagesContainer.scrollTop < 100) {
+      const id = earliestId();
+      if (id !== null && id > 1) {
+        loadingHistory = true;
+        prevHeight = messagesContainer.scrollHeight;
+        chat.loadHistory(currentChannel, id);
+      }
+    }
+  }
+
+  chat.on('history', async () => {
+    await tick();
+    if (messagesContainer) {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight - prevHeight;
+    }
+    loadingHistory = false;
+  });
 
   afterUpdate(() => {
     if (messagesContainer) {
       const filteredLength = $chat.filter(m => (m.channel ?? 'general') === currentChannel).length;
       if (filteredLength !== lastLength) {
         lastLength = filteredLength;
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        if (!loadingHistory) {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
       }
     }
   });
@@ -269,12 +303,12 @@
         </div>
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
-      <div class="messages" bind:this={messagesContainer}>
+      <div class="messages" bind:this={messagesContainer} on:scroll={onScroll}>
         {#each $chat.filter(m => (m.channel ?? 'general') === currentChannel) as msg}
           <div class="message">
             <span class="timestamp">{msg.time}</span>
             <span class="username">{msg.user}</span>
-            {#if $roles[msg.user]}
+            {#if msg.user && $roles[msg.user]}
               <span class="role">{$roles[msg.user]}</span>
             {/if}
             <span class="content">
