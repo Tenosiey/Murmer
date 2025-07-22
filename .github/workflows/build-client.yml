@@ -2,7 +2,8 @@ name: Build client on release
 
 on:
   release:
-    types: [published, prereleased]
+    types: [published] # Trigger when a release is published
+  workflow_dispatch: # Allow manual trigger too
 
 jobs:
   build-client:
