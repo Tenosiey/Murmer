@@ -1,3 +1,8 @@
+//! Endpoints used to administratively modify server state.
+//!
+//! The `/role` endpoint requires the `ADMIN_TOKEN` environment variable to be
+//! set and allows assigning roles to users via their public key.
+
 use axum::{
     extract::{Json, State},
     http::StatusCode,

@@ -1,3 +1,7 @@
+<!--
+  Settings modal allowing users to adjust audio devices and check for updates.
+  The component renders nothing when the `open` prop is false.
+-->
 <script lang="ts">
   import { volume, inputDeviceId, outputDeviceId } from '$lib/stores/settings';
   import { APP_VERSION } from '$lib/version';

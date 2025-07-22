@@ -1,3 +1,9 @@
+//! Endpoint for storing uploaded images on disk.
+//!
+//! Files are sanitized and saved under the `UPLOAD_DIR` directory. The returned
+//! JSON contains a relative URL that clients can combine with the server URL to
+//! fetch the image later.
+
 use axum::{
     Json,
     extract::{Multipart, State},

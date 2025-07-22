@@ -77,5 +77,27 @@ A `docker-compose.yml` runs the Rust server alongside Postgres. The client is ru
 Run `npm run check` in `murmer_client` to lint Svelte and TypeScript sources.
 Format the server code with `cargo fmt` before committing changes.
 
+## Building on Windows
+
+1. Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for Windows.
+2. Ensure [Rust](https://www.rust-lang.org/tools/install) and [Node.js](https://nodejs.org) are in your `PATH`.
+3. From the `murmer_client` folder run:
+
+   ```bash
+   npm install
+   npm run tauri build
+   ```
+
+   The built installer can be found in `murmer_client/src-tauri/target/release/bundle`.
+
+## Contributing
+
+Pull requests are welcome! Please follow these guidelines:
+
+1. Format Rust code using `cargo fmt`.
+2. Run `npm run check` from `murmer_client` and ensure there are no errors.
+3. Keep commits focused on a single change.
+4. Update documentation when changing or adding features.
+
 ## Notes
 This project is an early prototype demonstrating login, server selection, text chat and a stub for voice communication via WebRTC.
