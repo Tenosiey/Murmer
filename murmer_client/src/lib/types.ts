@@ -1,9 +1,11 @@
 export interface Message {
   type: string;
-  user: string;
+  user?: string;
   text?: string;
   time?: string;
   channel?: string;
+  id?: number;
+  messages?: Message[];
   [key: string]: unknown;
 }
 
