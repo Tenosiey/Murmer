@@ -1,6 +1,8 @@
 # Murmer
 
-Murmer is a **self-hostable** minimal voice and text chat prototype built with Tauri and SvelteKit.
+Murmer is a **self-hostable** minimal voice and text chat prototype.  It consists of
+a Rust WebSocket server and a cross‑platform desktop client built with
+Tauri and SvelteKit.
 
 ## Overview
 * Persistent text chat backed by PostgreSQL

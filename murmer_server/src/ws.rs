@@ -141,12 +141,6 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     let mut authenticated = state.password.is_none();
 
-    db::send_history(&state.db, &mut sender, &channel, None, 50).await;
-    broadcast_voice(&state).await;
-    send_all_roles(&state, &mut sender).await;
-    send_channels(&state, &mut sender).await;
-    send_users(&state, &mut sender).await;
-
     loop {
         tokio::select! {
             Some(result) = receiver.next() => {
@@ -230,6 +224,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                 broadcast_role(&state, u, &info).await;
                                             }
                                         }
+                                        send_all_roles(&state, &mut sender).await;
+                                        send_channels(&state, &mut sender).await;
+                                        send_users(&state, &mut sender).await;
+                                        broadcast_voice(&state).await;
+                                        db::send_history(&state.db, &mut sender, &channel, None, 50).await;
                                     }
                                 } else {
                                     let _ = sender
