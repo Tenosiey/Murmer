@@ -183,6 +183,7 @@
   function joinChannel(ch: string) {
     if (ch === currentChannel) return;
     currentChannel = ch;
+    chat.clear();
     chat.sendRaw({ type: 'join', channel: ch });
     scrollBottom();
   }
