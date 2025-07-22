@@ -16,7 +16,7 @@ use futures::{SinkExt, StreamExt, stream::SplitSink};
 use serde_json::Value;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::{
     AppState, db,
@@ -154,9 +154,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                     Ok(Message::Text(t)) => t,
                     _ => break,
                 };
-                info!("Received message: {text}");
                 if let Ok(mut v) = serde_json::from_str::<Value>(&text) {
                     if let Some(t) = v.get("type").and_then(|t| t.as_str()) {
+                        if t.starts_with("voice-") {
+                            debug!("Received voice message: {t}");
+                        } else {
+                            info!("Received message: {text}");
+                        }
                         if !authenticated && t != "presence" {
                             let _ = sender
                                 .send(Message::Text("{\"type\":\"error\",\"message\":\"unauthenticated\"}".into()))
