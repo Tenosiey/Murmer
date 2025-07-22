@@ -68,13 +68,13 @@ pub async fn fetch_history(
 ) -> Result<Vec<(i64, String)>, tokio_postgres::Error> {
     let rows = if let Some(id) = before {
         db.query(
-            "SELECT id, content FROM messages WHERE channel = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
+            "SELECT id::bigint, content FROM messages WHERE channel = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
             &[&channel, &id, &limit],
         )
         .await?
     } else {
         db.query(
-            "SELECT id, content FROM messages WHERE channel = $1 ORDER BY id DESC LIMIT $2",
+            "SELECT id::bigint, content FROM messages WHERE channel = $1 ORDER BY id DESC LIMIT $2",
             &[&channel, &limit],
         )
         .await?

@@ -257,7 +257,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 match state
                                     .db
                                     .query_one(
-                                        "INSERT INTO messages (channel, content) VALUES ($1, $2) RETURNING id",
+                                        "INSERT INTO messages (channel, content) VALUES ($1, $2) RETURNING id::bigint",
                                         &[&channel, &out],
                                     )
                                     .await
