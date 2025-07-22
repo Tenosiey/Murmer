@@ -309,7 +309,9 @@
             <span class="timestamp">{msg.time}</span>
             <span class="username">{msg.user}</span>
             {#if msg.user && $roles[msg.user]}
-              <span class="role">{$roles[msg.user]}</span>
+              <span class="role" style={$roles[msg.user].color ? `color: ${$roles[msg.user].color}` : ''}>
+                {$roles[msg.user].role}
+              </span>
             {/if}
             <span class="content">
               {#if msg.text}
@@ -567,7 +569,6 @@
   .role {
     margin-left: 0.25rem;
     font-size: 0.75rem;
-    color: #f97316;
   }
 
   .content {

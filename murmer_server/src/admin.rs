@@ -15,12 +15,16 @@ use axum_extra::{
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::{AppState, db};
+use crate::{
+    AppState, db,
+    roles::{RoleInfo, default_color},
+};
 
 #[derive(Deserialize)]
 pub struct RoleBody {
     pub key: String,
     pub role: String,
+    pub color: Option<String>,
 }
 
 pub async fn set_role(
@@ -31,7 +35,8 @@ pub async fn set_role(
     if state.admin_token.as_deref() != Some(bearer.token()) {
         return StatusCode::UNAUTHORIZED;
     }
-    if let Err(e) = db::set_role(&state.db, &body.key, &body.role).await {
+    let color = body.color.clone().or_else(|| default_color(&body.role));
+    if let Err(e) = db::set_role(&state.db, &body.key, &body.role, color.as_deref()).await {
         eprintln!("set_role error: {e}");
         return StatusCode::INTERNAL_SERVER_ERROR;
     }
@@ -44,17 +49,22 @@ pub async fn set_role(
             }
         }
     }
+    let info = RoleInfo {
+        role: body.role.clone(),
+        color,
+    };
     {
         let mut roles = state.roles.lock().await;
         for user in affected.iter() {
-            roles.insert(user.clone(), body.role.clone());
+            roles.insert(user.clone(), info.clone());
         }
     }
     for user in affected {
         if let Ok(msg) = serde_json::to_string(&serde_json::json!({
             "type": "role-update",
             "user": user,
-            "role": body.role,
+            "role": info.role,
+            "color": info.color,
         })) {
             let _ = state.tx.send(msg);
         }

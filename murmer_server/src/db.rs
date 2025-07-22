@@ -40,7 +40,8 @@ pub async fn init(db_url: &str) -> Client {
 );
 CREATE TABLE IF NOT EXISTS roles (
     public_key TEXT PRIMARY KEY,
-    role TEXT NOT NULL
+    role TEXT NOT NULL,
+    color TEXT
 );
 CREATE TABLE IF NOT EXISTS channels (
     name TEXT PRIMARY KEY
@@ -50,6 +51,11 @@ INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
         )
         .await
         .unwrap();
+
+    client
+        .batch_execute("ALTER TABLE roles ADD COLUMN IF NOT EXISTS color TEXT;")
+        .await
+        .ok();
 
     client
 }
@@ -113,20 +119,28 @@ pub async fn send_history(
 }
 
 /// Get the role for a user by public key, if any.
-pub async fn get_role(db: &Client, key: &str) -> Option<String> {
-    db.query_opt("SELECT role FROM roles WHERE public_key = $1", &[&key])
-        .await
-        .ok()
-        .flatten()
-        .map(|row| row.get(0))
+pub async fn get_role(db: &Client, key: &str) -> Option<(String, Option<String>)> {
+    db.query_opt(
+        "SELECT role, color FROM roles WHERE public_key = $1",
+        &[&key],
+    )
+    .await
+    .ok()
+    .flatten()
+    .map(|row| (row.get(0), row.get(1)))
 }
 
 /// Insert or update a user's role.
-pub async fn set_role(db: &Client, key: &str, role: &str) -> Result<(), tokio_postgres::Error> {
+pub async fn set_role(
+    db: &Client,
+    key: &str,
+    role: &str,
+    color: Option<&str>,
+) -> Result<(), tokio_postgres::Error> {
     db.execute(
-        "INSERT INTO roles (public_key, role) VALUES ($1, $2) \
-        ON CONFLICT (public_key) DO UPDATE SET role = EXCLUDED.role",
-        &[&key, &role],
+        "INSERT INTO roles (public_key, role, color) VALUES ($1, $2, $3) \
+        ON CONFLICT (public_key) DO UPDATE SET role = EXCLUDED.role, color = EXCLUDED.color",
+        &[&key, &role, &color],
     )
     .await
     .map(|_| ())
