@@ -1,3 +1,10 @@
+/**
+ * WebRTC voice chat manager.
+ *
+ * Handles peer connection setup using messages sent over the WebSocket chat
+ * channel. Consumers subscribe to updates to receive the list of remote peers
+ * currently connected.
+ */
 import { chat } from '../stores/chat';
 import { volume, inputDeviceId } from '../stores/settings';
 import { get } from 'svelte/store';

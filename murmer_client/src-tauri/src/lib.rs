@@ -1,3 +1,6 @@
+//! Entry point for the Tauri application.
+//!
+//! Sets up the system tray and window event handlers before running the app.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     use tauri::{
