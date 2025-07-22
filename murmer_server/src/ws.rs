@@ -136,7 +136,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     let mut authenticated = state.password.is_none();
 
-    db::send_history(&state.db, &mut sender, &channel, None, 50).await;
+    db::send_history(&state.db, &mut sender, &channel).await;
     broadcast_voice(&state).await;
     send_all_roles(&state, &mut sender).await;
     send_channels(&state, &mut sender).await;
@@ -233,13 +233,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     channel = ch.to_string();
                                     chan_tx = get_or_create_channel(&state, &channel).await;
                                     chan_rx = chan_tx.subscribe();
-                                    db::send_history(&state.db, &mut sender, &channel, None, 50).await;
+                                    db::send_history(&state.db, &mut sender, &channel).await;
                                 }
-                            }
-                            "load-history" => {
-                                let before = v.get("before").and_then(|b| b.as_i64());
-                                let limit = v.get("limit").and_then(|l| l.as_i64()).unwrap_or(50);
-                                db::send_history(&state.db, &mut sender, &channel, before, limit).await;
                             }
                             "create-channel" => {
                                 if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
@@ -254,22 +249,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             "chat" => {
                                 v["channel"] = Value::String(channel.clone());
                                 let out = serde_json::to_string(&v).unwrap_or_else(|_| text.to_string());
-                                match state
+                                if let Err(e) = state
                                     .db
-                                    .query_one(
-                                        "INSERT INTO messages (channel, content) VALUES ($1, $2) RETURNING id",
+                                    .execute(
+                                        "INSERT INTO messages (channel, content) VALUES ($1, $2)",
                                         &[&channel, &out],
                                     )
                                     .await
                                 {
-                                    Ok(row) => {
-                                        let id: i64 = row.get(0);
-                                        v["id"] = Value::from(id);
-                                        let out_with_id = serde_json::to_string(&v).unwrap_or_else(|_| out.clone());
-                                        let _ = chan_tx.send(out_with_id);
-                                    }
-                                    Err(e) => error!("db insert error: {e}"),
+                                    error!("db insert error: {e}");
                                 }
+                                let _ = chan_tx.send(out);
                             }
                             "ping" => {
                                 let id = v.get("id").cloned().unwrap_or(Value::Null);
