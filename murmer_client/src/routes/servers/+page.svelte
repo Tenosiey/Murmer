@@ -2,13 +2,20 @@
   import { goto } from '$app/navigation';
   import { servers, selectedServer, type ServerEntry } from '$lib/stores/servers';
   import { session } from '$lib/stores/session';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import { normalizeServerUrl } from '$lib/utils';
+  import { serverStatus } from '$lib/stores/serverStatus';
+  import StatusDot from '$lib/components/StatusDot.svelte';
 
   onMount(() => {
     if (!get(session).user) goto('/login');
+    serverStatus.start();
+  });
+
+  onDestroy(() => {
+    serverStatus.stop();
   });
 
   let newServer = '';
@@ -71,6 +78,7 @@
     {#each $servers as server}
       <li>
         <button on:click={() => join(server)} title={server.url}>{server.name}</button>
+        <StatusDot online={$serverStatus[server.url]} />
         <button class="del" on:click={() => removeServer(server.url)}>Delete</button>
       </li>
     {/each}
