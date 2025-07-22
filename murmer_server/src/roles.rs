@@ -1,3 +1,7 @@
+//! Role utilities used by the server.
+//!
+//! Defines the [`RoleInfo`] struct and helpers for resolving default role colors.
+
 #[derive(Clone)]
 pub struct RoleInfo {
     pub role: String,

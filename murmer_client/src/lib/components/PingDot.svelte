@@ -1,3 +1,4 @@
+<!-- Colored dot reflecting current ping in milliseconds. -->
 <script lang="ts">
   export let ping: number = 0;
   $: color = ping < 100 ? '#22c55e'
