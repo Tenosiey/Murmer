@@ -136,7 +136,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 
     let mut authenticated = state.password.is_none();
 
-    db::send_all_history(&state.db, &mut sender).await;
+    db::send_history(&state.db, &mut sender, &channel).await;
     broadcast_voice(&state).await;
     send_all_roles(&state, &mut sender).await;
     send_channels(&state, &mut sender).await;
@@ -233,6 +233,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     channel = ch.to_string();
                                     chan_tx = get_or_create_channel(&state, &channel).await;
                                     chan_rx = chan_tx.subscribe();
+                                    db::send_history(&state.db, &mut sender, &channel).await;
                                 }
                             }
                             "create-channel" => {
