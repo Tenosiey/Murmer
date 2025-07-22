@@ -69,7 +69,7 @@ pub async fn fetch_history(
     let rows = if let Some(id) = before {
         let id32 = id as i32;
         db.query(
-            "SELECT id, content FROM messages WHERE channel = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
+            "SELECT id::bigint, content FROM messages WHERE channel = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
             &[&channel, &id32, &limit],
         )
         .await?
