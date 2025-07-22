@@ -3,6 +3,7 @@ export interface Message {
   user: string;
   text?: string;
   time?: string;
+  channel?: string;
   [key: string]: unknown;
 }
 
