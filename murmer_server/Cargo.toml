@@ -18,3 +18,4 @@ ed25519-dalek = "1"
 base64 = "0.22"
 axum-extra = { version = "0.9", features = ["typed-header"] }
 serde = { version = "1", features = ["derive"] }
+sanitize-filename = "0.6"

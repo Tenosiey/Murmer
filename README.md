@@ -66,7 +66,7 @@ indicating their assigned role.
 
 ### Image Uploads
 
-Uploaded images are stored on disk under an `uploads/` directory. The `/upload` endpoint returns a relative path like `/files/<filename>` which clients combine with the server URL to load the image.
+Uploaded images are stored on disk under an `uploads/` directory. The `/upload` endpoint returns a relative path like `/files/<filename>` which clients combine with the server URL to load the image. Filenames are sanitized before saving to prevent path traversal.
 
 `docker-compose.yml` mounts a volume for the uploads directory so files persist between restarts.
 

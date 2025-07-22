@@ -3,6 +3,7 @@ use axum::{
     extract::{Multipart, State},
     response::{IntoResponse, Response},
 };
+use sanitize_filename::sanitize;
 use std::sync::Arc;
 use tracing::error;
 
@@ -10,10 +11,13 @@ use crate::AppState;
 
 pub async fn upload(State(state): State<Arc<AppState>>, mut multipart: Multipart) -> Response {
     while let Ok(Some(field)) = multipart.next_field().await {
-        let filename = field
+        let mut filename = field
             .file_name()
-            .map(|s| s.to_string())
+            .map(|s| sanitize(s))
             .unwrap_or_else(|| "upload".to_string());
+        if filename.is_empty() {
+            filename = "upload".to_string();
+        }
         if let Ok(data) = field.bytes().await {
             let key = format!("{}-{}", chrono::Utc::now().timestamp_millis(), filename);
             let path = state.upload_dir.join(&key);
