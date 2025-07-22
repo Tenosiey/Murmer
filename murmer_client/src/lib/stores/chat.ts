@@ -53,12 +53,6 @@ function createChatStore() {
           if (!current || msg.user !== current) {
             notify('New message', `${msg.user}: ${msg.text ?? ''}`);
           }
-        } else if (msg.type === 'history') {
-          const msgs = (msg.messages as Message[]) || [];
-          update((m) => [...msgs, ...m]);
-          if (handlers['history']) {
-            for (const handler of handlers['history']) handler(msg);
-          }
         } else if (msg.type && handlers[msg.type]) {
           for (const handler of handlers[msg.type]) {
             handler(msg);
@@ -90,10 +84,6 @@ function createChatStore() {
     }
   }
 
-  function loadHistory(channel: string, before?: number, limit = 50) {
-    sendRaw({ type: 'load-history', channel, before, limit });
-  }
-
   function disconnect() {
     if (socket) {
       socket.close();
@@ -102,7 +92,7 @@ function createChatStore() {
     set([]); // clear chat history on disconnect
   }
 
-  return { subscribe, connect, send, sendRaw, loadHistory, on, off, disconnect, clear: () => set([]) };
+  return { subscribe, connect, send, sendRaw, on, off, disconnect, clear: () => set([]) };
 }
 
 export const chat = createChatStore();

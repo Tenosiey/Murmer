@@ -56,58 +56,26 @@ INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
 
 use axum::extract::ws::{Message, WebSocket};
 use futures::SinkExt;
-use serde_json::Value;
-use tracing::error;
 
-/// Fetch a slice of messages from the database.
-pub async fn fetch_history(
-    db: &Client,
-    channel: &str,
-    before: Option<i64>,
-    limit: i64,
-) -> Result<Vec<(i64, String)>, tokio_postgres::Error> {
-    let rows = if let Some(id) = before {
-        db.query(
-            "SELECT id, content FROM messages WHERE channel = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
-            &[&channel, &id, &limit],
-        )
-        .await?
-    } else {
-        db.query(
-            "SELECT id, content FROM messages WHERE channel = $1 ORDER BY id DESC LIMIT $2",
-            &[&channel, &limit],
-        )
-        .await?
-    };
-    Ok(rows
-        .into_iter()
-        .map(|row| (row.get::<_, i64>(0), row.get(1)))
-        .collect())
-}
-
-/// Send a slice of messages over the WebSocket as a `history` payload.
+/// Send all messages from the given channel over the provided WebSocket.
 pub async fn send_history(
     db: &Client,
     sender: &mut futures::stream::SplitSink<WebSocket, Message>,
     channel: &str,
-    before: Option<i64>,
-    limit: i64,
 ) {
-    match fetch_history(db, channel, before, limit).await {
-        Ok(rows) => {
-            let mut msgs = Vec::new();
-            for (id, content) in rows.into_iter().rev() {
-                if let Ok(mut val) = serde_json::from_str::<Value>(&content) {
-                    val["id"] = Value::from(id);
-                    msgs.push(val);
-                }
-            }
-            if !msgs.is_empty() {
-                let payload = serde_json::json!({"type": "history", "messages": msgs});
-                let _ = sender.send(Message::Text(payload.to_string().into())).await;
+    if let Ok(rows) = db
+        .query(
+            "SELECT content FROM messages WHERE channel = $1 ORDER BY id",
+            &[&channel],
+        )
+        .await
+    {
+        for row in rows {
+            let content: String = row.get(0);
+            if sender.send(Message::Text(content.into())).await.is_err() {
+                break;
             }
         }
-        Err(e) => error!("db history error: {e}"),
     }
 }
 
