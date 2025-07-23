@@ -646,10 +646,10 @@
     width: 4px;
     cursor: col-resize;
     flex-shrink: 0;
+    background: var(--color-panel);
   }
-
   .resizer:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--color-accent-alt);
   }
 
   .voice-group {
