@@ -221,6 +221,7 @@
 
   function openChannelMenu(event: MouseEvent) {
     event.preventDefault();
+    event.stopPropagation();
     menuX = event.clientX;
     menuY = event.clientY;
     menuOpen = true;
