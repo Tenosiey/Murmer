@@ -618,13 +618,22 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.5rem;
+    background: var(--color-panel);
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    margin-bottom: 0.75rem;
   }
 
   .actions {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 0.5rem;
+  }
+
+  .user {
+    font-weight: 600;
+    margin-right: 0.25rem;
   }
 
   .icon {
@@ -632,7 +641,7 @@
     border: none;
     color: var(--color-text);
     cursor: pointer;
-    font-size: 1.2rem;
+    font-size: 1.3rem;
     transition: color 0.2s;
   }
 
