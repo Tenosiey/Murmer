@@ -69,7 +69,7 @@
   </div>
   <SettingsModal open={settingsOpen} close={closeSettings} />
   <form class="add" on:submit|preventDefault={add}>
-    <input bind:value={newName} placeholder="Server name" autofocus />
+    <input bind:value={newName} placeholder="Server name" />
     <input bind:value={newServer} placeholder="host:port or ws://url" />
     <input type="password" bind:value={newPassword} placeholder="Password (optional)" />
     <button type="submit">Add</button>
