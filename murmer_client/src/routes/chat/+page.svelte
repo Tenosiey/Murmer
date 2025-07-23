@@ -14,6 +14,7 @@
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import PingDot from '$lib/components/PingDot.svelte';
+  import ContextMenu from '$lib/components/ContextMenu.svelte';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { loadKeyPair, sign } from '$lib/keypair';
@@ -28,6 +29,9 @@
   let fileInput: HTMLInputElement;
   let messageInput: HTMLTextAreaElement;
   let previewUrl: string | null = null;
+  let menuOpen = false;
+  let menuX = 0;
+  let menuY = 0;
 
   function handleFileChange() {
     const file = fileInput?.files?.[0];
@@ -210,10 +214,17 @@
     goto('/servers');
   }
 
-  function openChannelMenu(event: MouseEvent) {
-    event.preventDefault();
+  function createChannelPrompt() {
     const name = prompt('New channel name');
     if (name) channels.create(name);
+  }
+
+  function openChannelMenu(event: MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    menuX = event.clientX;
+    menuY = event.clientY;
+    menuOpen = true;
   }
 
   function logout() {
@@ -228,6 +239,13 @@
   function closeSettings() {
     settingsOpen = false;
   }
+
+  $: channelMenuItems = [
+    { label: 'Create Channel', action: createChannelPrompt },
+    inVoice
+      ? { label: 'Leave Voice', action: leaveVoice }
+      : { label: 'Join Voice', action: joinVoice }
+  ];
 
   let messagesContainer: HTMLDivElement;
   async function scrollBottom() {
@@ -473,6 +491,8 @@
       </ul>
   </div>
 </div>
+
+<ContextMenu bind:open={menuOpen} x={menuX} y={menuY} items={channelMenuItems} />
 
 <style>
   .page {
