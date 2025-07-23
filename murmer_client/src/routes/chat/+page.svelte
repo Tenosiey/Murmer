@@ -350,9 +350,35 @@
       {/each}
       <h3 class="section">Voice Channels</h3>
       {#each $voiceChannels as ch}
-        <button on:click={() => joinVoiceChannel(ch)}>
-          <span class="chan-icon">🔊</span> {ch}
-        </button>
+        <div class="voice-group">
+          <button on:click={() => joinVoiceChannel(ch)}>
+            <span class="chan-icon">🔊</span> {ch}
+          </button>
+          {#if $voiceUsers[ch]?.length}
+            <ul class="voice-user-list">
+              {#each $voiceUsers[ch] as user}
+                <li>
+                  <span class="status voice"></span>
+                  <span
+                    class="username"
+                    style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
+                    >{user}</span
+                  >
+                  {#if $roles[user]}
+                    <span
+                      class="role"
+                      style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
+                      >{$roles[user].role}</span
+                    >
+                  {/if}
+                  <ConnectionBars
+                    strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)}
+                  />
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
       {/each}
     </div>
     <div class="chat">
@@ -511,27 +537,6 @@
           </li>
         {/each}
       </ul>
-      <h2>Voice</h2>
-      <ul>
-        {#each $voiceUsers[currentVoiceChannel ?? ''] ?? [] as user}
-          <li>
-            <span class="status voice"></span>
-            <span
-              class="username"
-              style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
-              >{user}</span
-            >
-            {#if $roles[user]}
-              <span
-                class="role"
-                style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
-                >{$roles[user].role}</span
-              >
-            {/if}
-            <ConnectionBars strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)} />
-          </li>
-        {/each}
-      </ul>
   </div>
 </div>
 
@@ -580,6 +585,25 @@
 
   .channels button.active {
     background: var(--color-accent);
+  }
+
+  .voice-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0.25rem;
+  }
+
+  .voice-user-list {
+    list-style: none;
+    margin: 0.25rem 0 0 1rem;
+    padding: 0;
+  }
+
+  .voice-user-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-bottom: 0.25rem;
   }
 
   .chat {
