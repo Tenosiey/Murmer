@@ -18,6 +18,7 @@
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
+  import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
   import { loadKeyPair, sign } from '$lib/keypair';
   function pingToStrength(ms: number): number {
     return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
@@ -335,10 +336,51 @@
       }
     }
   });
+
+  let startX = 0;
+  let resizingLeft = false;
+  let resizingRight = false;
+
+  function startLeftResize(e: MouseEvent) {
+    resizingLeft = true;
+    startX = e.clientX;
+  }
+
+  function startRightResize(e: MouseEvent) {
+    resizingRight = true;
+    startX = e.clientX;
+  }
+
+  function stopResize() {
+    resizingLeft = false;
+    resizingRight = false;
+  }
+
+  function handleMouseMove(e: MouseEvent) {
+    if (resizingLeft) {
+      const diff = e.clientX - startX;
+      startX = e.clientX;
+      leftSidebarWidth.update((w) => Math.max(80, w + diff));
+    } else if (resizingRight) {
+      const diff = startX - e.clientX;
+      startX = e.clientX;
+      rightSidebarWidth.update((w) => Math.max(80, w + diff));
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', stopResize);
+  });
+
+  onDestroy(() => {
+    window.removeEventListener('mousemove', handleMouseMove);
+    window.removeEventListener('mouseup', stopResize);
+  });
 </script>
 
   <div class="page">
-    <div class="channels" role="navigation" on:contextmenu={openChannelMenu}>
+    <div class="channels" role="navigation" on:contextmenu={openChannelMenu} style="width: {$leftSidebarWidth}px">
       <h3 class="section">Chat Channels</h3>
       {#each $channels as ch}
         <button
@@ -381,6 +423,7 @@
         </div>
       {/each}
     </div>
+    <div class="resizer" on:mousedown={startLeftResize}></div>
     <div class="chat">
       <div class="header">
         <h1>{currentChatChannel}</h1>
@@ -494,8 +537,9 @@
       {#each $voice as peer (peer.id)}
         <audio autoplay use:stream={peer.stream}></audio>
       {/each}
-  </div>
-  <div class="sidebar">
+    </div>
+    <div class="resizer" on:mousedown={startRightResize}></div>
+    <div class="sidebar" style="width: {$rightSidebarWidth}px">
       <h2>Users</h2>
       <h3>Online</h3>
       <ul>
@@ -549,7 +593,7 @@
   }
 
   .channels {
-    width: 140px;
+    min-width: 80px;
     background: var(--color-panel);
     padding: 0.5rem;
     display: flex;
@@ -585,6 +629,16 @@
 
   .channels button.active {
     background: var(--color-accent);
+  }
+
+  .resizer {
+    width: 4px;
+    cursor: col-resize;
+    flex-shrink: 0;
+  }
+
+  .resizer:hover {
+    background: rgba(255, 255, 255, 0.1);
   }
 
   .voice-group {
@@ -785,7 +839,7 @@
   }
 
   .sidebar {
-    width: 200px;
+    min-width: 80px;
     margin-left: 0.5rem;
     background: var(--color-panel);
     padding: 0.5rem;
