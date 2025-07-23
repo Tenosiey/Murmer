@@ -643,10 +643,11 @@
   }
 
   .resizer {
-    width: 4px;
+    width: 2px;
     cursor: col-resize;
     flex-shrink: 0;
     background: var(--color-panel);
+    transition: background 0.2s;
   }
   .resizer:hover {
     background: var(--color-accent-alt);
