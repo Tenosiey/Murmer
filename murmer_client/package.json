@@ -16,6 +16,7 @@
     "@tauri-apps/api": "^2.7.0",
     "@tauri-apps/plugin-notification": "^2.3.0",
     "@tauri-apps/plugin-opener": "^2.4.0",
+    "@tauri-apps/plugin-window-state": "^2.4.0",
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
