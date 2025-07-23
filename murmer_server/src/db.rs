@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS roles (
 CREATE TABLE IF NOT EXISTS channels (
     name TEXT PRIMARY KEY
 );
+CREATE TABLE IF NOT EXISTS voice_channels (
+    name TEXT PRIMARY KEY
+);
 INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
 "#,
         )
@@ -165,4 +168,39 @@ pub async fn add_channel(db: &Client, name: &str) -> Result<(), tokio_postgres::
     )
     .await
     .map(|_| ())
+}
+
+/// Delete an existing channel.
+pub async fn remove_channel(db: &Client, name: &str) -> Result<(), tokio_postgres::Error> {
+    db.execute("DELETE FROM channels WHERE name = $1", &[&name])
+        .await
+        .map(|_| ())
+}
+
+/// Retrieve the list of voice channels.
+pub async fn get_voice_channels(db: &Client) -> Vec<String> {
+    match db
+        .query("SELECT name FROM voice_channels ORDER BY name", &[])
+        .await
+    {
+        Ok(rows) => rows.into_iter().map(|row| row.get(0)).collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Insert a new voice channel if it does not already exist.
+pub async fn add_voice_channel(db: &Client, name: &str) -> Result<(), tokio_postgres::Error> {
+    db.execute(
+        "INSERT INTO voice_channels (name) VALUES ($1) ON CONFLICT DO NOTHING",
+        &[&name],
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Delete an existing voice channel.
+pub async fn remove_voice_channel(db: &Client, name: &str) -> Result<(), tokio_postgres::Error> {
+    db.execute("DELETE FROM voice_channels WHERE name = $1", &[&name])
+        .await
+        .map(|_| ())
 }

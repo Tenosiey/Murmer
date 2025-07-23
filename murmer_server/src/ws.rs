@@ -14,6 +14,7 @@ use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{PublicKey, Signature, Verifier};
 use futures::{SinkExt, StreamExt, stream::SplitSink};
 use serde_json::Value;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info};
@@ -57,13 +58,17 @@ async fn send_users(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Mes
     }
 }
 
-/// Broadcast the users currently in the voice channel to all clients.
-async fn broadcast_voice(state: &Arc<AppState>) {
-    let v = state.voice_users.lock().await;
-    let list: Vec<String> = v.iter().cloned().collect();
-    drop(v);
+/// Broadcast the users currently in a voice channel to all clients.
+async fn broadcast_voice(state: &Arc<AppState>, channel: &str) {
+    let vc = state.voice_channels.lock().await;
+    let list: Vec<String> = vc
+        .get(channel)
+        .map(|set| set.iter().cloned().collect())
+        .unwrap_or_default();
+    drop(vc);
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "voice-users",
+        "channel": channel,
         "users": list,
     })) {
         let _ = state.tx.send(msg);
@@ -110,10 +115,67 @@ async fn send_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, 
     }
 }
 
+/// Send the list of available voice channels to a client.
+async fn send_voice_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    let list: Vec<String> = state.voice_channels.lock().await.keys().cloned().collect();
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "voice-channel-list",
+        "channels": list,
+    })) {
+        let _ = sender.send(Message::Text(msg)).await;
+    }
+}
+
+/// Send all voice channel member lists to a client.
+async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    let map = state.voice_channels.lock().await.clone();
+    for (chan, users) in map {
+        if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+            "type": "voice-users",
+            "channel": chan,
+            "users": users.into_iter().collect::<Vec<_>>(),
+        })) {
+            if sender.send(Message::Text(msg)).await.is_err() {
+                break;
+            }
+        }
+    }
+}
+
 /// Broadcast to all clients that a new channel was created.
 async fn broadcast_new_channel(state: &Arc<AppState>, name: &str) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "channel-add",
+        "channel": name,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast to all clients that a new voice channel was created.
+async fn broadcast_new_voice_channel(state: &Arc<AppState>, name: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "voice-channel-add",
+        "channel": name,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast to all clients that a channel was deleted.
+async fn broadcast_remove_channel(state: &Arc<AppState>, name: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "channel-remove",
+        "channel": name,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast to all clients that a voice channel was deleted.
+async fn broadcast_remove_voice_channel(state: &Arc<AppState>, name: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "voice-channel-remove",
         "channel": name,
     })) {
         let _ = state.tx.send(msg);
@@ -138,6 +200,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
     let mut chan_tx = get_or_create_channel(&state, &channel).await;
     let mut chan_rx = chan_tx.subscribe();
     let mut user_name: Option<String> = None;
+    let mut voice_channel: Option<String> = None;
 
     let mut authenticated = state.password.is_none();
 
@@ -226,8 +289,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         }
                                         send_all_roles(&state, &mut sender).await;
                                         send_channels(&state, &mut sender).await;
+                                        send_voice_channels(&state, &mut sender).await;
                                         send_users(&state, &mut sender).await;
-                                        broadcast_voice(&state).await;
+                                        send_all_voice(&state, &mut sender).await;
                                         db::send_history(&state.db, &mut sender, &channel, None, 50).await;
                                     }
                                 } else {
@@ -260,6 +324,47 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     }
                                 }
                             }
+                            "delete-channel" => {
+                                if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    if let Err(e) = db::remove_channel(&state.db, ch).await {
+                                        error!("db remove channel error: {e}");
+                                    } else {
+                                        {
+                                            let mut chans = state.channels.lock().await;
+                                            chans.remove(ch);
+                                        }
+                                        broadcast_remove_channel(&state, ch).await;
+                                        if channel == ch {
+                                            channel = "general".to_string();
+                                            chan_tx = get_or_create_channel(&state, &channel).await;
+                                            chan_rx = chan_tx.subscribe();
+                                        }
+                                    }
+                                }
+                            }
+                            "create-voice-channel" => {
+                                if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    let mut map = state.voice_channels.lock().await;
+                                    if !map.contains_key(ch) {
+                                        map.insert(ch.to_string(), HashSet::new());
+                                        drop(map);
+                                        let _ = db::add_voice_channel(&state.db, ch).await;
+                                        broadcast_new_voice_channel(&state, ch).await;
+                                    }
+                                }
+                            }
+                            "delete-voice-channel" => {
+                                if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    let mut map = state.voice_channels.lock().await;
+                                    map.remove(ch);
+                                    drop(map);
+                                    let _ = db::remove_voice_channel(&state.db, ch).await;
+                                    broadcast_remove_voice_channel(&state, ch).await;
+                                    if voice_channel.as_deref() == Some(ch) {
+                                        voice_channel = None;
+                                    }
+                                }
+                            }
                             "chat" => {
                                 v["channel"] = Value::String(channel.clone());
                                 let out = serde_json::to_string(&v).unwrap_or_else(|_| text.to_string());
@@ -288,19 +393,42 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     .await;
                             }
                             "voice-join" => {
-                                if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
-                                    let mut voice = state.voice_users.lock().await;
-                                    voice.insert(u.to_string());
+                                if let (Some(u), Some(ch)) = (
+                                    v.get("user").and_then(|u| u.as_str()),
+                                    v.get("channel").and_then(|c| c.as_str()),
+                                ) {
+                                    let mut map = state.voice_channels.lock().await;
+                                    for users in map.values_mut() {
+                                        users.remove(u);
+                                    }
+                                    let new_channel = !map.contains_key(ch);
+                                    let entry = map.entry(ch.to_string()).or_default();
+                                    entry.insert(u.to_string());
+                                    if new_channel {
+                                        broadcast_new_voice_channel(&state, ch).await;
+                                    }
+                                    voice_channel = Some(ch.to_string());
                                 }
-                                broadcast_voice(&state).await;
+                                if let Some(ch) = v.get("channel").and_then(|c| c.as_str()) {
+                                    broadcast_voice(&state, ch).await;
+                                }
                                 let _ = state.tx.send(text.to_string());
                             }
                             "voice-leave" => {
-                                if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
-                                    let mut voice = state.voice_users.lock().await;
-                                    voice.remove(u);
+                                if let (Some(u), Some(ch)) = (
+                                    v.get("user").and_then(|u| u.as_str()),
+                                    v.get("channel").and_then(|c| c.as_str()),
+                                ) {
+                                    let mut map = state.voice_channels.lock().await;
+                                    if let Some(set) = map.get_mut(ch) {
+                                        set.remove(u);
+                                    }
+                                    drop(map);
+                                    broadcast_voice(&state, ch).await;
+                                    if voice_channel.as_deref() == Some(ch) {
+                                        voice_channel = None;
+                                    }
                                 }
-                                broadcast_voice(&state).await;
                                 let _ = state.tx.send(text.to_string());
                             }
                             "voice-offer" | "voice-answer" | "voice-candidate" => {
@@ -341,12 +469,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         users.remove(&name);
         drop(users);
         broadcast_users(&state).await;
-        let mut voice = state.voice_users.lock().await;
-        if voice.remove(&name) {
-            drop(voice);
-            broadcast_voice(&state).await;
-        } else {
-            drop(voice);
+        let mut map = state.voice_channels.lock().await;
+        let mut ch_to_broadcast = None;
+        for (ch, users) in map.iter_mut() {
+            if users.remove(&name) {
+                ch_to_broadcast = Some(ch.clone());
+                break;
+            }
+        }
+        drop(map);
+        if let Some(ch) = ch_to_broadcast {
+            broadcast_voice(&state, &ch).await;
         }
         // Keep role and key mappings so clients can display roles
         // even when the user is offline.

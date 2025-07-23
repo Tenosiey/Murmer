@@ -9,8 +9,10 @@ pub fn run() {
         Manager,
     };
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+    use tauri_plugin_window_state::Builder as WindowStateBuilder;
 
     tauri::Builder::default()
+        .plugin(WindowStateBuilder::default().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())

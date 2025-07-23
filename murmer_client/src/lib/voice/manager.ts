@@ -19,6 +19,7 @@ export class VoiceManager {
   private statsIntervals: Record<string, number> = {};
   private localStream: MediaStream | null = null;
   private userName: string | null = null;
+  private channel: string | null = null;
   private listeners: Array<(peers: RemotePeer[]) => void> = [];
 
   private joinSound = new Audio('/sounds/user_join_voice_sound.mp3');
@@ -117,12 +118,13 @@ export class VoiceManager {
     };
     pc.onicecandidate = (ev) => {
       if (ev.candidate && this.userName) {
-        chat.sendRaw({
-          type: 'voice-candidate',
-          user: this.userName,
-          target: id,
-          candidate: ev.candidate
-        });
+          chat.sendRaw({
+            type: 'voice-candidate',
+            user: this.userName,
+            target: id,
+            channel: this.channel,
+            candidate: ev.candidate
+          });
       }
     };
     pc.onconnectionstatechange = () => {
@@ -134,14 +136,21 @@ export class VoiceManager {
     if (initiator && this.userName) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      chat.sendRaw({ type: 'voice-offer', user: this.userName, target: id, sdp: offer });
+      chat.sendRaw({ type: 'voice-offer', user: this.userName, target: id, channel: this.channel, sdp: offer });
     }
     return pc;
   }
 
-  async join(user: string, peersList: RemotePeer[]) {
+  /**
+   * Join a voice channel and start streaming the local microphone.
+   *
+   * Registers handlers for signaling messages and notifies the server
+   * that this user joined the specified channel.
+   */
+  async join(user: string, channel: string, peersList: RemotePeer[]) {
     if (this.userName) return;
     this.userName = user;
+    this.channel = channel;
     chat.on('voice-join', (m) => this.handleJoin(m, peersList));
     chat.on('voice-offer', (m) => this.handleOffer(m, peersList));
     chat.on('voice-answer', (m) => this.handleAnswer(m));
@@ -151,12 +160,15 @@ export class VoiceManager {
     const constraints: MediaStreamConstraints =
       device ? { audio: { deviceId: { exact: device } } } : { audio: true };
     this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-    chat.sendRaw({ type: 'voice-join', user });
+    chat.sendRaw({ type: 'voice-join', user, channel });
   }
 
-  leave(peersList: RemotePeer[]) {
+  /**
+   * Leave the current voice channel and clean up all peer connections.
+   */
+  leave(channel: string, peersList: RemotePeer[]) {
     if (!this.userName) return;
-    chat.sendRaw({ type: 'voice-leave', user: this.userName });
+    chat.sendRaw({ type: 'voice-leave', user: this.userName, channel });
     for (const id of Object.keys(this.peers)) {
       this.cleanupPeer(id, peersList);
     }
@@ -170,12 +182,13 @@ export class VoiceManager {
     chat.off('voice-candidate');
     chat.off('voice-leave');
     this.userName = null;
+    this.channel = null;
     peersList.length = 0;
     this.emit([]);
   }
 
   private handleJoin(msg: Message, peersList: RemotePeer[]) {
-    if (!this.userName || msg.user === this.userName) return;
+    if (!this.userName || msg.user === this.userName || msg.channel !== this.channel) return;
     this.createPeer(msg.user as string, true, peersList);
     try {
       this.joinSound.currentTime = 0;
@@ -184,16 +197,16 @@ export class VoiceManager {
   }
 
   private async handleOffer(msg: Message, peersList: RemotePeer[]) {
-    if (!this.userName || msg.target !== this.userName) return;
+    if (!this.userName || msg.target !== this.userName || msg.channel !== this.channel) return;
     const pc = await this.createPeer(msg.user as string, false, peersList);
     await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp as any));
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    chat.sendRaw({ type: 'voice-answer', user: this.userName, target: msg.user, sdp: answer });
+    chat.sendRaw({ type: 'voice-answer', user: this.userName, target: msg.user, channel: this.channel, sdp: answer });
   }
 
   private async handleAnswer(msg: Message) {
-    if (!this.userName || msg.target !== this.userName) return;
+    if (!this.userName || msg.target !== this.userName || msg.channel !== this.channel) return;
     const pc = this.peers[msg.user as string];
     if (pc && !pc.currentRemoteDescription) {
       await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp as any));
@@ -201,7 +214,7 @@ export class VoiceManager {
   }
 
   private async handleCandidate(msg: Message) {
-    if (!this.userName || msg.target !== this.userName) return;
+    if (!this.userName || msg.target !== this.userName || msg.channel !== this.channel) return;
     const pc = this.peers[msg.user as string];
     if (pc) {
       try {
@@ -211,7 +224,7 @@ export class VoiceManager {
   }
 
   private handleLeave(msg: Message, peersList: RemotePeer[]) {
-    if (!this.userName) return;
+    if (!this.userName || msg.channel !== this.channel) return;
     this.cleanupPeer(msg.user as string, peersList);
     try {
       this.leaveSound.currentTime = 0;

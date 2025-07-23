@@ -20,7 +20,7 @@
 
 <form class="login-container" on:submit|preventDefault={login}>
   <h1>Login</h1>
-  <input bind:value={username} placeholder="Username" autofocus />
+  <input bind:value={username} placeholder="Username" />
   <button type="submit">Login</button>
 </form>
 

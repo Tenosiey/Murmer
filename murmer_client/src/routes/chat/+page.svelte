@@ -17,6 +17,8 @@
   import ContextMenu from '$lib/components/ContextMenu.svelte';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
+  import { voiceChannels } from '$lib/stores/voiceChannels';
+  import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
   import { loadKeyPair, sign } from '$lib/keypair';
   function pingToStrength(ms: number): number {
     return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
@@ -55,11 +57,12 @@
   $: autoResize();
   let inVoice = false;
   let settingsOpen = false;
-  let currentChannel = 'general';
+  let currentChatChannel = 'general';
+  let currentVoiceChannel: string | null = null;
 
-  $: if ($channels.length && !$channels.includes(currentChannel)) {
-    currentChannel = $channels[0];
-    chat.sendRaw({ type: 'join', channel: currentChannel });
+  $: if ($channels.length && !$channels.includes(currentChatChannel)) {
+    currentChatChannel = $channels[0];
+    chat.sendRaw({ type: 'join', channel: currentChatChannel });
   }
 
   function isCode(text: string): boolean {
@@ -117,7 +120,10 @@
           password: entry?.password
         });
       }
-      chat.sendRaw({ type: 'join', channel: currentChannel });
+      // Presence response already loads history for the default channel,
+      // so avoid sending an extra join message which would duplicate chat
+      // history on initial connect. Joining is still handled when the
+      // user switches channels.
       ping.start();
       await scrollBottom();
     });
@@ -125,7 +131,9 @@
 
   onDestroy(() => {
     chat.disconnect();
-    voice.leave();
+    if (currentVoiceChannel) {
+      voice.leave(currentVoiceChannel);
+    }
     ping.stop();
     roles.set({});
   });
@@ -188,28 +196,32 @@
   }
 
   function joinChannel(ch: string) {
-    if (ch === currentChannel) return;
-    currentChannel = ch;
+    if (ch === currentChatChannel) return;
+    currentChatChannel = ch;
     chat.clear();
     chat.sendRaw({ type: 'join', channel: ch });
     scrollBottom();
   }
 
   function joinVoice() {
-    if ($session.user) {
-      voice.join($session.user);
+    if ($session.user && currentVoiceChannel) {
+      voice.join($session.user, currentVoiceChannel);
       inVoice = true;
     }
   }
 
   function leaveVoice() {
-    voice.leave();
+    if (currentVoiceChannel) {
+      voice.leave(currentVoiceChannel);
+    }
     inVoice = false;
   }
 
   function leaveServer() {
     chat.disconnect();
-    voice.leave();
+    if (currentVoiceChannel) {
+      voice.leave(currentVoiceChannel);
+    }
     selectedServer.set(null);
     goto('/servers');
   }
@@ -219,11 +231,46 @@
     if (name) channels.create(name);
   }
 
-  function openChannelMenu(event: MouseEvent) {
+  function createVoiceChannelPrompt() {
+    const name = prompt('New voice channel name');
+    if (!name) return;
+    voiceChannels.create(name);
+    if ($session.user) {
+      if (inVoice && currentVoiceChannel) {
+        voice.leave(currentVoiceChannel);
+      }
+      currentVoiceChannel = name;
+      voice.join($session.user, name);
+      inVoice = true;
+      scrollBottom();
+    }
+  }
+
+  function joinVoiceChannel(ch: string) {
+    if ($session.user) {
+      if (inVoice && currentVoiceChannel) {
+        voice.leave(currentVoiceChannel);
+      }
+      currentVoiceChannel = ch;
+      voice.join($session.user, ch);
+      inVoice = true;
+      scrollBottom();
+    }
+  }
+
+  let menuChannel: string | null = null;
+  let menuVoiceChannel: string | null = null;
+  function openChannelMenu(event: MouseEvent, channel?: string, voice?: boolean) {
     event.preventDefault();
     event.stopPropagation();
     menuX = event.clientX;
     menuY = event.clientY;
+    menuChannel = null;
+    menuVoiceChannel = null;
+    if (channel) {
+      if (voice) menuVoiceChannel = channel;
+      else menuChannel = channel;
+    }
     menuOpen = true;
   }
 
@@ -241,10 +288,10 @@
   }
 
   $: channelMenuItems = [
-    { label: 'Create Channel', action: createChannelPrompt },
-    inVoice
-      ? { label: 'Leave Voice', action: leaveVoice }
-      : { label: 'Join Voice', action: joinVoice }
+    { label: 'Create Text Channel', action: createChannelPrompt },
+    { label: 'Create Voice Channel', action: createVoiceChannelPrompt },
+    ...(menuChannel ? [{ label: 'Delete Channel', action: () => channels.remove(menuChannel!) }] : []),
+    ...(menuVoiceChannel ? [{ label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannel!) }] : [])
   ];
 
   let messagesContainer: HTMLDivElement;
@@ -261,7 +308,7 @@
   function earliestId(): number | null {
     let min: number | null = null;
     for (const m of $chat) {
-      if ((m.channel ?? 'general') === currentChannel && typeof m.id === 'number') {
+      if ((m.channel ?? 'general') === currentChatChannel && typeof m.id === 'number') {
         if (min === null || m.id! < min) min = m.id as number;
       }
     }
@@ -275,7 +322,7 @@
       if (id !== null && id > 1) {
         loadingHistory = true;
         prevHeight = messagesContainer.scrollHeight;
-        chat.loadHistory(currentChannel, id);
+        chat.loadHistory(currentChatChannel, id);
       }
     }
   }
@@ -290,7 +337,7 @@
 
   afterUpdate(() => {
     if (messagesContainer) {
-      const filteredLength = $chat.filter(m => (m.channel ?? 'general') === currentChannel).length;
+      const filteredLength = $chat.filter(m => (m.channel ?? 'general') === currentChatChannel).length;
       if (filteredLength !== lastLength) {
         lastLength = filteredLength;
         if (!loadingHistory) {
@@ -299,22 +346,98 @@
       }
     }
   });
+
+  let startX = 0;
+  let resizingLeft = false;
+  let resizingRight = false;
+
+  function startLeftResize(e: MouseEvent) {
+    resizingLeft = true;
+    startX = e.clientX;
+  }
+
+  function startRightResize(e: MouseEvent) {
+    resizingRight = true;
+    startX = e.clientX;
+  }
+
+  function stopResize() {
+    resizingLeft = false;
+    resizingRight = false;
+  }
+
+  function handleMouseMove(e: MouseEvent) {
+    if (resizingLeft) {
+      const diff = e.clientX - startX;
+      startX = e.clientX;
+      leftSidebarWidth.update((w) => Math.max(80, w + diff));
+    } else if (resizingRight) {
+      const diff = startX - e.clientX;
+      startX = e.clientX;
+      rightSidebarWidth.update((w) => Math.max(80, w + diff));
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', stopResize);
+  });
+
+  onDestroy(() => {
+    window.removeEventListener('mousemove', handleMouseMove);
+    window.removeEventListener('mouseup', stopResize);
+  });
 </script>
 
   <div class="page">
-    <div class="channels" role="navigation" on:contextmenu={openChannelMenu}>
+    <div class="channels" role="navigation" on:contextmenu={openChannelMenu} style="width: {$leftSidebarWidth}px">
+      <h3 class="section">Chat Channels</h3>
       {#each $channels as ch}
         <button
-          class:active={ch === currentChannel}
+          class:active={ch === currentChatChannel}
           on:click={() => joinChannel(ch)}
+          on:contextmenu={(e) => openChannelMenu(e, ch)}
         >
-          {ch}
+          <span class="chan-icon">#</span> {ch}
         </button>
       {/each}
+      <h3 class="section">Voice Channels</h3>
+      {#each $voiceChannels as ch}
+        <div class="voice-group">
+          <button on:click={() => joinVoiceChannel(ch)} on:contextmenu={(e) => openChannelMenu(e, ch, true)}>
+            <span class="chan-icon">🔊</span> {ch}
+          </button>
+          {#if $voiceUsers[ch]?.length}
+            <ul class="voice-user-list">
+              {#each $voiceUsers[ch] as user}
+                <li>
+                  <span class="status voice"></span>
+                  <span
+                    class="username"
+                    style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
+                    >{user}</span
+                  >
+                  {#if $roles[user]}
+                    <span
+                      class="role"
+                      style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
+                      >{$roles[user].role}</span
+                    >
+                  {/if}
+                  <ConnectionBars
+                    strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)}
+                  />
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+      {/each}
     </div>
+    <button type="button" class="resizer" on:mousedown={startLeftResize} aria-label="Resize channel list"></button>
     <div class="chat">
       <div class="header">
-        <h1>{currentChannel}</h1>
+        <h1>{currentChatChannel}</h1>
         <div class="actions">
           <span class="user">{$session.user}</span>
           <PingDot ping={$ping} />
@@ -326,7 +449,7 @@
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
       <div class="messages" bind:this={messagesContainer} on:scroll={onScroll}>
-        {#each $chat.filter(m => (m.channel ?? 'general') === currentChannel) as msg}
+        {#each $chat.filter(m => (m.channel ?? 'general') === currentChatChannel) as msg}
           <div class="message">
             <span class="timestamp">{msg.time}</span>
             <span class="username">{msg.user}</span>
@@ -425,8 +548,9 @@
       {#each $voice as peer (peer.id)}
         <audio autoplay use:stream={peer.stream}></audio>
       {/each}
-  </div>
-  <div class="sidebar">
+    </div>
+    <button type="button" class="resizer" on:mousedown={startRightResize} aria-label="Resize user list"></button>
+    <div class="sidebar" style="width: {$rightSidebarWidth}px">
       <h2>Users</h2>
       <h3>Online</h3>
       <ul>
@@ -468,27 +592,6 @@
           </li>
         {/each}
       </ul>
-      <h2>Voice</h2>
-      <ul>
-        {#each $voiceUsers as user}
-          <li>
-            <span class="status voice"></span>
-            <span
-              class="username"
-              style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
-              >{user}</span
-            >
-            {#if $roles[user]}
-              <span
-                class="role"
-                style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
-                >{$roles[user].role}</span
-              >
-            {/if}
-            <ConnectionBars strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)} />
-          </li>
-        {/each}
-      </ul>
   </div>
 </div>
 
@@ -501,12 +604,18 @@
   }
 
   .channels {
-    width: 140px;
+    min-width: 80px;
     background: var(--color-panel);
     padding: 0.5rem;
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
+  }
+
+  .channels .section {
+    margin: 0.2rem 0;
+    font-size: 0.9rem;
+    color: #aaa;
   }
 
   .channels button {
@@ -521,12 +630,46 @@
     transition: background 0.2s ease;
   }
 
+  .chan-icon {
+    margin-right: 0.25rem;
+  }
+
   .channels button:hover {
     background: rgba(255, 255, 255, 0.05);
   }
 
   .channels button.active {
     background: var(--color-accent);
+  }
+
+  .resizer {
+    width: 1px;
+    cursor: col-resize;
+    flex-shrink: 0;
+    background: transparent;
+    transition: background 0.2s;
+  }
+  .resizer:hover {
+    background: var(--color-accent-alt);
+  }
+
+  .voice-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0.25rem;
+  }
+
+  .voice-user-list {
+    list-style: none;
+    margin: 0.25rem 0 0 1rem;
+    padding: 0;
+  }
+
+  .voice-user-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-bottom: 0.25rem;
   }
 
   .chat {
@@ -541,13 +684,22 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.5rem;
+    background: var(--color-panel);
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    margin-bottom: 0.75rem;
   }
 
   .actions {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 0.5rem;
+  }
+
+  .user {
+    font-weight: 600;
+    margin-right: 0.25rem;
   }
 
   .icon {
@@ -555,7 +707,7 @@
     border: none;
     color: var(--color-text);
     cursor: pointer;
-    font-size: 1.2rem;
+    font-size: 1.3rem;
     transition: color 0.2s;
   }
 
@@ -708,7 +860,7 @@
   }
 
   .sidebar {
-    width: 200px;
+    min-width: 80px;
     margin-left: 0.5rem;
     background: var(--color-panel);
     padding: 0.5rem;
