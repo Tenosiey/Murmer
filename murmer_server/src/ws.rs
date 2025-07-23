@@ -162,6 +162,26 @@ async fn broadcast_new_voice_channel(state: &Arc<AppState>, name: &str) {
     }
 }
 
+/// Broadcast to all clients that a channel was deleted.
+async fn broadcast_remove_channel(state: &Arc<AppState>, name: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "channel-remove",
+        "channel": name,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast to all clients that a voice channel was deleted.
+async fn broadcast_remove_voice_channel(state: &Arc<AppState>, name: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "voice-channel-remove",
+        "channel": name,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
 /// Retrieve the broadcast channel for the given chat room, creating it if necessary.
 async fn get_or_create_channel(state: &Arc<AppState>, name: &str) -> broadcast::Sender<String> {
     let mut channels = state.channels.lock().await;
@@ -304,6 +324,24 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     }
                                 }
                             }
+                            "delete-channel" => {
+                                if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    if let Err(e) = db::remove_channel(&state.db, ch).await {
+                                        error!("db remove channel error: {e}");
+                                    } else {
+                                        {
+                                            let mut chans = state.channels.lock().await;
+                                            chans.remove(ch);
+                                        }
+                                        broadcast_remove_channel(&state, ch).await;
+                                        if channel == ch {
+                                            channel = "general".to_string();
+                                            chan_tx = get_or_create_channel(&state, &channel).await;
+                                            chan_rx = chan_tx.subscribe();
+                                        }
+                                    }
+                                }
+                            }
                             "create-voice-channel" => {
                                 if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
                                     let mut map = state.voice_channels.lock().await;
@@ -311,6 +349,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         map.insert(ch.to_string(), HashSet::new());
                                         drop(map);
                                         broadcast_new_voice_channel(&state, ch).await;
+                                    }
+                                }
+                            }
+                            "delete-voice-channel" => {
+                                if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    let mut map = state.voice_channels.lock().await;
+                                    map.remove(ch);
+                                    drop(map);
+                                    broadcast_remove_voice_channel(&state, ch).await;
+                                    if voice_channel.as_deref() == Some(ch) {
+                                        voice_channel = None;
                                     }
                                 }
                             }

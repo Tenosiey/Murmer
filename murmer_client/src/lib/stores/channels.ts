@@ -19,11 +19,22 @@ function createChannelStore() {
     }
   });
 
+  chat.on('channel-remove', (msg: Message) => {
+    const name = (msg as any).channel;
+    if (typeof name === 'string') {
+      update((chs) => chs.filter((c) => c !== name));
+    }
+  });
+
   function create(name: string) {
     chat.sendRaw({ type: 'create-channel', name });
   }
 
-  return { subscribe, set, create };
+  function remove(name: string) {
+    chat.sendRaw({ type: 'delete-channel', name });
+  }
+
+  return { subscribe, set, create, remove };
 }
 
 export const channels = createChannelStore();
