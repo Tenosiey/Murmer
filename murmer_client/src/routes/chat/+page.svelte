@@ -257,11 +257,19 @@
     }
   }
 
-  function openChannelMenu(event: MouseEvent) {
+  let menuChannel: string | null = null;
+  let menuVoiceChannel: string | null = null;
+  function openChannelMenu(event: MouseEvent, channel?: string, voice?: boolean) {
     event.preventDefault();
     event.stopPropagation();
     menuX = event.clientX;
     menuY = event.clientY;
+    menuChannel = null;
+    menuVoiceChannel = null;
+    if (channel) {
+      if (voice) menuVoiceChannel = channel;
+      else menuChannel = channel;
+    }
     menuOpen = true;
   }
 
@@ -280,7 +288,9 @@
 
   $: channelMenuItems = [
     { label: 'Create Text Channel', action: createChannelPrompt },
-    { label: 'Create Voice Channel', action: createVoiceChannelPrompt }
+    { label: 'Create Voice Channel', action: createVoiceChannelPrompt },
+    ...(menuChannel ? [{ label: 'Delete Channel', action: () => channels.remove(menuChannel!) }] : []),
+    ...(menuVoiceChannel ? [{ label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannel!) }] : [])
   ];
 
   let messagesContainer: HTMLDivElement;
@@ -344,6 +354,7 @@
         <button
           class:active={ch === currentChatChannel}
           on:click={() => joinChannel(ch)}
+          on:contextmenu={(e) => openChannelMenu(e, ch)}
         >
           <span class="chan-icon">#</span> {ch}
         </button>
@@ -351,7 +362,7 @@
       <h3 class="section">Voice Channels</h3>
       {#each $voiceChannels as ch}
         <div class="voice-group">
-          <button on:click={() => joinVoiceChannel(ch)}>
+          <button on:click={() => joinVoiceChannel(ch)} on:contextmenu={(e) => openChannelMenu(e, ch, true)}>
             <span class="chan-icon">🔊</span> {ch}
           </button>
           {#if $voiceUsers[ch]?.length}

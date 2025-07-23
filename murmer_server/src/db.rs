@@ -166,3 +166,10 @@ pub async fn add_channel(db: &Client, name: &str) -> Result<(), tokio_postgres::
     .await
     .map(|_| ())
 }
+
+/// Delete an existing channel.
+pub async fn remove_channel(db: &Client, name: &str) -> Result<(), tokio_postgres::Error> {
+    db.execute("DELETE FROM channels WHERE name = $1", &[&name])
+        .await
+        .map(|_| ())
+}
