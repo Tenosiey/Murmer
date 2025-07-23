@@ -280,8 +280,7 @@
 
   $: channelMenuItems = [
     { label: 'Create Text Channel', action: createChannelPrompt },
-    { label: 'Create Voice Channel', action: createVoiceChannelPrompt },
-    ...(inVoice ? [{ label: 'Leave Voice', action: leaveVoice }] : [])
+    { label: 'Create Voice Channel', action: createVoiceChannelPrompt }
   ];
 
   let messagesContainer: HTMLDivElement;
