@@ -219,6 +219,20 @@
     if (name) channels.create(name);
   }
 
+  function createVoiceChannelPrompt() {
+    const name = prompt('New voice channel name');
+    if (!name) return;
+    channels.create(name);
+    if ($session.user) {
+      currentChannel = name;
+      chat.clear();
+      chat.sendRaw({ type: 'join', channel: name });
+      voice.join($session.user, name);
+      inVoice = true;
+      scrollBottom();
+    }
+  }
+
   function openChannelMenu(event: MouseEvent) {
     event.preventDefault();
     event.stopPropagation();
@@ -242,6 +256,7 @@
 
   $: channelMenuItems = [
     { label: 'Create Channel', action: createChannelPrompt },
+    { label: 'Create Voice Channel', action: createVoiceChannelPrompt },
     inVoice
       ? { label: 'Leave Voice', action: leaveVoice }
       : { label: 'Join Voice', action: joinVoice }
