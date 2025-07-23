@@ -28,7 +28,18 @@
 {#if open}
   <ul class="menu" style="top:{y}px;left:{x}px">
     {#each items as item}
-      <li class="entry" on:click={() => { item.action(); close(); }}>{item.label}</li>
+      <li>
+        <button
+          type="button"
+          class="entry"
+          on:click={() => {
+            item.action();
+            close();
+          }}
+        >
+          {item.label}
+        </button>
+      </li>
     {/each}
   </ul>
 {/if}
@@ -46,6 +57,12 @@
     padding: 0.25rem 1rem;
     cursor: pointer;
     white-space: nowrap;
+    background: none;
+    border: none;
+    color: inherit;
+    width: 100%;
+    text-align: left;
+    display: block;
   }
   .entry:hover {
     background: #374151;
