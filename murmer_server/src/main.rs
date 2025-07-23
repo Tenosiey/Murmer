@@ -92,8 +92,13 @@ async fn main() {
 
     let cors = CorsLayer::permissive();
 
+    use axum::http::StatusCode;
+
     let app = Router::new()
-        .route("/", get(|| async { "OK" }))
+        .route(
+            "/",
+            get(|| async { "OK" }).head(|| async { StatusCode::OK }),
+        )
         .route("/ws", get(ws::ws_handler))
         .route("/upload", post(upload::upload))
         .route("/role", post(admin::set_role))
