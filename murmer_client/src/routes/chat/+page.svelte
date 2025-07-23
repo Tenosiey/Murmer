@@ -646,7 +646,7 @@
     width: 2px;
     cursor: col-resize;
     flex-shrink: 0;
-    background: var(--color-panel);
+    background: transparent;
     transition: background 0.2s;
   }
   .resizer:hover {
