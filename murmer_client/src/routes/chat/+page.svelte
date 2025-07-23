@@ -779,11 +779,16 @@ import { renderMarkdown } from '$lib/markdown';
     overflow-wrap: anywhere;
   }
 
-  .content pre {
+  :global(.content p) {
+    margin: 0;
+  }
+
+  :global(.content pre) {
     background: #1e1e2e;
     padding: 0.25rem 0.5rem;
     border-radius: 4px;
     overflow-x: auto;
+    margin: 0;
   }
 
   .content img {
