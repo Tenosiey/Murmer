@@ -3,10 +3,11 @@ import { chat } from './chat';
 import type { Message } from '../types';
 
 function createVoiceUserStore() {
-  const { subscribe, set } = writable<string[]>([]);
+  const { subscribe, update } = writable<Record<string, string[]>>({});
   chat.on('voice-users', (msg: Message) => {
-    if (Array.isArray(msg.users)) {
-      set(msg.users as string[]);
+    const ch = (msg as any).channel;
+    if (typeof ch === 'string' && Array.isArray(msg.users)) {
+      update((m) => ({ ...m, [ch]: msg.users as string[] }));
     }
   });
   return { subscribe };
