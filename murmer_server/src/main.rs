@@ -93,6 +93,7 @@ async fn main() {
     let cors = CorsLayer::permissive();
 
     let app = Router::new()
+        .route("/", get(|| async { "OK" }))
         .route("/ws", get(ws::ws_handler))
         .route("/upload", post(upload::upload))
         .route("/role", post(admin::set_role))
