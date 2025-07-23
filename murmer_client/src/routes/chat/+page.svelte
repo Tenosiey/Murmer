@@ -275,11 +275,9 @@
   }
 
   $: channelMenuItems = [
-    { label: 'Create Channel', action: createChannelPrompt },
+    { label: 'Create Text Channel', action: createChannelPrompt },
     { label: 'Create Voice Channel', action: createVoiceChannelPrompt },
-    inVoice
-      ? { label: 'Leave Voice', action: leaveVoice }
-      : { label: 'Join Voice', action: joinVoice }
+    ...(inVoice ? [{ label: 'Leave Voice', action: leaveVoice }] : [])
   ];
 
   let messagesContainer: HTMLDivElement;
