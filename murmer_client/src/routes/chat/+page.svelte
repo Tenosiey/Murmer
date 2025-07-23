@@ -643,7 +643,7 @@
   }
 
   .resizer {
-    width: 2px;
+    width: 1px;
     cursor: col-resize;
     flex-shrink: 0;
     background: transparent;
