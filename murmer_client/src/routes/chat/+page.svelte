@@ -227,6 +227,9 @@
     if (!name) return;
     channels.create(name);
     if ($session.user) {
+      if (inVoice) {
+        voice.leave(currentChannel);
+      }
       currentChannel = name;
       chat.clear();
       chat.sendRaw({ type: 'join', channel: name });
@@ -238,6 +241,9 @@
 
   function joinVoiceChannel(ch: string) {
     if ($session.user) {
+      if (inVoice) {
+        voice.leave(currentChannel);
+      }
       currentChannel = ch;
       chat.clear();
       chat.sendRaw({ type: 'join', channel: ch });
