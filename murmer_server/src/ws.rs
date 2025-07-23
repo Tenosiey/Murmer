@@ -14,6 +14,7 @@ use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{PublicKey, Signature, Verifier};
 use futures::{SinkExt, StreamExt, stream::SplitSink};
 use serde_json::Value;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info};
@@ -114,6 +115,17 @@ async fn send_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, 
     }
 }
 
+/// Send the list of available voice channels to a client.
+async fn send_voice_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    let list: Vec<String> = state.voice_channels.lock().await.keys().cloned().collect();
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "voice-channel-list",
+        "channels": list,
+    })) {
+        let _ = sender.send(Message::Text(msg)).await;
+    }
+}
+
 /// Send all voice channel member lists to a client.
 async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let map = state.voice_channels.lock().await.clone();
@@ -134,6 +146,16 @@ async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket,
 async fn broadcast_new_channel(state: &Arc<AppState>, name: &str) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "channel-add",
+        "channel": name,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast to all clients that a new voice channel was created.
+async fn broadcast_new_voice_channel(state: &Arc<AppState>, name: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "voice-channel-add",
         "channel": name,
     })) {
         let _ = state.tx.send(msg);
@@ -247,6 +269,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         }
                                         send_all_roles(&state, &mut sender).await;
                                         send_channels(&state, &mut sender).await;
+                                        send_voice_channels(&state, &mut sender).await;
                                         send_users(&state, &mut sender).await;
                                         send_all_voice(&state, &mut sender).await;
                                         db::send_history(&state.db, &mut sender, &channel, None, 50).await;
@@ -278,6 +301,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     } else {
                                         get_or_create_channel(&state, ch).await;
                                         broadcast_new_channel(&state, ch).await;
+                                    }
+                                }
+                            }
+                            "create-voice-channel" => {
+                                if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    let mut map = state.voice_channels.lock().await;
+                                    if !map.contains_key(ch) {
+                                        map.insert(ch.to_string(), HashSet::new());
+                                        drop(map);
+                                        broadcast_new_voice_channel(&state, ch).await;
                                     }
                                 }
                             }
@@ -317,7 +350,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     for users in map.values_mut() {
                                         users.remove(u);
                                     }
-                                    map.entry(ch.to_string()).or_default().insert(u.to_string());
+                                    let new_channel = !map.contains_key(ch);
+                                    let entry = map.entry(ch.to_string()).or_default();
+                                    entry.insert(u.to_string());
+                                    if new_channel {
+                                        broadcast_new_voice_channel(&state, ch).await;
+                                    }
                                     voice_channel = Some(ch.to_string());
                                 }
                                 if let Some(ch) = v.get("channel").and_then(|c| c.as_str()) {

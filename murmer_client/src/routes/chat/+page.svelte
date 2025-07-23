@@ -17,6 +17,7 @@
   import ContextMenu from '$lib/components/ContextMenu.svelte';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
+  import { voiceChannels } from '$lib/stores/voiceChannels';
   import { loadKeyPair, sign } from '$lib/keypair';
   function pingToStrength(ms: number): number {
     return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
@@ -55,11 +56,12 @@
   $: autoResize();
   let inVoice = false;
   let settingsOpen = false;
-  let currentChannel = 'general';
+  let currentChatChannel = 'general';
+  let currentVoiceChannel: string | null = null;
 
-  $: if ($channels.length && !$channels.includes(currentChannel)) {
-    currentChannel = $channels[0];
-    chat.sendRaw({ type: 'join', channel: currentChannel });
+  $: if ($channels.length && !$channels.includes(currentChatChannel)) {
+    currentChatChannel = $channels[0];
+    chat.sendRaw({ type: 'join', channel: currentChatChannel });
   }
 
   function isCode(text: string): boolean {
@@ -128,7 +130,9 @@
 
   onDestroy(() => {
     chat.disconnect();
-    voice.leave(currentChannel);
+    if (currentVoiceChannel) {
+      voice.leave(currentVoiceChannel);
+    }
     ping.stop();
     roles.set({});
   });
@@ -191,28 +195,32 @@
   }
 
   function joinChannel(ch: string) {
-    if (ch === currentChannel) return;
-    currentChannel = ch;
+    if (ch === currentChatChannel) return;
+    currentChatChannel = ch;
     chat.clear();
     chat.sendRaw({ type: 'join', channel: ch });
     scrollBottom();
   }
 
   function joinVoice() {
-    if ($session.user) {
-      voice.join($session.user, currentChannel);
+    if ($session.user && currentVoiceChannel) {
+      voice.join($session.user, currentVoiceChannel);
       inVoice = true;
     }
   }
 
   function leaveVoice() {
-    voice.leave(currentChannel);
+    if (currentVoiceChannel) {
+      voice.leave(currentVoiceChannel);
+    }
     inVoice = false;
   }
 
   function leaveServer() {
     chat.disconnect();
-    voice.leave(currentChannel);
+    if (currentVoiceChannel) {
+      voice.leave(currentVoiceChannel);
+    }
     selectedServer.set(null);
     goto('/servers');
   }
@@ -225,14 +233,12 @@
   function createVoiceChannelPrompt() {
     const name = prompt('New voice channel name');
     if (!name) return;
-    channels.create(name);
+    voiceChannels.create(name);
     if ($session.user) {
-      if (inVoice) {
-        voice.leave(currentChannel);
+      if (inVoice && currentVoiceChannel) {
+        voice.leave(currentVoiceChannel);
       }
-      currentChannel = name;
-      chat.clear();
-      chat.sendRaw({ type: 'join', channel: name });
+      currentVoiceChannel = name;
       voice.join($session.user, name);
       inVoice = true;
       scrollBottom();
@@ -241,12 +247,10 @@
 
   function joinVoiceChannel(ch: string) {
     if ($session.user) {
-      if (inVoice) {
-        voice.leave(currentChannel);
+      if (inVoice && currentVoiceChannel) {
+        voice.leave(currentVoiceChannel);
       }
-      currentChannel = ch;
-      chat.clear();
-      chat.sendRaw({ type: 'join', channel: ch });
+      currentVoiceChannel = ch;
       voice.join($session.user, ch);
       inVoice = true;
       scrollBottom();
@@ -294,7 +298,7 @@
   function earliestId(): number | null {
     let min: number | null = null;
     for (const m of $chat) {
-      if ((m.channel ?? 'general') === currentChannel && typeof m.id === 'number') {
+      if ((m.channel ?? 'general') === currentChatChannel && typeof m.id === 'number') {
         if (min === null || m.id! < min) min = m.id as number;
       }
     }
@@ -308,7 +312,7 @@
       if (id !== null && id > 1) {
         loadingHistory = true;
         prevHeight = messagesContainer.scrollHeight;
-        chat.loadHistory(currentChannel, id);
+        chat.loadHistory(currentChatChannel, id);
       }
     }
   }
@@ -323,7 +327,7 @@
 
   afterUpdate(() => {
     if (messagesContainer) {
-      const filteredLength = $chat.filter(m => (m.channel ?? 'general') === currentChannel).length;
+      const filteredLength = $chat.filter(m => (m.channel ?? 'general') === currentChatChannel).length;
       if (filteredLength !== lastLength) {
         lastLength = filteredLength;
         if (!loadingHistory) {
@@ -339,14 +343,14 @@
       <h3 class="section">Chat Channels</h3>
       {#each $channels as ch}
         <button
-          class:active={ch === currentChannel}
+          class:active={ch === currentChatChannel}
           on:click={() => joinChannel(ch)}
         >
           <span class="chan-icon">#</span> {ch}
         </button>
       {/each}
       <h3 class="section">Voice Channels</h3>
-      {#each $channels as ch}
+      {#each $voiceChannels as ch}
         <button on:click={() => joinVoiceChannel(ch)}>
           <span class="chan-icon">🔊</span> {ch}
         </button>
@@ -354,7 +358,7 @@
     </div>
     <div class="chat">
       <div class="header">
-        <h1>{currentChannel}</h1>
+        <h1>{currentChatChannel}</h1>
         <div class="actions">
           <span class="user">{$session.user}</span>
           <PingDot ping={$ping} />
@@ -366,7 +370,7 @@
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
       <div class="messages" bind:this={messagesContainer} on:scroll={onScroll}>
-        {#each $chat.filter(m => (m.channel ?? 'general') === currentChannel) as msg}
+        {#each $chat.filter(m => (m.channel ?? 'general') === currentChatChannel) as msg}
           <div class="message">
             <span class="timestamp">{msg.time}</span>
             <span class="username">{msg.user}</span>
@@ -510,7 +514,7 @@
       </ul>
       <h2>Voice</h2>
       <ul>
-        {#each $voiceUsers[currentChannel] ?? [] as user}
+        {#each $voiceUsers[currentVoiceChannel ?? ''] ?? [] as user}
           <li>
             <span class="status voice"></span>
             <span
