@@ -1,6 +1,6 @@
 [package]
 name = "murmer_server"
-version = "2025.7.23-alpha.1"
+version = "2025.7.23-alpha.2"
 edition = "2024"
 
 [dependencies]
@@ -19,3 +19,4 @@ base64 = "0.22"
 axum-extra = { version = "0.9", features = ["typed-header"] }
 serde = { version = "1", features = ["derive"] }
 sanitize-filename = "0.6"
+subtle = "2.6"

@@ -781,6 +781,11 @@ import { renderMarkdown } from '$lib/markdown';
 
   :global(.content p) {
     margin: 0;
+    padding: 0;
+  }
+  
+  :global(.content p:last-child) {
+    margin-bottom: 0;
   }
 
   :global(.content pre) {

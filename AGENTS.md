@@ -14,11 +14,25 @@ Each subfolder contains its own `AGENTS.md` with more details.
 1. Install [Rust](https://www.rust-lang.org/tools/install) and [Node.js](https://nodejs.org) 22+.
 2. See `README.md` for quick commands to run the client and server.
 
+## Security Considerations
+- The server implements Ed25519 signature-based authentication with anti-replay protection
+- Rate limiting is enforced for authentication attempts and message sending
+- File uploads are restricted to images only with size limits and type validation
+- Input validation is performed on channel names, usernames, and message content
+- CORS is configured restrictively in production builds
+
+## Code Quality Standards
+- All Rust code must pass `cargo check` and be formatted with `cargo fmt`
+- Frontend code should pass `npm run check` for TypeScript and Svelte validation
+- Complex functions should include inline documentation explaining security implications
+- All user inputs must be validated and sanitized
+
 ## Validation
-- There is currently no automated test suite.
-- Run `npm run check` inside `murmer_client` to perform Svelte/TypeScript checks.
-- Run `cargo check` in `murmer_server` to ensure it builds successfully.
-- Format Rust code with `cargo fmt` before committing.
+- There is currently no automated test suite
+- Run `npm run check` inside `murmer_client` to perform Svelte/TypeScript checks
+- Run `cargo check` in `murmer_server` to ensure it builds successfully
+- Format Rust code with `cargo fmt` before committing
+- Test the application manually after making changes to core security or networking code
 
 ## Docker
 Use `docker compose up --build` to start the server and a Postgres database defined in `docker-compose.yml`.

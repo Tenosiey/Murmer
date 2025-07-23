@@ -14,6 +14,7 @@
 mod admin;
 mod db;
 mod roles;
+mod security;
 mod upload;
 mod ws;
 
@@ -23,17 +24,38 @@ use axum::{
 };
 use roles::RoleInfo;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     env,
     net::SocketAddr,
     path::PathBuf,
     sync::Arc,
+    time::Instant,
 };
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, broadcast};
-use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
+use tower_http::cors::CorsLayer;
 use tracing::info;
+
+/// Rate limiting state for tracking user actions
+pub struct RateLimiter {
+    /// Track message timestamps per user (user -> timestamps)
+    pub message_times: Arc<Mutex<HashMap<String, VecDeque<Instant>>>>,
+    /// Track authentication attempt timestamps per IP (ip -> timestamps)
+    pub auth_attempts: Arc<Mutex<HashMap<String, VecDeque<Instant>>>>,
+    /// Track used nonces to prevent replay attacks (nonce -> expiry_time)
+    pub used_nonces: Arc<Mutex<HashMap<String, Instant>>>,
+}
+
+impl RateLimiter {
+    pub fn new() -> Self {
+        Self {
+            message_times: Arc::new(Mutex::new(HashMap::new())),
+            auth_attempts: Arc::new(Mutex::new(HashMap::new())),
+            used_nonces: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+}
 
 /// Shared application state passed to handlers.
 /// - `tx`: broadcast channel for global events (online users, voice updates).
@@ -43,6 +65,7 @@ use tracing::info;
 /// - `known_users`: set of all users that have ever joined while the server is running.
 /// - `voice_channels`: map of voice channel names to active users.
 /// - `upload_dir`: directory where uploaded files are stored.
+/// - `rate_limiter`: rate limiting and replay protection.
 pub struct AppState {
     pub tx: broadcast::Sender<String>,
     pub channels: Arc<Mutex<HashMap<String, broadcast::Sender<String>>>>,
@@ -55,6 +78,7 @@ pub struct AppState {
     pub upload_dir: PathBuf,
     pub password: Option<String>,
     pub admin_token: Option<String>,
+    pub rate_limiter: RateLimiter,
 }
 
 #[tokio::main]
@@ -65,14 +89,18 @@ async fn main() {
     // (defaults to "uploads" if unset).
     let (tx, _rx) = broadcast::channel::<String>(100);
 
-    let db_url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
-    let db_client = db::init(&db_url).await;
+    let db_url = env::var("DATABASE_URL")
+        .map_err(|_| "DATABASE_URL environment variable is required")
+        .expect("DATABASE_URL not set");
+    let db_client = db::init(&db_url).await
+        .expect("Failed to initialize database connection");
 
     let existing_voice = db::get_voice_channels(&db_client).await;
 
     let upload_dir = env::var("UPLOAD_DIR").unwrap_or_else(|_| "uploads".to_string());
     if let Err(e) = tokio::fs::create_dir_all(&upload_dir).await {
-        panic!("create uploads dir: {e}");
+        tracing::error!("Failed to create uploads directory '{}': {}", upload_dir, e);
+        std::process::exit(1);
     }
 
     let password = env::var("SERVER_PASSWORD").ok();
@@ -96,13 +124,12 @@ async fn main() {
         upload_dir: PathBuf::from(upload_dir.clone()),
         password,
         admin_token,
+        rate_limiter: RateLimiter::new(),
     });
-
-    let cors = CorsLayer::permissive();
 
     use axum::http::StatusCode;
 
-    let app = Router::new()
+    let mut app = Router::new()
         .route(
             "/",
             get(|| async { "OK" }).head(|| async { StatusCode::OK }),
@@ -111,8 +138,15 @@ async fn main() {
         .route("/upload", post(upload::upload))
         .route("/role", post(admin::set_role))
         .nest_service("/files", ServeDir::new(upload_dir))
-        .layer(cors)
         .with_state(state);
+
+    // Add CORS if ENABLE_CORS environment variable is set (for development)
+    if env::var("ENABLE_CORS").is_ok() {
+        info!("CORS enabled via ENABLE_CORS environment variable");
+        app = app.layer(CorsLayer::permissive());
+    } else {
+        info!("CORS disabled - production mode");
+    }
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
     info!("WebSocket server running on {addr}");

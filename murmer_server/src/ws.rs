@@ -1,7 +1,30 @@
 //! WebSocket handler and helper utilities.
 //!
-//! Messages are JSON objects with a `type` field. Clients authenticate with a
-//! presence message and then send chat or voice events.
+//! This module handles the main WebSocket connection logic for the Murmer chat server.
+//! 
+//! ## Message Flow
+//! 1. Clients connect and authenticate using Ed25519 signatures
+//! 2. Server validates signatures and implements anti-replay protection
+//! 3. Authenticated clients can send chat messages, create channels, and join voice channels
+//! 4. All messages are broadcast to relevant subscribers
+//!
+//! ## Security Features
+//! - Ed25519 signature-based authentication
+//! - Replay attack prevention using nonces
+//! - Rate limiting on messages and authentication attempts
+//! - Input validation for channel names and user names
+//! - Bounds checking on history requests
+//!
+//! ## Message Types
+//! - `presence`: Authentication and user registration
+//! - `chat`: Text messages with optional images
+//! - `switch-channel`: Change active text channel
+//! - `load-history`: Request message history
+//! - `create-channel`/`delete-channel`: Channel management
+//! - `voice-*`: Voice channel operations
+//!
+//! Messages are JSON objects with a `type` field. Clients must authenticate with a
+//! presence message before sending other events.
 
 use axum::{
     extract::{
@@ -20,7 +43,7 @@ use tokio::sync::broadcast;
 use tracing::{debug, error, info};
 
 use crate::{
-    AppState, db,
+    AppState, db, security,
     roles::{RoleInfo, default_color},
 };
 
@@ -241,28 +264,100 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         v.get("signature").and_then(|s| s.as_str()),
                                         v.get("timestamp").and_then(|t| t.as_str()),
                                     ) {
+                                        // SECURITY: Rate limit authentication attempts to prevent brute force attacks
+                                        // TODO: Use actual client IP address instead of hardcoded localhost
+                                        if !security::check_auth_rate_limit(&state.rate_limiter, "127.0.0.1").await {
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"auth-rate-limit\"}".into()))
+                                                .await;
+                                            break;
+                                        }
+                                        
+                                        // SECURITY: Validate timestamp is within acceptable window (60 seconds)
+                                        // This prevents very old signatures from being replayed
+                                        let timestamp = match security::validate_timestamp(ts) {
+                                            Ok(ts) => ts,
+                                            Err(err) => {
+                                                error!("Authentication failed - {}: {}", err, ts);
+                                                let _ = sender
+                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-timestamp\"}".into()))
+                                                    .await;
+                                                break;
+                                            }
+                                        };
+                                        
+                                        // SECURITY: Create nonce from public key + timestamp to prevent replay attacks
+                                        // Each signature can only be used once within the nonce expiry window
+                                        let nonce = format!("{}:{}", pk, timestamp);
+                                        if !security::check_and_store_nonce(&state.rate_limiter, &nonce).await {
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"replay-attack\"}".into()))
+                                                .await;
+                                            break;
+                                        }
+                                        
                                         if let (Ok(pk_bytes), Ok(sig_bytes)) = (
                                             general_purpose::STANDARD.decode(pk),
                                             general_purpose::STANDARD.decode(sig),
                                         ) {
                                             if pk_bytes.len() == 32 {
-                                                if let Ok(key) = PublicKey::from_bytes(&pk_bytes[..32]) {
-                                                    if let Ok(signature) = Signature::from_bytes(&sig_bytes) {
-                                                        let within = match ts.parse::<i64>() {
-                                                            Ok(num) => (chrono::Utc::now().timestamp_millis() - num).abs() < 60_000,
-                                                            Err(_) => false,
-                                                        };
-                                                        if within && key.verify(ts.as_bytes(), &signature).is_ok() {
-                                                            authenticated = true;
+                                                match PublicKey::from_bytes(&pk_bytes[..32]) {
+                                                    Ok(key) => {
+                                                        match Signature::from_bytes(&sig_bytes) {
+                                                            Ok(signature) => {
+                                                                if key.verify(ts.as_bytes(), &signature).is_ok() {
+                                                                    authenticated = true;
+                                                                } else {
+                                                                    error!("Authentication failed - signature verification failed for key: {}", pk);
+                                                                    let _ = sender
+                                                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature\"}".into()))
+                                                                        .await;
+                                                                    break;
+                                                                }
+                                                            }
+                                                            Err(e) => {
+                                                                error!("Authentication failed - invalid signature format: {}", e);
+                                                                let _ = sender
+                                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature-format\"}".into()))
+                                                                    .await;
+                                                                break;
+                                                            }
                                                         }
                                                     }
+                                                    Err(e) => {
+                                                        error!("Authentication failed - invalid public key: {}", e);
+                                                        let _ = sender
+                                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-public-key\"}".into()))
+                                                            .await;
+                                                        break;
+                                                    }
                                                 }
+                                            } else {
+                                                error!("Authentication failed - public key wrong length: {}", pk_bytes.len());
+                                                let _ = sender
+                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-key-length\"}".into()))
+                                                    .await;
+                                                break;
                                             }
+                                        } else {
+                                            error!("Authentication failed - invalid base64 encoding");
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-encoding\"}".into()))
+                                                .await;
+                                            break;
                                         }
                                     }
                                 }
                                 if authenticated {
                                     if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
+                                        // Validate user name
+                                        if !security::validate_user_name(u) {
+                                            error!("Invalid user name: {}", u);
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-username\"}".into()))
+                                                .await;
+                                            break;
+                                        }
                                         {
                                             let mut users = state.users.lock().await;
                                             users.insert(u.to_string());
@@ -311,13 +406,35 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             }
                             "load-history" => {
                                 let before = v.get("before").and_then(|b| b.as_i64());
-                                let limit = v.get("limit").and_then(|l| l.as_i64()).unwrap_or(50);
+                                let mut limit = v.get("limit").and_then(|l| l.as_i64()).unwrap_or(50);
+                                
+                                // Prevent excessive history requests
+                                if limit > 200 {
+                                    limit = 200;
+                                    tracing::warn!("History request limit capped at 200 for user: {:?}", user_name);
+                                }
+                                
                                 db::send_history(&state.db, &mut sender, &channel, before, limit).await;
                             }
                             "create-channel" => {
                                 if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    // Validate channel name
+                                    if !security::validate_channel_name(ch) {
+                                        error!("Invalid channel name: {}", ch);
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".into()))
+                                            .await;
+                                        continue;
+                                    }
+                                    
+                                    // TODO: Add role-based authorization check here
+                                    // For now, any authenticated user can create channels
+                                    
                                     if let Err(e) = db::add_channel(&state.db, ch).await {
                                         error!("db add channel error: {e}");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-creation-failed\"}".into()))
+                                            .await;
                                     } else {
                                         get_or_create_channel(&state, ch).await;
                                         broadcast_new_channel(&state, ch).await;
@@ -326,8 +443,31 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             }
                             "delete-channel" => {
                                 if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    // Validate channel name
+                                    if !security::validate_channel_name(ch) {
+                                        error!("Invalid channel name for deletion: {}", ch);
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".into()))
+                                            .await;
+                                        continue;
+                                    }
+                                    
+                                    // Prevent deletion of general channel
+                                    if ch == "general" {
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"cannot-delete-general\"}".into()))
+                                            .await;
+                                        continue;
+                                    }
+                                    
+                                    // TODO: Add role-based authorization check here
+                                    // For now, any authenticated user can delete channels
+                                    
                                     if let Err(e) = db::remove_channel(&state.db, ch).await {
                                         error!("db remove channel error: {e}");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-deletion-failed\"}".into()))
+                                            .await;
                                     } else {
                                         {
                                             let mut chans = state.channels.lock().await;
@@ -366,6 +506,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 }
                             }
                             "chat" => {
+                                // Rate limit messages
+                                if let Some(ref user) = user_name {
+                                    if !security::check_message_rate_limit(&state.rate_limiter, user).await {
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"message-rate-limit\"}".into()))
+                                            .await;
+                                        continue;
+                                    }
+                                }
+                                
                                 v["channel"] = Value::String(channel.clone());
                                 let out = serde_json::to_string(&v).unwrap_or_else(|_| text.to_string());
                                 match state

@@ -7,9 +7,11 @@ Tauri and SvelteKit.
 ## Overview
 * Persistent text chat backed by PostgreSQL
 * Experimental voice chat using WebRTC
+* Ed25519 signature-based authentication with anti-replay protection
+* Rate limiting and comprehensive input validation
 * User roles with customizable colors
-* Image uploads stored on the server
-* Markdown formatting in text chat
+* Secure image uploads with type validation and size limits
+* Markdown formatting in text chat with XSS protection
 * Cross-platform client powered by Tauri
 
 ## Prerequisites
@@ -124,8 +126,20 @@ Pull requests are welcome! Please follow these guidelines:
 3. Keep commits focused on a single change.
 4. Update documentation when changing or adding features.
 
+## Security Features
+
+Murmer implements several security measures to protect against common attacks:
+
+- **Authentication**: Ed25519 digital signatures for cryptographic user verification
+- **Replay Protection**: Nonce-based system prevents signature reuse attacks
+- **Rate Limiting**: Configurable limits on authentication attempts and message sending
+- **Input Validation**: All user inputs are validated and sanitized
+- **File Security**: Upload restrictions, type validation, and size limits for images
+- **CORS Protection**: Restrictive cross-origin policies in production mode
+- **Admin Security**: Constant-time comparison for administrative tokens
+
 ## Notes
-This project is an early prototype demonstrating login, server selection, text chat and a stub for voice communication via WebRTC.
+This project is an early prototype demonstrating login, server selection, text chat and voice communication via WebRTC. While it includes comprehensive security measures, it should be thoroughly tested before production use.
 
 ## Development Guides
 

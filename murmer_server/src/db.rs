@@ -5,11 +5,11 @@
 //! table on startup and provide utility functions to fetch history for clients.
 
 use tokio_postgres::{Client, NoTls};
-use tracing::warn;
+use tracing::{warn, error};
 
 /// Initialize a PostgreSQL [`Client`] and ensure the `messages` table exists.
 /// The connection is retried for a few seconds if the database is not ready.
-pub async fn init(db_url: &str) -> Client {
+pub async fn init(db_url: &str) -> Result<Client, tokio_postgres::Error> {
     let (client, connection) = {
         let mut attempts = 0u8;
         loop {
@@ -20,7 +20,7 @@ pub async fn init(db_url: &str) -> Client {
                     warn!("database not ready ({e}), retrying...");
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 }
-                Err(e) => panic!("connect db: {e}"),
+                Err(e) => return Err(e),
             }
         }
     };
@@ -53,20 +53,22 @@ INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
 "#,
         )
         .await
-        .unwrap();
+        .map_err(|e| {
+            error!("Failed to initialize database schema: {}", e);
+            e
+        })?;
 
     client
         .batch_execute("ALTER TABLE roles ADD COLUMN IF NOT EXISTS color TEXT;")
         .await
         .ok();
 
-    client
+    Ok(client)
 }
 
 use axum::extract::ws::{Message, WebSocket};
 use futures::SinkExt;
 use serde_json::Value;
-use tracing::error;
 
 /// Fetch a slice of messages from the database.
 pub async fn fetch_history(
@@ -76,7 +78,15 @@ pub async fn fetch_history(
     limit: i64,
 ) -> Result<Vec<(i64, String)>, tokio_postgres::Error> {
     let rows = if let Some(id) = before {
-        let id32 = id as i32;
+        // Safely convert i64 to i32 with bounds checking  
+        let id32 = match i32::try_from(id) {
+            Ok(val) => val,
+            Err(_) => {
+                error!("Message ID too large for database query: {}", id);
+                // Use a reasonable fallback - return early with empty results
+                return Ok(Vec::new());
+            }
+        };
         db.query(
             "SELECT id::bigint, content FROM messages WHERE channel = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
             &[&channel, &id32, &limit],

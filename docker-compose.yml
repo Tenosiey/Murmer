@@ -19,6 +19,12 @@ services:
       UPLOAD_DIR: /app/uploads
       # Uncomment to require a password for WebSocket connections
       # SERVER_PASSWORD: changeme
+      # Rate limiting configuration
+      MAX_MESSAGES_PER_MINUTE: 300
+      MAX_AUTH_ATTEMPTS_PER_MINUTE: 5
+      NONCE_EXPIRY_SECONDS: 300
+      # Enable CORS for development (comment out for production)
+      ENABLE_CORS: "1"
     depends_on:
       - db
     ports:
