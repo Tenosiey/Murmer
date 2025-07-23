@@ -51,10 +51,14 @@
     border: 1px solid #4b5563;
     padding: 0.25rem 0;
     z-index: 1000;
+    list-style: none;
+    margin: 0;
+    border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
   }
 
   .entry {
-    padding: 0.25rem 1rem;
+    padding: 0.4rem 1rem;
     cursor: pointer;
     white-space: nowrap;
     background: none;
@@ -65,6 +69,6 @@
     display: block;
   }
   .entry:hover {
-    background: #374151;
+    background: rgba(255, 255, 255, 0.1);
   }
 </style>
