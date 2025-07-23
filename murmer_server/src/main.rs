@@ -68,6 +68,8 @@ async fn main() {
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
     let db_client = db::init(&db_url).await;
 
+    let existing_voice = db::get_voice_channels(&db_client).await;
+
     let upload_dir = env::var("UPLOAD_DIR").unwrap_or_else(|_| "uploads".to_string());
     if let Err(e) = tokio::fs::create_dir_all(&upload_dir).await {
         panic!("create uploads dir: {e}");
@@ -82,7 +84,13 @@ async fn main() {
         db: Arc::new(db_client),
         users: Arc::new(Mutex::new(HashSet::new())),
         known_users: Arc::new(Mutex::new(HashSet::new())),
-        voice_channels: Arc::new(Mutex::new(HashMap::new())),
+        voice_channels: Arc::new(Mutex::new({
+            let mut map = HashMap::new();
+            for name in &existing_voice {
+                map.insert(name.clone(), HashSet::new());
+            }
+            map
+        })),
         roles: Arc::new(Mutex::new(HashMap::new())),
         user_keys: Arc::new(Mutex::new(HashMap::new())),
         upload_dir: PathBuf::from(upload_dir.clone()),

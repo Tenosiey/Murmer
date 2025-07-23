@@ -45,6 +45,9 @@ If you set the `SERVER_PASSWORD` environment variable in `docker-compose.yml`, t
 On first launch the server creates a single text channel named `general`. Users
 can create additional channels as needed, but no other channels are included by
 default.
+Voice channel names are persisted in the same way, so any voice channels you
+create will still exist after restarting the server or recreating the Docker
+container.
 
 ### Admin Roles
 
