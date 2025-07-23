@@ -117,7 +117,10 @@
           password: entry?.password
         });
       }
-      chat.sendRaw({ type: 'join', channel: currentChannel });
+      // Presence response already loads history for the default channel,
+      // so avoid sending an extra join message which would duplicate chat
+      // history on initial connect. Joining is still handled when the
+      // user switches channels.
       ping.start();
       await scrollBottom();
     });
