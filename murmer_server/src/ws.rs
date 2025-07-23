@@ -348,6 +348,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     if !map.contains_key(ch) {
                                         map.insert(ch.to_string(), HashSet::new());
                                         drop(map);
+                                        let _ = db::add_voice_channel(&state.db, ch).await;
                                         broadcast_new_voice_channel(&state, ch).await;
                                     }
                                 }
@@ -357,6 +358,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     let mut map = state.voice_channels.lock().await;
                                     map.remove(ch);
                                     drop(map);
+                                    let _ = db::remove_voice_channel(&state.db, ch).await;
                                     broadcast_remove_voice_channel(&state, ch).await;
                                     if voice_channel.as_deref() == Some(ch) {
                                         voice_channel = None;
