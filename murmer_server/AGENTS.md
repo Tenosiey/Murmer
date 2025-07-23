@@ -15,4 +15,5 @@ docker compose up --build
 The server listens on `ws://localhost:3001/ws`.
 
 ## Validation
-There are no automated tests. Format code with `cargo fmt` before committing.
+There are no automated tests. Run `cargo check` to verify the code builds and
+format it with `cargo fmt` before committing.

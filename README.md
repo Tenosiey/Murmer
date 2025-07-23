@@ -91,7 +91,8 @@ A `docker-compose.yml` runs the Rust server alongside Postgres. The client is ru
 
 ## Development
 Run `npm run check` in `murmer_client` to lint Svelte and TypeScript sources.
-Format the server code with `cargo fmt` before committing changes.
+For the server run `cargo check` and format the code with `cargo fmt` before
+committing changes.
 
 ## Building on Windows
 
@@ -117,7 +118,7 @@ Format the server code with `cargo fmt` before committing changes.
 
 Pull requests are welcome! Please follow these guidelines:
 
-1. Format Rust code using `cargo fmt`.
+1. Format Rust code using `cargo fmt` and ensure it compiles with `cargo check`.
 2. Run `npm run check` from `murmer_client` and ensure there are no errors.
 3. Keep commits focused on a single change.
 4. Update documentation when changing or adding features.
