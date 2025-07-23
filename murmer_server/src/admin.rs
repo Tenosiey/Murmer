@@ -14,6 +14,8 @@ use axum_extra::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
+use subtle::ConstantTimeEq;
+use tracing::error;
 
 use crate::{
     AppState, db,
@@ -32,12 +34,19 @@ pub async fn set_role(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Json(body): Json<RoleBody>,
 ) -> impl IntoResponse {
-    if state.admin_token.as_deref() != Some(bearer.token()) {
+    // Use constant-time comparison to prevent timing attacks
+    let authorized = if let Some(expected_token) = &state.admin_token {
+        expected_token.as_bytes().ct_eq(bearer.token().as_bytes()).into()
+    } else {
+        false
+    };
+    
+    if !authorized {
         return StatusCode::UNAUTHORIZED;
     }
     let color = body.color.clone().or_else(|| default_color(&body.role));
     if let Err(e) = db::set_role(&state.db, &body.key, &body.role, color.as_deref()).await {
-        eprintln!("set_role error: {e}");
+        error!("Failed to set role for user {}: {}", body.key, e);
         return StatusCode::INTERNAL_SERVER_ERROR;
     }
     let mut affected = Vec::new();

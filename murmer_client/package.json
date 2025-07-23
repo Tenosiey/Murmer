@@ -1,6 +1,6 @@
 {
   "name": "murmer",
-  "version": "2025.7.23-alpha.1",
+  "version": "2025.7.23-alpha.2",
   "description": "",
   "type": "module",
   "scripts": {
@@ -17,6 +17,8 @@
     "@tauri-apps/plugin-notification": "^2.3.0",
     "@tauri-apps/plugin-opener": "^2.4.0",
     "@tauri-apps/plugin-window-state": "^2.4.0",
+    "dompurify": "^3.2.6",
+    "marked": "^16.1.1",
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {

@@ -9,7 +9,7 @@ Use the checkboxes to track progress.
 
 ### 🗨️ Chat Features
 
-- [ ] Support Markdown formatting in text chat
+- [x] Support Markdown formatting in text chat
 - [ ] Enable deleting messages
 - [ ] Support editing messages
 - [ ] Add reactions with emojis

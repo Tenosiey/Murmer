@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, afterUpdate, tick } from 'svelte';
-  import { chat } from '$lib/stores/chat';
-  import { roles } from '$lib/stores/roles';
+import { chat } from '$lib/stores/chat';
+import { roles } from '$lib/stores/roles';
   import { session } from '$lib/stores/session';
   import { voice, voiceStats } from '$lib/stores/voice';
   import { selectedServer, servers } from '$lib/stores/servers';
@@ -19,7 +19,8 @@
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
-  import { loadKeyPair, sign } from '$lib/keypair';
+import { loadKeyPair, sign } from '$lib/keypair';
+import { renderMarkdown } from '$lib/markdown';
   function pingToStrength(ms: number): number {
     return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
   }
@@ -65,9 +66,6 @@
     chat.sendRaw({ type: 'join', channel: currentChatChannel });
   }
 
-  function isCode(text: string): boolean {
-    return /^```[\s\S]*```$/.test(text.trim());
-  }
 
   function stream(node: HTMLAudioElement, media: MediaStream) {
     node.srcObject = media;
@@ -434,7 +432,8 @@
         </div>
       {/each}
     </div>
-    <button type="button" class="resizer" on:mousedown={startLeftResize} aria-label="Resize channel list"></button>
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="resizer" role="separator" aria-label="Resize channel list" on:mousedown={startLeftResize}></div>
     <div class="chat">
       <div class="header">
         <h1>{currentChatChannel}</h1>
@@ -460,11 +459,7 @@
             {/if}
             <span class="content">
               {#if msg.text}
-                {#if isCode(msg.text)}
-                  <pre><code>{msg.text.trim().slice(3, -3)}</code></pre>
-                {:else}
-                  {msg.text}
-                {/if}
+                {@html renderMarkdown(msg.text)}
               {/if}
               {#if msg.image}
                 <img src={msg.image as string} alt="" />
@@ -549,7 +544,8 @@
         <audio autoplay use:stream={peer.stream}></audio>
       {/each}
     </div>
-    <button type="button" class="resizer" on:mousedown={startRightResize} aria-label="Resize user list"></button>
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="resizer" role="separator" aria-label="Resize user list" on:mousedown={startRightResize}></div>
     <div class="sidebar" style="width: {$rightSidebarWidth}px">
       <h2>Users</h2>
       <h3>Online</h3>
@@ -781,6 +777,23 @@
   .content {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  :global(.content p) {
+    margin: 0;
+    padding: 0;
+  }
+  
+  :global(.content p:last-child) {
+    margin-bottom: 0;
+  }
+
+  :global(.content pre) {
+    background: #1e1e2e;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 0;
   }
 
   .content img {
