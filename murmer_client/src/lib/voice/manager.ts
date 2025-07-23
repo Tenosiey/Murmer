@@ -141,6 +141,12 @@ export class VoiceManager {
     return pc;
   }
 
+  /**
+   * Join a voice channel and start streaming the local microphone.
+   *
+   * Registers handlers for signaling messages and notifies the server
+   * that this user joined the specified channel.
+   */
   async join(user: string, channel: string, peersList: RemotePeer[]) {
     if (this.userName) return;
     this.userName = user;
@@ -157,6 +163,9 @@ export class VoiceManager {
     chat.sendRaw({ type: 'voice-join', user, channel });
   }
 
+  /**
+   * Leave the current voice channel and clean up all peer connections.
+   */
   leave(channel: string, peersList: RemotePeer[]) {
     if (!this.userName) return;
     chat.sendRaw({ type: 'voice-leave', user: this.userName, channel });

@@ -17,6 +17,7 @@ Each subfolder contains its own `AGENTS.md` with more details.
 ## Validation
 - There is currently no automated test suite.
 - Run `npm run check` inside `murmer_client` to perform Svelte/TypeScript checks.
+- Run `cargo check` in `murmer_server` to ensure it builds successfully.
 - Format Rust code with `cargo fmt` before committing.
 
 ## Docker
