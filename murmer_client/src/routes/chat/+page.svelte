@@ -434,7 +434,7 @@
         </div>
       {/each}
     </div>
-    <div class="resizer" on:mousedown={startLeftResize}></div>
+    <button type="button" class="resizer" on:mousedown={startLeftResize} aria-label="Resize channel list"></button>
     <div class="chat">
       <div class="header">
         <h1>{currentChatChannel}</h1>
@@ -549,7 +549,7 @@
         <audio autoplay use:stream={peer.stream}></audio>
       {/each}
     </div>
-    <div class="resizer" on:mousedown={startRightResize}></div>
+    <button type="button" class="resizer" on:mousedown={startRightResize} aria-label="Resize user list"></button>
     <div class="sidebar" style="width: {$rightSidebarWidth}px">
       <h2>Users</h2>
       <h3>Online</h3>
