@@ -233,6 +233,17 @@
     }
   }
 
+  function joinVoiceChannel(ch: string) {
+    if ($session.user) {
+      currentChannel = ch;
+      chat.clear();
+      chat.sendRaw({ type: 'join', channel: ch });
+      voice.join($session.user, ch);
+      inVoice = true;
+      scrollBottom();
+    }
+  }
+
   function openChannelMenu(event: MouseEvent) {
     event.preventDefault();
     event.stopPropagation();
@@ -318,12 +329,19 @@
 
   <div class="page">
     <div class="channels" role="navigation" on:contextmenu={openChannelMenu}>
+      <h3 class="section">Chat Channels</h3>
       {#each $channels as ch}
         <button
           class:active={ch === currentChannel}
           on:click={() => joinChannel(ch)}
         >
-          {ch}
+          <span class="chan-icon">#</span> {ch}
+        </button>
+      {/each}
+      <h3 class="section">Voice Channels</h3>
+      {#each $channels as ch}
+        <button on:click={() => joinVoiceChannel(ch)}>
+          <span class="chan-icon">🔊</span> {ch}
         </button>
       {/each}
     </div>
@@ -524,6 +542,12 @@
     gap: 0.25rem;
   }
 
+  .channels .section {
+    margin: 0.2rem 0;
+    font-size: 0.9rem;
+    color: #aaa;
+  }
+
   .channels button {
     width: 100%;
     padding: 0.4rem 0.2rem;
@@ -534,6 +558,10 @@
     text-align: left;
     border-radius: 4px;
     transition: background 0.2s ease;
+  }
+
+  .chan-icon {
+    margin-right: 0.25rem;
   }
 
   .channels button:hover {
