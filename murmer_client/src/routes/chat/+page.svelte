@@ -125,7 +125,7 @@
 
   onDestroy(() => {
     chat.disconnect();
-    voice.leave();
+    voice.leave(currentChannel);
     ping.stop();
     roles.set({});
   });
@@ -197,19 +197,19 @@
 
   function joinVoice() {
     if ($session.user) {
-      voice.join($session.user);
+      voice.join($session.user, currentChannel);
       inVoice = true;
     }
   }
 
   function leaveVoice() {
-    voice.leave();
+    voice.leave(currentChannel);
     inVoice = false;
   }
 
   function leaveServer() {
     chat.disconnect();
-    voice.leave();
+    voice.leave(currentChannel);
     selectedServer.set(null);
     goto('/servers');
   }
@@ -470,7 +470,7 @@
       </ul>
       <h2>Voice</h2>
       <ul>
-        {#each $voiceUsers as user}
+        {#each $voiceUsers[currentChannel] ?? [] as user}
           <li>
             <span class="status voice"></span>
             <span

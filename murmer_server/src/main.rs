@@ -41,7 +41,7 @@ use tracing::info;
 /// - `db`: PostgreSQL client for persisting chat history.
 /// - `users`: set of currently connected chat users.
 /// - `known_users`: set of all users that have ever joined while the server is running.
-/// - `voice_users`: set of users active in voice chat.
+/// - `voice_channels`: map of voice channel names to active users.
 /// - `upload_dir`: directory where uploaded files are stored.
 pub struct AppState {
     pub tx: broadcast::Sender<String>,
@@ -49,7 +49,7 @@ pub struct AppState {
     pub db: Arc<tokio_postgres::Client>,
     pub users: Arc<Mutex<HashSet<String>>>,
     pub known_users: Arc<Mutex<HashSet<String>>>,
-    pub voice_users: Arc<Mutex<HashSet<String>>>,
+    pub voice_channels: Arc<Mutex<HashMap<String, HashSet<String>>>>,
     pub roles: Arc<Mutex<HashMap<String, RoleInfo>>>,
     pub user_keys: Arc<Mutex<HashMap<String, String>>>,
     pub upload_dir: PathBuf,
@@ -82,7 +82,7 @@ async fn main() {
         db: Arc::new(db_client),
         users: Arc::new(Mutex::new(HashSet::new())),
         known_users: Arc::new(Mutex::new(HashSet::new())),
-        voice_users: Arc::new(Mutex::new(HashSet::new())),
+        voice_channels: Arc::new(Mutex::new(HashMap::new())),
         roles: Arc::new(Mutex::new(HashMap::new())),
         user_keys: Arc::new(Mutex::new(HashMap::new())),
         upload_dir: PathBuf::from(upload_dir.clone()),
