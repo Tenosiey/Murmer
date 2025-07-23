@@ -434,7 +434,8 @@
         </div>
       {/each}
     </div>
-    <button type="button" class="resizer" on:mousedown={startLeftResize} aria-label="Resize channel list"></button>
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="resizer" role="separator" aria-label="Resize channel list" on:mousedown={startLeftResize}></div>
     <div class="chat">
       <div class="header">
         <h1>{currentChatChannel}</h1>
@@ -549,7 +550,8 @@
         <audio autoplay use:stream={peer.stream}></audio>
       {/each}
     </div>
-    <button type="button" class="resizer" on:mousedown={startRightResize} aria-label="Resize user list"></button>
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="resizer" role="separator" aria-label="Resize user list" on:mousedown={startRightResize}></div>
     <div class="sidebar" style="width: {$rightSidebarWidth}px">
       <h2>Users</h2>
       <h3>Online</h3>
