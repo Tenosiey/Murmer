@@ -9,6 +9,7 @@ Tauri and SvelteKit.
 * Experimental voice chat using WebRTC
 * User roles with customizable colors
 * Image uploads stored on the server
+* Markdown formatting in text chat
 * Cross-platform client powered by Tauri
 
 ## Prerequisites

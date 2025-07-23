@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, afterUpdate, tick } from 'svelte';
-  import { chat } from '$lib/stores/chat';
-  import { roles } from '$lib/stores/roles';
+import { chat } from '$lib/stores/chat';
+import { roles } from '$lib/stores/roles';
   import { session } from '$lib/stores/session';
   import { voice, voiceStats } from '$lib/stores/voice';
   import { selectedServer, servers } from '$lib/stores/servers';
@@ -19,7 +19,8 @@
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
-  import { loadKeyPair, sign } from '$lib/keypair';
+import { loadKeyPair, sign } from '$lib/keypair';
+import { renderMarkdown } from '$lib/markdown';
   function pingToStrength(ms: number): number {
     return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
   }
@@ -65,9 +66,6 @@
     chat.sendRaw({ type: 'join', channel: currentChatChannel });
   }
 
-  function isCode(text: string): boolean {
-    return /^```[\s\S]*```$/.test(text.trim());
-  }
 
   function stream(node: HTMLAudioElement, media: MediaStream) {
     node.srcObject = media;
@@ -460,11 +458,7 @@
             {/if}
             <span class="content">
               {#if msg.text}
-                {#if isCode(msg.text)}
-                  <pre><code>{msg.text.trim().slice(3, -3)}</code></pre>
-                {:else}
-                  {msg.text}
-                {/if}
+                {@html renderMarkdown(msg.text)}
               {/if}
               {#if msg.image}
                 <img src={msg.image as string} alt="" />
@@ -781,6 +775,13 @@
   .content {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  .content pre {
+    background: #1e1e2e;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    overflow-x: auto;
   }
 
   .content img {
