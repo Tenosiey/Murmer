@@ -8,7 +8,7 @@ import { roles } from '$lib/stores/roles';
   import { onlineUsers } from '$lib/stores/online';
   import { allUsers, offlineUsers } from '$lib/stores/users';
   import { voiceUsers } from '$lib/stores/voiceUsers';
-  import { volume, outputDeviceId, outputMuted, microphoneMuted, userVolumes, setUserVolume } from '$lib/stores/settings';
+  import { volume, outputDeviceId, outputMuted, microphoneMuted, userVolumes, setUserVolume, voiceMode, voiceActivity, isPttActive } from '$lib/stores/settings';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
@@ -600,11 +600,35 @@ import { renderMarkdown } from '$lib/markdown';
             <button 
               class="voice-control-btn mute" 
               class:muted={$microphoneMuted}
+              class:active={$voiceMode === 'vad' && $voiceActivity}
+              class:ptt-active={$voiceMode === 'ptt' && $isPttActive}
               on:click={toggleMicrophone}
               title={$microphoneMuted ? 'Unmute Microphone' : 'Mute Microphone'}
             >
-              <span class="btn-icon">{$microphoneMuted ? '🎤🚫' : '🎤'}</span>
-              <span class="btn-text">{$microphoneMuted ? 'Unmute Mic' : 'Mute Mic'}</span>
+              <span class="btn-icon">
+                {#if $microphoneMuted}
+                  🎤🚫
+                {:else if $voiceMode === 'vad' && $voiceActivity}
+                  🎤✨
+                {:else if $voiceMode === 'ptt' && $isPttActive}
+                  🎤🔥
+                {:else}
+                  🎤
+                {/if}
+              </span>
+              <span class="btn-text">
+                {#if $microphoneMuted}
+                  Unmute Mic
+                {:else if $voiceMode === 'continuous'}
+                  Always On
+                {:else if $voiceMode === 'vad'}
+                  Voice Detection
+                {:else if $voiceMode === 'ptt'}
+                  Push to Talk
+                {:else}
+                  Mute Mic
+                {/if}
+              </span>
             </button>
             <button 
               class="voice-control-btn mute" 
@@ -1215,6 +1239,31 @@ import { renderMarkdown } from '$lib/markdown';
   .voice-control-btn.mute.muted:hover {
     background: #dc2626;
     border-color: #dc2626;
+  }
+
+  .voice-control-btn.active {
+    background: var(--color-accent-alt);
+    color: white;
+    border-color: var(--color-accent-alt);
+    animation: voiceActive 0.8s ease-in-out infinite alternate;
+  }
+
+  .voice-control-btn.ptt-active {
+    background: var(--color-accent);
+    color: white;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.3);
+  }
+
+  @keyframes voiceActive {
+    from { 
+      background: var(--color-accent-alt);
+      transform: scale(1);
+    }
+    to { 
+      background: var(--color-accent-hover);
+      transform: scale(1.02);
+    }
   }
 
   .btn-icon {

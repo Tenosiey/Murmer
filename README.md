@@ -56,11 +56,13 @@ container.
 
 The server can assign custom roles to users. To enable this feature set the `ADMIN_TOKEN`
 environment variable when launching the server. You can add it to
-`docker-compose.yml` or export it in your shell before running `cargo run`.
-The value should be a **secret string** of your choice, for example:
+`docker-compose.yml`.
+The value should be a **secret string** of your choice. Add it to your `docker-compose.yml`
+environment variables, for example:
 
-```bash
-export ADMIN_TOKEN=my-admin-token
+```yaml
+environment:
+  - ADMIN_TOKEN=my-admin-token
 ```
 The same token must be provided in requests to the `/role` endpoint.
 
