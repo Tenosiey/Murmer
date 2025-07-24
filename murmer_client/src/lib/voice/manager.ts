@@ -6,9 +6,11 @@
  * currently connected.
  */
 import { chat } from '../stores/chat';
-import { volume, inputDeviceId, microphoneMuted } from '../stores/settings';
+import { volume, inputDeviceId, microphoneMuted, voiceMode, vadSensitivity, pttKey, isPttActive, voiceActivity } from '../stores/settings';
 import { get } from 'svelte/store';
 import type { Message, RemotePeer, ConnectionStats } from '../types';
+import { VoiceActivityDetector } from './vad';
+import { PushToTalkManager } from './ptt';
 
 /**
  * Handles WebRTC peer connections and signaling for voice chat.
@@ -21,6 +23,18 @@ export class VoiceManager {
   private userName: string | null = null;
   private channel: string | null = null;
   private listeners: Array<(peers: RemotePeer[]) => void> = [];
+  
+  // VAD and PTT components
+  private vad: VoiceActivityDetector | null = null;
+  private ptt: PushToTalkManager | null = null;
+  private shouldTransmit = false;
+  
+  // Audio processing for VAD/PTT control
+  private audioContext: AudioContext | null = null;
+  private gainNode: GainNode | null = null;
+  private sourceNode: MediaStreamAudioSourceNode | null = null;
+  private destinationStream: MediaStream | null = null;
+  private rawStream: MediaStream | null = null;
 
   private joinSound = new Audio('/sounds/user_join_voice_sound.mp3');
   private leaveSound = new Audio('/sounds/user_leave_voice_sound.mp3');
@@ -35,18 +49,157 @@ export class VoiceManager {
       this.leaveSound.volume = v;
     });
     
-    microphoneMuted.subscribe((muted) => {
-      this.updateMicrophoneState(muted);
+    microphoneMuted.subscribe(() => {
+      this.updateTransmissionState();
+    });
+
+    // Initialize VAD and PTT systems
+    this.vad = new VoiceActivityDetector();
+    this.ptt = new PushToTalkManager(get(pttKey));
+
+    // Subscribe to settings changes
+    voiceMode.subscribe(() => this.updateTransmissionMode());
+    vadSensitivity.subscribe(() => this.updateVadSensitivity());
+    pttKey.subscribe((key) => {
+      if (this.ptt) {
+        this.ptt.setKey(key);
+      }
+    });
+
+    // Setup VAD listener
+    this.vad.subscribe((isActive, level) => {
+      voiceActivity.set(isActive);
+      this.updateTransmissionState();
+    });
+
+    // Setup PTT listener
+    this.ptt.subscribe((isPressed) => {
+      isPttActive.set(isPressed);
+      this.updateTransmissionState();
     });
   }
 
-  private updateMicrophoneState(muted: boolean) {
-    if (this.localStream) {
-      const audioTracks = this.localStream.getAudioTracks();
-      for (const track of audioTracks) {
-        track.enabled = !muted;
+
+  private updateTransmissionMode(rawStream?: MediaStream) {
+    const streamToUse = rawStream || this.getVadStream();
+    if (!streamToUse) return;
+
+    const mode = get(voiceMode);
+    
+    if (mode === 'vad' && this.vad) {
+      // Start VAD monitoring using the raw stream (before gain control)
+      this.vad.start(streamToUse, get(vadSensitivity));
+    } else if (this.vad) {
+      // Stop VAD monitoring for other modes
+      this.vad.stop();
+    }
+
+    this.updateTransmissionState();
+  }
+
+  private getVadStream(): MediaStream | null {
+    // Return the raw stream for VAD monitoring
+    return this.rawStream;
+  }
+
+  private updateVadSensitivity() {
+    if (get(voiceMode) === 'vad' && this.vad) {
+      this.vad.updateSensitivity(get(vadSensitivity));
+    }
+  }
+
+  private updateTransmissionState() {
+    if (!this.localStream) return;
+
+    const mode = get(voiceMode);
+    const isMuted = get(microphoneMuted);
+    let shouldTransmit = false;
+
+    if (!isMuted) {
+      switch (mode) {
+        case 'continuous':
+          shouldTransmit = true;
+          break;
+        case 'vad':
+          shouldTransmit = get(voiceActivity);
+          break;
+        case 'ptt':
+          shouldTransmit = get(isPttActive);
+          break;
       }
     }
+
+    if (this.shouldTransmit !== shouldTransmit) {
+      this.shouldTransmit = shouldTransmit;
+      this.applyTransmissionState();
+    }
+  }
+
+  private applyTransmissionState() {
+    if (!this.gainNode) return;
+
+    // Use gain control instead of disabling tracks to maintain VAD access
+    const shouldTransmitAudio = this.shouldTransmit && !get(microphoneMuted);
+    this.gainNode.gain.value = shouldTransmitAudio ? 1.0 : 0.0;
+  }
+
+  private async setupAudioProcessing(inputStream: MediaStream): Promise<MediaStream> {
+    try {
+      // Store raw stream reference for VAD
+      this.rawStream = inputStream;
+      
+      // Create audio context for processing
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      // Create source from input stream
+      this.sourceNode = this.audioContext.createMediaStreamSource(inputStream);
+      
+      // Create gain node for transmission control
+      this.gainNode = this.audioContext.createGain();
+      this.gainNode.gain.value = 1.0; // Start with full gain
+      
+      // Create destination for output stream
+      const destination = this.audioContext.createMediaStreamDestination();
+      
+      // Connect: source -> gain -> destination
+      this.sourceNode.connect(this.gainNode);
+      this.gainNode.connect(destination);
+      
+      // Store the processed stream
+      this.destinationStream = destination.stream;
+      
+      return this.destinationStream;
+    } catch (error) {
+      console.error('Failed to setup audio processing:', error);
+      return inputStream; // Fallback to original stream
+    }
+  }
+
+  private cleanupAudioProcessing() {
+    if (this.sourceNode) {
+      this.sourceNode.disconnect();
+      this.sourceNode = null;
+    }
+    
+    if (this.gainNode) {
+      this.gainNode.disconnect();
+      this.gainNode = null;
+    }
+    
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      this.audioContext.close();
+      this.audioContext = null;
+    }
+    
+    if (this.rawStream) {
+      // Stop the raw stream tracks
+      for (const track of this.rawStream.getTracks()) {
+        track.stop();
+      }
+      this.rawStream = null;
+    }
+    
+    this.destinationStream = null;
   }
 
   subscribe(cb: (peers: RemotePeer[]) => void) {
@@ -172,10 +325,13 @@ export class VoiceManager {
     const device = get(inputDeviceId);
     const constraints: MediaStreamConstraints =
       device ? { audio: { deviceId: { exact: device } } } : { audio: true };
-    this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+    const rawStream = await navigator.mediaDevices.getUserMedia(constraints);
     
-    // Apply current mute state to the new stream
-    this.updateMicrophoneState(get(microphoneMuted));
+    // Setup audio processing chain (for VAD/PTT control)
+    this.localStream = await this.setupAudioProcessing(rawStream);
+    
+    // Initialize VAD/PTT using the raw stream (before gain control)
+    this.updateTransmissionMode(rawStream);
     
     chat.sendRaw({ type: 'voice-join', user, channel });
   }
@@ -189,10 +345,19 @@ export class VoiceManager {
     for (const id of Object.keys(this.peers)) {
       this.cleanupPeer(id, peersList);
     }
-    if (this.localStream) {
-      for (const t of this.localStream.getTracks()) t.stop();
-      this.localStream = null;
+    // Clean up audio processing chain
+    this.cleanupAudioProcessing();
+    this.localStream = null;
+    
+    // Clean up VAD monitoring
+    if (this.vad) {
+      this.vad.stop();
     }
+    
+    // Reset states
+    voiceActivity.set(false);
+    isPttActive.set(false);
+    
     chat.off('voice-join');
     chat.off('voice-offer');
     chat.off('voice-answer');
@@ -247,5 +412,20 @@ export class VoiceManager {
       this.leaveSound.currentTime = 0;
       this.leaveSound.play();
     } catch {}
+  }
+
+  /**
+   * Clean up all resources
+   */
+  destroy() {
+    if (this.vad) {
+      this.vad.destroy();
+      this.vad = null;
+    }
+    
+    if (this.ptt) {
+      this.ptt.destroy();
+      this.ptt = null;
+    }
   }
 }

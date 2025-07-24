@@ -7,7 +7,7 @@ This directory contains the WebSocket server built with Axum. The code is split 
 - `ws.rs` – WebSocket handlers for chat and voice events.
 - `upload.rs` – multipart file upload endpoint.
 
-Run the server with `cargo run` or use the Docker Compose setup from the repository root.
+Run the server using the Docker Compose setup from the repository root.
 
 ## Environment
 The server reads the following environment variables:

@@ -21,7 +21,7 @@ Use the checkboxes to track progress.
 
 ### 🎤 Voice Features
 
-- [ ] Add quality bars to display connection strength (like Discord)
+- [x] Add quality bars to display connection strength (like Discord)
 - [ ] Push-to-talk and voice activity detection
 - [x] Add mute microphone and mute output button
 - [ ] Add volume of other users slider

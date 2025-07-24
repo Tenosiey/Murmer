@@ -46,10 +46,7 @@ This folder hosts the Rust WebSocket server built with Axum, providing chat and 
 - `voice_channels` - Voice channel registry
 
 ## Running
-1. Ensure Postgres is available and set `DATABASE_URL` accordingly
-2. Start the server with `cargo run`
-
-You can also run the server together with Postgres via Docker Compose from the repository root:
+The recommended way to run the server is using Docker Compose from the repository root:
 
 ```bash
 docker compose up --build

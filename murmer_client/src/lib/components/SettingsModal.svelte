@@ -3,9 +3,10 @@
   The component renders nothing when the `open` prop is false.
 -->
 <script lang="ts">
-  import { volume, inputDeviceId, outputDeviceId } from '$lib/stores/settings';
+  import { volume, inputDeviceId, outputDeviceId, voiceMode, vadSensitivity, pttKey } from '$lib/stores/settings';
   import { APP_VERSION } from '$lib/version';
   import { onMount } from 'svelte';
+  import { PushToTalkManager } from '$lib/voice/ptt';
   export let open: boolean;
   export let close: () => void;
 
@@ -13,6 +14,7 @@
 
   let inputs: MediaDeviceInfo[] = [];
   let outputs: MediaDeviceInfo[] = [];
+  let capturingPttKey = false;
 
   onMount(async () => {
     try {
@@ -59,6 +61,20 @@
   function handleOverlayKeydown(event: KeyboardEvent) {
     if (event.key === 'Enter' || event.key === ' ') {
       close();
+    }
+  }
+
+  async function capturePttKey() {
+    capturingPttKey = true;
+    try {
+      const pttManager = new PushToTalkManager();
+      const newKey = await pttManager.captureKey();
+      pttKey.set(newKey);
+      pttManager.destroy();
+    } catch (error) {
+      console.error('Failed to capture PTT key:', error);
+    } finally {
+      capturingPttKey = false;
     }
   }
 </script>
@@ -137,6 +153,73 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <div class="settings-section">
+          <h3 class="section-title">🎙️ Voice Activation</h3>
+          
+          <div class="setting-group">
+            <label for="voice-mode-select" class="setting-label">Voice Mode</label>
+            <div class="select-container">
+              <select id="voice-mode-select" class="device-select" bind:value={$voiceMode}>
+                <option value="continuous">Always On</option>
+                <option value="vad">Voice Activity Detection</option>
+                <option value="ptt">Push to Talk</option>
+              </select>
+              <div class="select-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6,9 12,15 18,9"></polyline>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          {#if $voiceMode === 'vad'}
+            <div class="setting-group">
+              <label for="vad-sensitivity-slider" class="setting-label">
+                VAD Sensitivity
+                <span class="setting-value">{Math.round((1 - $vadSensitivity) * 100)}%</span>
+              </label>
+              <div class="slider-container">
+                <input
+                  id="vad-sensitivity-slider"
+                  class="volume-slider"
+                  type="range"
+                  min="0.01"
+                  max="0.5"
+                  step="0.01"
+                  bind:value={$vadSensitivity}
+                />
+                <div class="slider-track-fill" style="width: {(1 - ($vadSensitivity / 0.5)) * 100}%"></div>
+              </div>
+              <div class="setting-description">
+                Higher sensitivity detects quieter speech but may pick up background noise
+              </div>
+            </div>
+          {/if}
+
+          {#if $voiceMode === 'ptt'}
+            <div class="setting-group">
+              <label class="setting-label">Push-to-Talk Key</label>
+              <div class="ptt-key-setting">
+                <button 
+                  class="ptt-key-button" 
+                  class:capturing={capturingPttKey}
+                  on:click={capturePttKey}
+                  disabled={capturingPttKey}
+                >
+                  {#if capturingPttKey}
+                    Press any key...
+                  {:else}
+                    {PushToTalkManager.getKeyDisplayName($pttKey)}
+                  {/if}
+                </button>
+                <div class="setting-description">
+                  Click the button above and press the key you want to use for push-to-talk
+                </div>
+              </div>
+            </div>
+          {/if}
         </div>
 
         <div class="settings-section">
@@ -489,6 +572,56 @@
       opacity: 1;
       transform: translateY(0) scale(1);
     }
+  }
+
+  .setting-description {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    margin-top: 0.5rem;
+    line-height: 1.4;
+  }
+
+  .ptt-key-setting {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .ptt-key-button {
+    padding: 0.75rem 1rem;
+    background: var(--color-panel);
+    border: 2px solid var(--color-border-subtle);
+    color: var(--color-text);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 500;
+    transition: var(--transition);
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ptt-key-button:hover:not(:disabled) {
+    background: var(--color-bg-elevated);
+    border-color: var(--color-accent);
+  }
+
+  .ptt-key-button.capturing {
+    background: var(--color-accent);
+    color: white;
+    border-color: var(--color-accent);
+    animation: pulse 1.5s infinite;
+  }
+
+  .ptt-key-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
   }
 
   /* Mobile responsiveness */
