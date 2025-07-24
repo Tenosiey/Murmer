@@ -46,3 +46,66 @@ outputDeviceId.subscribe((value) => {
   if (value) localStorage.setItem(OUT_KEY, value);
   else localStorage.removeItem(OUT_KEY);
 });
+
+// Mute states
+const MIC_MUTE_KEY = 'murmer_mic_muted';
+const OUT_MUTE_KEY = 'murmer_output_muted';
+
+let initialMicMuted = false;
+let initialOutputMuted = false;
+
+if (browser) {
+  initialMicMuted = localStorage.getItem(MIC_MUTE_KEY) === 'true';
+  initialOutputMuted = localStorage.getItem(OUT_MUTE_KEY) === 'true';
+}
+
+export const microphoneMuted = writable<boolean>(initialMicMuted);
+export const outputMuted = writable<boolean>(initialOutputMuted);
+
+microphoneMuted.subscribe((value) => {
+  if (browser) {
+    localStorage.setItem(MIC_MUTE_KEY, String(value));
+  }
+});
+
+outputMuted.subscribe((value) => {
+  if (browser) {
+    localStorage.setItem(OUT_MUTE_KEY, String(value));
+  }
+});
+
+// Individual user volumes
+const USER_VOLUMES_KEY = 'murmer_user_volumes';
+
+let initialUserVolumes: Record<string, number> = {};
+if (browser) {
+  const stored = localStorage.getItem(USER_VOLUMES_KEY);
+  if (stored) {
+    try {
+      initialUserVolumes = JSON.parse(stored);
+    } catch (e) {
+      console.error('Failed to parse user volumes from localStorage', e);
+    }
+  }
+}
+
+export const userVolumes = writable<Record<string, number>>(initialUserVolumes);
+
+userVolumes.subscribe((value) => {
+  if (browser) {
+    localStorage.setItem(USER_VOLUMES_KEY, JSON.stringify(value));
+  }
+});
+
+export function setUserVolume(userId: string, volume: number) {
+  userVolumes.update(volumes => ({
+    ...volumes,
+    [userId]: Math.max(0, Math.min(1, volume))
+  }));
+}
+
+export function getUserVolume(userId: string): number {
+  let currentVolumes: Record<string, number> = {};
+  userVolumes.subscribe(volumes => currentVolumes = volumes)();
+  return currentVolumes[userId] ?? 1.0;
+}

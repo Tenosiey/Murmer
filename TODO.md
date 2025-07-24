@@ -23,6 +23,8 @@ Use the checkboxes to track progress.
 
 - [ ] Add quality bars to display connection strength (like Discord)
 - [ ] Push-to-talk and voice activity detection
+- [x] Add mute microphone and mute output button
+- [ ] Add volume of other users slider
 - [ ] Noise suppression and echo cancellation
 - [ ] Optional spatial/3D audio
 - [ ] Record and play back voice messages

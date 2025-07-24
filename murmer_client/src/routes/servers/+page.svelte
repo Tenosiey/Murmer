@@ -63,8 +63,8 @@
     <h1>Servers</h1>
     <div class="actions">
       <span class="user">{$session.user}</span>
-      <button class="icon" on:click={openSettings} title="Settings">⚙️</button>
-      <button class="icon" on:click={logout} title="Logout">🚪</button>
+      <button class="action-button" on:click={openSettings} title="Settings">⚙️</button>
+      <button class="action-button danger" on:click={logout} title="Logout">🚪</button>
     </div>
   </div>
   <SettingsModal open={settingsOpen} close={closeSettings} />
@@ -87,28 +87,35 @@
 
 <style>
   .servers-page {
-    max-width: 500px;
+    max-width: 600px;
     margin: 2rem auto;
-    padding: 1rem;
-    background: var(--color-panel);
-    border-radius: 8px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    padding: 2rem;
+    background: var(--color-panel-elevated);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--color-border);
   }
 
   .add {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: var(--color-panel);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-subtle);
   }
 
   input {
-    padding: 0.4rem;
-    background: #2e2e40;
-    border: 1px solid #444;
+    padding: 0.75rem;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-subtle);
     color: var(--color-text);
     width: 100%;
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
   }
 
   .add button {
@@ -116,37 +123,54 @@
   }
 
   button {
-    padding: 0.4rem 0.6rem;
+    padding: 0.75rem 1rem;
     background: var(--color-accent);
     border: none;
     color: white;
     cursor: pointer;
-    transition: background 0.2s ease;
+    border-radius: var(--radius-sm);
+    font-weight: 500;
+    transition: var(--transition);
   }
 
   button.del {
-    background: #b91c1c;
+    background: var(--color-error);
   }
 
   button:hover {
-    background: var(--color-accent-alt);
+    background: var(--color-accent-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
+
+  button.del:hover {
+    background: #dc2626;
   }
 
   .list {
     list-style: none;
     padding: 0;
     margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
   }
 
   .list li {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 0.25rem;
-    margin-bottom: 0.25rem;
-    padding: 0.4rem;
-    background: #2e2e40;
-    border-radius: 4px;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--color-panel);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-subtle);
+    transition: var(--transition);
+  }
+
+  .list li:hover {
+    background: var(--color-bg-elevated);
+    border-color: var(--color-border);
   }
 
   .list li button:first-child {
@@ -158,17 +182,58 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.5rem;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--color-border-subtle);
   }
+
+  .header h1 {
+    margin: 0;
+    color: var(--color-text);
+    font-size: 1.5rem;
+  }
+
   .actions {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 1rem;
   }
-  .icon {
-    background: none;
-    border: none;
+
+  .user {
+    font-weight: 600;
+    color: var(--color-text-muted);
+  }
+
+  .action-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    background: var(--color-panel);
+    border: 1px solid var(--color-border-subtle);
+    color: var(--color-text-muted);
     cursor: pointer;
-    font-size: 1.2rem;
+    font-size: 1.1rem;
+    transition: var(--transition);
+    border-radius: var(--radius-sm);
+  }
+
+  .action-button:hover {
+    background: var(--color-bg-elevated);
+    color: var(--color-text);
+    border-color: var(--color-border);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .action-button.danger {
+    color: var(--color-error);
+  }
+
+  .action-button.danger:hover {
+    background: var(--color-error);
+    color: white;
+    border-color: var(--color-error);
   }
 </style>

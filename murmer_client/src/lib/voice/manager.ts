@@ -6,7 +6,7 @@
  * currently connected.
  */
 import { chat } from '../stores/chat';
-import { volume, inputDeviceId } from '../stores/settings';
+import { volume, inputDeviceId, microphoneMuted } from '../stores/settings';
 import { get } from 'svelte/store';
 import type { Message, RemotePeer, ConnectionStats } from '../types';
 
@@ -34,6 +34,19 @@ export class VoiceManager {
       this.joinSound.volume = v;
       this.leaveSound.volume = v;
     });
+    
+    microphoneMuted.subscribe((muted) => {
+      this.updateMicrophoneState(muted);
+    });
+  }
+
+  private updateMicrophoneState(muted: boolean) {
+    if (this.localStream) {
+      const audioTracks = this.localStream.getAudioTracks();
+      for (const track of audioTracks) {
+        track.enabled = !muted;
+      }
+    }
   }
 
   subscribe(cb: (peers: RemotePeer[]) => void) {
@@ -160,6 +173,10 @@ export class VoiceManager {
     const constraints: MediaStreamConstraints =
       device ? { audio: { deviceId: { exact: device } } } : { audio: true };
     this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+    
+    // Apply current mute state to the new stream
+    this.updateMicrophoneState(get(microphoneMuted));
+    
     chat.sendRaw({ type: 'voice-join', user, channel });
   }
 
