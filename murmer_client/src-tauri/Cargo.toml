@@ -1,6 +1,6 @@
 [package]
 name = "murmer_client"
-version = "2025.7.23-alpha.2"
+version = "2025.7.24-alpha.1"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
