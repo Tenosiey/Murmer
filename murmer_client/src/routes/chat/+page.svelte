@@ -8,7 +8,7 @@ import { roles } from '$lib/stores/roles';
   import { onlineUsers } from '$lib/stores/online';
   import { allUsers, offlineUsers } from '$lib/stores/users';
   import { voiceUsers } from '$lib/stores/voiceUsers';
-  import { volume, outputDeviceId } from '$lib/stores/settings';
+  import { volume, outputDeviceId, outputMuted, microphoneMuted } from '$lib/stores/settings';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
@@ -70,7 +70,10 @@ import { renderMarkdown } from '$lib/markdown';
   function stream(node: HTMLAudioElement, media: MediaStream) {
     node.srcObject = media;
     const unsubVol = volume.subscribe((v) => {
-      node.volume = v;
+      node.volume = $outputMuted ? 0 : v;
+    });
+    const unsubMute = outputMuted.subscribe((muted) => {
+      node.volume = muted ? 0 : $volume;
     });
     const applySink = async (id: string | null) => {
       if ((node as any).setSinkId) {
@@ -91,6 +94,7 @@ import { renderMarkdown } from '$lib/markdown';
       },
       destroy() {
         unsubVol();
+        unsubMute();
         unsubOut();
       }
     };
@@ -283,6 +287,14 @@ import { renderMarkdown } from '$lib/markdown';
 
   function closeSettings() {
     settingsOpen = false;
+  }
+
+  function toggleMicrophone() {
+    microphoneMuted.update(muted => !muted);
+  }
+
+  function toggleOutput() {
+    outputMuted.update(muted => !muted);
   }
 
   $: channelMenuItems = [
@@ -534,11 +546,29 @@ import { renderMarkdown } from '$lib/markdown';
         <div class="spacer"></div>
       </div>
 
-      {#if inVoice}
-        <button class="join-voice" on:click={leaveVoice}>Leave Voice</button>
-      {:else}
-        <button class="join-voice" on:click={joinVoice}>Join Voice</button>
-      {/if}
+      <div class="voice-controls">
+        {#if inVoice}
+          <button class="join-voice" on:click={leaveVoice}>Leave Voice</button>
+          <button 
+            class="mute-button" 
+            class:muted={$microphoneMuted}
+            on:click={toggleMicrophone}
+            title={$microphoneMuted ? 'Unmute Microphone' : 'Mute Microphone'}
+          >
+            {$microphoneMuted ? '🎤🚫' : '🎤'}
+          </button>
+          <button 
+            class="mute-button" 
+            class:muted={$outputMuted}
+            on:click={toggleOutput}
+            title={$outputMuted ? 'Unmute Output' : 'Mute Output'}
+          >
+            {$outputMuted ? '🔇' : '🔊'}
+          </button>
+        {:else}
+          <button class="join-voice" on:click={joinVoice}>Join Voice</button>
+        {/if}
+      </div>
 
       {#each $voice as peer (peer.id)}
         <audio autoplay use:stream={peer.stream}></audio>
@@ -853,10 +883,16 @@ import { renderMarkdown } from '$lib/markdown';
   }
 
 
-  .join-voice {
+  .voice-controls {
     position: fixed;
     bottom: 1rem;
     left: 1rem;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .join-voice {
     padding: 0.6rem 1rem;
     background: var(--color-accent-alt);
     color: white;
@@ -870,6 +906,35 @@ import { renderMarkdown } from '$lib/markdown';
   .join-voice:hover {
     background: var(--color-accent);
     transform: scale(1.05);
+  }
+
+  .mute-button {
+    width: 2.5rem;
+    height: 2.5rem;
+    background: var(--color-panel);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    transition: background 0.2s ease, transform 0.1s;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mute-button:hover {
+    background: var(--color-accent-alt);
+    transform: scale(1.05);
+  }
+
+  .mute-button.muted {
+    background: #dc2626;
+  }
+
+  .mute-button.muted:hover {
+    background: #b91c1c;
   }
 
   .sidebar {

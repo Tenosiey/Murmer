@@ -46,3 +46,30 @@ outputDeviceId.subscribe((value) => {
   if (value) localStorage.setItem(OUT_KEY, value);
   else localStorage.removeItem(OUT_KEY);
 });
+
+// Mute states
+const MIC_MUTE_KEY = 'murmer_mic_muted';
+const OUT_MUTE_KEY = 'murmer_output_muted';
+
+let initialMicMuted = false;
+let initialOutputMuted = false;
+
+if (browser) {
+  initialMicMuted = localStorage.getItem(MIC_MUTE_KEY) === 'true';
+  initialOutputMuted = localStorage.getItem(OUT_MUTE_KEY) === 'true';
+}
+
+export const microphoneMuted = writable<boolean>(initialMicMuted);
+export const outputMuted = writable<boolean>(initialOutputMuted);
+
+microphoneMuted.subscribe((value) => {
+  if (browser) {
+    localStorage.setItem(MIC_MUTE_KEY, String(value));
+  }
+});
+
+outputMuted.subscribe((value) => {
+  if (browser) {
+    localStorage.setItem(OUT_MUTE_KEY, String(value));
+  }
+});
