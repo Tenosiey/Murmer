@@ -546,27 +546,38 @@ import { renderMarkdown } from '$lib/markdown';
         <div class="spacer"></div>
       </div>
 
-      <div class="voice-controls">
+      <div class="voice-controls-panel">
         {#if inVoice}
-          <button class="join-voice" on:click={leaveVoice}>Leave Voice</button>
-          <button 
-            class="mute-button" 
-            class:muted={$microphoneMuted}
-            on:click={toggleMicrophone}
-            title={$microphoneMuted ? 'Unmute Microphone' : 'Mute Microphone'}
-          >
-            {$microphoneMuted ? '🎤🚫' : '🎤'}
-          </button>
-          <button 
-            class="mute-button" 
-            class:muted={$outputMuted}
-            on:click={toggleOutput}
-            title={$outputMuted ? 'Unmute Output' : 'Mute Output'}
-          >
-            {$outputMuted ? '🔇' : '🔊'}
-          </button>
+          <div class="voice-controls-header">Voice Controls</div>
+          <div class="voice-controls-buttons">
+            <button class="voice-control-btn leave" on:click={leaveVoice}>
+              <span class="btn-icon">⬅️</span>
+              <span class="btn-text">Leave Voice</span>
+            </button>
+            <button 
+              class="voice-control-btn mute" 
+              class:muted={$microphoneMuted}
+              on:click={toggleMicrophone}
+              title={$microphoneMuted ? 'Unmute Microphone' : 'Mute Microphone'}
+            >
+              <span class="btn-icon">{$microphoneMuted ? '🎤🚫' : '🎤'}</span>
+              <span class="btn-text">{$microphoneMuted ? 'Unmute Mic' : 'Mute Mic'}</span>
+            </button>
+            <button 
+              class="voice-control-btn mute" 
+              class:muted={$outputMuted}
+              on:click={toggleOutput}
+              title={$outputMuted ? 'Unmute Output' : 'Mute Output'}
+            >
+              <span class="btn-icon">{$outputMuted ? '🔇' : '🔊'}</span>
+              <span class="btn-text">{$outputMuted ? 'Unmute Out' : 'Mute Out'}</span>
+            </button>
+          </div>
         {:else}
-          <button class="join-voice" on:click={joinVoice}>Join Voice</button>
+          <button class="voice-control-btn join" on:click={joinVoice}>
+            <span class="btn-icon">🔊</span>
+            <span class="btn-text">Join Voice</span>
+          </button>
         {/if}
       </div>
 
@@ -883,58 +894,87 @@ import { renderMarkdown } from '$lib/markdown';
   }
 
 
-  .voice-controls {
+  .voice-controls-panel {
     position: fixed;
     bottom: 1rem;
     left: 1rem;
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-  }
-
-  .join-voice {
-    padding: 0.6rem 1rem;
-    background: var(--color-accent-alt);
-    color: white;
-    border: none;
-    border-radius: 999px;
-    cursor: pointer;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-    transition: background 0.2s ease, transform 0.1s;
-  }
-
-  .join-voice:hover {
-    background: var(--color-accent);
-    transform: scale(1.05);
-  }
-
-  .mute-button {
-    width: 2.5rem;
-    height: 2.5rem;
     background: var(--color-panel);
-    color: white;
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    transition: background 0.2s ease, transform 0.1s;
-    font-size: 1rem;
+    border-radius: 8px;
+    padding: 0.75rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    min-width: 200px;
+  }
+
+  .voice-controls-header {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #aaa;
+    margin-bottom: 0.5rem;
+    text-align: center;
+  }
+
+  .voice-controls-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .voice-control-btn {
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--color-text);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    width: 100%;
+    text-align: left;
   }
 
-  .mute-button:hover {
+  .voice-control-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .voice-control-btn.join {
     background: var(--color-accent-alt);
-    transform: scale(1.05);
+    color: white;
   }
 
-  .mute-button.muted {
+  .voice-control-btn.join:hover {
+    background: var(--color-accent);
+  }
+
+  .voice-control-btn.leave {
     background: #dc2626;
+    color: white;
   }
 
-  .mute-button.muted:hover {
+  .voice-control-btn.leave:hover {
     background: #b91c1c;
+  }
+
+  .voice-control-btn.mute.muted {
+    background: #dc2626;
+    color: white;
+  }
+
+  .voice-control-btn.mute.muted:hover {
+    background: #b91c1c;
+  }
+
+  .btn-icon {
+    font-size: 1rem;
+    width: 1.2rem;
+    text-align: center;
+  }
+
+  .btn-text {
+    font-size: 0.9rem;
+    font-weight: 500;
   }
 
   .sidebar {
