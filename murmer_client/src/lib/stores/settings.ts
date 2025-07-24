@@ -73,3 +73,39 @@ outputMuted.subscribe((value) => {
     localStorage.setItem(OUT_MUTE_KEY, String(value));
   }
 });
+
+// Individual user volumes
+const USER_VOLUMES_KEY = 'murmer_user_volumes';
+
+let initialUserVolumes: Record<string, number> = {};
+if (browser) {
+  const stored = localStorage.getItem(USER_VOLUMES_KEY);
+  if (stored) {
+    try {
+      initialUserVolumes = JSON.parse(stored);
+    } catch (e) {
+      console.error('Failed to parse user volumes from localStorage', e);
+    }
+  }
+}
+
+export const userVolumes = writable<Record<string, number>>(initialUserVolumes);
+
+userVolumes.subscribe((value) => {
+  if (browser) {
+    localStorage.setItem(USER_VOLUMES_KEY, JSON.stringify(value));
+  }
+});
+
+export function setUserVolume(userId: string, volume: number) {
+  userVolumes.update(volumes => ({
+    ...volumes,
+    [userId]: Math.max(0, Math.min(1, volume))
+  }));
+}
+
+export function getUserVolume(userId: string): number {
+  let currentVolumes: Record<string, number> = {};
+  userVolumes.subscribe(volumes => currentVolumes = volumes)();
+  return currentVolumes[userId] ?? 1.0;
+}
