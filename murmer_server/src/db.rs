@@ -4,8 +4,10 @@
 //! `channel` column to distinguish between channels. These helpers create the
 //! table on startup and provide utility functions to fetch history for clients.
 
+use std::collections::HashMap;
+
 use tokio_postgres::{Client, NoTls};
-use tracing::{warn, error};
+use tracing::{error, warn};
 
 /// Initialize a PostgreSQL [`Client`] and ensure the `messages` table exists.
 /// The connection is retried for a few seconds if the database is not ready.
@@ -37,6 +39,12 @@ pub async fn init(db_url: &str) -> Result<Client, tokio_postgres::Error> {
     id SERIAL PRIMARY KEY,
     channel TEXT NOT NULL,
     content TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS reactions (
+    message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    user_name TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    PRIMARY KEY (message_id, user_name, emoji)
 );
 CREATE TABLE IF NOT EXISTS roles (
     public_key TEXT PRIMARY KEY,
@@ -78,7 +86,7 @@ pub async fn fetch_history(
     limit: i64,
 ) -> Result<Vec<(i64, String)>, tokio_postgres::Error> {
     let rows = if let Some(id) = before {
-        // Safely convert i64 to i32 with bounds checking  
+        // Safely convert i64 to i32 with bounds checking
         let id32 = match i32::try_from(id) {
             Ok(val) => val,
             Err(_) => {
@@ -115,10 +123,37 @@ pub async fn send_history(
 ) {
     match fetch_history(db, channel, before, limit).await {
         Ok(rows) => {
+            let mut ids32 = Vec::new();
+            for (id, _) in &rows {
+                match i32::try_from(*id) {
+                    Ok(val) => ids32.push(val),
+                    Err(_) => error!("Message ID too large for reaction lookup: {}", id),
+                }
+            }
+
+            let reaction_map = if ids32.is_empty() {
+                HashMap::new()
+            } else {
+                match get_reactions_for_messages(db, &ids32).await {
+                    Ok(map) => map,
+                    Err(e) => {
+                        error!("db reaction load error: {e}");
+                        HashMap::new()
+                    }
+                }
+            };
+
             let mut msgs = Vec::new();
             for (id, content) in rows.into_iter().rev() {
                 if let Ok(mut val) = serde_json::from_str::<Value>(&content) {
                     val["id"] = Value::from(id);
+                    if let Ok(id32) = i32::try_from(id) {
+                        if let Some(reactions) = reaction_map.get(&id32) {
+                            if let Ok(value) = serde_json::to_value(reactions) {
+                                val["reactions"] = value;
+                            }
+                        }
+                    }
                     msgs.push(val);
                 }
             }
@@ -129,6 +164,91 @@ pub async fn send_history(
         }
         Err(e) => error!("db history error: {e}"),
     }
+}
+
+/// Retrieve reactions for a set of message IDs, grouped by emoji.
+pub async fn get_reactions_for_messages(
+    db: &Client,
+    ids: &[i32],
+) -> Result<HashMap<i32, HashMap<String, Vec<String>>>, tokio_postgres::Error> {
+    if ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let rows = db
+        .query(
+            "SELECT message_id, emoji, user_name FROM reactions WHERE message_id = ANY($1)",
+            &[&ids],
+        )
+        .await?;
+
+    let mut map: HashMap<i32, HashMap<String, Vec<String>>> = HashMap::new();
+    for row in rows {
+        let message_id: i32 = row.get(0);
+        let emoji: String = row.get(1);
+        let user: String = row.get(2);
+        let emoji_map = map.entry(message_id).or_default();
+        let users = emoji_map.entry(emoji).or_default();
+        users.push(user);
+    }
+
+    for emoji_map in map.values_mut() {
+        for users in emoji_map.values_mut() {
+            users.sort();
+            users.dedup();
+        }
+    }
+
+    Ok(map)
+}
+
+/// Retrieve all reactions for a single message ID, grouped by emoji.
+pub async fn get_reaction_summary(
+    db: &Client,
+    message_id: i32,
+) -> Result<HashMap<String, Vec<String>>, tokio_postgres::Error> {
+    let mut map = get_reactions_for_messages(db, &[message_id]).await?;
+    Ok(map.remove(&message_id).unwrap_or_default())
+}
+
+/// Add a reaction to a message. Duplicate reactions by the same user are ignored.
+pub async fn add_reaction(
+    db: &Client,
+    message_id: i32,
+    user: &str,
+    emoji: &str,
+) -> Result<(), tokio_postgres::Error> {
+    db.execute(
+        "INSERT INTO reactions (message_id, user_name, emoji) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+        &[&message_id, &user, &emoji],
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Remove a reaction from a message.
+pub async fn remove_reaction(
+    db: &Client,
+    message_id: i32,
+    user: &str,
+    emoji: &str,
+) -> Result<(), tokio_postgres::Error> {
+    db.execute(
+        "DELETE FROM reactions WHERE message_id = $1 AND user_name = $2 AND emoji = $3",
+        &[&message_id, &user, &emoji],
+    )
+    .await
+    .map(|_| ())
+}
+
+/// Return the channel a message belongs to, if it exists.
+pub async fn get_message_channel(
+    db: &Client,
+    message_id: i32,
+) -> Result<Option<String>, tokio_postgres::Error> {
+    db.query_opt("SELECT channel FROM messages WHERE id = $1", &[&message_id])
+        .await
+        .map(|row| row.map(|r| r.get(0)))
 }
 
 /// Get the role for a user by public key, if any.

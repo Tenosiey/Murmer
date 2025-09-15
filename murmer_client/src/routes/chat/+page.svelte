@@ -21,6 +21,7 @@ import { roles } from '$lib/stores/roles';
   import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
 import { loadKeyPair, sign } from '$lib/keypair';
 import { renderMarkdown } from '$lib/markdown';
+import type { Message } from '$lib/types';
   function pingToStrength(ms: number): number {
     return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
   }
@@ -53,6 +54,28 @@ import { renderMarkdown } from '$lib/markdown';
       const h = Math.min(messageInput.scrollHeight, 400);
       messageInput.style.height = h + 'px';
     }
+  }
+
+  function reactionEntries(msg: Message | undefined) {
+    if (!msg) return [] as Array<{ emoji: string; users: string[] }>;
+    return Object.entries(msg.reactions ?? {})
+      .map(([emoji, users]) => ({ emoji, users }))
+      .filter((entry) => entry.users.length > 0);
+  }
+
+  function toggleReaction(messageId: number | undefined, emoji: string, users: string[]) {
+    if (typeof messageId !== 'number') return;
+    const current = $session.user;
+    if (!current) return;
+    const hasReaction = users.includes(current);
+    chat.react(messageId, emoji, hasReaction ? 'remove' : 'add');
+  }
+
+  function addReactionPrompt(messageId: number | undefined) {
+    if (typeof messageId !== 'number') return;
+    const emoji = prompt('React with emoji')?.trim();
+    if (!emoji) return;
+    chat.react(messageId, emoji, 'add');
   }
 
   $: autoResize();
@@ -515,6 +538,22 @@ import { renderMarkdown } from '$lib/markdown';
                 <img src={msg.image as string} alt="" />
               {/if}
             </span>
+            {#if typeof msg.id === 'number'}
+              <div class="reactions">
+                {#each reactionEntries(msg) as reaction (reaction.emoji)}
+                  <button
+                    class="reaction-chip"
+                    class:active={reaction.users.includes($session.user ?? '')}
+                    on:click={() => toggleReaction(msg.id as number, reaction.emoji, reaction.users)}
+                    title={reaction.users.join(', ')}
+                  >
+                    <span class="emoji">{reaction.emoji}</span>
+                    <span class="count">{reaction.users.length}</span>
+                  </button>
+                {/each}
+                <button class="reaction-chip add" on:click={() => addReactionPrompt(msg.id as number)}>+</button>
+              </div>
+            {/if}
           </div>
         {/each}
       </div>
@@ -726,14 +765,17 @@ import { renderMarkdown } from '$lib/markdown';
             max="1"
             step="0.01"
             value={$userVolumes[volumeMenuUser] ?? 1.0}
-            on:input={(e) => setUserVolume(volumeMenuUser, parseFloat(e.currentTarget.value))}
+            on:input={(e) => {
+              if (!volumeMenuUser) return;
+              setUserVolume(volumeMenuUser, parseFloat(e.currentTarget.value));
+            }}
           />
           <span class="volume-percentage">{Math.round(($userVolumes[volumeMenuUser] ?? 1.0) * 100)}%</span>
         </div>
         <div class="volume-presets">
-          <button class="preset-btn" on:click={() => setUserVolume(volumeMenuUser, 0)}>Mute</button>
-          <button class="preset-btn" on:click={() => setUserVolume(volumeMenuUser, 0.5)}>50%</button>
-          <button class="preset-btn" on:click={() => setUserVolume(volumeMenuUser, 1.0)}>100%</button>
+          <button class="preset-btn" on:click={() => volumeMenuUser && setUserVolume(volumeMenuUser, 0)}>Mute</button>
+          <button class="preset-btn" on:click={() => volumeMenuUser && setUserVolume(volumeMenuUser, 0.5)}>50%</button>
+          <button class="preset-btn" on:click={() => volumeMenuUser && setUserVolume(volumeMenuUser, 1.0)}>100%</button>
         </div>
       </div>
     </div>
@@ -1016,9 +1058,54 @@ import { renderMarkdown } from '$lib/markdown';
 
   .content img {
     max-width: min(100%, 500px);
-    max-height: 500px;
-    border-radius: 4px;
-    margin-top: 0.25rem;
+   max-height: 500px;
+   border-radius: 4px;
+   margin-top: 0.25rem;
+ }
+
+  .reactions {
+    margin-top: 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .reaction-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid var(--color-border-subtle);
+    background: var(--color-panel);
+    border-radius: 999px;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: var(--transition);
+  }
+
+  .reaction-chip .emoji {
+    font-size: 1rem;
+  }
+
+  .reaction-chip .count {
+    font-size: 0.7rem;
+    opacity: 0.8;
+  }
+
+  .reaction-chip:hover {
+    border-color: var(--color-accent);
+    color: var(--color-text);
+  }
+
+  .reaction-chip.active {
+    border-color: var(--color-accent);
+    background: rgba(124, 58, 237, 0.12);
+    color: var(--color-text);
+  }
+
+  .reaction-chip.add {
+    font-weight: 600;
   }
 
   textarea {

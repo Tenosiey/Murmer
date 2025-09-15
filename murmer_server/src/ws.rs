@@ -1,7 +1,7 @@
 //! WebSocket handler and helper utilities.
 //!
 //! This module handles the main WebSocket connection logic for the Murmer chat server.
-//! 
+//!
 //! ## Message Flow
 //! 1. Clients connect and authenticate using Ed25519 signatures
 //! 2. Server validates signatures and implements anti-replay protection
@@ -36,15 +36,16 @@ use axum::{
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{PublicKey, Signature, Verifier};
 use futures::{SinkExt, StreamExt, stream::SplitSink};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info};
 
 use crate::{
-    AppState, db, security,
+    AppState, db,
     roles::{RoleInfo, default_color},
+    security,
 };
 
 /// Broadcast the current list of online users to all connected clients.
@@ -272,7 +273,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                 .await;
                                             break;
                                         }
-                                        
+
                                         // SECURITY: Validate timestamp is within acceptable window (60 seconds)
                                         // This prevents very old signatures from being replayed
                                         let timestamp = match security::validate_timestamp(ts) {
@@ -285,7 +286,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                 break;
                                             }
                                         };
-                                        
+
                                         // SECURITY: Create nonce from public key + timestamp to prevent replay attacks
                                         // Each signature can only be used once within the nonce expiry window
                                         let nonce = format!("{}:{}", pk, timestamp);
@@ -295,7 +296,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                                 .await;
                                             break;
                                         }
-                                        
+
                                         if let (Ok(pk_bytes), Ok(sig_bytes)) = (
                                             general_purpose::STANDARD.decode(pk),
                                             general_purpose::STANDARD.decode(sig),
@@ -407,13 +408,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             "load-history" => {
                                 let before = v.get("before").and_then(|b| b.as_i64());
                                 let mut limit = v.get("limit").and_then(|l| l.as_i64()).unwrap_or(50);
-                                
+
                                 // Prevent excessive history requests
                                 if limit > 200 {
                                     limit = 200;
                                     tracing::warn!("History request limit capped at 200 for user: {:?}", user_name);
                                 }
-                                
+
                                 db::send_history(&state.db, &mut sender, &channel, before, limit).await;
                             }
                             "create-channel" => {
@@ -426,10 +427,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             .await;
                                         continue;
                                     }
-                                    
+
                                     // TODO: Add role-based authorization check here
                                     // For now, any authenticated user can create channels
-                                    
+
                                     if let Err(e) = db::add_channel(&state.db, ch).await {
                                         error!("db add channel error: {e}");
                                         let _ = sender
@@ -451,7 +452,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             .await;
                                         continue;
                                     }
-                                    
+
                                     // Prevent deletion of general channel
                                     if ch == "general" {
                                         let _ = sender
@@ -459,10 +460,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             .await;
                                         continue;
                                     }
-                                    
+
                                     // TODO: Add role-based authorization check here
                                     // For now, any authenticated user can delete channels
-                                    
+
                                     if let Err(e) = db::remove_channel(&state.db, ch).await {
                                         error!("db remove channel error: {e}");
                                         let _ = sender
@@ -515,8 +516,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         continue;
                                     }
                                 }
-                                
+
                                 v["channel"] = Value::String(channel.clone());
+                                if !v.get("reactions").is_some() {
+                                    v["reactions"] = Value::Object(Map::new());
+                                }
                                 let out = serde_json::to_string(&v).unwrap_or_else(|_| text.to_string());
                                 match state
                                     .db
@@ -534,6 +538,102 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     }
                                     Err(e) => error!("db insert error: {e}"),
                                 }
+                            }
+                            "react" => {
+                                let user = match user_name.clone() {
+                                    Some(name) => name,
+                                    None => {
+                                        let msg = serde_json::json!({"type": "error", "message": "not-authenticated"}).to_string();
+                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        continue;
+                                    }
+                                };
+
+                                let Some(message_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
+                                    let msg = serde_json::json!({"type": "error", "message": "invalid-message-id"}).to_string();
+                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    continue;
+                                };
+
+                                let Some(action) = v.get("action").and_then(|a| a.as_str()) else {
+                                    let msg = serde_json::json!({"type": "error", "message": "invalid-reaction-action"}).to_string();
+                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    continue;
+                                };
+
+                                let Some(raw_emoji) = v.get("emoji").and_then(|e| e.as_str()) else {
+                                    let msg = serde_json::json!({"type": "error", "message": "invalid-emoji"}).to_string();
+                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    continue;
+                                };
+
+                                let emoji = raw_emoji.trim();
+                                if emoji.is_empty()
+                                    || emoji.len() > 16
+                                    || emoji.chars().any(|c| c.is_control() || c.is_whitespace())
+                                {
+                                    let msg = serde_json::json!({"type": "error", "message": "invalid-emoji"}).to_string();
+                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    continue;
+                                }
+
+                                let message_id32 = match i32::try_from(message_id) {
+                                    Ok(val) => val,
+                                    Err(_) => {
+                                        let msg = serde_json::json!({"type": "error", "message": "invalid-message-id"}).to_string();
+                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        continue;
+                                    }
+                                };
+
+                                let target_channel = match db::get_message_channel(&state.db, message_id32).await {
+                                    Ok(Some(ch)) => ch,
+                                    Ok(None) => {
+                                        let msg = serde_json::json!({"type": "error", "message": "message-not-found"}).to_string();
+                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        continue;
+                                    }
+                                    Err(e) => {
+                                        error!("failed to lookup message channel for reaction: {e}");
+                                        let msg = serde_json::json!({"type": "error", "message": "reaction-failed"}).to_string();
+                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        continue;
+                                    }
+                                };
+
+                                let result = match action {
+                                    "add" => db::add_reaction(&state.db, message_id32, &user, emoji).await,
+                                    "remove" => db::remove_reaction(&state.db, message_id32, &user, emoji).await,
+                                    _ => {
+                                        let msg = serde_json::json!({"type": "error", "message": "invalid-reaction-action"}).to_string();
+                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        continue;
+                                    }
+                                };
+
+                                if let Err(e) = result {
+                                    error!("db reaction error: {e}");
+                                    let msg = serde_json::json!({"type": "error", "message": "reaction-failed"}).to_string();
+                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    continue;
+                                }
+
+                                let reactions = match db::get_reaction_summary(&state.db, message_id32).await {
+                                    Ok(map) => map,
+                                    Err(e) => {
+                                        error!("db reaction summary error: {e}");
+                                        continue;
+                                    }
+                                };
+
+                                let payload = serde_json::json!({
+                                    "type": "reaction-update",
+                                    "channel": target_channel.clone(),
+                                    "messageId": message_id,
+                                    "reactions": reactions,
+                                });
+                                let chan_sender = get_or_create_channel(&state, &target_channel).await;
+                                let _ = chan_sender.send(payload.to_string());
                             }
                             "ping" => {
                                 let id = v.get("id").cloned().unwrap_or(Value::Null);

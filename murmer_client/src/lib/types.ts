@@ -6,6 +6,7 @@ export interface Message {
   channel?: string;
   id?: number;
   messages?: Message[];
+  reactions?: Record<string, string[]>;
   [key: string]: unknown;
 }
 

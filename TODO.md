@@ -23,7 +23,7 @@ Use the checkboxes to track progress.
 - [x] Load chat history only for the selected channel
 - [ ] Message history persistence
 - [ ] Message threading/replies
-- [ ] Message timestamps
+- [x] Message timestamps
 - [ ] Notification settings per channel
 - [ ] Pin important messages in a channel
 - [ ] Search chat history
