@@ -66,7 +66,7 @@ Use the checkboxes to track progress.
 - [ ] Decentralized/mesh networking option
 - [x] Desktop notifications for @mentions
 - [ ] End-to-end encryption for private channels
-- [ ] Focus mode (minimal distractions)
+- [x] Focus mode (minimal distractions)
 - [ ] Implement auto updates
 - [ ] Mini-games embedded in chat
 - [ ] Music streaming from local files

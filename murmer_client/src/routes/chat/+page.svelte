@@ -18,7 +18,7 @@ import { roles } from '$lib/stores/roles';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
-  import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
+  import { leftSidebarWidth, rightSidebarWidth, focusMode } from '$lib/stores/layout';
 import { loadKeyPair, sign } from '$lib/keypair';
 import { renderMarkdown } from '$lib/markdown';
 import type { Message } from '$lib/types';
@@ -345,6 +345,10 @@ import type { Message } from '$lib/types';
     settingsOpen = false;
   }
 
+  function toggleFocusMode() {
+    focusMode.update((v) => !v);
+  }
+
   function toggleMicrophone() {
     microphoneMuted.update(muted => !muted);
   }
@@ -455,7 +459,7 @@ import type { Message } from '$lib/types';
   });
 </script>
 
-  <div class="page">
+  <div class="page" class:focus={$focusMode}>
     <div class="channels" role="navigation" on:contextmenu={openChannelMenu} style="width: {$leftSidebarWidth}px">
       <h3 class="section">Chat Channels</h3>
       {#each $channels as ch}
@@ -514,6 +518,15 @@ import type { Message } from '$lib/types';
             <PingDot ping={$ping} />
             <ConnectionBars strength={serverStrength} />
           </div>
+          <button
+            class="action-button focus-toggle"
+            class:focusActive={$focusMode}
+            aria-pressed={$focusMode}
+            on:click={toggleFocusMode}
+            title={$focusMode ? 'Exit focus mode' : 'Enter focus mode'}
+          >
+            {$focusMode ? 'Restore' : 'Focus'}
+          </button>
           <button class="action-button" on:click={openSettings} title="Settings">⚙️</button>
           <button class="action-button" on:click={leaveServer} title="Leave Server">⬅️</button>
           <button class="action-button danger" on:click={logout} title="Logout">🚪</button>
@@ -789,6 +802,21 @@ import type { Message } from '$lib/types';
     background: var(--color-bg);
   }
 
+  .page.focus {
+    padding: 0 1.5rem;
+  }
+
+  .page.focus .channels,
+  .page.focus .sidebar,
+  .page.focus .resizer {
+    display: none;
+  }
+
+  .page.focus .chat {
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
   .channels {
     min-width: 80px;
     background: var(--color-panel);
@@ -953,6 +981,27 @@ import type { Message } from '$lib/types';
     transition: var(--transition);
     border-radius: var(--radius-sm);
     position: relative;
+  }
+
+  .action-button.focus-toggle {
+    width: auto;
+    min-width: 2.5rem;
+    padding: 0 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .action-button.focusActive {
+    background: var(--color-accent-alt);
+    color: white;
+    border-color: var(--color-accent-alt);
+  }
+
+  .action-button.focusActive:hover {
+    background: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+    color: white;
   }
 
   .action-button:hover {
