@@ -31,6 +31,22 @@ function createChatStore() {
     return msg;
   }
 
+  const REGEX_SPECIALS = new Set(['\\', '.', '+', '*', '?', '^', '$', '{', '}', '(', ')', '|', '[', ']', '/', '-']);
+
+  function escapeRegex(value: string): string {
+    let escaped = '';
+    for (const char of value) {
+      escaped += REGEX_SPECIALS.has(char) ? `\\${char}` : char;
+    }
+    return escaped;
+  }
+
+  function containsMention(text: string | undefined, username: string | null | undefined): boolean {
+    if (!text || !username) return false;
+    const pattern = new RegExp(`(^|[^\\w@])@${escapeRegex(username)}(?=$|[^\\w-])`, 'i');
+    return pattern.test(text);
+  }
+
   function on(type: string, cb: (msg: Message) => void) {
     if (!handlers[type]) {
       handlers[type] = [];
@@ -73,7 +89,16 @@ function createChatStore() {
           update((m) => [...m, prepared]);
           const current = get(session).user;
           if (!current || prepared.user !== current) {
-            notify('New message', `${prepared.user}: ${prepared.text ?? ''}`);
+            const mention = current ? containsMention(prepared.text, current) : false;
+            const trimmedText = (prepared.text ?? '').trim();
+            if (mention) {
+              const body = trimmedText.length > 0 ? trimmedText : `${prepared.user ?? 'Someone'} mentioned you`;
+              notify(`Mention from ${prepared.user ?? 'Unknown user'}`, body);
+            } else {
+              const sender = prepared.user ?? 'Unknown user';
+              const body = trimmedText.length > 0 ? trimmedText : 'sent a message';
+              notify('New message', `${sender}: ${body}`);
+            }
           }
         } else if (msg.type === 'history') {
           const msgs = ((msg.messages as Message[]) || []).map((item) => prepareMessage(item));

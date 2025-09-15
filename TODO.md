@@ -9,7 +9,7 @@ Use the checkboxes to track progress.
 
 ### 🗨️ Chat Features
 
-- [ ] Add reactions with emojis
+- [x] Add reactions with emojis
 - [ ] Bot integration/webhooks
 - [ ] Channel categories and folders
 - [ ] Channel description/topics
@@ -64,7 +64,7 @@ Use the checkboxes to track progress.
 - [ ] Anonymous chat modes
 - [ ] Customizable user roles & permissions
 - [ ] Decentralized/mesh networking option
-- [ ] Desktop notifications for @mentions
+- [x] Desktop notifications for @mentions
 - [ ] End-to-end encryption for private channels
 - [ ] Focus mode (minimal distractions)
 - [ ] Implement auto updates
