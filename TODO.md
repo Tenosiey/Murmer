@@ -19,7 +19,7 @@ Use the checkboxes to track progress.
 - [ ] Enable deleting messages
 - [ ] Ephemeral messages that auto-delete
 - [ ] File sharing beyond images
-- [ ] Keyboard shortcuts
+- [x] Keyboard shortcuts
 - [x] Load chat history only for the selected channel
 - [ ] Message history persistence
 - [ ] Message threading/replies

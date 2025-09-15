@@ -357,6 +357,51 @@ import type { Message } from '$lib/types';
     outputMuted.update(muted => !muted);
   }
 
+  function handleGlobalShortcut(event: KeyboardEvent) {
+    if (event.defaultPrevented) return;
+    const isModifier = event.ctrlKey || event.metaKey;
+    if (!isModifier || !event.shiftKey || event.altKey) return;
+
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+
+    switch (key) {
+      case 'f':
+        event.preventDefault();
+        toggleFocusMode();
+        break;
+      case 'm':
+        event.preventDefault();
+        toggleMicrophone();
+        break;
+      case 'o':
+        event.preventDefault();
+        toggleOutput();
+        break;
+      case 's':
+        event.preventDefault();
+        openSettings();
+        break;
+      case 'v':
+        event.preventDefault();
+        if (inVoice) {
+          leaveVoice();
+        } else {
+          if (!currentVoiceChannel) {
+            const channels = $voiceChannels;
+            if (channels.length) {
+              currentVoiceChannel = channels[0];
+            } else {
+              break;
+            }
+          }
+          joinVoice();
+        }
+        break;
+      default:
+        return;
+    }
+  }
+
   $: channelMenuItems = [
     { label: 'Create Text Channel', action: createChannelPrompt },
     { label: 'Create Voice Channel', action: createVoiceChannelPrompt },
@@ -451,11 +496,13 @@ import type { Message } from '$lib/types';
   onMount(() => {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', stopResize);
+    window.addEventListener('keydown', handleGlobalShortcut);
   });
 
   onDestroy(() => {
     window.removeEventListener('mousemove', handleMouseMove);
     window.removeEventListener('mouseup', stopResize);
+    window.removeEventListener('keydown', handleGlobalShortcut);
   });
 </script>
 
