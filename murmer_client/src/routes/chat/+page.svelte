@@ -104,7 +104,7 @@
     let analyser: AnalyserNode | null = null;
     let sourceNode: MediaStreamAudioSourceNode | null = null;
     let frameId: number | null = null;
-    let buffer: Uint8Array | null = null;
+    let buffer: Uint8Array<ArrayBuffer> | null = null;
 
     const updateVolume = () => {
       if ($outputMuted) {
@@ -183,7 +183,8 @@
         sourceNode = audioContext.createMediaStreamSource(stream);
         analyser = audioContext.createAnalyser();
         analyser.fftSize = 512;
-        buffer = new Uint8Array(analyser.fftSize);
+        const arrayBuffer = new ArrayBuffer(analyser.fftSize);
+        buffer = new Uint8Array<ArrayBuffer>(arrayBuffer);
         sourceNode.connect(analyser);
 
         const update = () => {
