@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, afterUpdate, tick } from 'svelte';
-import { chat } from '$lib/stores/chat';
-import { roles } from '$lib/stores/roles';
+  import { chat } from '$lib/stores/chat';
+  import { roles } from '$lib/stores/roles';
   import { session } from '$lib/stores/session';
   import { voice, voiceStats } from '$lib/stores/voice';
   import { selectedServer, servers } from '$lib/stores/servers';
@@ -21,9 +21,10 @@ import { roles } from '$lib/stores/roles';
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { leftSidebarWidth, rightSidebarWidth, focusMode } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
-import { loadKeyPair, sign } from '$lib/keypair';
-import { renderMarkdown } from '$lib/markdown';
-import type { Message } from '$lib/types';
+  import { theme } from '$lib/stores/theme';
+  import { loadKeyPair, sign } from '$lib/keypair';
+  import { renderMarkdown } from '$lib/markdown';
+  import type { Message } from '$lib/types';
   function pingToStrength(ms: number): number {
     return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
   }
@@ -682,6 +683,15 @@ import type { Message } from '$lib/types';
             <PingDot ping={$ping} />
             <ConnectionBars strength={serverStrength} />
           </div>
+          <button
+            class="action-button"
+            on:click={() => theme.toggle()}
+            title={$theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            aria-label={$theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+            aria-pressed={$theme === 'light'}
+          >
+            {$theme === 'dark' ? '🌞' : '🌙'}
+          </button>
           <button class="action-button" on:click={editTopic} title="Edit channel topic">📝</button>
           <button
             class="action-button focus-toggle"

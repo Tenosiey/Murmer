@@ -74,7 +74,7 @@ Use the checkboxes to track progress.
 - [ ] Real-time collaborative code editing
 - [ ] Scheduled voice events / calendar integration
 - [ ] Server invite links
-- [ ] Theme customization (dark/light)
+- [x] Theme customization (dark/light)
 - [x] Sanitize uploaded filenames to prevent path traversal
 - [ ] Translation services for international teams
 
