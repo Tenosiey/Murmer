@@ -665,6 +665,67 @@
           {/if}
         </div>
       {/each}
+
+      <div class="voice-controls-container">
+        <div class="voice-controls-panel">
+          {#if inVoice}
+            <div class="voice-controls-header">Voice Controls</div>
+            <div class="voice-controls-buttons">
+              <button class="voice-control-btn leave" on:click={leaveVoice}>
+                <span class="btn-icon">⬅️</span>
+                <span class="btn-text">Leave Voice</span>
+              </button>
+              <button
+                class="voice-control-btn mute"
+                class:muted={$microphoneMuted}
+                class:active={$voiceMode === 'vad' && $voiceActivity}
+                class:ptt-active={$voiceMode === 'ptt' && $isPttActive}
+                on:click={toggleMicrophone}
+                title={$microphoneMuted ? 'Unmute Microphone' : 'Mute Microphone'}
+              >
+                <span class="btn-icon">
+                  {#if $microphoneMuted}
+                    🎤🚫
+                  {:else if $voiceMode === 'vad' && $voiceActivity}
+                    🎤✨
+                  {:else if $voiceMode === 'ptt' && $isPttActive}
+                    🎤🔥
+                  {:else}
+                    🎤
+                  {/if}
+                </span>
+                <span class="btn-text">
+                  {#if $microphoneMuted}
+                    Unmute Mic
+                  {:else if $voiceMode === 'continuous'}
+                    Always On
+                  {:else if $voiceMode === 'vad'}
+                    Voice Detection
+                  {:else if $voiceMode === 'ptt'}
+                    Push to Talk
+                  {:else}
+                    Mute Mic
+                  {/if}
+                </span>
+              </button>
+              <button
+                class="voice-control-btn mute"
+                class:muted={$outputMuted}
+                on:click={toggleOutput}
+                title={$outputMuted ? 'Unmute Output' : 'Mute Output'}
+              >
+                <span class="btn-icon">{$outputMuted ? '🔇' : '🔊'}</span>
+                <span class="btn-text">{$outputMuted ? 'Unmute Out' : 'Mute Out'}</span>
+              </button>
+            </div>
+          {:else}
+            <button class="voice-control-btn join" on:click={joinVoice}>
+              <span class="btn-icon">🔊</span>
+              <span class="btn-text">Join Voice</span>
+            </button>
+          {/if}
+        </div>
+      </div>
     </div>
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="resizer" role="separator" aria-label="Resize channel list" on:mousedown={startLeftResize}></div>
@@ -815,65 +876,6 @@
             </button>
           </div>
         </div>
-      </div>
-
-      <div class="voice-controls-panel">
-        {#if inVoice}
-          <div class="voice-controls-header">Voice Controls</div>
-          <div class="voice-controls-buttons">
-            <button class="voice-control-btn leave" on:click={leaveVoice}>
-              <span class="btn-icon">⬅️</span>
-              <span class="btn-text">Leave Voice</span>
-            </button>
-            <button 
-              class="voice-control-btn mute" 
-              class:muted={$microphoneMuted}
-              class:active={$voiceMode === 'vad' && $voiceActivity}
-              class:ptt-active={$voiceMode === 'ptt' && $isPttActive}
-              on:click={toggleMicrophone}
-              title={$microphoneMuted ? 'Unmute Microphone' : 'Mute Microphone'}
-            >
-              <span class="btn-icon">
-                {#if $microphoneMuted}
-                  🎤🚫
-                {:else if $voiceMode === 'vad' && $voiceActivity}
-                  🎤✨
-                {:else if $voiceMode === 'ptt' && $isPttActive}
-                  🎤🔥
-                {:else}
-                  🎤
-                {/if}
-              </span>
-              <span class="btn-text">
-                {#if $microphoneMuted}
-                  Unmute Mic
-                {:else if $voiceMode === 'continuous'}
-                  Always On
-                {:else if $voiceMode === 'vad'}
-                  Voice Detection
-                {:else if $voiceMode === 'ptt'}
-                  Push to Talk
-                {:else}
-                  Mute Mic
-                {/if}
-              </span>
-            </button>
-            <button 
-              class="voice-control-btn mute" 
-              class:muted={$outputMuted}
-              on:click={toggleOutput}
-              title={$outputMuted ? 'Unmute Output' : 'Mute Output'}
-            >
-              <span class="btn-icon">{$outputMuted ? '🔇' : '🔊'}</span>
-              <span class="btn-text">{$outputMuted ? 'Unmute Out' : 'Mute Out'}</span>
-            </button>
-          </div>
-        {:else}
-          <button class="voice-control-btn join" on:click={joinVoice}>
-            <span class="btn-icon">🔊</span>
-            <span class="btn-text">Join Voice</span>
-          </button>
-        {/if}
       </div>
 
       {#each $voice as peer (peer.id)}
@@ -1366,40 +1368,50 @@
     border-color: transparent;
   }
 
+  .voice-controls-container {
+    margin-top: auto;
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-surface-outline);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
   .voice-controls-panel {
     border-radius: var(--radius-lg);
-    padding: clamp(1rem, 2vw, 1.25rem);
+    padding: 1rem;
     background: color-mix(in srgb, var(--color-surface-raised) 86%, transparent);
     border: 1px solid var(--color-surface-outline);
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 0.75rem;
-    align-items: center;
-    justify-content: space-between;
   }
 
   .voice-controls-header {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: 600;
     color: var(--color-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   .voice-controls-buttons {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 0.65rem;
   }
 
   .voice-control-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    padding: 0.7rem 1rem;
+    gap: 0.5rem;
+    padding: 0.7rem 0.85rem;
     border-radius: var(--radius-sm);
     border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
     background: color-mix(in srgb, var(--color-primary) 8%, transparent);
     color: var(--color-on-surface);
     font-weight: 600;
+    width: 100%;
   }
 
   .voice-control-btn:hover {
