@@ -40,6 +40,64 @@
   let menuX = 0;
   let menuY = 0;
 
+  type MessageBlock =
+    | { kind: 'separator'; label: string; key: string }
+    | { kind: 'message'; message: Message; key: string };
+
+  let channelMessages: Message[] = [];
+  let messageBlocks: MessageBlock[] = [];
+
+  function parseTimestampValue(timestamp: string | undefined): Date | null {
+    if (!timestamp) return null;
+    const parsed = Date.parse(timestamp);
+    if (Number.isNaN(parsed)) return null;
+    return new Date(parsed);
+  }
+
+  function dateKey(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  function formatDayHeading(date: Date): string {
+    const today = new Date();
+    const key = dateKey(date);
+    const todayKey = dateKey(today);
+    if (key === todayKey) return 'Today';
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    if (key === dateKey(yesterday)) return 'Yesterday';
+    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
+  function buildMessageBlocks(messages: Message[]): MessageBlock[] {
+    const blocks: MessageBlock[] = [];
+    let lastDateKey: string | null = null;
+
+    for (let index = 0; index < messages.length; index += 1) {
+      const message = messages[index];
+      const timestamp = parseTimestampValue(message.timestamp);
+      if (timestamp) {
+        const currentKey = dateKey(timestamp);
+        if (lastDateKey !== currentKey) {
+          blocks.push({
+            kind: 'separator',
+            label: formatDayHeading(timestamp),
+            key: `separator-${currentKey}-${message.id ?? index}`
+          });
+          lastDateKey = currentKey;
+        }
+      }
+
+      blocks.push({
+        kind: 'message',
+        message,
+        key: `message-${message.id ?? `${index}-${message.time ?? ''}`}`
+      });
+    }
+
+    return blocks;
+  }
+
   function handleFileChange() {
     const file = fileInput?.files?.[0];
     if (previewUrl) {
@@ -87,6 +145,9 @@
   let currentChatChannel = 'general';
   let currentVoiceChannel: string | null = null;
   let currentTopic = '';
+
+  $: channelMessages = $chat.filter((m) => (m.channel ?? 'general') === currentChatChannel);
+  $: messageBlocks = buildMessageBlocks(channelMessages);
 
   $: if ($channels.length && !$channels.includes(currentChatChannel)) {
     currentChatChannel = $channels[0];
@@ -302,11 +363,13 @@
       if (import.meta.env.DEV) console.log('Upload response data:', data);
       const url = data.url as string;
       const img = url.startsWith('http') ? url : base + url;
+      const now = new Date();
       chat.sendRaw({
         type: 'chat',
         user: $session.user ?? 'anon',
         image: img,
-        time: new Date().toLocaleTimeString()
+        time: now.toLocaleTimeString(),
+        timestamp: now.toISOString()
       });
     } catch (e) {
       console.error('upload failed', e);
@@ -914,40 +977,52 @@
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
       <div class="messages" bind:this={messagesContainer} on:scroll={onScroll}>
-        {#each $chat.filter(m => (m.channel ?? 'general') === currentChatChannel) as msg}
-          <div class="message">
-            <span class="timestamp">{msg.time}</span>
-            <span class="username">{msg.user}</span>
-            {#if msg.user && $roles[msg.user]}
-              <span class="role" style={$roles[msg.user].color ? `color: ${$roles[msg.user].color}` : ''}>
-                {$roles[msg.user].role}
+        {#each messageBlocks as block (block.key)}
+          {#if block.kind === 'separator'}
+            <div class="day-separator" role="separator" aria-label={`Messages from ${block.label}`}>
+              <span>{block.label}</span>
+            </div>
+          {:else if block.kind === 'message'}
+            <div class="message">
+              <span class="timestamp">{block.message.time}</span>
+              <span class="username">{block.message.user}</span>
+              {#if block.message.user && $roles[block.message.user]}
+                <span
+                  class="role"
+                  style={$roles[block.message.user].color ? `color: ${$roles[block.message.user].color}` : ''}
+                >
+                  {$roles[block.message.user].role}
+                </span>
+              {/if}
+              <span class="content">
+                {#if block.message.text}
+                  {@html renderMarkdown(block.message.text)}
+                {/if}
+                {#if block.message.image}
+                  <img src={block.message.image as string} alt="" />
+                {/if}
               </span>
-            {/if}
-            <span class="content">
-              {#if msg.text}
-                {@html renderMarkdown(msg.text)}
-              {/if}
-              {#if msg.image}
-                <img src={msg.image as string} alt="" />
-              {/if}
-            </span>
-            {#if typeof msg.id === 'number'}
-              <div class="reactions">
-                {#each reactionEntries(msg) as reaction (reaction.emoji)}
-                  <button
-                    class="reaction-chip"
-                    class:active={reaction.users.includes($session.user ?? '')}
-                    on:click={() => toggleReaction(msg.id as number, reaction.emoji, reaction.users)}
-                    title={reaction.users.join(', ')}
-                  >
-                    <span class="emoji">{reaction.emoji}</span>
-                    <span class="count">{reaction.users.length}</span>
+              {#if typeof block.message.id === 'number'}
+                <div class="reactions">
+                  {#each reactionEntries(block.message) as reaction (reaction.emoji)}
+                    <button
+                      class="reaction-chip"
+                      class:active={reaction.users.includes($session.user ?? '')}
+                      on:click={() =>
+                        toggleReaction(block.message.id as number, reaction.emoji, reaction.users)}
+                      title={reaction.users.join(', ')}
+                    >
+                      <span class="emoji">{reaction.emoji}</span>
+                      <span class="count">{reaction.users.length}</span>
+                    </button>
+                  {/each}
+                  <button class="reaction-chip add" on:click={() => addReactionPrompt(block.message.id as number)}>
+                    +
                   </button>
-                {/each}
-                <button class="reaction-chip add" on:click={() => addReactionPrompt(msg.id as number)}>+</button>
-              </div>
-            {/if}
-          </div>
+                </div>
+              {/if}
+            </div>
+          {/if}
         {/each}
       </div>
       <div class="input-row">
@@ -1362,6 +1437,33 @@
     background: color-mix(in srgb, var(--color-surface-raised) 90%, transparent);
     border: 1px solid var(--color-surface-outline);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .day-separator {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--color-muted);
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .day-separator::before,
+  .day-separator::after {
+    content: '';
+    flex: 1;
+    border-top: 1px solid color-mix(in srgb, var(--color-surface-outline) 70%, transparent);
+    opacity: 0.7;
+  }
+
+  .day-separator span {
+    padding: 0.2rem 0.75rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-surface-elevated) 78%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+    color: var(--color-muted);
+    font-weight: 600;
   }
 
   .message {

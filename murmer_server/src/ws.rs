@@ -33,6 +33,7 @@ use axum::{
     },
     response::IntoResponse,
 };
+use chrono::{DateTime, Utc};
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{PublicKey, Signature, Verifier};
 use futures::{SinkExt, StreamExt, stream::SplitSink};
@@ -97,6 +98,18 @@ async fn broadcast_voice(state: &Arc<AppState>, channel: &str) {
     })) {
         let _ = state.tx.send(msg);
     }
+}
+
+fn sanitize_message_timestamp(value: &mut Value) -> DateTime<Utc> {
+    let now = Utc::now();
+    let parsed = value
+        .get("timestamp")
+        .and_then(|ts| ts.as_str())
+        .and_then(|ts| DateTime::parse_from_rfc3339(ts).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or(now);
+    value["timestamp"] = Value::String(parsed.to_rfc3339());
+    parsed
 }
 
 /// Broadcast a user's role to all connected clients.
@@ -518,8 +531,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 }
 
                                 v["channel"] = Value::String(channel.clone());
+                                let timestamp = sanitize_message_timestamp(&mut v);
                                 if !v.get("reactions").is_some() {
                                     v["reactions"] = Value::Object(Map::new());
+                                }
+                                if !v.get("time").and_then(|t| t.as_str()).is_some() {
+                                    v["time"] = Value::String(timestamp.format("%H:%M:%S").to_string());
                                 }
                                 let out = serde_json::to_string(&v).unwrap_or_else(|_| text.to_string());
                                 match state
