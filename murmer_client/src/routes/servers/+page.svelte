@@ -150,11 +150,39 @@
       </div>
       <div class="quick-actions">
         <button type="button" class="ghost" on:click={openSettings}>
-          <span aria-hidden="true">⚙️</span>
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path
+              d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"
+            />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
           <span class="sr-only">Open settings</span>
         </button>
         <button type="button" class="ghost danger" on:click={logout}>
-          <span aria-hidden="true">⎋</span>
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 2v10" />
+            <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+          </svg>
           <span class="sr-only">Sign out</span>
         </button>
       </div>
@@ -211,7 +239,23 @@
                 <span>Join</span>
               </button>
               <button type="button" class="ghost danger" on:click={() => removeServer(server.url)}>
-                <span aria-hidden="true">🗑</span>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M10 11v6" />
+                  <path d="M14 11v6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                  <path d="M3 6h18" />
+                  <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
                 <span class="sr-only">Remove {server.name}</span>
               </button>
             </div>
@@ -338,12 +382,28 @@
   }
 
   .ghost {
-    background: transparent;
-    color: var(--color-muted);
-    border: 1px solid transparent;
+    background: color-mix(in srgb, var(--color-surface-raised) 84%, transparent);
+    color: color-mix(in srgb, var(--color-on-surface) 90%, var(--color-muted) 10%);
+    border: 1px solid color-mix(in srgb, var(--color-outline-strong) 70%, transparent);
+    padding: 0.55rem;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .ghost svg {
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+
+  .quick-actions .ghost {
     width: 2.75rem;
     height: 2.75rem;
-    padding: 0;
+    border-radius: 0.9rem;
+  }
+
+  .card-actions .ghost {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.85rem;
   }
 
   button.ghost:hover,
@@ -356,10 +416,13 @@
 
   .ghost.danger {
     color: var(--color-error);
+    border-color: color-mix(in srgb, var(--color-error) 40%, transparent);
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
   }
 
   .ghost.danger:hover {
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-error) 60%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-error) 55%, transparent);
+    background: color-mix(in srgb, var(--color-error) 18%, transparent);
   }
 
   .create-card {
