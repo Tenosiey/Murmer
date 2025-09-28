@@ -3,6 +3,7 @@ export interface Message {
   user?: string;
   text?: string;
   time?: string;
+  timestamp?: string;
   channel?: string;
   id?: number;
   messages?: Message[];

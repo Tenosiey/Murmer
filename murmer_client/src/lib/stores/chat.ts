@@ -24,6 +24,20 @@ function createChatStore() {
 
   function prepareMessage(raw: Message): Message {
     const msg: Message = { ...raw };
+    if (typeof msg.timestamp === 'string') {
+      const parsed = Date.parse(msg.timestamp);
+      if (!Number.isNaN(parsed)) {
+        const date = new Date(parsed);
+        msg.timestamp = date.toISOString();
+        if (!msg.time) {
+          msg.time = date.toLocaleTimeString();
+        }
+      } else {
+        msg.timestamp = undefined;
+      }
+    } else if (msg.timestamp !== undefined) {
+      msg.timestamp = undefined;
+    }
     if (!msg.time) {
       msg.time = new Date().toLocaleTimeString();
     }
@@ -136,7 +150,14 @@ function createChatStore() {
 
   function send(user: string, text: string) {
     if (socket && socket.readyState === WebSocket.OPEN) {
-      const payload = { type: 'chat', user, text, time: new Date().toLocaleTimeString() };
+      const now = new Date();
+      const payload = {
+        type: 'chat',
+        user,
+        text,
+        time: now.toLocaleTimeString(),
+        timestamp: now.toISOString()
+      };
       if (import.meta.env.DEV) console.log('Sending:', payload);
       socket.send(JSON.stringify(payload));
     }
