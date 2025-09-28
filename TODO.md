@@ -73,8 +73,8 @@ Use the checkboxes to track progress.
 - [ ] Pomodoro timer integration for study groups
 - [ ] Real-time collaborative code editing
 - [ ] Scheduled voice events / calendar integration
-- [ ] Server invite links
-- [ ] Theme customization (dark/light)
+- [x] Server invite links
+- [x] Theme customization (dark/light)
 - [x] Sanitize uploaded filenames to prevent path traversal
 - [ ] Translation services for international teams
 
