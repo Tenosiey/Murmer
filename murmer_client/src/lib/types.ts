@@ -27,3 +27,5 @@ export interface RoleInfo {
   role: string;
   color?: string;
 }
+
+export type UserStatus = 'online' | 'away' | 'busy' | 'offline';

@@ -74,6 +74,7 @@ pub struct AppState {
     pub known_users: Arc<Mutex<HashSet<String>>>,
     pub voice_channels: Arc<Mutex<HashMap<String, HashSet<String>>>>,
     pub roles: Arc<Mutex<HashMap<String, RoleInfo>>>,
+    pub statuses: Arc<Mutex<HashMap<String, String>>>,
     pub user_keys: Arc<Mutex<HashMap<String, String>>>,
     pub upload_dir: PathBuf,
     pub password: Option<String>,
@@ -121,6 +122,7 @@ async fn main() {
             map
         })),
         roles: Arc::new(Mutex::new(HashMap::new())),
+        statuses: Arc::new(Mutex::new(HashMap::new())),
         user_keys: Arc::new(Mutex::new(HashMap::new())),
         upload_dir: PathBuf::from(upload_dir.clone()),
         password,
