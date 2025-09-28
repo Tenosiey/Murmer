@@ -12,7 +12,7 @@ Use the checkboxes to track progress.
 - [x] Add reactions with emojis
 - [ ] Bot integration/webhooks
 - [ ] Channel categories and folders
-- [ ] Channel description/topics
+- [x] Channel description/topics
 - [ ] Channel permissions and moderation
 - [ ] Code syntax highlighting
 - [ ] Direct messages between users

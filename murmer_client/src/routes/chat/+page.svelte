@@ -19,6 +19,7 @@ import { roles } from '$lib/stores/roles';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { leftSidebarWidth, rightSidebarWidth, focusMode } from '$lib/stores/layout';
+  import { channelTopics } from '$lib/stores/channelTopics';
 import { loadKeyPair, sign } from '$lib/keypair';
 import { renderMarkdown } from '$lib/markdown';
 import type { Message } from '$lib/types';
@@ -83,11 +84,14 @@ import type { Message } from '$lib/types';
   let settingsOpen = false;
   let currentChatChannel = 'general';
   let currentVoiceChannel: string | null = null;
+  let currentTopic = '';
 
   $: if ($channels.length && !$channels.includes(currentChatChannel)) {
     currentChatChannel = $channels[0];
     chat.sendRaw({ type: 'join', channel: currentChatChannel });
   }
+
+  $: currentTopic = $channelTopics[currentChatChannel] ?? '';
 
 
   function stream(node: HTMLAudioElement, data: { stream: MediaStream, userId: string }) {
@@ -349,6 +353,13 @@ import type { Message } from '$lib/types';
     focusMode.update((v) => !v);
   }
 
+  function editTopic() {
+    const existing = $channelTopics[currentChatChannel] ?? '';
+    const input = prompt('Set channel topic', existing);
+    if (input === null) return;
+    channelTopics.setTopic(currentChatChannel, input);
+  }
+
   function toggleMicrophone() {
     microphoneMuted.update(muted => !muted);
   }
@@ -558,13 +569,21 @@ import type { Message } from '$lib/types';
     <div class="resizer" role="separator" aria-label="Resize channel list" on:mousedown={startLeftResize}></div>
     <div class="chat">
       <div class="header">
-        <h1>{currentChatChannel}</h1>
+        <div class="title">
+          <h1>{currentChatChannel}</h1>
+          {#if currentTopic}
+            <p class="topic" title={currentTopic}>{currentTopic}</p>
+          {:else}
+            <p class="topic empty">No topic set</p>
+          {/if}
+        </div>
         <div class="actions">
           <div class="user">{$session.user}</div>
           <div class="connection-info">
             <PingDot ping={$ping} />
             <ConnectionBars strength={serverStrength} />
           </div>
+          <button class="action-button" on:click={editTopic} title="Edit channel topic">📝</button>
           <button
             class="action-button focus-toggle"
             class:focusActive={$focusMode}
@@ -978,6 +997,27 @@ import type { Message } from '$lib/types';
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--color-border-subtle);
+  }
+
+  .title {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .topic {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+    max-width: 32rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topic.empty {
+    font-style: italic;
+    color: var(--color-text-subtle);
   }
 
   .actions {
