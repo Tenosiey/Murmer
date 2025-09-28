@@ -1523,6 +1523,63 @@
     border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
   }
 
+  .message .content :global(pre code) {
+    display: block;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.9em;
+  }
+
+  .message .content :global(.hljs) {
+    color: var(--color-on-surface);
+  }
+
+  .message .content :global(.hljs-comment),
+  .message .content :global(.hljs-quote) {
+    color: color-mix(in srgb, var(--color-muted) 92%, transparent);
+    font-style: italic;
+  }
+
+  .message .content :global(.hljs-keyword),
+  .message .content :global(.hljs-selector-tag),
+  .message .content :global(.hljs-subst) {
+    color: color-mix(in srgb, var(--color-secondary) 80%, var(--color-on-surface) 20%);
+  }
+
+  .message .content :global(.hljs-string),
+  .message .content :global(.hljs-doctag),
+  .message .content :global(.hljs-regexp) {
+    color: color-mix(in srgb, var(--color-tertiary) 80%, var(--color-on-surface) 20%);
+  }
+
+  .message .content :global(.hljs-title),
+  .message .content :global(.hljs-section),
+  .message .content :global(.hljs-function),
+  .message .content :global(.hljs-name) {
+    color: color-mix(in srgb, var(--color-primary) 78%, var(--color-on-surface) 22%);
+  }
+
+  .message .content :global(.hljs-number),
+  .message .content :global(.hljs-literal),
+  .message .content :global(.hljs-symbol),
+  .message .content :global(.hljs-bullet) {
+    color: color-mix(in srgb, var(--color-warning) 75%, var(--color-on-surface) 25%);
+  }
+
+  .message .content :global(.hljs-attr),
+  .message .content :global(.hljs-attribute),
+  .message .content :global(.hljs-variable),
+  .message .content :global(.hljs-template-variable) {
+    color: color-mix(in srgb, var(--color-success) 75%, var(--color-on-surface) 25%);
+  }
+
+  .message .content :global(.hljs-meta),
+  .message .content :global(.hljs-meta .hljs-string) {
+    color: color-mix(in srgb, var(--color-primary) 65%, var(--color-on-surface) 35%);
+  }
+
   .message img {
     max-width: min(420px, 100%);
     border-radius: var(--radius-md);

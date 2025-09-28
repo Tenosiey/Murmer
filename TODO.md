@@ -14,7 +14,7 @@ Use the checkboxes to track progress.
 - [ ] Channel categories and folders
 - [x] Channel description/topics
 - [ ] Channel permissions and moderation
-- [ ] Code syntax highlighting
+- [x] Code syntax highlighting
 - [ ] Direct messages between users
 - [ ] Enable deleting messages
 - [ ] Ephemeral messages that auto-delete
