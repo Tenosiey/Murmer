@@ -47,28 +47,35 @@
 <style>
   .menu {
     position: fixed;
-    background: var(--color-panel);
-    border: 1px solid #4b5563;
-    padding: 0.25rem 0;
+    background: color-mix(in srgb, var(--color-surface-elevated) 92%, transparent);
+    border: 1px solid var(--color-surface-outline);
+    padding: 0.35rem 0;
     z-index: 1000;
     list-style: none;
     margin: 0;
-    border-radius: 6px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    backdrop-filter: var(--blur-elevated);
+    min-width: 200px;
   }
 
   .entry {
-    padding: 0.4rem 1rem;
+    padding: 0.55rem 1rem;
     cursor: pointer;
     white-space: nowrap;
     background: none;
     border: none;
-    color: inherit;
+    color: var(--color-on-surface);
     width: 100%;
     text-align: left;
     display: block;
+    font-weight: 500;
+    letter-spacing: 0.01em;
   }
-  .entry:hover {
-    background: rgba(255, 255, 255, 0.1);
+
+  .entry:hover,
+  .entry:focus-visible {
+    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+    color: var(--color-on-primary);
   }
 </style>
