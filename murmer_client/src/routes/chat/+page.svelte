@@ -749,12 +749,67 @@
             class="action-button"
             on:click={() => theme.toggle()}
             title={$theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-            aria-label={$theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
             aria-pressed={$theme === 'light'}
           >
-            {$theme === 'dark' ? '🌞' : '🌙'}
+            {#if $theme === 'dark'}
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="4" />
+                <path d="M12 2v2" />
+                <path d="M12 20v2" />
+                <path d="m4.93 4.93 1.41 1.41" />
+                <path d="m17.66 17.66 1.41 1.41" />
+                <path d="M2 12h2" />
+                <path d="M20 12h2" />
+                <path d="m6.34 17.66-1.41 1.41" />
+                <path d="m19.07 4.93-1.41 1.41" />
+              </svg>
+              <span class="sr-only">Switch to light theme</span>
+            {:else}
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+              </svg>
+              <span class="sr-only">Switch to dark theme</span>
+            {/if}
           </button>
-          <button class="action-button" on:click={editTopic} title="Edit channel topic">📝</button>
+          <button class="action-button" on:click={editTopic} title="Edit channel topic">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path
+                d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"
+              />
+              <path d="m15 5 4 4" />
+            </svg>
+            <span class="sr-only">Edit channel topic</span>
+          </button>
           <button
             class="action-button focus-toggle"
             class:focusActive={$focusMode}
@@ -762,11 +817,99 @@
             on:click={toggleFocusMode}
             title={$focusMode ? 'Exit focus mode' : 'Enter focus mode'}
           >
-            {$focusMode ? 'Restore' : 'Focus'}
+            {#if $focusMode}
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M15 3h6v6" />
+                <path d="m21 3-7 7" />
+                <path d="m3 21 7-7" />
+                <path d="M9 21H3v-6" />
+              </svg>
+              <span>Restore</span>
+            {:else}
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="3" />
+                <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+                <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+                <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+                <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+              </svg>
+              <span>Focus</span>
+            {/if}
           </button>
-          <button class="action-button" on:click={openSettings} title="Settings">⚙️</button>
-          <button class="action-button" on:click={leaveServer} title="Leave Server">⬅️</button>
-          <button class="action-button danger" on:click={logout} title="Logout">🚪</button>
+          <button class="action-button" on:click={openSettings} title="Settings">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path
+                d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"
+              />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            <span class="sr-only">Open settings</span>
+          </button>
+          <button class="action-button" on:click={leaveServer} title="Leave Server">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m16 17 5-5-5-5" />
+              <path d="M21 12H9" />
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            </svg>
+            <span class="sr-only">Leave server</span>
+          </button>
+          <button class="action-button danger" on:click={logout} title="Logout">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 2v10" />
+              <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+            </svg>
+            <span class="sr-only">Sign out</span>
+          </button>
         </div>
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
@@ -1153,36 +1296,58 @@
     width: 2.5rem;
     height: 2.5rem;
     border-radius: 0.85rem;
-    border: 1px solid transparent;
-    background: color-mix(in srgb, var(--color-on-primary) 10%, transparent);
-    color: var(--color-on-primary);
-    font-size: 1.1rem;
+    border: 1px solid color-mix(in srgb, var(--color-outline-strong) 70%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
+    color: color-mix(in srgb, var(--color-on-surface) 92%, var(--color-muted) 8%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.55rem;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+
+  .action-button svg {
+    width: 1.1rem;
+    height: 1.1rem;
   }
 
   .action-button:hover {
-    border-color: color-mix(in srgb, var(--color-on-primary) 30%, transparent);
+    border-color: color-mix(in srgb, var(--color-outline-strong) 90%, transparent);
     transform: translateY(-1px);
     box-shadow: var(--shadow-xs);
   }
 
   .action-button.danger {
     color: var(--color-error);
-    background: color-mix(in srgb, var(--color-error) 16%, transparent);
+    border-color: color-mix(in srgb, var(--color-error) 40%, transparent);
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
   }
 
   .action-button.danger:hover {
-    border-color: color-mix(in srgb, var(--color-error) 40%, transparent);
+    border-color: color-mix(in srgb, var(--color-error) 55%, transparent);
+    background: color-mix(in srgb, var(--color-error) 18%, transparent);
   }
 
   .action-button.focus-toggle {
-    padding-inline: 0.85rem;
+    padding-inline: 0.9rem;
     width: auto;
     font-size: 0.9rem;
   }
 
+  .action-button.focus-toggle svg {
+    width: 1.05rem;
+    height: 1.05rem;
+  }
+
+  .action-button.focus-toggle span {
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+
   .action-button.focus-toggle.focusActive {
-    background: color-mix(in srgb, var(--color-secondary) 25%, transparent);
-    color: var(--color-on-primary);
+    background: color-mix(in srgb, var(--color-secondary) 20%, var(--color-surface-elevated) 80%);
+    color: var(--color-on-surface);
   }
 
   .messages {
@@ -1581,6 +1746,17 @@
 
   .preset-btn:hover {
     border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
+  }
+
+  .sr-only {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    width: 1px;
   }
 
   @media (max-width: 1280px) {
