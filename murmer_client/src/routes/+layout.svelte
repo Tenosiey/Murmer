@@ -1,5 +1,11 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { APP_VERSION } from '$lib/version';
+  import { theme } from '$lib/stores/theme';
+
+  onMount(() => {
+    theme.init();
+  });
 </script>
 
 <svelte:head>
@@ -31,6 +37,32 @@
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  :global(html[data-theme='light']) {
+    --color-bg: #f8fafc;
+    --color-bg-elevated: #ffffff;
+    --color-panel: #ffffff;
+    --color-panel-elevated: #f1f5f9;
+    --color-border: #cbd5f5;
+    --color-border-subtle: #e2e8f0;
+    --color-accent: #4f46e5;
+    --color-accent-alt: #2563eb;
+    --color-accent-hover: #4338ca;
+    --color-text: #0f172a;
+    --color-text-muted: #475569;
+    --color-text-subtle: #64748b;
+    --color-success: #16a34a;
+    --color-warning: #d97706;
+    --color-error: #dc2626;
+    --color-overlay: rgba(15, 23, 42, 0.35);
+    --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.08);
+    --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.12);
     --radius-sm: 6px;
     --radius-md: 8px;
     --radius-lg: 12px;
