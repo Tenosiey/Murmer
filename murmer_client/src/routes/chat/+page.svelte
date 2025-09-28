@@ -1,3 +1,8 @@
+<!--
+  Primary chat surface. Handles WebSocket lifecycle, message rendering, voice
+  channel state and peripheral UI such as sidebars and context menus. The
+  module coordinates many Svelte stores to keep the interface reactive.
+-->
 <script lang="ts">
   import { onMount, onDestroy, afterUpdate, tick } from 'svelte';
   import { chat } from '$lib/stores/chat';

@@ -28,17 +28,18 @@
 
 use axum::{
     extract::{
-        State,
+        ConnectInfo, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
     response::IntoResponse,
 };
-use chrono::{DateTime, Utc};
 use base64::{Engine as _, engine::general_purpose};
+use chrono::{DateTime, Utc};
 use ed25519_dalek::{PublicKey, Signature, Verifier};
 use futures::{SinkExt, StreamExt, stream::SplitSink};
 use serde_json::{Map, Value};
 use std::collections::HashSet;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info};
@@ -48,6 +49,10 @@ use crate::{
     roles::{RoleInfo, default_color},
     security,
 };
+
+/// Roles that are allowed to create or delete channels when administrative
+/// controls are enabled.
+const CHANNEL_MANAGE_ROLES: &[&str] = &["Admin", "Mod", "Owner"];
 
 /// Broadcast the current list of online users to all connected clients.
 async fn broadcast_users(state: &Arc<AppState>) {
@@ -199,6 +204,27 @@ async fn broadcast_new_voice_channel(state: &Arc<AppState>, name: &str) {
     }
 }
 
+/// Determine whether a user is authorised to manage channel state.
+///
+/// When the server is running without an `ADMIN_TOKEN` every authenticated user
+/// is allowed to manage channels for backwards compatibility. Once an admin
+/// token is configured we restrict the action to privileged roles only.
+async fn can_manage_channels(state: &Arc<AppState>, user: &str) -> bool {
+    if state.admin_token.is_none() {
+        return true;
+    }
+
+    let roles = state.roles.lock().await;
+    roles
+        .get(user)
+        .map(|info| {
+            CHANNEL_MANAGE_ROLES
+                .iter()
+                .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
+        })
+        .unwrap_or(false)
+}
+
 /// Broadcast to all clients that a channel was deleted.
 async fn broadcast_remove_channel(state: &Arc<AppState>, name: &str) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
@@ -229,8 +255,9 @@ async fn get_or_create_channel(state: &Arc<AppState>, name: &str) -> broadcast::
 }
 
 /// Main WebSocket loop handling incoming messages and broadcasting events.
-async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
-    info!("Client connected");
+async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: SocketAddr) {
+    let client_ip = peer_addr.ip().to_string();
+    info!(%client_ip, "Client connected");
     let (mut sender, mut receiver) = socket.split();
     let mut global_rx = state.tx.subscribe();
     let mut channel = String::from("general");
@@ -279,8 +306,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         v.get("timestamp").and_then(|t| t.as_str()),
                                     ) {
                                         // SECURITY: Rate limit authentication attempts to prevent brute force attacks
-                                        // TODO: Use actual client IP address instead of hardcoded localhost
-                                        if !security::check_auth_rate_limit(&state.rate_limiter, "127.0.0.1").await {
+                                        if !security::check_auth_rate_limit(&state.rate_limiter, &client_ip).await {
                                             let _ = sender
                                                 .send(Message::Text("{\"type\":\"error\",\"message\":\"auth-rate-limit\"}".into()))
                                                 .await;
@@ -441,8 +467,23 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         continue;
                                     }
 
-                                    // TODO: Add role-based authorization check here
-                                    // For now, any authenticated user can create channels
+                                    let requester = if let Some(name) = user_name.as_deref() {
+                                        name
+                                    } else {
+                                        error!("create-channel requested before presence was fully processed");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .await;
+                                        continue;
+                                    };
+
+                                    if !can_manage_channels(&state, requester).await {
+                                        error!("User {requester} attempted to create channel without permission");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .await;
+                                        continue;
+                                    }
 
                                     if let Err(e) = db::add_channel(&state.db, ch).await {
                                         error!("db add channel error: {e}");
@@ -474,8 +515,23 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         continue;
                                     }
 
-                                    // TODO: Add role-based authorization check here
-                                    // For now, any authenticated user can delete channels
+                                    let requester = if let Some(name) = user_name.as_deref() {
+                                        name
+                                    } else {
+                                        error!("delete-channel requested before presence was fully processed");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .await;
+                                        continue;
+                                    };
+
+                                    if !can_manage_channels(&state, requester).await {
+                                        error!("User {requester} attempted to delete channel without permission");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .await;
+                                        continue;
+                                    }
 
                                     if let Err(e) = db::remove_channel(&state.db, ch).await {
                                         error!("db remove channel error: {e}");
@@ -498,6 +554,32 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             }
                             "create-voice-channel" => {
                                 if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    if !security::validate_channel_name(ch) {
+                                        error!("Invalid voice channel name: {}", ch);
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".into()))
+                                            .await;
+                                        continue;
+                                    }
+
+                                    let requester = if let Some(name) = user_name.as_deref() {
+                                        name
+                                    } else {
+                                        error!("create-voice-channel requested before presence was fully processed");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .await;
+                                        continue;
+                                    };
+
+                                    if !can_manage_channels(&state, requester).await {
+                                        error!("User {requester} attempted to create voice channel without permission");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .await;
+                                        continue;
+                                    }
+
                                     let mut map = state.voice_channels.lock().await;
                                     if !map.contains_key(ch) {
                                         map.insert(ch.to_string(), HashSet::new());
@@ -509,6 +591,32 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             }
                             "delete-voice-channel" => {
                                 if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    if !security::validate_channel_name(ch) {
+                                        error!("Invalid voice channel name for deletion: {}", ch);
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".into()))
+                                            .await;
+                                        continue;
+                                    }
+
+                                    let requester = if let Some(name) = user_name.as_deref() {
+                                        name
+                                    } else {
+                                        error!("delete-voice-channel requested before presence was fully processed");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .await;
+                                        continue;
+                                    };
+
+                                    if !can_manage_channels(&state, requester).await {
+                                        error!("User {requester} attempted to delete voice channel without permission");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .await;
+                                        continue;
+                                    }
+
                                     let mut map = state.voice_channels.lock().await;
                                     map.remove(ch);
                                     drop(map);
@@ -751,7 +859,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         // Keep role and key mappings so clients can display roles
         // even when the user is offline.
     }
-    info!("Client disconnected");
+    info!(%client_ip, "Client disconnected");
 }
 
 /// Axum handler that upgrades the HTTP connection to a WebSocket and
@@ -759,6 +867,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
+    ws.on_upgrade(move |socket| handle_socket(socket, state, addr))
 }

@@ -1,3 +1,8 @@
+<!--
+  Server selector and management screen. Users can add, edit and remove server
+  entries, manage invite links and open the settings modal. The view also keeps
+  server reachability indicators up to date.
+-->
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { servers, selectedServer, type ServerEntry } from '$lib/stores/servers';

@@ -1,49 +1,36 @@
 # Contributor Guide
 
-This repository hosts **Murmer**, a minimal voice and text chat prototype.
-It is split into a Tauri/SvelteKit client and a Rust server.
+This monorepo hosts **Murmer**, a desktop chat prototype split into a
+Tauri/SvelteKit client (`murmer_client/`) and an Axum-based Rust server
+(`murmer_server/`). Each directory contains its own `AGENTS.md` with tooling
+specifics.
 
-## Repository Structure
-- `murmer_client/` – desktop client built with Tauri and SvelteKit.
-- `murmer_server/` – Rust WebSocket server that persists chat messages to Postgres.
-- `docker-compose.yml` – runs the server together with Postgres.
+## Workflow overview
+- Install the latest [Rust toolchain](https://www.rust-lang.org/tools/install)
+  and [Node.js 22+](https://nodejs.org).
+- See `README.md` for detailed setup, build and configuration instructions.
+- When developing locally run the client with `npm run tauri dev` and the server
+  with `cargo run` or `docker compose up --build`.
 
-Each subfolder contains its own `AGENTS.md` with more details.
+## Quality checks
+- Run `cargo check` inside `murmer_server/` and format with `cargo fmt`.
+- Run `npm run check` inside `murmer_client/` for Svelte + TypeScript diagnostics.
+- Document complex security-sensitive logic with inline comments.
+- Sanitize or validate all user-supplied data before acting on it.
 
-## Getting Started
-1. Install [Rust](https://www.rust-lang.org/tools/install) and [Node.js](https://nodejs.org) 22+.
-2. See `README.md` for quick commands to run the client and server.
-
-## Security Considerations
-- The server implements Ed25519 signature-based authentication with anti-replay protection
-- Rate limiting is enforced for authentication attempts and message sending
-- File uploads are restricted to images only with size limits and type validation
-- Input validation is performed on channel names, usernames, and message content
-- CORS is configured restrictively in production builds
-
-## Code Quality Standards
-- All Rust code must pass `cargo check` and be formatted with `cargo fmt`
-- Frontend code should pass `npm run check` for TypeScript and Svelte validation
-- Complex functions should include inline documentation explaining security implications
-- All user inputs must be validated and sanitized
-
-## Validation
-- There is currently no automated test suite
-- Run `npm run check` inside `murmer_client` to perform Svelte/TypeScript checks
-- Run `cargo check` in `murmer_server` to ensure it builds successfully
-- Format Rust code with `cargo fmt` before committing
-- Test the application manually after making changes to core security or networking code
-
-## Docker
-Use `docker compose up --build` to start the server and a Postgres database defined in `docker-compose.yml`.
+## Security expectations
+- Authentication relies on Ed25519 signatures with replay protection.
+- Rate limiting exists for both authentication and chat traffic.
+- File uploads are restricted to images and validated by content-type and size.
+- Channel management honours role assignments when `ADMIN_TOKEN` is configured.
+- Production deployments should keep CORS disabled unless explicitly required.
 
 ## Versioning
-Murmer uses date-based pre-release versions such as `2025.7.13-alpha.1`.
-When asked to **bump the version**, follow these steps:
-1. Determine today's date in `YYYY.M.D` format.
-2. If a tag `YYYY.M.D-alpha.1` already exists, increment the numeric
-   suffix (`alpha.2`, `alpha.3`, ...). Otherwise start with `alpha.1`.
-3. Replace the old version in:
+Murmer uses date-based pre-release versions (`YYYY.M.D-alpha.N`). When asked to
+bump versions:
+
+1. Derive the new version string.
+2. Update the version fields in:
    - `murmer_client/package.json`
    - `murmer_client/package-lock.json`
    - `murmer_client/src-tauri/Cargo.toml`
@@ -51,5 +38,11 @@ When asked to **bump the version**, follow these steps:
    - `murmer_client/src-tauri/tauri.conf.json`
    - `murmer_server/Cargo.toml`
    - `murmer_server/Cargo.lock`
-4. Commit the changes with a message like `Bump version to <new version>`
-   and create a git tag with the same version string.
+3. Commit with `Bump version to <new version>` and create a matching git tag.
+
+## Validation checklist
+- Ensure CI-equivalent commands above pass before opening a pull request.
+- Perform manual smoke tests after changing networking, authentication or file
+  handling logic.
+- Keep documentation (`README.md`, `AGENTS.md`, `TODO.md`) in sync with code
+  behaviour.
