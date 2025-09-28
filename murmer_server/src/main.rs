@@ -33,8 +33,8 @@ use std::{
 };
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, broadcast};
-use tower_http::services::ServeDir;
 use tower_http::cors::CorsLayer;
+use tower_http::services::ServeDir;
 use tracing::info;
 
 /// Rate limiting state for tracking user actions
@@ -92,7 +92,8 @@ async fn main() {
     let db_url = env::var("DATABASE_URL")
         .map_err(|_| "DATABASE_URL environment variable is required")
         .expect("DATABASE_URL not set");
-    let db_client = db::init(&db_url).await
+    let db_client = db::init(&db_url)
+        .await
         .expect("Failed to initialize database connection");
 
     let existing_voice = db::get_voice_channels(&db_client).await;

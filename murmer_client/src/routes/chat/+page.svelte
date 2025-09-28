@@ -18,9 +18,11 @@ import { roles } from '$lib/stores/roles';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
-  import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
+  import { leftSidebarWidth, rightSidebarWidth, focusMode } from '$lib/stores/layout';
+  import { channelTopics } from '$lib/stores/channelTopics';
 import { loadKeyPair, sign } from '$lib/keypair';
 import { renderMarkdown } from '$lib/markdown';
+import type { Message } from '$lib/types';
   function pingToStrength(ms: number): number {
     return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
   }
@@ -55,16 +57,41 @@ import { renderMarkdown } from '$lib/markdown';
     }
   }
 
+  function reactionEntries(msg: Message | undefined) {
+    if (!msg) return [] as Array<{ emoji: string; users: string[] }>;
+    return Object.entries(msg.reactions ?? {})
+      .map(([emoji, users]) => ({ emoji, users }))
+      .filter((entry) => entry.users.length > 0);
+  }
+
+  function toggleReaction(messageId: number | undefined, emoji: string, users: string[]) {
+    if (typeof messageId !== 'number') return;
+    const current = $session.user;
+    if (!current) return;
+    const hasReaction = users.includes(current);
+    chat.react(messageId, emoji, hasReaction ? 'remove' : 'add');
+  }
+
+  function addReactionPrompt(messageId: number | undefined) {
+    if (typeof messageId !== 'number') return;
+    const emoji = prompt('React with emoji')?.trim();
+    if (!emoji) return;
+    chat.react(messageId, emoji, 'add');
+  }
+
   $: autoResize();
   let inVoice = false;
   let settingsOpen = false;
   let currentChatChannel = 'general';
   let currentVoiceChannel: string | null = null;
+  let currentTopic = '';
 
   $: if ($channels.length && !$channels.includes(currentChatChannel)) {
     currentChatChannel = $channels[0];
     chat.sendRaw({ type: 'join', channel: currentChatChannel });
   }
+
+  $: currentTopic = $channelTopics[currentChatChannel] ?? '';
 
 
   function stream(node: HTMLAudioElement, data: { stream: MediaStream, userId: string }) {
@@ -322,12 +349,68 @@ import { renderMarkdown } from '$lib/markdown';
     settingsOpen = false;
   }
 
+  function toggleFocusMode() {
+    focusMode.update((v) => !v);
+  }
+
+  function editTopic() {
+    const existing = $channelTopics[currentChatChannel] ?? '';
+    const input = prompt('Set channel topic', existing);
+    if (input === null) return;
+    channelTopics.setTopic(currentChatChannel, input);
+  }
+
   function toggleMicrophone() {
     microphoneMuted.update(muted => !muted);
   }
 
   function toggleOutput() {
     outputMuted.update(muted => !muted);
+  }
+
+  function handleGlobalShortcut(event: KeyboardEvent) {
+    if (event.defaultPrevented) return;
+    const isModifier = event.ctrlKey || event.metaKey;
+    if (!isModifier || !event.shiftKey || event.altKey) return;
+
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+
+    switch (key) {
+      case 'f':
+        event.preventDefault();
+        toggleFocusMode();
+        break;
+      case 'm':
+        event.preventDefault();
+        toggleMicrophone();
+        break;
+      case 'o':
+        event.preventDefault();
+        toggleOutput();
+        break;
+      case 's':
+        event.preventDefault();
+        openSettings();
+        break;
+      case 'v':
+        event.preventDefault();
+        if (inVoice) {
+          leaveVoice();
+        } else {
+          if (!currentVoiceChannel) {
+            const channels = $voiceChannels;
+            if (channels.length) {
+              currentVoiceChannel = channels[0];
+            } else {
+              break;
+            }
+          }
+          joinVoice();
+        }
+        break;
+      default:
+        return;
+    }
   }
 
   $: channelMenuItems = [
@@ -424,15 +507,17 @@ import { renderMarkdown } from '$lib/markdown';
   onMount(() => {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', stopResize);
+    window.addEventListener('keydown', handleGlobalShortcut);
   });
 
   onDestroy(() => {
     window.removeEventListener('mousemove', handleMouseMove);
     window.removeEventListener('mouseup', stopResize);
+    window.removeEventListener('keydown', handleGlobalShortcut);
   });
 </script>
 
-  <div class="page">
+  <div class="page" class:focus={$focusMode}>
     <div class="channels" role="navigation" on:contextmenu={openChannelMenu} style="width: {$leftSidebarWidth}px">
       <h3 class="section">Chat Channels</h3>
       {#each $channels as ch}
@@ -484,13 +569,30 @@ import { renderMarkdown } from '$lib/markdown';
     <div class="resizer" role="separator" aria-label="Resize channel list" on:mousedown={startLeftResize}></div>
     <div class="chat">
       <div class="header">
-        <h1>{currentChatChannel}</h1>
+        <div class="title">
+          <h1>{currentChatChannel}</h1>
+          {#if currentTopic}
+            <p class="topic" title={currentTopic}>{currentTopic}</p>
+          {:else}
+            <p class="topic empty">No topic set</p>
+          {/if}
+        </div>
         <div class="actions">
           <div class="user">{$session.user}</div>
           <div class="connection-info">
             <PingDot ping={$ping} />
             <ConnectionBars strength={serverStrength} />
           </div>
+          <button class="action-button" on:click={editTopic} title="Edit channel topic">📝</button>
+          <button
+            class="action-button focus-toggle"
+            class:focusActive={$focusMode}
+            aria-pressed={$focusMode}
+            on:click={toggleFocusMode}
+            title={$focusMode ? 'Exit focus mode' : 'Enter focus mode'}
+          >
+            {$focusMode ? 'Restore' : 'Focus'}
+          </button>
           <button class="action-button" on:click={openSettings} title="Settings">⚙️</button>
           <button class="action-button" on:click={leaveServer} title="Leave Server">⬅️</button>
           <button class="action-button danger" on:click={logout} title="Logout">🚪</button>
@@ -515,6 +617,22 @@ import { renderMarkdown } from '$lib/markdown';
                 <img src={msg.image as string} alt="" />
               {/if}
             </span>
+            {#if typeof msg.id === 'number'}
+              <div class="reactions">
+                {#each reactionEntries(msg) as reaction (reaction.emoji)}
+                  <button
+                    class="reaction-chip"
+                    class:active={reaction.users.includes($session.user ?? '')}
+                    on:click={() => toggleReaction(msg.id as number, reaction.emoji, reaction.users)}
+                    title={reaction.users.join(', ')}
+                  >
+                    <span class="emoji">{reaction.emoji}</span>
+                    <span class="count">{reaction.users.length}</span>
+                  </button>
+                {/each}
+                <button class="reaction-chip add" on:click={() => addReactionPrompt(msg.id as number)}>+</button>
+              </div>
+            {/if}
           </div>
         {/each}
       </div>
@@ -726,14 +844,17 @@ import { renderMarkdown } from '$lib/markdown';
             max="1"
             step="0.01"
             value={$userVolumes[volumeMenuUser] ?? 1.0}
-            on:input={(e) => setUserVolume(volumeMenuUser, parseFloat(e.currentTarget.value))}
+            on:input={(e) => {
+              if (!volumeMenuUser) return;
+              setUserVolume(volumeMenuUser, parseFloat(e.currentTarget.value));
+            }}
           />
           <span class="volume-percentage">{Math.round(($userVolumes[volumeMenuUser] ?? 1.0) * 100)}%</span>
         </div>
         <div class="volume-presets">
-          <button class="preset-btn" on:click={() => setUserVolume(volumeMenuUser, 0)}>Mute</button>
-          <button class="preset-btn" on:click={() => setUserVolume(volumeMenuUser, 0.5)}>50%</button>
-          <button class="preset-btn" on:click={() => setUserVolume(volumeMenuUser, 1.0)}>100%</button>
+          <button class="preset-btn" on:click={() => volumeMenuUser && setUserVolume(volumeMenuUser, 0)}>Mute</button>
+          <button class="preset-btn" on:click={() => volumeMenuUser && setUserVolume(volumeMenuUser, 0.5)}>50%</button>
+          <button class="preset-btn" on:click={() => volumeMenuUser && setUserVolume(volumeMenuUser, 1.0)}>100%</button>
         </div>
       </div>
     </div>
@@ -745,6 +866,21 @@ import { renderMarkdown } from '$lib/markdown';
     display: flex;
     height: 100vh;
     background: var(--color-bg);
+  }
+
+  .page.focus {
+    padding: 0 1.5rem;
+  }
+
+  .page.focus .channels,
+  .page.focus .sidebar,
+  .page.focus .resizer {
+    display: none;
+  }
+
+  .page.focus .chat {
+    max-width: 960px;
+    margin: 0 auto;
   }
 
   .channels {
@@ -863,6 +999,27 @@ import { renderMarkdown } from '$lib/markdown';
     border: 1px solid var(--color-border-subtle);
   }
 
+  .title {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .topic {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+    max-width: 32rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topic.empty {
+    font-style: italic;
+    color: var(--color-text-subtle);
+  }
+
   .actions {
     display: flex;
     align-items: center;
@@ -911,6 +1068,27 @@ import { renderMarkdown } from '$lib/markdown';
     transition: var(--transition);
     border-radius: var(--radius-sm);
     position: relative;
+  }
+
+  .action-button.focus-toggle {
+    width: auto;
+    min-width: 2.5rem;
+    padding: 0 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .action-button.focusActive {
+    background: var(--color-accent-alt);
+    color: white;
+    border-color: var(--color-accent-alt);
+  }
+
+  .action-button.focusActive:hover {
+    background: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+    color: white;
   }
 
   .action-button:hover {
@@ -1016,9 +1194,54 @@ import { renderMarkdown } from '$lib/markdown';
 
   .content img {
     max-width: min(100%, 500px);
-    max-height: 500px;
-    border-radius: 4px;
-    margin-top: 0.25rem;
+   max-height: 500px;
+   border-radius: 4px;
+   margin-top: 0.25rem;
+ }
+
+  .reactions {
+    margin-top: 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .reaction-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid var(--color-border-subtle);
+    background: var(--color-panel);
+    border-radius: 999px;
+    padding: 0.15rem 0.5rem;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: var(--transition);
+  }
+
+  .reaction-chip .emoji {
+    font-size: 1rem;
+  }
+
+  .reaction-chip .count {
+    font-size: 0.7rem;
+    opacity: 0.8;
+  }
+
+  .reaction-chip:hover {
+    border-color: var(--color-accent);
+    color: var(--color-text);
+  }
+
+  .reaction-chip.active {
+    border-color: var(--color-accent);
+    background: rgba(124, 58, 237, 0.12);
+    color: var(--color-text);
+  }
+
+  .reaction-chip.add {
+    font-weight: 600;
   }
 
   textarea {

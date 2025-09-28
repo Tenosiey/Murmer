@@ -36,11 +36,14 @@ pub async fn set_role(
 ) -> impl IntoResponse {
     // Use constant-time comparison to prevent timing attacks
     let authorized = if let Some(expected_token) = &state.admin_token {
-        expected_token.as_bytes().ct_eq(bearer.token().as_bytes()).into()
+        expected_token
+            .as_bytes()
+            .ct_eq(bearer.token().as_bytes())
+            .into()
     } else {
         false
     };
-    
+
     if !authorized {
         return StatusCode::UNAUTHORIZED;
     }

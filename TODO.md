@@ -9,21 +9,21 @@ Use the checkboxes to track progress.
 
 ### 🗨️ Chat Features
 
-- [ ] Add reactions with emojis
+- [x] Add reactions with emojis
 - [ ] Bot integration/webhooks
 - [ ] Channel categories and folders
-- [ ] Channel description/topics
+- [x] Channel description/topics
 - [ ] Channel permissions and moderation
 - [ ] Code syntax highlighting
 - [ ] Direct messages between users
 - [ ] Enable deleting messages
 - [ ] Ephemeral messages that auto-delete
 - [ ] File sharing beyond images
-- [ ] Keyboard shortcuts
+- [x] Keyboard shortcuts
 - [x] Load chat history only for the selected channel
 - [ ] Message history persistence
 - [ ] Message threading/replies
-- [ ] Message timestamps
+- [x] Message timestamps
 - [ ] Notification settings per channel
 - [ ] Pin important messages in a channel
 - [ ] Search chat history
@@ -64,9 +64,9 @@ Use the checkboxes to track progress.
 - [ ] Anonymous chat modes
 - [ ] Customizable user roles & permissions
 - [ ] Decentralized/mesh networking option
-- [ ] Desktop notifications for @mentions
+- [x] Desktop notifications for @mentions
 - [ ] End-to-end encryption for private channels
-- [ ] Focus mode (minimal distractions)
+- [x] Focus mode (minimal distractions)
 - [ ] Implement auto updates
 - [ ] Mini-games embedded in chat
 - [ ] Music streaming from local files
