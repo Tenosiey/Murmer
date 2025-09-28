@@ -1,3 +1,7 @@
+<!--
+  Root layout for the Murmer desktop client. It initialises the theme store on
+  mount and injects shared typography and colour tokens for every page.
+-->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { APP_VERSION } from '$lib/version';

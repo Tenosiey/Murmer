@@ -1,169 +1,109 @@
 # Murmer
 
-Murmer is a **self-hostable** minimal voice and text chat prototype.  It consists of
-a Rust WebSocket server and a cross‑platform desktop client built with
-Tauri and SvelteKit.
+Murmer is a self-hostable voice and text chat prototype. The project is split
+into a Rust WebSocket server and a cross-platform desktop client powered by
+Tauri and SvelteKit. Both halves are designed with security-first defaults so a
+small team can deploy a private chat space quickly.
 
-## Overview
-* Persistent text chat backed by PostgreSQL
-* Experimental voice chat using WebRTC
-* Ed25519 signature-based authentication with anti-replay protection
-* Rate limiting and comprehensive input validation
-* User roles with customizable colors
-* Secure image uploads with type validation and size limits
-* Markdown formatting in text chat with XSS protection
-* Cross-platform client powered by Tauri
+## Features
+- Persistent text chat stored in PostgreSQL
+- Experimental WebRTC voice rooms with presence tracking
+- Ed25519 signature authentication with nonce-based replay protection
+- Rate limiting on authentication and chat events
+- Markdown rendering with DOMPurify sanitisation and syntax highlighting
+- Configurable user roles with optional colour accents
+- Secure image uploads (content-type checks, size limits and path sanitisation)
+- Desktop client with auto-reconnect and connection quality indicators
 
-## Prerequisites
-- [Rust](https://www.rust-lang.org/tools/install)
-- [Node.js](https://nodejs.org) 22+
-- [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+## Repository layout
+- `murmer_client/` – Tauri + SvelteKit desktop client (TypeScript)
+- `murmer_server/` – Axum-based WebSocket server (Rust)
+- `docker-compose.yml` – boots the server together with PostgreSQL
+- `CONTRIBUTING.md`, `AGENTS.md` – workflow notes for contributors
 
-## Architecture
-The repository contains a Tauri/SvelteKit client and a Rust WebSocket server.
-The client lives under `murmer_client/` while the server code is in
-`murmer_server/`. The provided `docker-compose.yml` starts the server together
-with Postgres.
+## Quick start (Docker)
+1. Install Docker and Docker Compose.
+2. From the repository root run:
+   ```bash
+   docker compose up --build
+   ```
+3. The server listens on `http://localhost:3001` (WebSocket at `/ws`).
+4. Launch the client locally:
+   ```bash
+   cd murmer_client
+   npm install
+   npm run tauri dev
+   ```
+   The desktop shell opens with a development build of the Svelte UI.
 
-## Running the client
+Added servers are stored locally by the client so your favourite instances
+remain available after restarts.
+
+## Local development
+### Client
 ```bash
 cd murmer_client
-npm install
-npm run tauri dev
+npm install          # install dependencies / refresh package-lock
+npm run dev          # hot module reloading for the Svelte UI
+npm run tauri dev    # launch the native shell
+npm run check        # TypeScript + Svelte diagnostics
 ```
-This launches the desktop app.
 
-## Running the server
-### Prerequisites
-Docker is required to host the server.
-
-Use Docker Compose to run the server together with Postgres:
+### Server
 ```bash
-docker compose up --build
-```
-The server exposes a WebSocket endpoint at `ws://localhost:3001/ws`. The client can store multiple server URLs and connect to any of them via the "Servers" screen. Added servers are persisted locally so favorites remain after restart.
-The `DATABASE_URL` used by the server is defined in `docker-compose.yml`.
-If you set the `SERVER_PASSWORD` environment variable in `docker-compose.yml`, the server will require clients to provide that password when connecting.
-
-On first launch the server creates a single text channel named `general`. Users
-can create additional channels as needed, but no other channels are included by
-default.
-Voice channel names are persisted in the same way, so any voice channels you
-create will still exist after restarting the server or recreating the Docker
-container.
-
-### Admin Roles
-
-The server can assign custom roles to users. To enable this feature set the `ADMIN_TOKEN`
-environment variable when launching the server. You can add it to
-`docker-compose.yml`.
-The value should be a **secret string** of your choice. Add it to your `docker-compose.yml`
-environment variables, for example:
-
-```yaml
-environment:
-  - ADMIN_TOKEN=my-admin-token
-```
-The same token must be provided in requests to the `/role` endpoint.
-
-Use the `/role` endpoint to change a user's role. Send a POST request with an
-`Authorization: Bearer <ADMIN_TOKEN>` header and a JSON body containing the
-user's public key and desired role. An optional `color` field sets the hex color
-displayed for that role:
-
-```bash
-curl -X POST http://localhost:3001/role \
-     -H "Authorization: Bearer <ADMIN_TOKEN>" \
-     -H "Content-Type: application/json" \
-     -d '{"key":"<public-key>","role":"admin","color":"#eab308"}'
+cd murmer_server
+cargo check          # compile-time checks
+cargo fmt            # format Rust code
 ```
 
-`<public-key>` is the base64 encoded Ed25519 public key generated by the client.
-The next time that user connects, the server will send them a `role` message
-indicating their assigned role.
+Environment variables recognised by the server:
+- `DATABASE_URL` (required) – PostgreSQL connection string
+- `UPLOAD_DIR` – directory for stored uploads (defaults to `uploads/`)
+- `SERVER_PASSWORD` – optional shared secret required during presence/auth
+- `ADMIN_TOKEN` – enables the administrative `/role` endpoint
+- `ENABLE_CORS` – set during development to enable permissive CORS headers
 
-The roles `Admin`, `Mod` and `Owner` are built-in and default to the colors
-`#eab308`, `#10b981` and `#3b82f6` respectively if no color is provided.
+When `ADMIN_TOKEN` is configured only users with the roles `Admin`, `Mod` or
+`Owner` may create or delete text/voice channels. Without an admin token the
+behaviour remains fully open for backwards compatibility.
 
-### Image Uploads
-
-Uploaded images are stored on disk under an `uploads/` directory. The `/upload` endpoint returns a relative path like `/files/<filename>` which clients combine with the server URL to load the image. Filenames are sanitized before saving to prevent path traversal.
-
-`docker-compose.yml` mounts a volume for the uploads directory so files persist between restarts.
-
-## Docker
-A `docker-compose.yml` runs the Rust server alongside Postgres. The client is run locally without Docker.
-
-## Development
-Run `npm run check` in `murmer_client` to lint Svelte and TypeScript sources.
-For the server run `cargo check` and format the code with `cargo fmt` before
-committing changes.
-
-## Building on Windows
-
-1. Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for Windows.
-2. Ensure [Rust](https://www.rust-lang.org/tools/install) and [Node.js](https://nodejs.org) are in your `PATH`.
-3. From the `murmer_client` folder run:
-
+## Windows build instructions
+1. Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for
+   Windows (Visual Studio Build Tools, WebView2, etc.).
+2. Install [Rust](https://www.rust-lang.org/tools/install) and
+   [Node.js 22+](https://nodejs.org) and ensure both are available in `PATH`.
+3. Build the client from `murmer_client/`:
    ```bash
    npm install
+   npm run build
    npm run tauri build
    ```
-   The built installer can be found in `murmer_client/src-tauri/target/release/bundle`.
-4. Build the server executable (optional):
-
+   Bundles are produced in `murmer_client/src-tauri/target/release/bundle`.
+4. (Optional) Produce an optimised server binary:
    ```bash
    cd ../murmer_server
    cargo build --release
    ```
+   The executable is written to `murmer_server/target/release/murmer_server`.
 
-   The binary will be at `murmer_server/target/release/murmer_server`.
+## Security highlights
+- Authentication uses Ed25519 signatures; timestamps are validated and bound to
+  per-user nonces.
+- IP-based rate limiting protects authentication and chat message throughput.
+- Filenames are sanitised and image contents inspected before saving.
+- Admin operations use constant-time comparisons to mitigate timing attacks.
+- Channel management honours server-side role assignments when admin mode is on.
 
 ## Contributing
+1. Format Rust code with `cargo fmt` and ensure `cargo check` passes.
+2. Run `npm run check` from `murmer_client`.
+3. Update documentation and changelog entries relevant to your change.
+4. Keep pull requests focused and describe security implications where relevant.
 
-Pull requests are welcome! Please follow these guidelines:
+Additional contributor notes live in:
+- [`AGENTS.md`](AGENTS.md) – repository overview and shared conventions
+- [`murmer_client/AGENTS.md`](murmer_client/AGENTS.md) – client-specific tips
+- [`murmer_server/AGENTS.md`](murmer_server/AGENTS.md) – server-specific tips
 
-1. Format Rust code using `cargo fmt` and ensure it compiles with `cargo check`.
-2. Run `npm run check` from `murmer_client` and ensure there are no errors.
-3. Keep commits focused on a single change.
-4. Update documentation when changing or adding features.
-
-## Security Features
-
-Murmer implements several security measures to protect against common attacks:
-
-- **Authentication**: Ed25519 digital signatures for cryptographic user verification
-- **Replay Protection**: Nonce-based system prevents signature reuse attacks
-- **Rate Limiting**: Configurable limits on authentication attempts and message sending
-- **Input Validation**: All user inputs are validated and sanitized
-- **File Security**: Upload restrictions, type validation, and size limits for images
-- **CORS Protection**: Restrictive cross-origin policies in production mode
-- **Admin Security**: Constant-time comparison for administrative tokens
-
-## Notes
-This project is an early prototype demonstrating login, server selection, text chat and voice communication via WebRTC. While it includes comprehensive security measures, it should be thoroughly tested before production use.
-
-## Development Guides
-
-For more detailed information on development workflows, see:
-- [murmer_client/AGENTS.md](murmer_client/AGENTS.md) – guides for the Tauri/SvelteKit client.
-- [murmer_server/AGENTS.md](murmer_server/AGENTS.md) – guides for the Rust WebSocket server.
-
-## Building for production
-
-### Client
-Build and bundle the desktop application using Tauri:
-```bash
-cd murmer_client
-npm install
-npm run build         # build web assets
-npm run tauri build   # package native installer
-```
-Generated bundles are placed under `src-tauri/target/release/bundle`.
-
-### Server
-Compile the Rust server in release mode:
-```bash
-cargo build --release
-```
-The optimized binary is available at `murmer_server/target/release/murmer_server`.
+Murmer is an experimental project; please perform manual QA before using it for
+sensitive workloads.

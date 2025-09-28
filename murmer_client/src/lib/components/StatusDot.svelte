@@ -1,3 +1,4 @@
+<!-- Small indicator used in the server list to show online/offline status. -->
 <script lang="ts">
   export let online: boolean | null = null;
   $: color = online === null ? '#6b7280' : online ? '#22c55e' : '#dc2626';
