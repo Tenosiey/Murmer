@@ -38,7 +38,7 @@ use chrono::{DateTime, Utc};
 use ed25519_dalek::{PublicKey, Signature, Verifier};
 use futures::{SinkExt, StreamExt, stream::SplitSink};
 use serde_json::{Map, Value};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -53,6 +53,16 @@ use crate::{
 /// Roles that are allowed to create or delete channels when administrative
 /// controls are enabled.
 const CHANNEL_MANAGE_ROLES: &[&str] = &["Admin", "Mod", "Owner"];
+
+/// Allowed user status values broadcast to clients.
+const USER_STATUSES: &[&str] = &["online", "away", "busy", "offline"];
+
+fn normalize_status(value: &str) -> Option<&'static str> {
+    USER_STATUSES
+        .iter()
+        .copied()
+        .find(|status| status.eq_ignore_ascii_case(value))
+}
 
 /// Broadcast the current list of online users to all connected clients.
 async fn broadcast_users(state: &Arc<AppState>) {
@@ -146,6 +156,20 @@ async fn send_all_roles(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket,
     }
 }
 
+/// Send all known user statuses to a newly connected client.
+async fn send_all_statuses(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    let statuses: HashMap<String, String> = state.statuses.lock().await.clone();
+    if statuses.is_empty() {
+        return;
+    }
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "status-snapshot",
+        "statuses": statuses,
+    })) {
+        let _ = sender.send(Message::Text(msg)).await;
+    }
+}
+
 /// Send the list of available channels to a client.
 async fn send_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let list = db::get_channels(&state.db).await;
@@ -181,6 +205,17 @@ async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket,
                 break;
             }
         }
+    }
+}
+
+/// Broadcast a user's status change to all clients.
+async fn broadcast_status(state: &Arc<AppState>, user: &str, status: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "status-update",
+        "user": user,
+        "status": status,
+    })) {
+        let _ = state.tx.send(msg);
     }
 }
 
@@ -406,6 +441,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                             let mut known = state.known_users.lock().await;
                                             known.insert(u.to_string());
                                         }
+                                        {
+                                            let mut statuses = state.statuses.lock().await;
+                                            statuses.insert(u.to_string(), "online".to_string());
+                                        }
+                                        broadcast_status(&state, u, "online").await;
                                         broadcast_users(&state).await;
                                         user_name = Some(u.to_string());
                                         if let Some(pk) = v.get("publicKey").and_then(|p| p.as_str()) {
@@ -423,6 +463,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                             }
                                         }
                                         send_all_roles(&state, &mut sender).await;
+                                        send_all_statuses(&state, &mut sender).await;
                                         send_channels(&state, &mut sender).await;
                                         send_voice_channels(&state, &mut sender).await;
                                         send_users(&state, &mut sender).await;
@@ -760,6 +801,46 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                 let chan_sender = get_or_create_channel(&state, &target_channel).await;
                                 let _ = chan_sender.send(payload.to_string());
                             }
+                            "status-update" => {
+                                let user = match user_name.clone() {
+                                    Some(name) => name,
+                                    None => {
+                                        let msg = serde_json::json!({
+                                            "type": "error",
+                                            "message": "not-authenticated",
+                                        })
+                                        .to_string();
+                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        continue;
+                                    }
+                                };
+
+                                let Some(raw_status) = v.get("status").and_then(|s| s.as_str()) else {
+                                    let msg = serde_json::json!({
+                                        "type": "error",
+                                        "message": "invalid-status",
+                                    })
+                                    .to_string();
+                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    continue;
+                                };
+
+                                let Some(status) = normalize_status(raw_status) else {
+                                    let msg = serde_json::json!({
+                                        "type": "error",
+                                        "message": "invalid-status",
+                                    })
+                                    .to_string();
+                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    continue;
+                                };
+
+                                {
+                                    let mut statuses = state.statuses.lock().await;
+                                    statuses.insert(user.clone(), status.to_string());
+                                }
+                                broadcast_status(&state, &user, status).await;
+                            }
                             "ping" => {
                                 let id = v.get("id").cloned().unwrap_or(Value::Null);
                                 let msg = serde_json::json!({ "type": "pong", "id": id });
@@ -858,6 +939,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
         }
         // Keep role and key mappings so clients can display roles
         // even when the user is offline.
+        {
+            let mut statuses = state.statuses.lock().await;
+            statuses.insert(name.clone(), "offline".to_string());
+        }
+        broadcast_status(&state, &name, "offline").await;
     }
     info!(%client_ip, "Client disconnected");
 }

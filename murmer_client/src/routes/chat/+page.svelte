@@ -27,9 +27,10 @@
   import { leftSidebarWidth, rightSidebarWidth, focusMode } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
   import { theme } from '$lib/stores/theme';
+  import { statuses, STATUS_LABELS, STATUS_EMOJIS, USER_STATUS_VALUES } from '$lib/stores/status';
   import { loadKeyPair, sign } from '$lib/keypair';
   import { renderMarkdown } from '$lib/markdown';
-  import type { Message } from '$lib/types';
+  import type { Message, UserStatus } from '$lib/types';
   function pingToStrength(ms: number): number {
     return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
   }
@@ -44,6 +45,15 @@
   let menuOpen = false;
   let menuX = 0;
   let menuY = 0;
+  const statusOptions: Array<{ value: UserStatus; label: string; emoji: string }> = USER_STATUS_VALUES.map((value) => ({
+    value,
+    label: STATUS_LABELS[value],
+    emoji: STATUS_EMOJIS[value]
+  }));
+  let statusMenuOpen = false;
+  let statusMenuButton: HTMLButtonElement | null = null;
+  let statusMenuElement: HTMLDivElement | null = null;
+  let statusMap: Record<string, UserStatus> = {};
 
   type MessageBlock =
     | { kind: 'separator'; label: string; key: string }
@@ -143,6 +153,54 @@
     if (!emoji) return;
     chat.react(messageId, emoji, 'add');
   }
+
+  function ensureStatus(user: string, fallback: UserStatus = 'offline'): UserStatus {
+    return (statusMap[user] ?? fallback) as UserStatus;
+  }
+
+  function toggleStatusMenu(event: MouseEvent) {
+    event.stopPropagation();
+    statusMenuOpen = !statusMenuOpen;
+  }
+
+  function selectStatus(value: UserStatus) {
+    statuses.setSelf(value);
+    statusMenuOpen = false;
+  }
+
+  function handleStatusMenuOutside(event: MouseEvent) {
+    if (!statusMenuOpen) return;
+    const target = event.target as Node | null;
+    if (statusMenuElement && target && statusMenuElement.contains(target)) return;
+    if (statusMenuButton && target && statusMenuButton.contains(target)) return;
+    statusMenuOpen = false;
+  }
+
+  function handleStatusMenuKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      statusMenuOpen = false;
+      event.stopPropagation();
+      event.preventDefault();
+    }
+  }
+
+  $: statusMap = (() => {
+    const map: Record<string, UserStatus> = { ...$statuses };
+    for (const user of $onlineUsers) {
+      if (!map[user]) {
+        map[user] = 'online';
+      }
+    }
+    for (const user of $offlineUsers) {
+      if (!map[user]) {
+        map[user] = 'offline';
+      }
+    }
+    return map;
+  })();
+
+  $: currentUserStatus = $session.user ? ensureStatus($session.user, 'online') : 'offline';
+  $: currentUserStatusLabel = STATUS_LABELS[currentUserStatus];
 
   $: autoResize();
   let inVoice = false;
@@ -665,12 +723,14 @@
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', stopResize);
     window.addEventListener('keydown', handleGlobalShortcut);
+    window.addEventListener('click', handleStatusMenuOutside);
   });
 
   onDestroy(() => {
     window.removeEventListener('mousemove', handleMouseMove);
     window.removeEventListener('mouseup', stopResize);
     window.removeEventListener('keydown', handleGlobalShortcut);
+    window.removeEventListener('click', handleStatusMenuOutside);
   });
 </script>
 
@@ -809,6 +869,55 @@
         </div>
         <div class="actions">
           <div class="user">{$session.user}</div>
+          <div class="status-control">
+            <button
+              class="action-button status-button"
+              bind:this={statusMenuButton}
+              aria-haspopup="true"
+              aria-expanded={statusMenuOpen}
+              on:click={toggleStatusMenu}
+              title={`Set status (${currentUserStatusLabel})`}
+            >
+              <span class={`status ${currentUserStatus}`}></span>
+              <span class="status-button-label">{currentUserStatusLabel}</span>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            {#if statusMenuOpen}
+              <div
+                class="status-menu"
+                bind:this={statusMenuElement}
+                role="menu"
+                tabindex="-1"
+                on:click|stopPropagation
+                on:keydown={handleStatusMenuKeydown}
+              >
+                {#each statusOptions as option}
+                  <button
+                    class:active={option.value === currentUserStatus}
+                    on:click={() => selectStatus(option.value)}
+                    role="menuitemradio"
+                    aria-checked={option.value === currentUserStatus}
+                  >
+                    <span class={`status ${option.value}`}></span>
+                    <span class="status-option-label">{option.label}</span>
+                    <span class="status-option-emoji" aria-hidden="true">{option.emoji}</span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
           <div class="connection-info">
             <PingDot ping={$ping} />
             <ConnectionBars strength={serverStrength} />
@@ -1113,7 +1222,8 @@
       <ul>
         {#each $onlineUsers as user}
           <li>
-            <span class="status online"></span>
+            <span class={`status ${ensureStatus(user, 'online')}`}></span>
+            <span class="status-label">{STATUS_LABELS[ensureStatus(user, 'online')]}</span>
             <span
               class="username"
               style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
@@ -1133,7 +1243,8 @@
       <ul>
         {#each $offlineUsers as user}
           <li>
-            <span class="status offline"></span>
+            <span class={`status ${ensureStatus(user)}`}></span>
+            <span class="status-label">{STATUS_LABELS[ensureStatus(user)]}</span>
             <span
               class="username"
               style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
@@ -1361,6 +1472,82 @@
 
   .user::before {
     content: '🧑‍🚀';
+  }
+
+  .status-control {
+    position: relative;
+  }
+
+  .status-button {
+    width: auto;
+    height: auto;
+    padding: 0.4rem 0.8rem;
+    gap: 0.45rem;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+
+  .status-button svg {
+    margin-left: 0.25rem;
+  }
+
+  .status-button-label {
+    text-transform: capitalize;
+  }
+
+  .status-menu {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    min-width: 12rem;
+    background: color-mix(in srgb, var(--color-surface-elevated) 95%, transparent);
+    border: 1px solid var(--color-surface-outline);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 0.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    z-index: 60;
+  }
+
+  .status-menu button {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    border: none;
+    background: transparent;
+    color: inherit;
+    border-radius: var(--radius-sm);
+    padding: 0.45rem 0.6rem;
+    text-align: left;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+
+  .status-menu button:hover,
+  .status-menu button:focus-visible,
+  .status-menu button.active {
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    outline: none;
+  }
+
+  .status-menu .status {
+    width: 0.6rem;
+    height: 0.6rem;
+  }
+
+  .status-menu button.active {
+    font-weight: 600;
+  }
+
+  .status-option-label {
+    flex: 1;
+    text-transform: capitalize;
+  }
+
+  .status-option-emoji {
+    font-size: 1rem;
   }
 
   .connection-info {
@@ -1834,14 +2021,34 @@
     width: 0.75rem;
     height: 0.75rem;
     border-radius: 50%;
+    flex-shrink: 0;
   }
 
   .status.online {
     background: var(--color-success);
   }
 
+  .status.away {
+    background: #fbbf24;
+  }
+
+  .status.busy {
+    background: #ef4444;
+  }
+
   .status.offline {
     background: color-mix(in srgb, var(--color-muted) 40%, transparent);
+  }
+
+  .status-label {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    text-transform: capitalize;
+    min-width: 3.5rem;
+  }
+
+  .sidebar .status-label {
+    text-transform: capitalize;
   }
 
   .volume-menu-overlay {

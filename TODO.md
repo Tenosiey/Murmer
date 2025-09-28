@@ -32,7 +32,7 @@ Use the checkboxes to track progress.
 - [ ] Text-to-speech
 - [ ] User nicknames per server
 - [ ] User profiles/avatars
-- [ ] User status indicators (away, busy, etc.)
+- [x] User status indicators (away, busy, etc.)
 
 ### 🎤 Voice Features
 
