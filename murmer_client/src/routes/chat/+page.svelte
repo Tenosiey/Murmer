@@ -154,8 +154,12 @@
     chat.react(messageId, emoji, 'add');
   }
 
-  function ensureStatus(user: string, fallback: UserStatus = 'offline'): UserStatus {
-    return (statusMap[user] ?? fallback) as UserStatus;
+  function ensureStatus(
+    map: Record<string, UserStatus>,
+    user: string,
+    fallback: UserStatus = 'offline'
+  ): UserStatus {
+    return (map[user] ?? fallback) as UserStatus;
   }
 
   function toggleStatusMenu(event: MouseEvent) {
@@ -199,7 +203,9 @@
     return map;
   })();
 
-  $: currentUserStatus = $session.user ? ensureStatus($session.user, 'online') : 'offline';
+  $: currentUserStatus = $session.user
+    ? ensureStatus(statusMap, $session.user, 'online')
+    : 'offline';
   $: currentUserStatusLabel = STATUS_LABELS[currentUserStatus];
 
   $: autoResize();
@@ -1222,8 +1228,8 @@
       <ul>
         {#each $onlineUsers as user}
           <li>
-            <span class={`status ${ensureStatus(user, 'online')}`}></span>
-            <span class="status-label">{STATUS_LABELS[ensureStatus(user, 'online')]}</span>
+            <span class={`status ${ensureStatus(statusMap, user, 'online')}`}></span>
+            <span class="status-label">{STATUS_LABELS[ensureStatus(statusMap, user, 'online')]}</span>
             <span
               class="username"
               style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
@@ -1243,8 +1249,8 @@
       <ul>
         {#each $offlineUsers as user}
           <li>
-            <span class={`status ${ensureStatus(user)}`}></span>
-            <span class="status-label">{STATUS_LABELS[ensureStatus(user)]}</span>
+            <span class={`status ${ensureStatus(statusMap, user)}`}></span>
+            <span class="status-label">{STATUS_LABELS[ensureStatus(statusMap, user)]}</span>
             <span
               class="username"
               style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
@@ -1481,14 +1487,17 @@
   .status-button {
     width: auto;
     height: auto;
-    padding: 0.4rem 0.8rem;
+    min-width: 0;
+    padding: 0.4rem 0.85rem;
     gap: 0.45rem;
     font-weight: 600;
     font-size: 0.85rem;
+    justify-content: flex-start;
+    white-space: nowrap;
   }
 
   .status-button svg {
-    margin-left: 0.25rem;
+    margin-left: 0.35rem;
   }
 
   .status-button-label {
