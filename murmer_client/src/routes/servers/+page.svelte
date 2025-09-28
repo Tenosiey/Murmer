@@ -8,6 +8,7 @@
   import { normalizeServerUrl } from '$lib/utils';
   import { serverStatus } from '$lib/stores/serverStatus';
   import StatusDot from '$lib/components/StatusDot.svelte';
+  import { createInviteLink, parseInviteLink } from '$lib/invite';
 
   onMount(() => {
     if (!get(session).user) goto('/login');
@@ -16,23 +17,64 @@
 
   onDestroy(() => {
     serverStatus.stop();
+    clearCopyTimeout();
   });
 
   let newServer = '';
   let newName = '';
   let newPassword = '';
   let settingsOpen = false;
+  let error: string | null = null;
+  let copiedServer: string | null = null;
+  let copyTimeout: ReturnType<typeof setTimeout> | null = null;
 
+  function clearCopyTimeout() {
+    if (copyTimeout) {
+      clearTimeout(copyTimeout);
+      copyTimeout = null;
+    }
+  }
 
   function add() {
-    if (newServer.trim()) {
-      const entry: ServerEntry = { url: normalizeServerUrl(newServer), name: newName.trim() || newServer };
-      if (newPassword.trim()) entry.password = newPassword;
-      servers.add(entry);
-      newServer = '';
-      newName = '';
-      newPassword = '';
+    error = null;
+    const rawServer = newServer.trim();
+    if (!rawServer) {
+      error = 'Enter a server address or invite link.';
+      return;
     }
+
+    const trimmedName = newName.trim();
+    const trimmedPassword = newPassword.trim();
+    let entry: ServerEntry;
+
+    if (rawServer.startsWith('murmer://')) {
+      const parsed = parseInviteLink(rawServer);
+      if (!parsed) {
+        error = 'That invite link could not be parsed.';
+        return;
+      }
+      entry = {
+        url: parsed.url,
+        name: trimmedName || parsed.name || parsed.url
+      };
+      const password = trimmedPassword || parsed.password;
+      if (password) {
+        entry.password = password;
+      }
+    } else {
+      entry = {
+        url: normalizeServerUrl(rawServer),
+        name: trimmedName || rawServer
+      };
+      if (trimmedPassword) {
+        entry.password = trimmedPassword;
+      }
+    }
+
+    servers.add(entry);
+    newServer = '';
+    newName = '';
+    newPassword = '';
   }
 
   function join(server: ServerEntry) {
@@ -55,6 +97,41 @@
 
   function closeSettings() {
     settingsOpen = false;
+  }
+
+  async function copyInvite(server: ServerEntry) {
+    error = null;
+    const invite = createInviteLink(server);
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(invite);
+      } else if (typeof document !== 'undefined') {
+        const textarea = document.createElement('textarea');
+        textarea.value = invite;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'absolute';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      } else {
+        throw new Error('Clipboard API not available');
+      }
+      copiedServer = server.url;
+      clearCopyTimeout();
+      copyTimeout = setTimeout(() => {
+        if (copiedServer === server.url) {
+          copiedServer = null;
+        }
+        copyTimeout = null;
+      }, 2000);
+    } catch (err) {
+      error = 'Could not copy the invite link. Please copy it manually.';
+      if (import.meta.env.DEV) {
+        console.error('Failed to copy invite link', err);
+      }
+    }
   }
 </script>
 
@@ -144,6 +221,7 @@
     {/if}
   </section>
 </main>
+
 
 <style>
   .servers-shell {
@@ -271,6 +349,7 @@
   button.ghost:hover,
   button.secondary:hover,
   button.primary:hover {
+
     transform: translateY(-1px);
     box-shadow: var(--shadow-xs);
   }
@@ -296,6 +375,7 @@
   }
 
   .card-copy {
+
     display: flex;
     flex-direction: column;
     gap: 0.75rem;

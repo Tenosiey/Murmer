@@ -184,6 +184,7 @@
         analyser = audioContext.createAnalyser();
         analyser.fftSize = 512;
         buffer = new Uint8Array(new ArrayBuffer(analyser.fftSize)) as Uint8Array<ArrayBuffer>;
+
         sourceNode.connect(analyser);
 
         const update = () => {
