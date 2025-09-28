@@ -7,6 +7,7 @@
  */
 import { chat } from '../stores/chat';
 import { volume, inputDeviceId, microphoneMuted, voiceMode, vadSensitivity, pttKey, isPttActive, voiceActivity } from '../stores/settings';
+import { resetRemoteSpeaking } from '../stores/voiceSpeaking';
 import { get } from 'svelte/store';
 import type { Message, RemotePeer, ConnectionStats } from '../types';
 import { VoiceActivityDetector } from './vad';
@@ -317,6 +318,7 @@ export class VoiceManager {
     if (this.userName) return;
     this.userName = user;
     this.channel = channel;
+    resetRemoteSpeaking();
     chat.on('voice-join', (m) => this.handleJoin(m, peersList));
     chat.on('voice-offer', (m) => this.handleOffer(m, peersList));
     chat.on('voice-answer', (m) => this.handleAnswer(m));
@@ -367,6 +369,7 @@ export class VoiceManager {
     this.channel = null;
     peersList.length = 0;
     this.emit([]);
+    resetRemoteSpeaking();
   }
 
   private handleJoin(msg: Message, peersList: RemotePeer[]) {
@@ -422,10 +425,12 @@ export class VoiceManager {
       this.vad.destroy();
       this.vad = null;
     }
-    
+
     if (this.ptt) {
       this.ptt.destroy();
       this.ptt = null;
     }
+
+    resetRemoteSpeaking();
   }
 }
