@@ -200,10 +200,11 @@
 
           {#if $voiceMode === 'ptt'}
             <div class="setting-group">
-              <label class="setting-label">Push-to-Talk Key</label>
+              <label class="setting-label" for="ptt-key-button">Push-to-Talk Key</label>
               <div class="ptt-key-setting">
-                <button 
-                  class="ptt-key-button" 
+                <button
+                  id="ptt-key-button"
+                  class="ptt-key-button"
                   class:capturing={capturingPttKey}
                   on:click={capturePttKey}
                   disabled={capturingPttKey}

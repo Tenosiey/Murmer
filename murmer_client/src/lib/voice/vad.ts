@@ -7,7 +7,7 @@ export class VoiceActivityDetector {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
-  private dataArray: Uint8Array | null = null;
+  private dataArray: Uint8Array<ArrayBuffer> | null = null;
   private animationFrame: number | null = null;
   private isActive = false;
   private currentSensitivity = 0.1;
@@ -38,7 +38,8 @@ export class VoiceActivityDetector {
       this.analyser.maxDecibels = this.MAX_DECIBELS;
       this.analyser.smoothingTimeConstant = this.SMOOTHING_FACTOR;
       
-      this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+      const buffer = new ArrayBuffer(this.analyser.frequencyBinCount);
+      this.dataArray = new Uint8Array(buffer);
     } catch (error) {
       console.error('Failed to setup audio context for VAD:', error);
     }

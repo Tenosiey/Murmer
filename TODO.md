@@ -12,7 +12,7 @@ Use the checkboxes to track progress.
 - [x] Add reactions with emojis
 - [ ] Bot integration/webhooks
 - [ ] Channel categories and folders
-- [ ] Channel description/topics
+- [x] Channel description/topics
 - [ ] Channel permissions and moderation
 - [ ] Code syntax highlighting
 - [ ] Direct messages between users
@@ -53,7 +53,7 @@ Use the checkboxes to track progress.
 - [ ] Temporary voice channels
 - [ ] Virtual backgrounds
 - [ ] Voice activity heatmaps
-- [ ] Voice activity indicators
+- [x] Voice activity indicators
 - [ ] Voice channels with different quality settings
 - [ ] Voice-controlled commands
 - [ ] Voice effects and filters

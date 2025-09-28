@@ -9,6 +9,7 @@ import { roles } from '$lib/stores/roles';
   import { allUsers, offlineUsers } from '$lib/stores/users';
   import { voiceUsers } from '$lib/stores/voiceUsers';
   import { volume, outputDeviceId, outputMuted, microphoneMuted, userVolumes, setUserVolume, voiceMode, voiceActivity, isPttActive } from '$lib/stores/settings';
+  import { remoteSpeaking, setRemoteSpeaking } from '$lib/stores/voiceSpeaking';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
@@ -19,6 +20,7 @@ import { roles } from '$lib/stores/roles';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { leftSidebarWidth, rightSidebarWidth, focusMode } from '$lib/stores/layout';
+  import { channelTopics } from '$lib/stores/channelTopics';
 import { loadKeyPair, sign } from '$lib/keypair';
 import { renderMarkdown } from '$lib/markdown';
 import type { Message } from '$lib/types';
@@ -83,26 +85,36 @@ import type { Message } from '$lib/types';
   let settingsOpen = false;
   let currentChatChannel = 'general';
   let currentVoiceChannel: string | null = null;
+  let currentTopic = '';
 
   $: if ($channels.length && !$channels.includes(currentChatChannel)) {
     currentChatChannel = $channels[0];
     chat.sendRaw({ type: 'join', channel: currentChatChannel });
   }
 
+  $: currentTopic = $channelTopics[currentChatChannel] ?? '';
+
 
   function stream(node: HTMLAudioElement, data: { stream: MediaStream, userId: string }) {
     node.srcObject = data.stream;
-    
+    let currentUserId = data.userId;
+
+    let audioContext: AudioContext | null = null;
+    let analyser: AnalyserNode | null = null;
+    let sourceNode: MediaStreamAudioSourceNode | null = null;
+    let frameId: number | null = null;
+    let buffer: Uint8Array | null = null;
+
     const updateVolume = () => {
       if ($outputMuted) {
         node.volume = 0;
       } else {
         const globalVol = $volume;
-        const userVol = $userVolumes[data.userId] ?? 1.0;
+        const userVol = $userVolumes[currentUserId] ?? 1.0;
         node.volume = globalVol * userVol;
       }
     };
-    
+
     const unsubVol = volume.subscribe(() => updateVolume());
     const unsubMute = outputMuted.subscribe(() => updateVolume());
     const unsubUserVol = userVolumes.subscribe(() => updateVolume());
@@ -121,11 +133,89 @@ import type { Message } from '$lib/types';
     });
     applySink($outputDeviceId);
     updateVolume(); // Initial volume setting
-    
+
+    const stopMeter = () => {
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+        frameId = null;
+      }
+      if (sourceNode) {
+        try {
+          sourceNode.disconnect();
+        } catch (err) {
+          if (import.meta.env.DEV) console.warn('Failed to disconnect source node', err);
+        }
+        sourceNode = null;
+      }
+      if (analyser) {
+        try {
+          analyser.disconnect();
+        } catch (err) {
+          if (import.meta.env.DEV) console.warn('Failed to disconnect analyser', err);
+        }
+        analyser = null;
+      }
+      buffer = null;
+      if (audioContext) {
+        audioContext.close().catch((err) => {
+          if (import.meta.env.DEV) console.warn('Failed to close audio context', err);
+        });
+        audioContext = null;
+      }
+      setRemoteSpeaking(currentUserId, false);
+    };
+
+    const startMeter = (stream: MediaStream | null | undefined) => {
+      stopMeter();
+      if (!stream) return;
+      const Ctor: typeof AudioContext | undefined =
+        (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!Ctor) return;
+
+      try {
+        audioContext = new Ctor();
+        if (audioContext.state === 'suspended') {
+          audioContext.resume().catch(() => {
+            /* ignore */
+          });
+        }
+        sourceNode = audioContext.createMediaStreamSource(stream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512;
+        buffer = new Uint8Array(analyser.fftSize);
+        sourceNode.connect(analyser);
+
+        const update = () => {
+          if (!analyser || !buffer) return;
+          analyser.getByteTimeDomainData(buffer);
+          let sum = 0;
+          for (let i = 0; i < buffer.length; i++) {
+            const value = (buffer[i] - 128) / 128;
+            sum += value * value;
+          }
+          const rms = Math.sqrt(sum / buffer.length);
+          const speaking = rms > 0.04;
+          setRemoteSpeaking(currentUserId, speaking);
+          frameId = requestAnimationFrame(update);
+        };
+        update();
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.warn('Failed to start voice activity meter', error);
+        }
+      }
+    };
+
+    startMeter(data.stream);
+
     return {
       update(newData: { stream: MediaStream, userId: string }) {
         node.srcObject = newData.stream;
-        data.userId = newData.userId;
+        if (currentUserId !== newData.userId) {
+          setRemoteSpeaking(currentUserId, false);
+          currentUserId = newData.userId;
+        }
+        startMeter(newData.stream);
         updateVolume();
       },
       destroy() {
@@ -133,6 +223,7 @@ import type { Message } from '$lib/types';
         unsubMute();
         unsubUserVol();
         unsubOut();
+        stopMeter();
       }
     };
   }
@@ -349,6 +440,13 @@ import type { Message } from '$lib/types';
     focusMode.update((v) => !v);
   }
 
+  function editTopic() {
+    const existing = $channelTopics[currentChatChannel] ?? '';
+    const input = prompt('Set channel topic', existing);
+    if (input === null) return;
+    channelTopics.setTopic(currentChatChannel, input);
+  }
+
   function toggleMicrophone() {
     microphoneMuted.update(muted => !muted);
   }
@@ -527,11 +625,23 @@ import type { Message } from '$lib/types';
           {#if $voiceUsers[ch]?.length}
             <ul class="voice-user-list">
               {#each $voiceUsers[ch] as user}
-                <li 
+                <li
                   on:contextmenu={(e) => user !== $session.user && openUserVolumeMenu(e, user)}
                   class:clickable={user !== $session.user}
+                  class:talking={
+                    user === $session.user
+                      ? !$microphoneMuted && $voiceActivity
+                      : Boolean($remoteSpeaking[user])
+                  }
                 >
-                  <span class="status voice"></span>
+                  <span
+                    class="status voice"
+                    class:talking={
+                      user === $session.user
+                        ? !$microphoneMuted && $voiceActivity
+                        : Boolean($remoteSpeaking[user])
+                    }
+                  ></span>
                   <span
                     class="username"
                     style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
@@ -558,13 +668,21 @@ import type { Message } from '$lib/types';
     <div class="resizer" role="separator" aria-label="Resize channel list" on:mousedown={startLeftResize}></div>
     <div class="chat">
       <div class="header">
-        <h1>{currentChatChannel}</h1>
+        <div class="title">
+          <h1>{currentChatChannel}</h1>
+          {#if currentTopic}
+            <p class="topic" title={currentTopic}>{currentTopic}</p>
+          {:else}
+            <p class="topic empty">No topic set</p>
+          {/if}
+        </div>
         <div class="actions">
           <div class="user">{$session.user}</div>
           <div class="connection-info">
             <PingDot ping={$ping} />
             <ConnectionBars strength={serverStrength} />
           </div>
+          <button class="action-button" on:click={editTopic} title="Edit channel topic">📝</button>
           <button
             class="action-button focus-toggle"
             class:focusActive={$focusMode}
@@ -978,6 +1096,27 @@ import type { Message } from '$lib/types';
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--color-border-subtle);
+  }
+
+  .title {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .topic {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+    max-width: 32rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topic.empty {
+    font-style: italic;
+    color: var(--color-text-subtle);
   }
 
   .actions {
@@ -1532,6 +1671,15 @@ import type { Message } from '$lib/types';
   .status.voice {
     background: var(--color-accent-alt);
     box-shadow: 0 0 0 2px var(--color-panel);
+  }
+
+  .status.voice.talking {
+    background: var(--color-success);
+    box-shadow: 0 0 8px var(--color-success);
+  }
+
+  .voice-user-list li.talking {
+    background: var(--color-bg-elevated);
   }
 
   .volume-menu-overlay {
