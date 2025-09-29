@@ -9,9 +9,11 @@ import { chat } from '../stores/chat';
 import { volume, inputDeviceId, microphoneMuted, voiceMode, vadSensitivity, pttKey, isPttActive, voiceActivity } from '../stores/settings';
 import { resetRemoteSpeaking } from '../stores/voiceSpeaking';
 import { get } from 'svelte/store';
-import type { Message, RemotePeer, ConnectionStats } from '../types';
+import type { Message, RemotePeer, ConnectionStats, VoiceChannelInfo } from '../types';
 import { VoiceActivityDetector } from './vad';
 import { PushToTalkManager } from './ptt';
+
+const DEFAULT_AUDIO_BITRATE = 64_000;
 
 /**
  * Handles WebRTC peer connections and signaling for voice chat.
@@ -43,6 +45,8 @@ export class VoiceManager {
   private config: RTCConfiguration = {
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   };
+
+  private channelConfig: VoiceChannelInfo | null = null;
 
   constructor() {
     volume.subscribe((v) => {
@@ -77,6 +81,23 @@ export class VoiceManager {
     this.ptt.subscribe((isPressed) => {
       isPttActive.set(isPressed);
       this.updateTransmissionState();
+    });
+
+    chat.on('voice-channel-update', (msg) => {
+      const channel = (msg as any).channel;
+      if (typeof channel !== 'string' || this.channel !== channel) return;
+      const quality =
+        typeof (msg as any).quality === 'string' && (msg as any).quality.trim()
+          ? (msg as any).quality.trim()
+          : this.channelConfig?.quality ?? 'standard';
+      let bitrate: number | null = this.channelConfig?.bitrate ?? DEFAULT_AUDIO_BITRATE;
+      if ((msg as any).bitrate === null) {
+        bitrate = null;
+      } else if (typeof (msg as any).bitrate === 'number' && Number.isFinite((msg as any).bitrate)) {
+        bitrate = Math.max(0, Math.round((msg as any).bitrate));
+      }
+      this.channelConfig = { name: channel, quality, bitrate };
+      this.applyChannelConfigToPeers();
     });
   }
 
@@ -142,6 +163,38 @@ export class VoiceManager {
     // Use gain control instead of disabling tracks to maintain VAD access
     const shouldTransmitAudio = this.shouldTransmit && !get(microphoneMuted);
     this.gainNode.gain.value = shouldTransmitAudio ? 1.0 : 0.0;
+  }
+
+  private configureSender(sender: RTCRtpSender) {
+    if (!this.channelConfig) return;
+    try {
+      const params = sender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) {
+        params.encodings = [{}];
+      }
+      const target = this.channelConfig.bitrate;
+      for (const encoding of params.encodings) {
+        if (target && target > 0) {
+          encoding.maxBitrate = target;
+        } else {
+          delete (encoding as any).maxBitrate;
+        }
+      }
+      sender.setParameters(params).catch(() => {});
+    } catch {
+      // Ignore configuration errors - browsers may not support bitrate control
+    }
+  }
+
+  private applyChannelConfigToPeers() {
+    if (!this.channelConfig) return;
+    for (const pc of Object.values(this.peers)) {
+      for (const sender of pc.getSenders()) {
+        if (sender.track && sender.track.kind === 'audio') {
+          this.configureSender(sender);
+        }
+      }
+    }
   }
 
   private async setupAudioProcessing(inputStream: MediaStream): Promise<MediaStream> {
@@ -270,7 +323,10 @@ export class VoiceManager {
     this.peers[id] = pc;
     if (this.localStream) {
       for (const track of this.localStream.getTracks()) {
-        pc.addTrack(track, this.localStream);
+        const sender = pc.addTrack(track, this.localStream);
+        if (track.kind === 'audio') {
+          this.configureSender(sender);
+        }
       }
     }
     pc.ontrack = (ev) => {
@@ -314,10 +370,13 @@ export class VoiceManager {
    * Registers handlers for signaling messages and notifies the server
    * that this user joined the specified channel.
    */
-  async join(user: string, channel: string, peersList: RemotePeer[]) {
+  async join(user: string, channel: string, peersList: RemotePeer[], info?: VoiceChannelInfo) {
     if (this.userName) return;
     this.userName = user;
     this.channel = channel;
+    this.channelConfig = info
+      ? { name: channel, quality: info.quality, bitrate: info.bitrate }
+      : { name: channel, quality: 'standard', bitrate: DEFAULT_AUDIO_BITRATE };
     resetRemoteSpeaking();
     chat.on('voice-join', (m) => this.handleJoin(m, peersList));
     chat.on('voice-offer', (m) => this.handleOffer(m, peersList));
@@ -367,6 +426,7 @@ export class VoiceManager {
     chat.off('voice-leave');
     this.userName = null;
     this.channel = null;
+    this.channelConfig = null;
     peersList.length = 0;
     this.emit([]);
     resetRemoteSpeaking();

@@ -29,3 +29,9 @@ export interface RoleInfo {
 }
 
 export type UserStatus = 'online' | 'away' | 'busy' | 'offline';
+
+export interface VoiceChannelInfo {
+  name: string;
+  quality: string;
+  bitrate: number | null;
+}
