@@ -63,16 +63,23 @@ impl RateLimiter {
 /// - `db`: PostgreSQL client for persisting chat history.
 /// - `users`: set of currently connected chat users.
 /// - `known_users`: set of all users that have ever joined while the server is running.
-/// - `voice_channels`: map of voice channel names to active users.
+/// - `voice_channels`: map of voice channel names to active users and configuration.
 /// - `upload_dir`: directory where uploaded files are stored.
 /// - `rate_limiter`: rate limiting and replay protection.
+#[derive(Clone)]
+pub struct VoiceChannelState {
+    pub users: HashSet<String>,
+    pub quality: String,
+    pub bitrate: Option<i32>,
+}
+
 pub struct AppState {
     pub tx: broadcast::Sender<String>,
     pub channels: Arc<Mutex<HashMap<String, broadcast::Sender<String>>>>,
     pub db: Arc<tokio_postgres::Client>,
     pub users: Arc<Mutex<HashSet<String>>>,
     pub known_users: Arc<Mutex<HashSet<String>>>,
-    pub voice_channels: Arc<Mutex<HashMap<String, HashSet<String>>>>,
+    pub voice_channels: Arc<Mutex<HashMap<String, VoiceChannelState>>>,
     pub roles: Arc<Mutex<HashMap<String, RoleInfo>>>,
     pub statuses: Arc<Mutex<HashMap<String, String>>>,
     pub user_keys: Arc<Mutex<HashMap<String, String>>>,
@@ -116,8 +123,15 @@ async fn main() {
         known_users: Arc::new(Mutex::new(HashSet::new())),
         voice_channels: Arc::new(Mutex::new({
             let mut map = HashMap::new();
-            for name in &existing_voice {
-                map.insert(name.clone(), HashSet::new());
+            for record in &existing_voice {
+                map.insert(
+                    record.name.clone(),
+                    VoiceChannelState {
+                        users: HashSet::new(),
+                        quality: record.quality.clone(),
+                        bitrate: record.bitrate,
+                    },
+                );
             }
             map
         })),

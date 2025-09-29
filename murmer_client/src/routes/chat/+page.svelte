@@ -30,7 +30,7 @@
   import { statuses, STATUS_LABELS, STATUS_EMOJIS, USER_STATUS_VALUES } from '$lib/stores/status';
   import { loadKeyPair, sign } from '$lib/keypair';
   import { renderMarkdown } from '$lib/markdown';
-  import type { Message, UserStatus } from '$lib/types';
+  import type { Message, UserStatus, VoiceChannelInfo } from '$lib/types';
   function pingToStrength(ms: number): number {
     return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
   }
@@ -54,6 +54,33 @@
   let statusMenuButton: HTMLButtonElement | null = null;
   let statusMenuElement: HTMLDivElement | null = null;
   let statusMap: Record<string, UserStatus> = {};
+
+  const VOICE_QUALITY_PRESETS: Array<{ quality: string; bitrate: number | null; label: string }> = [
+    { quality: 'low', bitrate: 32_000, label: 'Low' },
+    { quality: 'standard', bitrate: 64_000, label: 'Standard' },
+    { quality: 'high', bitrate: 96_000, label: 'High' },
+    { quality: 'ultra', bitrate: 128_000, label: 'Ultra' },
+    { quality: 'lossless', bitrate: null, label: 'Lossless' }
+  ];
+  const DEFAULT_VOICE_PRESET = VOICE_QUALITY_PRESETS[1];
+
+  function formatVoiceQuality(info: VoiceChannelInfo): string {
+    const preset = VOICE_QUALITY_PRESETS.find((p) => p.quality === info.quality);
+    const bitrate = info.bitrate ?? preset?.bitrate ?? null;
+    const label = preset ? preset.label : info.quality;
+    return bitrate && bitrate > 0 ? `${label} (${Math.round(bitrate / 1000)} kbps)` : label;
+  }
+
+  function promptVoicePreset(): { quality: string; bitrate: number | null } {
+    const input = prompt(
+      'Voice quality (low, standard, high, ultra, lossless)',
+      DEFAULT_VOICE_PRESET.quality
+    );
+    if (!input) return { quality: DEFAULT_VOICE_PRESET.quality, bitrate: DEFAULT_VOICE_PRESET.bitrate };
+    const normalized = input.trim().toLowerCase();
+    const preset = VOICE_QUALITY_PRESETS.find((p) => p.quality === normalized) ?? DEFAULT_VOICE_PRESET;
+    return { quality: preset.quality, bitrate: preset.bitrate };
+  }
 
   type MessageBlock =
     | { kind: 'separator'; label: string; key: string }
@@ -469,7 +496,8 @@
 
   function joinVoice() {
     if ($session.user && currentVoiceChannel) {
-      voice.join($session.user, currentVoiceChannel);
+      const info = $voiceChannels.find((vc) => vc.name === currentVoiceChannel);
+      voice.join($session.user, currentVoiceChannel, info);
       inVoice = true;
     }
   }
@@ -498,13 +526,14 @@
   function createVoiceChannelPrompt() {
     const name = prompt('New voice channel name');
     if (!name) return;
-    voiceChannels.create(name);
+    const preset = promptVoicePreset();
+    voiceChannels.create(name, preset);
     if ($session.user) {
       if (inVoice && currentVoiceChannel) {
         voice.leave(currentVoiceChannel);
       }
       currentVoiceChannel = name;
-      voice.join($session.user, name);
+      voice.join($session.user, name, { name, quality: preset.quality, bitrate: preset.bitrate });
       inVoice = true;
       scrollBottom();
     }
@@ -516,7 +545,8 @@
         voice.leave(currentVoiceChannel);
       }
       currentVoiceChannel = ch;
-      voice.join($session.user, ch);
+      const info = $voiceChannels.find((vc) => vc.name === ch);
+      voice.join($session.user, ch, info);
       inVoice = true;
       scrollBottom();
     }
@@ -621,7 +651,7 @@
           if (!currentVoiceChannel) {
             const channels = $voiceChannels;
             if (channels.length) {
-              currentVoiceChannel = channels[0];
+              currentVoiceChannel = channels[0].name;
             } else {
               break;
             }
@@ -638,7 +668,22 @@
     { label: 'Create Text Channel', action: createChannelPrompt },
     { label: 'Create Voice Channel', action: createVoiceChannelPrompt },
     ...(menuChannel ? [{ label: 'Delete Channel', action: () => channels.remove(menuChannel!) }] : []),
-    ...(menuVoiceChannel ? [{ label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannel!) }] : [])
+    ...(menuVoiceChannel
+      ? [
+          ...VOICE_QUALITY_PRESETS.map((preset) => ({
+            label:
+              preset.bitrate && preset.bitrate > 0
+                ? `Set Voice Quality: ${preset.label} (${Math.round(preset.bitrate / 1000)} kbps)`
+                : `Set Voice Quality: ${preset.label}`,
+            action: () =>
+              voiceChannels.configure(menuVoiceChannel!, {
+                quality: preset.quality,
+                bitrate: preset.bitrate
+              })
+          })),
+          { label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannel!) }
+        ]
+      : [])
   ];
 
   let messagesContainer: HTMLDivElement;
@@ -753,14 +798,16 @@
         </button>
       {/each}
       <h3 class="section">Voice Channels</h3>
-      {#each $voiceChannels as ch}
+      {#each $voiceChannels as ch (ch.name)}
         <div class="voice-group">
-          <button on:click={() => joinVoiceChannel(ch)} on:contextmenu={(e) => openChannelMenu(e, ch, true)}>
-            <span class="chan-icon">🔊</span> {ch}
+          <button on:click={() => joinVoiceChannel(ch.name)} on:contextmenu={(e) => openChannelMenu(e, ch.name, true)}>
+            <span class="chan-icon">🔊</span>
+            <span class="voice-channel-name">{ch.name}</span>
+            <span class="voice-channel-quality">{formatVoiceQuality(ch)}</span>
           </button>
-          {#if $voiceUsers[ch]?.length}
+          {#if $voiceUsers[ch.name]?.length}
             <ul class="voice-user-list">
-              {#each $voiceUsers[ch] as user}
+              {#each $voiceUsers[ch.name] as user}
                 <li
                   on:contextmenu={(e) => user !== $session.user && openUserVolumeMenu(e, user)}
                   class:clickable={user !== $session.user}
@@ -1374,6 +1421,17 @@
     align-items: center;
     gap: 0.5rem;
     position: relative;
+  }
+
+  .voice-channel-name {
+    flex: 1;
+  }
+
+  .voice-channel-quality {
+    margin-left: auto;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--color-muted) 85%, transparent);
   }
 
   .channels button:hover {

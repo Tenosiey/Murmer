@@ -55,7 +55,9 @@ CREATE TABLE IF NOT EXISTS channels (
     name TEXT PRIMARY KEY
 );
 CREATE TABLE IF NOT EXISTS voice_channels (
-    name TEXT PRIMARY KEY
+    name TEXT PRIMARY KEY,
+    quality TEXT NOT NULL DEFAULT 'standard',
+    bitrate INTEGER
 );
 INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
 "#,
@@ -67,7 +69,9 @@ INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
         })?;
 
     client
-        .batch_execute("ALTER TABLE roles ADD COLUMN IF NOT EXISTS color TEXT;")
+        .batch_execute(
+            "ALTER TABLE roles ADD COLUMN IF NOT EXISTS color TEXT;\nALTER TABLE voice_channels ADD COLUMN IF NOT EXISTS quality TEXT NOT NULL DEFAULT 'standard';\nALTER TABLE voice_channels ADD COLUMN IF NOT EXISTS bitrate INTEGER;\nUPDATE voice_channels SET quality = 'standard' WHERE quality IS NULL OR trim(quality) = '';\nUPDATE voice_channels SET bitrate = 64000 WHERE bitrate IS NULL;",
+        )
         .await
         .ok();
 
@@ -308,24 +312,62 @@ pub async fn remove_channel(db: &Client, name: &str) -> Result<(), tokio_postgre
 }
 
 /// Retrieve the list of voice channels.
-pub async fn get_voice_channels(db: &Client) -> Vec<String> {
+#[derive(Clone)]
+pub struct VoiceChannelRecord {
+    pub name: String,
+    pub quality: String,
+    pub bitrate: Option<i32>,
+}
+
+pub async fn get_voice_channels(db: &Client) -> Vec<VoiceChannelRecord> {
     match db
-        .query("SELECT name FROM voice_channels ORDER BY name", &[])
+        .query(
+            "SELECT name, quality, bitrate FROM voice_channels ORDER BY name",
+            &[],
+        )
         .await
     {
-        Ok(rows) => rows.into_iter().map(|row| row.get(0)).collect(),
+        Ok(rows) => rows
+            .into_iter()
+            .map(|row| VoiceChannelRecord {
+                name: row.get(0),
+                quality: row.get(1),
+                bitrate: row.get(2),
+            })
+            .collect(),
         Err(_) => Vec::new(),
     }
 }
 
 /// Insert a new voice channel if it does not already exist.
-pub async fn add_voice_channel(db: &Client, name: &str) -> Result<(), tokio_postgres::Error> {
+pub async fn add_voice_channel(
+    db: &Client,
+    name: &str,
+    quality: &str,
+    bitrate: Option<i32>,
+) -> Result<(), tokio_postgres::Error> {
     db.execute(
-        "INSERT INTO voice_channels (name) VALUES ($1) ON CONFLICT DO NOTHING",
-        &[&name],
+        "INSERT INTO voice_channels (name, quality, bitrate) VALUES ($1, $2, $3) \
+            ON CONFLICT (name) DO NOTHING",
+        &[&name, &quality, &bitrate],
     )
     .await
     .map(|_| ())
+}
+
+/// Update an existing voice channel configuration.
+pub async fn update_voice_channel(
+    db: &Client,
+    name: &str,
+    quality: &str,
+    bitrate: Option<i32>,
+) -> Result<bool, tokio_postgres::Error> {
+    db.execute(
+        "UPDATE voice_channels SET quality = $2, bitrate = $3 WHERE name = $1",
+        &[&name, &quality, &bitrate],
+    )
+    .await
+    .map(|count| count > 0)
 }
 
 /// Delete an existing voice channel.

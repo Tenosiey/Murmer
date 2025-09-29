@@ -45,7 +45,7 @@ use tokio::sync::broadcast;
 use tracing::{debug, error, info};
 
 use crate::{
-    AppState, db,
+    AppState, VoiceChannelState, db,
     roles::{RoleInfo, default_color},
     security,
 };
@@ -53,6 +53,13 @@ use crate::{
 /// Roles that are allowed to create or delete channels when administrative
 /// controls are enabled.
 const CHANNEL_MANAGE_ROLES: &[&str] = &["Admin", "Mod", "Owner"];
+
+/// Default quality label assigned to new voice channels.
+const DEFAULT_VOICE_QUALITY: &str = "standard";
+/// Default bitrate (in bits per second) assigned to new voice channels.
+const DEFAULT_VOICE_BITRATE: i32 = 64_000;
+/// Upper bound to reject unreasonable bitrate configuration values.
+const MAX_ALLOWED_VOICE_BITRATE: i32 = 320_000;
 
 /// Allowed user status values broadcast to clients.
 const USER_STATUSES: &[&str] = &["online", "away", "busy", "offline"];
@@ -62,6 +69,30 @@ fn normalize_status(value: &str) -> Option<&'static str> {
         .iter()
         .copied()
         .find(|status| status.eq_ignore_ascii_case(value))
+}
+
+fn validate_voice_quality(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty()
+        && trimmed.len() <= 32
+        && trimmed
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ' ')
+}
+
+fn validate_bitrate(value: i64) -> Option<i32> {
+    if value <= 0 || value > MAX_ALLOWED_VOICE_BITRATE as i64 {
+        return None;
+    }
+    i32::try_from(value).ok()
+}
+
+fn voice_channel_descriptor(name: &str, info: &VoiceChannelState) -> serde_json::Value {
+    serde_json::json!({
+        "name": name,
+        "quality": info.quality,
+        "bitrate": info.bitrate,
+    })
 }
 
 /// Broadcast the current list of online users to all connected clients.
@@ -101,11 +132,11 @@ async fn send_users(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Mes
 /// Broadcast the users currently in a voice channel to all clients.
 async fn broadcast_voice(state: &Arc<AppState>, channel: &str) {
     let vc = state.voice_channels.lock().await;
-    let list: Vec<String> = vc
-        .get(channel)
-        .map(|set| set.iter().cloned().collect())
-        .unwrap_or_default();
+    let entry = vc.get(channel).cloned();
     drop(vc);
+    let list: Vec<String> = entry
+        .map(|info| info.users.into_iter().collect())
+        .unwrap_or_default();
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "voice-users",
         "channel": channel,
@@ -183,10 +214,20 @@ async fn send_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, 
 
 /// Send the list of available voice channels to a client.
 async fn send_voice_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
-    let list: Vec<String> = state.voice_channels.lock().await.keys().cloned().collect();
+    let map = state.voice_channels.lock().await;
+    let mut entries: Vec<(String, VoiceChannelState)> = map
+        .iter()
+        .map(|(name, info)| (name.clone(), info.clone()))
+        .collect();
+    drop(map);
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    let channels: Vec<serde_json::Value> = entries
+        .iter()
+        .map(|(name, info)| voice_channel_descriptor(name, info))
+        .collect();
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "voice-channel-list",
-        "channels": list,
+        "channels": channels,
     })) {
         let _ = sender.send(Message::Text(msg)).await;
     }
@@ -195,11 +236,11 @@ async fn send_voice_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSo
 /// Send all voice channel member lists to a client.
 async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let map = state.voice_channels.lock().await.clone();
-    for (chan, users) in map {
+    for (chan, info) in map {
         if let Ok(msg) = serde_json::to_string(&serde_json::json!({
             "type": "voice-users",
             "channel": chan,
-            "users": users.into_iter().collect::<Vec<_>>(),
+            "users": info.users.into_iter().collect::<Vec<_>>(),
         })) {
             if sender.send(Message::Text(msg)).await.is_err() {
                 break;
@@ -230,10 +271,27 @@ async fn broadcast_new_channel(state: &Arc<AppState>, name: &str) {
 }
 
 /// Broadcast to all clients that a new voice channel was created.
-async fn broadcast_new_voice_channel(state: &Arc<AppState>, name: &str) {
+async fn broadcast_new_voice_channel(state: &Arc<AppState>, name: &str, info: &VoiceChannelState) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "voice-channel-add",
         "channel": name,
+        "quality": info.quality,
+        "bitrate": info.bitrate,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+async fn broadcast_voice_channel_update(
+    state: &Arc<AppState>,
+    name: &str,
+    info: &VoiceChannelState,
+) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "voice-channel-update",
+        "channel": name,
+        "quality": info.quality,
+        "bitrate": info.bitrate,
     })) {
         let _ = state.tx.send(msg);
     }
@@ -621,12 +679,160 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                         continue;
                                     }
 
+                                    let quality_value = v
+                                        .get("quality")
+                                        .and_then(|q| q.as_str())
+                                        .map(str::trim)
+                                        .filter(|q| !q.is_empty())
+                                        .map(str::to_string)
+                                        .unwrap_or_else(|| DEFAULT_VOICE_QUALITY.to_string());
+                                    if !validate_voice_quality(&quality_value) {
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-quality\"}".into()))
+                                            .await;
+                                        continue;
+                                    }
+
+                                    let bitrate_value = match v.get("bitrate") {
+                                        Some(val) if val.is_null() => None,
+                                        Some(val) => match val.as_i64().and_then(validate_bitrate) {
+                                            Some(valid) => Some(valid),
+                                            None => {
+                                                let _ = sender
+                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-bitrate\"}".into()))
+                                                    .await;
+                                                continue;
+                                            }
+                                        },
+                                        None => Some(DEFAULT_VOICE_BITRATE),
+                                    };
+
                                     let mut map = state.voice_channels.lock().await;
                                     if !map.contains_key(ch) {
-                                        map.insert(ch.to_string(), HashSet::new());
+                                        let info = VoiceChannelState {
+                                            users: HashSet::new(),
+                                            quality: quality_value.clone(),
+                                            bitrate: bitrate_value,
+                                        };
+                                        map.insert(ch.to_string(), info.clone());
                                         drop(map);
-                                        let _ = db::add_voice_channel(&state.db, ch).await;
-                                        broadcast_new_voice_channel(&state, ch).await;
+                                        let _ =
+                                            db::add_voice_channel(&state.db, ch, &info.quality, info.bitrate).await;
+                                        broadcast_new_voice_channel(&state, ch, &info).await;
+                                    }
+                                }
+                            }
+                            "update-voice-channel" => {
+                                if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    if !security::validate_channel_name(ch) {
+                                        error!("Invalid voice channel name for update: {}", ch);
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".into()))
+                                            .await;
+                                        continue;
+                                    }
+
+                                    let requester = if let Some(name) = user_name.as_deref() {
+                                        name
+                                    } else {
+                                        error!("update-voice-channel requested before presence was fully processed");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .await;
+                                        continue;
+                                    };
+
+                                    if !can_manage_channels(&state, requester).await {
+                                        error!("User {requester} attempted to update voice channel without permission");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .await;
+                                        continue;
+                                    }
+
+                                    let quality_override = if let Some(raw) =
+                                        v.get("quality").and_then(|q| q.as_str())
+                                    {
+                                        let trimmed = raw.trim();
+                                        if !validate_voice_quality(trimmed) {
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-quality\"}".into()))
+                                                .await;
+                                            continue;
+                                        }
+                                        Some(trimmed.to_string())
+                                    } else {
+                                        None
+                                    };
+
+                                    let bitrate_override = if let Some(val) = v.get("bitrate") {
+                                        if val.is_null() {
+                                            Some(None)
+                                        } else {
+                                            match val.as_i64().and_then(validate_bitrate) {
+                                                Some(valid) => Some(Some(valid)),
+                                                None => {
+                                                    let _ = sender
+                                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-bitrate\"}".into()))
+                                                        .await;
+                                                    continue;
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        None
+                                    };
+
+                                    let current = state.voice_channels.lock().await;
+                                    let Some(existing) = current.get(ch).cloned() else {
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"unknown-voice-channel\"}".into()))
+                                            .await;
+                                        continue;
+                                    };
+                                    drop(current);
+
+                                    let next_quality =
+                                        quality_override.unwrap_or_else(|| existing.quality.clone());
+                                    let next_bitrate = match bitrate_override {
+                                        Some(value) => value,
+                                        None => existing.bitrate,
+                                    };
+
+                                    match db::update_voice_channel(
+                                        &state.db,
+                                        ch,
+                                        &next_quality,
+                                        next_bitrate,
+                                    )
+                                    .await
+                                    {
+                                        Ok(true) => {
+                                            let mut map = state.voice_channels.lock().await;
+                                            if let Some(entry) = map.get_mut(ch) {
+                                                entry.quality = next_quality.clone();
+                                                entry.bitrate = next_bitrate;
+                                                let snapshot = entry.clone();
+                                                drop(map);
+                                                broadcast_voice_channel_update(
+                                                    &state,
+                                                    ch,
+                                                    &snapshot,
+                                                )
+                                                .await;
+                                            }
+                                        }
+                                        Ok(false) => {
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"unknown-voice-channel\"}".into()))
+                                                .await;
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to update voice channel {ch}: {e}");
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"voice-channel-update-failed\"}".into()))
+                                                .await;
+                                        }
                                     }
                                 }
                             }
@@ -854,16 +1060,22 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     v.get("channel").and_then(|c| c.as_str()),
                                 ) {
                                     let mut map = state.voice_channels.lock().await;
-                                    for users in map.values_mut() {
-                                        users.remove(u);
+                                    for info in map.values_mut() {
+                                        info.users.remove(u);
                                     }
                                     let new_channel = !map.contains_key(ch);
-                                    let entry = map.entry(ch.to_string()).or_default();
-                                    entry.insert(u.to_string());
-                                    if new_channel {
-                                        broadcast_new_voice_channel(&state, ch).await;
-                                    }
+                                    let entry = map.entry(ch.to_string()).or_insert_with(|| VoiceChannelState {
+                                        users: HashSet::new(),
+                                        quality: DEFAULT_VOICE_QUALITY.to_string(),
+                                        bitrate: Some(DEFAULT_VOICE_BITRATE),
+                                    });
+                                    entry.users.insert(u.to_string());
                                     voice_channel = Some(ch.to_string());
+                                    let descriptor = entry.clone();
+                                    drop(map);
+                                    if new_channel {
+                                        broadcast_new_voice_channel(&state, ch, &descriptor).await;
+                                    }
                                 }
                                 if let Some(ch) = v.get("channel").and_then(|c| c.as_str()) {
                                     broadcast_voice(&state, ch).await;
@@ -876,8 +1088,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     v.get("channel").and_then(|c| c.as_str()),
                                 ) {
                                     let mut map = state.voice_channels.lock().await;
-                                    if let Some(set) = map.get_mut(ch) {
-                                        set.remove(u);
+                                    if let Some(info) = map.get_mut(ch) {
+                                        info.users.remove(u);
                                     }
                                     drop(map);
                                     broadcast_voice(&state, ch).await;
@@ -927,8 +1139,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
         broadcast_users(&state).await;
         let mut map = state.voice_channels.lock().await;
         let mut ch_to_broadcast = None;
-        for (ch, users) in map.iter_mut() {
-            if users.remove(&name) {
+        for (ch, info) in map.iter_mut() {
+            if info.users.remove(&name) {
                 ch_to_broadcast = Some(ch.clone());
                 break;
             }
