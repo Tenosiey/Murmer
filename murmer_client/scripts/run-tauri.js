@@ -17,6 +17,12 @@ if (process.platform === 'linux') {
       env.LD_LIBRARY_PATH = cleanedEntries.join(':');
     }
   }
+
+  for (const key of Object.keys(env)) {
+    if (key === 'SNAP' || key.startsWith('SNAP_')) {
+      delete env[key];
+    }
+  }
 }
 
 const child = spawn('tauri', args, {
