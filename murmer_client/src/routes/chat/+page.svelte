@@ -1571,8 +1571,10 @@
   }
 
   .action-button {
-    width: 2.5rem;
-    height: 2.5rem;
+    min-width: 2.5rem;
+    width: auto;
+    min-height: 2.5rem;
+    height: auto;
     border-radius: 0.85rem;
     border: 1px solid color-mix(in srgb, var(--color-outline-strong) 70%, transparent);
     background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
