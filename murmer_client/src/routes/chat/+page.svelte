@@ -1096,54 +1096,56 @@
         </div>
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
-      <div class="messages" bind:this={messagesContainer} on:scroll={onScroll}>
-        {#each messageBlocks as block (block.key)}
-          {#if block.kind === 'separator'}
-            <div class="day-separator" role="separator" aria-label={`Messages from ${block.label}`}>
-              <span>{block.label}</span>
-            </div>
-          {:else if block.kind === 'message'}
-            <div class="message">
-              <span class="timestamp">{block.message.time}</span>
-              <span class="username">{block.message.user}</span>
-              {#if block.message.user && $roles[block.message.user]}
-                <span
-                  class="role"
-                  style={$roles[block.message.user].color ? `color: ${$roles[block.message.user].color}` : ''}
-                >
-                  {$roles[block.message.user].role}
+      <div class="messages-shell">
+        <div class="messages" bind:this={messagesContainer} on:scroll={onScroll}>
+          {#each messageBlocks as block (block.key)}
+            {#if block.kind === 'separator'}
+              <div class="day-separator" role="separator" aria-label={`Messages from ${block.label}`}>
+                <span>{block.label}</span>
+              </div>
+            {:else if block.kind === 'message'}
+              <div class="message">
+                <span class="timestamp">{block.message.time}</span>
+                <span class="username">{block.message.user}</span>
+                {#if block.message.user && $roles[block.message.user]}
+                  <span
+                    class="role"
+                    style={$roles[block.message.user].color ? `color: ${$roles[block.message.user].color}` : ''}
+                  >
+                    {$roles[block.message.user].role}
+                  </span>
+                {/if}
+                <span class="content">
+                  {#if block.message.text}
+                    {@html renderMarkdown(block.message.text)}
+                  {/if}
+                  {#if block.message.image}
+                    <img src={block.message.image as string} alt="" />
+                  {/if}
                 </span>
-              {/if}
-              <span class="content">
-                {#if block.message.text}
-                  {@html renderMarkdown(block.message.text)}
-                {/if}
-                {#if block.message.image}
-                  <img src={block.message.image as string} alt="" />
-                {/if}
-              </span>
-              {#if typeof block.message.id === 'number'}
-                <div class="reactions">
-                  {#each reactionEntries(block.message) as reaction (reaction.emoji)}
-                    <button
-                      class="reaction-chip"
-                      class:active={reaction.users.includes($session.user ?? '')}
-                      on:click={() =>
-                        toggleReaction(block.message.id as number, reaction.emoji, reaction.users)}
-                      title={reaction.users.join(', ')}
-                    >
-                      <span class="emoji">{reaction.emoji}</span>
-                      <span class="count">{reaction.users.length}</span>
+                {#if typeof block.message.id === 'number'}
+                  <div class="reactions">
+                    {#each reactionEntries(block.message) as reaction (reaction.emoji)}
+                      <button
+                        class="reaction-chip"
+                        class:active={reaction.users.includes($session.user ?? '')}
+                        on:click={() =>
+                          toggleReaction(block.message.id as number, reaction.emoji, reaction.users)}
+                        title={reaction.users.join(', ')}
+                      >
+                        <span class="emoji">{reaction.emoji}</span>
+                        <span class="count">{reaction.users.length}</span>
+                      </button>
+                    {/each}
+                    <button class="reaction-chip add" on:click={() => addReactionPrompt(block.message.id as number)}>
+                      +
                     </button>
-                  {/each}
-                  <button class="reaction-chip add" on:click={() => addReactionPrompt(block.message.id as number)}>
-                    +
-                  </button>
-                </div>
-              {/if}
-            </div>
-          {/if}
-        {/each}
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          {/each}
+        </div>
       </div>
       <div class="input-row">
         <textarea
@@ -1626,6 +1628,17 @@
     color: var(--color-on-surface);
   }
 
+  .messages-shell {
+    flex: 1;
+    min-height: 0;
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--color-surface-raised) 90%, transparent);
+    border: 1px solid var(--color-surface-outline);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    overflow: hidden;
+    display: flex;
+  }
+
   .messages {
     flex: 1;
     min-height: 0;
@@ -1635,10 +1648,6 @@
     flex-direction: column;
     gap: 0.8rem;
     padding: clamp(1rem, 2vw, 1.35rem);
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-raised) 90%, transparent);
-    border: 1px solid var(--color-surface-outline);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
   .day-separator {
@@ -1834,6 +1843,8 @@
     min-height: 3rem;
     max-height: 360px;
     resize: none;
+    overflow-y: auto;
+    overflow-x: hidden;
     border-radius: var(--radius-md);
     border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
     background: color-mix(in srgb, var(--color-surface-raised) 84%, transparent);
