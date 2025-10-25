@@ -8,6 +8,8 @@ export interface Message {
   id?: number;
   messages?: Message[];
   reactions?: Record<string, string[]>;
+  ephemeral?: boolean;
+  expiresAt?: string;
   [key: string]: unknown;
 }
 
