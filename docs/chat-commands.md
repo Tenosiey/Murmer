@@ -13,6 +13,7 @@ if a command fails validation.
 
 | Command | Description |
 | --- | --- |
+| `/help` | Opens an overlay listing every available slash command and its usage. |
 | `/me <action>` | Sends an italicised third-person emote. |
 | `/shrug [message]` | Appends the classic `¯\\_(ツ)_/¯` shrug to your text. |
 | `/topic <text>` | Updates the current channel topic; send the command with no

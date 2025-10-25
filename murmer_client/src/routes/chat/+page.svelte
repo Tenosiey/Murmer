@@ -91,6 +91,30 @@
   const MIN_EPHEMERAL_SECONDS = 5;
   const MAX_EPHEMERAL_SECONDS = 86_400;
 
+  const HELP_COMMANDS: Array<{ usage: string; description: string; aliases?: string[] }> = [
+    { usage: '/help', description: 'Show this list of available slash commands.' },
+    { usage: '/me <action>', description: 'Send an italicised third-person emote.' },
+    { usage: '/shrug [message]', description: 'Append the classic shrug emoticon to your message.' },
+    {
+      usage: '/topic <text>',
+      description: 'Update the current channel topic or clear it when run without text.'
+    },
+    {
+      usage: '/status <online|away|busy|offline>',
+      description: 'Change your presence indicator across all connected clients.'
+    },
+    { usage: '/focus', description: 'Toggle focus mode for a distraction-free chat view.' },
+    {
+      usage: '/ephemeral <seconds> <message>',
+      description: 'Send a message that automatically deletes itself after the requested duration.',
+      aliases: ['/temp <seconds> <message>']
+    },
+    {
+      usage: '/search [query]',
+      description: 'Open the search overlay and optionally pre-fill it with a query.'
+    }
+  ];
+
   let commandFeedback: string | null = null;
   let commandFeedbackType: 'info' | 'error' = 'info';
   let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
@@ -102,6 +126,10 @@
   let searchError: string | null = null;
   let searchPerformed = false;
   let searchInput: HTMLInputElement | null = null;
+
+  let helpOpen = false;
+  let helpPanel: HTMLDivElement | null = null;
+  let helpCloseButton: HTMLButtonElement | null = null;
 
   let now = Date.now();
   let expiryTicker: number | null = null;
@@ -236,6 +264,36 @@
     }
     commandFeedback = null;
     commandFeedbackType = 'info';
+  }
+
+  function openHelp() {
+    clearCommandFeedback();
+    helpOpen = true;
+    tick().then(() => {
+      if (helpPanel) {
+        helpPanel.focus();
+      } else if (helpCloseButton) {
+        helpCloseButton.focus();
+      }
+    });
+  }
+
+  function closeHelp() {
+    helpOpen = false;
+  }
+
+  function handleHelpKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeHelp();
+    }
+  }
+
+  function handleHelpOverlayKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      closeHelp();
+    }
   }
 
   function formatExpiry(expiresAt?: string): string | null {
@@ -739,6 +797,10 @@
     const currentUser = get(session).user;
 
     switch (commandName) {
+      case 'help': {
+        openHelp();
+        return true;
+      }
       case 'me': {
         if (!rest) {
           setCommandFeedback('Usage: /me <action>', 'error');
@@ -1735,6 +1797,48 @@
         </div>
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
+      {#if helpOpen}
+        <div
+          class="help-overlay"
+          role="button"
+          tabindex="0"
+          aria-label="Close command reference"
+          on:click={closeHelp}
+          on:keydown={handleHelpOverlayKeydown}
+        >
+          <div
+            class="help-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="help-title"
+            tabindex="-1"
+            bind:this={helpPanel}
+            on:click|stopPropagation
+            on:keydown={handleHelpKeydown}
+          >
+            <div class="help-header">
+              <h2 id="help-title">Slash commands</h2>
+              <p class="help-description">Type a forward slash to run these quick actions.</p>
+            </div>
+            <ul class="help-command-list">
+              {#each HELP_COMMANDS as command (command.usage)}
+                <li class="help-command">
+                  <div class="help-command-heading">
+                    <code class="help-command-usage">{command.usage}</code>
+                    {#if command.aliases?.length}
+                      <span class="help-command-aliases">Also: {command.aliases.join(', ')}</span>
+                    {/if}
+                  </div>
+                  <p class="help-command-description">{command.description}</p>
+                </li>
+              {/each}
+            </ul>
+            <button type="button" class="help-close" on:click={closeHelp} bind:this={helpCloseButton}>
+              Close
+            </button>
+          </div>
+        </div>
+      {/if}
       {#if searchOpen}
         <div
           class="search-overlay"
@@ -3158,6 +3262,7 @@
     gap: 1rem;
   }
 
+  .help-overlay,
   .search-overlay {
     position: fixed;
     inset: 0;
@@ -3169,6 +3274,7 @@
     z-index: 60;
   }
 
+  .help-panel,
   .search-panel {
     width: min(720px, 92vw);
     display: flex;
@@ -3179,6 +3285,82 @@
     border: 1px solid var(--color-surface-outline);
     box-shadow: var(--shadow-lg);
     padding: clamp(1rem, 3vw, 1.75rem);
+  }
+
+  .help-panel {
+    max-height: min(70vh, 640px);
+    overflow: hidden;
+  }
+
+  .help-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .help-description {
+    color: var(--color-muted);
+    font-size: 0.95rem;
+  }
+
+  .help-command-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    overflow-y: auto;
+  }
+
+  .help-command {
+    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 92%, transparent);
+    padding: 0.75rem 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .help-command-heading {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .help-command-usage {
+    font-family: var(--font-mono);
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    border-radius: var(--radius-sm);
+    padding: 0.2rem 0.4rem;
+  }
+
+  .help-command-aliases {
+    color: var(--color-muted);
+    font-size: 0.85rem;
+  }
+
+  .help-command-description {
+    margin: 0;
+    color: var(--color-muted);
+    font-size: 0.95rem;
+  }
+
+  .help-close {
+    align-self: flex-end;
+    padding: 0.55rem 0.9rem;
+    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in srgb, var(--color-muted) 24%, transparent);
+    background: color-mix(in srgb, var(--color-muted) 18%, transparent);
+    color: var(--color-on-surface);
+    font-weight: 600;
+    transition: transform var(--transition);
+  }
+
+  .help-close:hover {
+    transform: translateY(-1px);
   }
 
   .search-form {
