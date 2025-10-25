@@ -17,7 +17,7 @@ Use the checkboxes to track progress.
 - [x] Code syntax highlighting
 - [ ] Direct messages between users
 - [x] Enable deleting messages
-- [ ] Ephemeral messages that auto-delete
+- [x] Ephemeral messages that auto-delete
 - [ ] File sharing beyond images
 - [x] Keyboard shortcuts
 - [x] Load chat history only for the selected channel
@@ -26,8 +26,8 @@ Use the checkboxes to track progress.
 - [x] Message timestamps
 - [x] Notification settings per channel
 - [x] Pin important messages in a channel
-- [ ] Search chat history
-- [ ] Slash commands for quick actions
+- [x] Search chat history
+- [x] Slash commands for quick actions
 - [x] Support Markdown formatting in text chat
 - [ ] Text-to-speech
 - [ ] User nicknames per server

@@ -9,6 +9,20 @@ use std::collections::HashMap;
 use tokio_postgres::{Client, NoTls};
 use tracing::{error, warn};
 
+fn escape_like_pattern(input: &str) -> String {
+    let mut escaped = String::with_capacity(input.len());
+    for ch in input.chars() {
+        match ch {
+            '\\' | '%' | '_' => {
+                escaped.push('\\');
+                escaped.push(ch);
+            }
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
 /// Initialize a PostgreSQL [`Client`] and ensure the `messages` table exists.
 /// The connection is retried for a few seconds if the database is not ready.
 pub async fn init(db_url: &str) -> Result<Client, tokio_postgres::Error> {
@@ -74,6 +88,29 @@ INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
         )
         .await
         .ok();
+
+    if let Err(e) = client
+        .batch_execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
+        .await
+    {
+        warn!("Failed to enable pg_trgm extension: {e}");
+    }
+
+    if let Err(e) = client
+        .batch_execute("CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages (channel);")
+        .await
+    {
+        warn!("Failed to ensure messages channel index: {e}");
+    }
+
+    if let Err(e) = client
+        .batch_execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_content_trgm ON messages USING GIN (content gin_trgm_ops);",
+        )
+        .await
+    {
+        warn!("Failed to ensure trigram index for message content: {e}");
+    }
 
     Ok(client)
 }
@@ -167,6 +204,26 @@ pub async fn send_history(
         }
         Err(e) => error!("db history error: {e}"),
     }
+}
+
+/// Search for messages containing a query string within a channel.
+pub async fn search_messages(
+    db: &Client,
+    channel: &str,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<(i64, String)>, tokio_postgres::Error> {
+    let pattern = format!("%{}%", escape_like_pattern(query));
+    let rows = db
+        .query(
+            "SELECT id::bigint, content FROM messages WHERE channel = $1 AND content ILIKE $2 ESCAPE '\\\\' ORDER BY id DESC LIMIT $3",
+            &[&channel, &pattern, &limit],
+        )
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| (row.get::<_, i64>(0), row.get(1)))
+        .collect())
 }
 
 /// Retrieve reactions for a set of message IDs, grouped by emoji.
