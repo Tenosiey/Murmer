@@ -20,6 +20,7 @@
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import PingDot from '$lib/components/PingDot.svelte';
+  import LinkPreview from '$lib/components/LinkPreview.svelte';
   import ContextMenu from '$lib/components/ContextMenu.svelte';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
@@ -30,6 +31,7 @@
   import { statuses, STATUS_LABELS, STATUS_EMOJIS, USER_STATUS_VALUES } from '$lib/stores/status';
   import { loadKeyPair, sign } from '$lib/keypair';
   import { renderMarkdown } from '$lib/markdown';
+  import { extractLinks } from '$lib/link-preview';
   import type { Message, UserStatus, VoiceChannelInfo } from '$lib/types';
   function pingToStrength(ms: number): number {
     return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
@@ -84,7 +86,7 @@
 
   type MessageBlock =
     | { kind: 'separator'; label: string; key: string }
-    | { kind: 'message'; message: Message; key: string };
+    | { kind: 'message'; message: Message; key: string; links: string[] };
 
   let channelMessages: Message[] = [];
   let messageBlocks: MessageBlock[] = [];
@@ -130,10 +132,12 @@
         }
       }
 
+      const links = extractLinks(message.text);
       blocks.push({
         kind: 'message',
         message,
-        key: `message-${message.id ?? `${index}-${message.time ?? ''}`}`
+        key: `message-${message.id ?? `${index}-${message.time ?? ''}`}`,
+        links
       });
     }
 
@@ -1166,6 +1170,13 @@
                   {#if block.message.text}
                     {@html renderMarkdown(block.message.text)}
                   {/if}
+                  {#if block.links.length > 0}
+                    <div class="link-previews">
+                      {#each block.links as link (link)}
+                        <LinkPreview url={link} />
+                      {/each}
+                    </div>
+                  {/if}
                   {#if block.message.image}
                     <img src={block.message.image as string} alt="" />
                   {/if}
@@ -1776,6 +1787,13 @@
     grid-column: 1 / -1;
     color: var(--color-on-surface);
     line-height: 1.65;
+  }
+
+  .link-previews {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 0.65rem;
   }
 
   .message .content :global(code) {
