@@ -1,3 +1,8 @@
+<!--
+  Primary chat surface. Handles WebSocket lifecycle, message rendering, voice
+  channel state and peripheral UI such as sidebars and context menus. The
+  module coordinates many Svelte stores to keep the interface reactive.
+-->
 <script lang="ts">
   import { onMount, onDestroy, afterUpdate, tick } from 'svelte';
   import { chat } from '$lib/stores/chat';
@@ -15,6 +20,7 @@
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import PingDot from '$lib/components/PingDot.svelte';
+  import LinkPreview from '$lib/components/LinkPreview.svelte';
   import ContextMenu from '$lib/components/ContextMenu.svelte';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
@@ -22,9 +28,14 @@
   import { leftSidebarWidth, rightSidebarWidth, focusMode } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
   import { theme } from '$lib/stores/theme';
+  import { statuses, STATUS_LABELS, STATUS_EMOJIS, USER_STATUS_VALUES } from '$lib/stores/status';
+  import { pinned } from '$lib/stores/pins';
+  import type { PinnedEntry } from '$lib/stores/pins';
+  import { channelNotifications, type ChannelNotificationPreference } from '$lib/stores/channelNotifications';
   import { loadKeyPair, sign } from '$lib/keypair';
   import { renderMarkdown } from '$lib/markdown';
-  import type { Message } from '$lib/types';
+  import { extractLinks } from '$lib/link-preview';
+  import type { Message, UserStatus, VoiceChannelInfo } from '$lib/types';
   function pingToStrength(ms: number): number {
     return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
   }
@@ -35,14 +46,78 @@
   let message = '';
   let fileInput: HTMLInputElement;
   let messageInput: HTMLTextAreaElement;
+  let inputScrollable = false;
   let previewUrl: string | null = null;
   let menuOpen = false;
   let menuX = 0;
   let menuY = 0;
+  const statusOptions: Array<{ value: UserStatus; label: string; emoji: string }> = USER_STATUS_VALUES.map((value) => ({
+    value,
+    label: STATUS_LABELS[value],
+    emoji: STATUS_EMOJIS[value]
+  }));
+  let statusMenuOpen = false;
+  let statusMenuButton: HTMLButtonElement | null = null;
+  let statusMenuElement: HTMLDivElement | null = null;
+  let statusMap: Record<string, UserStatus> = {};
+  const MESSAGE_INPUT_MAX_HEIGHT = 360;
+
+  const MODERATOR_ROLES = ['Admin', 'Mod', 'Owner'];
+  const NOTIFICATION_OPTIONS: Array<{
+    value: ChannelNotificationPreference;
+    label: string;
+    description: string;
+    icon: string;
+  }> = [
+    { value: 'all', label: 'All messages', description: 'Send alerts for every new message', icon: '🔔' },
+    { value: 'mentions', label: 'Mentions only', description: 'Only alert when you are mentioned', icon: '@' },
+    { value: 'mute', label: 'Muted', description: 'Do not show notifications for this channel', icon: '🔕' }
+  ];
+
+  let notificationMenuOpen = false;
+  let notificationMenuButton: HTMLButtonElement | null = null;
+  let notificationMenuElement: HTMLDivElement | null = null;
+  let currentNotificationPreference: ChannelNotificationPreference = 'all';
+  let notificationMenuLabel = 'All messages';
+
+  const PIN_PREVIEW_LIMIT = 120;
+
+  let pinnedEntries: PinnedEntry[] = [];
+  let highlightedMessageId: number | null = null;
+  let pendingScrollToMessage: number | null = null;
+  let highlightTimer: ReturnType<typeof setTimeout> | null = null;
+  let currentUserCanModerate = false;
+
+  const VOICE_QUALITY_PRESETS: Array<{ quality: string; bitrate: number | null; label: string }> = [
+    { quality: 'low', bitrate: 32_000, label: 'Low' },
+    { quality: 'standard', bitrate: 64_000, label: 'Standard' },
+    { quality: 'high', bitrate: 96_000, label: 'High' },
+    { quality: 'ultra', bitrate: 128_000, label: 'Ultra' },
+    { quality: 'lossless', bitrate: null, label: 'Lossless' }
+  ];
+  const DEFAULT_VOICE_PRESET = VOICE_QUALITY_PRESETS[1];
+
+  function formatVoiceQuality(info: VoiceChannelInfo): string {
+    const preset = VOICE_QUALITY_PRESETS.find((p) => p.quality === info.quality);
+    const bitrate = info.bitrate ?? preset?.bitrate ?? null;
+    const label = preset ? preset.label : info.quality;
+    return bitrate && bitrate > 0 ? `${label} (${Math.round(bitrate / 1000)} kbps)` : label;
+  }
+
+  function promptVoicePreset(): { quality: string; bitrate: number | null } {
+    const input = prompt(
+      'Voice quality (low, standard, high, ultra, lossless)',
+      DEFAULT_VOICE_PRESET.quality
+    );
+    if (!input) return { quality: DEFAULT_VOICE_PRESET.quality, bitrate: DEFAULT_VOICE_PRESET.bitrate };
+    const normalized = input.trim().toLowerCase();
+    const preset = VOICE_QUALITY_PRESETS.find((p) => p.quality === normalized) ?? DEFAULT_VOICE_PRESET;
+    return { quality: preset.quality, bitrate: preset.bitrate };
+  }
 
   type MessageBlock =
     | { kind: 'separator'; label: string; key: string }
-    | { kind: 'message'; message: Message; key: string };
+    | { kind: 'message'; message: Message; key: string; links: string[] };
 
   let channelMessages: Message[] = [];
   let messageBlocks: MessageBlock[] = [];
@@ -88,10 +163,12 @@
         }
       }
 
+      const links = extractLinks(message.text);
       blocks.push({
         kind: 'message',
         message,
-        key: `message-${message.id ?? `${index}-${message.time ?? ''}`}`
+        key: `message-${message.id ?? `${index}-${message.time ?? ''}`}`,
+        links
       });
     }
 
@@ -112,8 +189,11 @@
   function autoResize() {
     if (messageInput) {
       messageInput.style.height = 'auto';
-      const h = Math.min(messageInput.scrollHeight, 400);
+      const h = Math.min(messageInput.scrollHeight, MESSAGE_INPUT_MAX_HEIGHT);
       messageInput.style.height = h + 'px';
+      inputScrollable = messageInput.scrollHeight > h;
+    } else {
+      inputScrollable = false;
     }
   }
 
@@ -139,6 +219,108 @@
     chat.react(messageId, emoji, 'add');
   }
 
+  function ensureStatus(
+    map: Record<string, UserStatus>,
+    user: string,
+    fallback: UserStatus = 'offline'
+  ): UserStatus {
+    return (map[user] ?? fallback) as UserStatus;
+  }
+
+  function toggleStatusMenu(event: MouseEvent) {
+    event.stopPropagation();
+    if (notificationMenuOpen) {
+      notificationMenuOpen = false;
+    }
+    statusMenuOpen = !statusMenuOpen;
+  }
+
+  function selectStatus(value: UserStatus) {
+    statuses.setSelf(value);
+    statusMenuOpen = false;
+  }
+
+  function toggleNotificationMenu(event: MouseEvent) {
+    event.stopPropagation();
+    if (statusMenuOpen) {
+      statusMenuOpen = false;
+    }
+    notificationMenuOpen = !notificationMenuOpen;
+  }
+
+  function selectNotificationPreference(value: ChannelNotificationPreference) {
+    channelNotifications.setPreference(currentChatChannel, value);
+    notificationMenuOpen = false;
+  }
+
+  function notificationButtonIcon(value: ChannelNotificationPreference): string {
+    switch (value) {
+      case 'mentions':
+        return '@';
+      case 'mute':
+        return '🔕';
+      default:
+        return '🔔';
+    }
+  }
+
+  function handleMenuOutside(event: MouseEvent) {
+    const target = event.target as Node | null;
+    if (statusMenuOpen) {
+      if (statusMenuElement && target && statusMenuElement.contains(target)) return;
+      if (statusMenuButton && target && statusMenuButton.contains(target)) return;
+      statusMenuOpen = false;
+    }
+    if (notificationMenuOpen) {
+      if (notificationMenuElement && target && notificationMenuElement.contains(target)) return;
+      if (notificationMenuButton && target && notificationMenuButton.contains(target)) return;
+      notificationMenuOpen = false;
+    }
+  }
+
+  function handleStatusMenuKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      statusMenuOpen = false;
+      event.stopPropagation();
+      event.preventDefault();
+    }
+  }
+
+  function handleNotificationMenuKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      notificationMenuOpen = false;
+      event.stopPropagation();
+      event.preventDefault();
+    }
+  }
+
+  $: statusMap = (() => {
+    const map: Record<string, UserStatus> = { ...$statuses };
+    for (const user of $onlineUsers) {
+      if (!map[user]) {
+        map[user] = 'online';
+      }
+    }
+    for (const user of $offlineUsers) {
+      if (!map[user]) {
+        map[user] = 'offline';
+      }
+    }
+    return map;
+  })();
+
+  $: currentUserStatus = $session.user
+    ? ensureStatus(statusMap, $session.user, 'online')
+    : 'offline';
+  $: currentUserStatusLabel = STATUS_LABELS[currentUserStatus];
+  $: currentUserCanModerate = (() => {
+    const user = $session.user;
+    if (!user) return false;
+    const info = $roles[user];
+    if (!info) return false;
+    return MODERATOR_ROLES.some((role) => info.role?.toLowerCase() === role.toLowerCase());
+  })();
+
   $: autoResize();
   let inVoice = false;
   let settingsOpen = false;
@@ -148,6 +330,12 @@
 
   $: channelMessages = $chat.filter((m) => (m.channel ?? 'general') === currentChatChannel);
   $: messageBlocks = buildMessageBlocks(channelMessages);
+  $: pinnedEntries = $pinned[currentChatChannel] ?? [];
+  $: currentNotificationPreference = ($channelNotifications[currentChatChannel] ?? 'all') as ChannelNotificationPreference;
+  $: notificationMenuLabel = (() => {
+    const found = NOTIFICATION_OPTIONS.find((option) => option.value === currentNotificationPreference);
+    return found ? found.label : 'All messages';
+  })();
 
   $: if ($channels.length && !$channels.includes(currentChatChannel)) {
     currentChatChannel = $channels[0];
@@ -323,12 +511,18 @@
   });
 
   onDestroy(() => {
+    chat.off('history', handleHistory);
+    chat.off('message-deleted', handleMessageDeleted);
     chat.disconnect();
     if (currentVoiceChannel) {
       voice.leave(currentVoiceChannel);
     }
     ping.stop();
     roles.set({});
+    if (highlightTimer) {
+      clearTimeout(highlightTimer);
+      highlightTimer = null;
+    }
   });
 
   function sendText() {
@@ -393,6 +587,8 @@
   function joinChannel(ch: string) {
     if (ch === currentChatChannel) return;
     currentChatChannel = ch;
+    statusMenuOpen = false;
+    notificationMenuOpen = false;
     chat.clear();
     chat.sendRaw({ type: 'join', channel: ch });
     scrollBottom();
@@ -400,7 +596,8 @@
 
   function joinVoice() {
     if ($session.user && currentVoiceChannel) {
-      voice.join($session.user, currentVoiceChannel);
+      const info = $voiceChannels.find((vc) => vc.name === currentVoiceChannel);
+      voice.join($session.user, currentVoiceChannel, info);
       inVoice = true;
     }
   }
@@ -429,13 +626,14 @@
   function createVoiceChannelPrompt() {
     const name = prompt('New voice channel name');
     if (!name) return;
-    voiceChannels.create(name);
+    const preset = promptVoicePreset();
+    voiceChannels.create(name, preset);
     if ($session.user) {
       if (inVoice && currentVoiceChannel) {
         voice.leave(currentVoiceChannel);
       }
       currentVoiceChannel = name;
-      voice.join($session.user, name);
+      voice.join($session.user, name, { name, quality: preset.quality, bitrate: preset.bitrate });
       inVoice = true;
       scrollBottom();
     }
@@ -447,7 +645,8 @@
         voice.leave(currentVoiceChannel);
       }
       currentVoiceChannel = ch;
-      voice.join($session.user, ch);
+      const info = $voiceChannels.find((vc) => vc.name === ch);
+      voice.join($session.user, ch, info);
       inVoice = true;
       scrollBottom();
     }
@@ -512,6 +711,92 @@
     channelTopics.setTopic(currentChatChannel, input);
   }
 
+  function canDeleteMessage(msg: Message): boolean {
+    const current = $session.user;
+    if (!current || typeof msg.id !== 'number') return false;
+    if (msg.user === current) return true;
+    return currentUserCanModerate;
+  }
+
+  function canPinMessage(msg: Message): boolean {
+    return typeof msg.id === 'number';
+  }
+
+  function isMessagePinned(msg: Message): boolean {
+    if (typeof msg.id !== 'number') return false;
+    return pinned.isPinned(currentChatChannel, msg.id);
+  }
+
+  function togglePinMessage(msg: Message) {
+    if (typeof msg.id !== 'number') return;
+    if (isMessagePinned(msg)) {
+      pinned.unpin(currentChatChannel, msg.id);
+    } else {
+      pinned.pin(currentChatChannel, msg);
+    }
+  }
+
+  async function deleteChatMessage(msg: Message) {
+    if (typeof msg.id !== 'number') return;
+    const confirmation = await Promise.resolve(confirm('Delete this message?') as boolean | Promise<boolean>);
+    if (!confirmation) return;
+    chat.delete(msg.id);
+  }
+
+  function resolvePinnedMessage(entry: PinnedEntry): Message | undefined {
+    return channelMessages.find((message) => message.id === entry.id);
+  }
+
+  function formatPinnedPreview(entry: PinnedEntry): string {
+    const message = resolvePinnedMessage(entry);
+    const base = message?.text ?? entry.text ?? '';
+    const trimmed = base.trim();
+    if (trimmed.length > 0) {
+      return trimmed.length > PIN_PREVIEW_LIMIT ? `${trimmed.slice(0, PIN_PREVIEW_LIMIT)}…` : trimmed;
+    }
+    if (message?.image || entry.image) {
+      return 'Image attachment';
+    }
+    return 'Message';
+  }
+
+  function pinnedAuthor(entry: PinnedEntry): string {
+    const message = resolvePinnedMessage(entry);
+    return message?.user ?? entry.user ?? 'Unknown';
+  }
+
+  function pinnedTimestamp(entry: PinnedEntry): string {
+    const source = resolvePinnedMessage(entry)?.timestamp ?? entry.timestamp ?? entry.pinnedAt;
+    if (!source) return '';
+    const parsed = Date.parse(source);
+    if (Number.isNaN(parsed)) return '';
+    return new Date(parsed).toLocaleString();
+  }
+
+  function highlightMessageById(messageId: number): boolean {
+    if (!messagesContainer) return false;
+    const element = messagesContainer.querySelector<HTMLDivElement>(`[data-message-id="${messageId}"]`);
+    if (!element) return false;
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    highlightedMessageId = messageId;
+    if (highlightTimer) {
+      clearTimeout(highlightTimer);
+    }
+    highlightTimer = setTimeout(() => {
+      if (highlightedMessageId === messageId) {
+        highlightedMessageId = null;
+      }
+    }, 2000);
+    return true;
+  }
+
+  function focusMessage(messageId: number) {
+    if (!Number.isFinite(messageId)) return;
+    if (highlightMessageById(messageId)) return;
+    pendingScrollToMessage = messageId;
+    chat.loadHistory(currentChatChannel, messageId + 1, 200);
+  }
+
   function toggleMicrophone() {
     microphoneMuted.update(muted => !muted);
   }
@@ -552,7 +837,7 @@
           if (!currentVoiceChannel) {
             const channels = $voiceChannels;
             if (channels.length) {
-              currentVoiceChannel = channels[0];
+              currentVoiceChannel = channels[0].name;
             } else {
               break;
             }
@@ -569,7 +854,22 @@
     { label: 'Create Text Channel', action: createChannelPrompt },
     { label: 'Create Voice Channel', action: createVoiceChannelPrompt },
     ...(menuChannel ? [{ label: 'Delete Channel', action: () => channels.remove(menuChannel!) }] : []),
-    ...(menuVoiceChannel ? [{ label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannel!) }] : [])
+    ...(menuVoiceChannel
+      ? [
+          ...VOICE_QUALITY_PRESETS.map((preset) => ({
+            label:
+              preset.bitrate && preset.bitrate > 0
+                ? `Set Voice Quality: ${preset.label} (${Math.round(preset.bitrate / 1000)} kbps)`
+                : `Set Voice Quality: ${preset.label}`,
+            action: () =>
+              voiceChannels.configure(menuVoiceChannel!, {
+                quality: preset.quality,
+                bitrate: preset.bitrate
+              })
+          })),
+          { label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannel!) }
+        ]
+      : [])
   ];
 
   let messagesContainer: HTMLDivElement;
@@ -605,20 +905,46 @@
     }
   }
 
-  chat.on('history', async () => {
+  const handleHistory = async () => {
     await tick();
     if (messagesContainer) {
       messagesContainer.scrollTop = messagesContainer.scrollHeight - prevHeight;
     }
     loadingHistory = false;
-  });
+    if (pendingScrollToMessage !== null) {
+      const target = pendingScrollToMessage;
+      if (highlightMessageById(target)) {
+        pendingScrollToMessage = null;
+      }
+    }
+  };
+  chat.on('history', handleHistory);
+
+  const handleMessageDeleted = (event: Message) => {
+    const messageId = (event.id as number | undefined) ?? (event.messageId as number | undefined);
+    const channelName = (event.channel as string | undefined) ?? currentChatChannel;
+    if (typeof messageId !== 'number') return;
+    pinned.removeMessage(channelName, messageId);
+    if (highlightedMessageId === messageId) {
+      highlightedMessageId = null;
+    }
+    if (pendingScrollToMessage === messageId) {
+      pendingScrollToMessage = null;
+    }
+  };
+  chat.on('message-deleted', handleMessageDeleted);
 
   afterUpdate(() => {
+    const handledPending =
+      pendingScrollToMessage !== null && highlightMessageById(pendingScrollToMessage);
+    if (handledPending) {
+      pendingScrollToMessage = null;
+    }
     if (messagesContainer) {
-      const filteredLength = $chat.filter(m => (m.channel ?? 'general') === currentChatChannel).length;
+      const filteredLength = $chat.filter((m) => (m.channel ?? 'general') === currentChatChannel).length;
       if (filteredLength !== lastLength) {
         lastLength = filteredLength;
-        if (!loadingHistory) {
+        if (!loadingHistory && !handledPending) {
           messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
       }
@@ -660,12 +986,14 @@
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', stopResize);
     window.addEventListener('keydown', handleGlobalShortcut);
+    window.addEventListener('click', handleMenuOutside);
   });
 
   onDestroy(() => {
     window.removeEventListener('mousemove', handleMouseMove);
     window.removeEventListener('mouseup', stopResize);
     window.removeEventListener('keydown', handleGlobalShortcut);
+    window.removeEventListener('click', handleMenuOutside);
   });
 </script>
 
@@ -682,14 +1010,16 @@
         </button>
       {/each}
       <h3 class="section">Voice Channels</h3>
-      {#each $voiceChannels as ch}
+      {#each $voiceChannels as ch (ch.name)}
         <div class="voice-group">
-          <button on:click={() => joinVoiceChannel(ch)} on:contextmenu={(e) => openChannelMenu(e, ch, true)}>
-            <span class="chan-icon">🔊</span> {ch}
+          <button on:click={() => joinVoiceChannel(ch.name)} on:contextmenu={(e) => openChannelMenu(e, ch.name, true)}>
+            <span class="chan-icon">🔊</span>
+            <span class="voice-channel-name">{ch.name}</span>
+            <span class="voice-channel-quality">{formatVoiceQuality(ch)}</span>
           </button>
-          {#if $voiceUsers[ch]?.length}
+          {#if $voiceUsers[ch.name]?.length}
             <ul class="voice-user-list">
-              {#each $voiceUsers[ch] as user}
+              {#each $voiceUsers[ch.name] as user}
                 <li
                   on:contextmenu={(e) => user !== $session.user && openUserVolumeMenu(e, user)}
                   class:clickable={user !== $session.user}
@@ -804,6 +1134,55 @@
         </div>
         <div class="actions">
           <div class="user">{$session.user}</div>
+          <div class="status-control">
+            <button
+              class="action-button status-button"
+              bind:this={statusMenuButton}
+              aria-haspopup="true"
+              aria-expanded={statusMenuOpen}
+              on:click={toggleStatusMenu}
+              title={`Set status (${currentUserStatusLabel})`}
+            >
+              <span class={`status ${currentUserStatus}`}></span>
+              <span class="status-button-label">{currentUserStatusLabel}</span>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            {#if statusMenuOpen}
+              <div
+                class="status-menu"
+                bind:this={statusMenuElement}
+                role="menu"
+                tabindex="-1"
+                on:click|stopPropagation
+                on:keydown={handleStatusMenuKeydown}
+              >
+                {#each statusOptions as option}
+                  <button
+                    class:active={option.value === currentUserStatus}
+                    on:click={() => selectStatus(option.value)}
+                    role="menuitemradio"
+                    aria-checked={option.value === currentUserStatus}
+                  >
+                    <span class={`status ${option.value}`}></span>
+                    <span class="status-option-label">{option.label}</span>
+                    <span class="status-option-emoji" aria-hidden="true">{option.emoji}</span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
           <div class="connection-info">
             <PingDot ping={$ping} />
             <ConnectionBars strength={serverStrength} />
@@ -919,6 +1298,44 @@
               <span>Focus</span>
             {/if}
           </button>
+          <div class="notification-control">
+            <button
+              class="action-button"
+              bind:this={notificationMenuButton}
+              aria-haspopup="true"
+              aria-expanded={notificationMenuOpen}
+              on:click={toggleNotificationMenu}
+              title={`Channel notifications: ${notificationMenuLabel}`}
+            >
+              <span class="notification-icon">{notificationButtonIcon(currentNotificationPreference)}</span>
+              <span class="sr-only">Configure channel notifications</span>
+            </button>
+            {#if notificationMenuOpen}
+              <div
+                class="notification-menu"
+                bind:this={notificationMenuElement}
+                role="menu"
+                tabindex="-1"
+                on:click|stopPropagation
+                on:keydown={handleNotificationMenuKeydown}
+              >
+                {#each NOTIFICATION_OPTIONS as option}
+                  <button
+                    class:active={option.value === currentNotificationPreference}
+                    on:click={() => selectNotificationPreference(option.value)}
+                    role="menuitemradio"
+                    aria-checked={option.value === currentNotificationPreference}
+                  >
+                    <span class="notification-option-icon" aria-hidden="true">{option.icon}</span>
+                    <span class="notification-option-text">
+                      <span class="label">{option.label}</span>
+                      <span class="description">{option.description}</span>
+                    </span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
           <button class="action-button" on:click={openSettings} title="Settings">
             <svg
               width="20"
@@ -976,57 +1393,126 @@
         </div>
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
-      <div class="messages" bind:this={messagesContainer} on:scroll={onScroll}>
-        {#each messageBlocks as block (block.key)}
-          {#if block.kind === 'separator'}
-            <div class="day-separator" role="separator" aria-label={`Messages from ${block.label}`}>
-              <span>{block.label}</span>
-            </div>
-          {:else if block.kind === 'message'}
-            <div class="message">
-              <span class="timestamp">{block.message.time}</span>
-              <span class="username">{block.message.user}</span>
-              {#if block.message.user && $roles[block.message.user]}
-                <span
-                  class="role"
-                  style={$roles[block.message.user].color ? `color: ${$roles[block.message.user].color}` : ''}
+      {#if pinnedEntries.length > 0}
+        <div class="pinned-bar" role="region" aria-label="Pinned messages">
+          <div class="pinned-header">
+            <span class="pinned-title">Pinned</span>
+            <span class="pinned-count">{pinnedEntries.length}</span>
+          </div>
+          <ul class="pinned-list">
+            {#each pinnedEntries as entry (entry.id)}
+              <li class="pinned-item">
+                <button class="pinned-preview" on:click={() => focusMessage(entry.id)}>
+                  <span class="pinned-author">{pinnedAuthor(entry)}</span>
+                  <span class="pinned-text">{formatPinnedPreview(entry)}</span>
+                  {#if pinnedTimestamp(entry)}
+                    <span class="pinned-timestamp">{pinnedTimestamp(entry)}</span>
+                  {/if}
+                </button>
+                <button
+                  class="pinned-remove"
+                  on:click={() => pinned.unpin(currentChatChannel, entry.id)}
+                  aria-label="Unpin message"
                 >
-                  {$roles[block.message.user].role}
-                </span>
-              {/if}
-              <span class="content">
-                {#if block.message.text}
-                  {@html renderMarkdown(block.message.text)}
+                  ✕
+                </button>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+      <div class="messages-shell">
+        <div class="messages" bind:this={messagesContainer} on:scroll={onScroll}>
+          {#each messageBlocks as block (block.key)}
+            {#if block.kind === 'separator'}
+              <div class="day-separator" role="separator" aria-label={`Messages from ${block.label}`}>
+                <span>{block.label}</span>
+              </div>
+            {:else if block.kind === 'message'}
+              <div
+                class="message"
+                data-message-id={typeof block.message.id === 'number' ? block.message.id : undefined}
+                class:highlighted={highlightedMessageId === block.message.id}
+              >
+                <span class="timestamp">{block.message.time}</span>
+                <span class="username">{block.message.user}</span>
+                {#if block.message.user && $roles[block.message.user]}
+                  <span
+                    class="role"
+                    style={$roles[block.message.user].color ? `color: ${$roles[block.message.user].color}` : ''}
+                  >
+                    {$roles[block.message.user].role}
+                  </span>
                 {/if}
-                {#if block.message.image}
-                  <img src={block.message.image as string} alt="" />
-                {/if}
-              </span>
-              {#if typeof block.message.id === 'number'}
-                <div class="reactions">
-                  {#each reactionEntries(block.message) as reaction (reaction.emoji)}
-                    <button
-                      class="reaction-chip"
-                      class:active={reaction.users.includes($session.user ?? '')}
-                      on:click={() =>
-                        toggleReaction(block.message.id as number, reaction.emoji, reaction.users)}
-                      title={reaction.users.join(', ')}
-                    >
-                      <span class="emoji">{reaction.emoji}</span>
-                      <span class="count">{reaction.users.length}</span>
-                    </button>
-                  {/each}
-                  <button class="reaction-chip add" on:click={() => addReactionPrompt(block.message.id as number)}>
-                    +
-                  </button>
+                <div class="content-wrapper">
+                  <span class="content">
+                    {#if block.message.text}
+                      {@html renderMarkdown(block.message.text)}
+                    {/if}
+                    {#if block.links.length > 0}
+                      <div class="link-previews">
+                        {#each block.links as link (link)}
+                          <LinkPreview url={link} />
+                        {/each}
+                      </div>
+                    {/if}
+                    {#if block.message.image}
+                      <img src={block.message.image as string} alt="" />
+                    {/if}
+                  </span>
+                  {#if typeof block.message.id === 'number' && (canPinMessage(block.message) || canDeleteMessage(block.message))}
+                    <div class="message-actions">
+                      {#if canPinMessage(block.message)}
+                        <button
+                          type="button"
+                          class="message-action"
+                          class:active={isMessagePinned(block.message)}
+                          on:click={() => togglePinMessage(block.message)}
+                          title={isMessagePinned(block.message) ? 'Unpin message' : 'Pin message'}
+                        >
+                          📌
+                        </button>
+                      {/if}
+                      {#if canDeleteMessage(block.message)}
+                        <button
+                          type="button"
+                          class="message-action danger"
+                          on:click={() => deleteChatMessage(block.message)}
+                          title="Delete message"
+                        >
+                          🗑️
+                        </button>
+                      {/if}
+                    </div>
+                  {/if}
                 </div>
-              {/if}
-            </div>
-          {/if}
-        {/each}
+                {#if typeof block.message.id === 'number'}
+                  <div class="reactions">
+                    {#each reactionEntries(block.message) as reaction (reaction.emoji)}
+                      <button
+                        class="reaction-chip"
+                        class:active={reaction.users.includes($session.user ?? '')}
+                        on:click={() =>
+                          toggleReaction(block.message.id as number, reaction.emoji, reaction.users)}
+                        title={reaction.users.join(', ')}
+                      >
+                        <span class="emoji">{reaction.emoji}</span>
+                        <span class="count">{reaction.users.length}</span>
+                      </button>
+                    {/each}
+                    <button class="reaction-chip add" on:click={() => addReactionPrompt(block.message.id as number)}>
+                      +
+                    </button>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          {/each}
+        </div>
       </div>
       <div class="input-row">
         <textarea
+          class:scrollable={inputScrollable}
           bind:value={message}
           bind:this={messageInput}
           rows="1"
@@ -1108,7 +1594,8 @@
       <ul>
         {#each $onlineUsers as user}
           <li>
-            <span class="status online"></span>
+            <span class={`status ${ensureStatus(statusMap, user, 'online')}`}></span>
+            <span class="status-label">{STATUS_LABELS[ensureStatus(statusMap, user, 'online')]}</span>
             <span
               class="username"
               style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
@@ -1128,7 +1615,8 @@
       <ul>
         {#each $offlineUsers as user}
           <li>
-            <span class="status offline"></span>
+            <span class={`status ${ensureStatus(statusMap, user)}`}></span>
+            <span class="status-label">{STATUS_LABELS[ensureStatus(statusMap, user)]}</span>
             <span
               class="username"
               style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
@@ -1195,8 +1683,8 @@
   .page {
     display: flex;
     height: 100vh;
-    padding: 1.5rem;
-    gap: 1.25rem;
+    padding: clamp(1.25rem, 2.5vw, 1.75rem);
+    gap: clamp(0.75rem, 2vw, 1rem);
     backdrop-filter: blur(0.5px);
   }
 
@@ -1221,14 +1709,14 @@
     border-radius: var(--radius-lg);
     border: 1px solid var(--color-surface-outline);
     box-shadow: var(--shadow-xs);
-    padding: 1.25rem;
+    padding: clamp(1rem, 2vw, 1.25rem);
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.75rem;
   }
 
   .channels .section {
-    margin: 1rem 0 0.35rem 0;
+    margin: 0.75rem 0 0.35rem 0;
     font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -1238,7 +1726,7 @@
 
   .channels button {
     width: 100%;
-    padding: 0.65rem 0.8rem;
+    padding: 0.6rem 0.9rem;
     border: 1px solid transparent;
     background: transparent;
     color: var(--color-muted);
@@ -1248,8 +1736,19 @@
     letter-spacing: 0.01em;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.55rem;
     position: relative;
+  }
+
+  .voice-channel-name {
+    flex: 1;
+  }
+
+  .voice-channel-quality {
+    margin-left: auto;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--color-muted) 85%, transparent);
   }
 
   .channels button:hover {
@@ -1265,7 +1764,7 @@
   }
 
   .resizer {
-    width: 10px;
+    width: 6px;
     cursor: col-resize;
     position: relative;
     flex-shrink: 0;
@@ -1280,13 +1779,14 @@
     height: 36px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--color-on-surface) 12%, transparent);
+    transform: translateX(-50%);
   }
 
   .chat {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.9rem;
     min-width: 0;
   }
 
@@ -1358,6 +1858,85 @@
     content: '🧑‍🚀';
   }
 
+  .status-control {
+    position: relative;
+  }
+
+  .status-button {
+    width: auto;
+    height: auto;
+    min-width: 0;
+    padding: 0.4rem 0.85rem;
+    gap: 0.45rem;
+    font-weight: 600;
+    font-size: 0.85rem;
+    justify-content: flex-start;
+    white-space: nowrap;
+  }
+
+  .status-button svg {
+    margin-left: 0.35rem;
+  }
+
+  .status-button-label {
+    text-transform: capitalize;
+  }
+
+  .status-menu {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    min-width: 12rem;
+    background: color-mix(in srgb, var(--color-surface-elevated) 95%, transparent);
+    border: 1px solid var(--color-surface-outline);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 0.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    z-index: 60;
+  }
+
+  .status-menu button {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    border: none;
+    background: transparent;
+    color: inherit;
+    border-radius: var(--radius-sm);
+    padding: 0.45rem 0.6rem;
+    text-align: left;
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+
+  .status-menu button:hover,
+  .status-menu button:focus-visible,
+  .status-menu button.active {
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    outline: none;
+  }
+
+  .status-menu .status {
+    width: 0.6rem;
+    height: 0.6rem;
+  }
+
+  .status-menu button.active {
+    font-weight: 600;
+  }
+
+  .status-option-label {
+    flex: 1;
+    text-transform: capitalize;
+  }
+
+  .status-option-emoji {
+    font-size: 1rem;
+  }
+
   .connection-info {
     display: inline-flex;
     align-items: center;
@@ -1368,8 +1947,10 @@
   }
 
   .action-button {
-    width: 2.5rem;
-    height: 2.5rem;
+    min-width: 2.5rem;
+    width: auto;
+    min-height: 2.5rem;
+    height: auto;
     border-radius: 0.85rem;
     border: 1px solid color-mix(in srgb, var(--color-outline-strong) 70%, transparent);
     background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
@@ -1425,19 +2006,25 @@
     color: var(--color-on-surface);
   }
 
-  .messages {
+  .messages-shell {
     flex: 1;
     min-height: 0;
-    overflow-y: auto;
-    scrollbar-gutter: stable both-edges;
-    display: flex;
-    flex-direction: column;
-    gap: 0.8rem;
-    padding: clamp(1rem, 2vw, 1.35rem);
     border-radius: var(--radius-lg);
     background: color-mix(in srgb, var(--color-surface-raised) 90%, transparent);
     border: 1px solid var(--color-surface-outline);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    overflow: hidden;
+    display: flex;
+  }
+
+  .messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    padding: clamp(0.9rem, 2vw, 1.25rem);
   }
 
   .day-separator {
@@ -1484,6 +2071,11 @@
     box-shadow: var(--shadow-xs);
   }
 
+  .message.highlighted {
+    border-color: color-mix(in srgb, var(--color-secondary) 45%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-secondary) 28%, transparent);
+  }
+
   .message .timestamp {
     font-size: 0.72rem;
     color: var(--color-muted);
@@ -1502,10 +2094,60 @@
     align-self: center;
   }
 
-  .message .content {
+  .content-wrapper {
     grid-column: 1 / -1;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+
+  .message .content {
+    flex: 1;
     color: var(--color-on-surface);
     line-height: 1.65;
+  }
+
+  .message-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .message-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem 0.45rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
+    color: var(--color-on-surface);
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background var(--transition), border-color var(--transition), transform var(--transition);
+  }
+
+  .message-action:hover,
+  .message-action.active {
+    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+    border-color: color-mix(in srgb, var(--color-primary) 36%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .message-action.danger {
+    color: color-mix(in srgb, #ef4444 80%, var(--color-on-surface));
+  }
+
+  .message-action.danger:hover {
+    background: color-mix(in srgb, #ef4444 18%, transparent);
+    border-color: color-mix(in srgb, #ef4444 32%, transparent);
+  }
+
+  .link-previews {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 0.65rem;
   }
 
   .message .content :global(code) {
@@ -1588,6 +2230,179 @@
     box-shadow: var(--shadow-xs);
   }
 
+  .notification-control {
+    position: relative;
+  }
+
+  .notification-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .notification-menu {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    min-width: 16rem;
+    padding: 0.5rem;
+    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 95%, transparent);
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    z-index: 80;
+  }
+
+  .notification-menu button {
+    display: flex;
+    gap: 0.65rem;
+    align-items: center;
+    padding: 0.5rem 0.65rem;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: transparent;
+    color: var(--color-on-surface);
+    cursor: pointer;
+    text-align: left;
+    transition: background var(--transition), transform var(--transition);
+  }
+
+  .notification-menu button:hover,
+  .notification-menu button.active {
+    background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .notification-option-icon {
+    font-size: 1rem;
+  }
+
+  .notification-option-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .notification-option-text .label {
+    font-weight: 600;
+  }
+
+  .notification-option-text .description {
+    font-size: 0.82rem;
+    color: color-mix(in srgb, var(--color-on-surface) 70%, transparent);
+  }
+
+  .pinned-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 90%, transparent);
+  }
+
+  .pinned-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: var(--color-on-surface);
+  }
+
+  .pinned-title {
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .pinned-count {
+    font-size: 0.75rem;
+    padding: 0.1rem 0.6rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+    color: var(--color-on-surface);
+  }
+
+  .pinned-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .pinned-item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+  }
+
+  .pinned-preview {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    text-align: left;
+    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
+    padding: 0.6rem 0.75rem;
+    color: var(--color-on-surface);
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition), transform var(--transition);
+  }
+
+  .pinned-preview:hover {
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .pinned-author {
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+
+  .pinned-text {
+    font-size: 0.88rem;
+    color: color-mix(in srgb, var(--color-on-surface) 88%, transparent);
+    word-break: break-word;
+  }
+
+  .pinned-timestamp {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+
+  .pinned-remove {
+    border: none;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    color: var(--color-on-surface);
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background var(--transition), transform var(--transition);
+  }
+
+  .pinned-remove:hover {
+    background: color-mix(in srgb, #ef4444 22%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .pinned-remove:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+    outline-offset: 2px;
+  }
+
   .reactions {
     display: flex;
     flex-wrap: wrap;
@@ -1621,7 +2436,7 @@
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 1rem;
     align-items: end;
-    padding: clamp(1rem, 2vw, 1.4rem);
+    padding: clamp(1rem, 2vw, 1.35rem);
     border-radius: var(--radius-lg);
     background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
     border: 1px solid var(--color-surface-outline);
@@ -1633,6 +2448,8 @@
     min-height: 3rem;
     max-height: 360px;
     resize: none;
+    overflow-y: hidden;
+    overflow-x: hidden;
     border-radius: var(--radius-md);
     border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
     background: color-mix(in srgb, var(--color-surface-raised) 84%, transparent);
@@ -1641,10 +2458,20 @@
     line-height: 1.5;
   }
 
+  textarea.scrollable {
+    overflow-y: auto;
+  }
+
   .controls {
     display: flex;
+    align-items: flex-end;
+    gap: 0.9rem;
+  }
+
+  .input-controls {
+    display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.65rem;
   }
 
   .preview-container {
@@ -1784,10 +2611,10 @@
     border-radius: var(--radius-lg);
     border: 1px solid var(--color-surface-outline);
     box-shadow: var(--shadow-xs);
-    padding: 1.25rem;
+    padding: clamp(1rem, 2vw, 1.3rem);
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.85rem;
     min-width: 0;
   }
 
@@ -1810,14 +2637,14 @@
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.45rem;
+    gap: 0.4rem;
   }
 
   .sidebar li {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.45rem 0.6rem;
+    gap: 0.55rem;
+    padding: 0.4rem 0.55rem;
     border-radius: var(--radius-sm);
   }
 
@@ -1829,14 +2656,34 @@
     width: 0.75rem;
     height: 0.75rem;
     border-radius: 50%;
+    flex-shrink: 0;
   }
 
   .status.online {
     background: var(--color-success);
   }
 
+  .status.away {
+    background: #fbbf24;
+  }
+
+  .status.busy {
+    background: #ef4444;
+  }
+
   .status.offline {
     background: color-mix(in srgb, var(--color-muted) 40%, transparent);
+  }
+
+  .status-label {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+    text-transform: capitalize;
+    min-width: 3.5rem;
+  }
+
+  .sidebar .status-label {
+    text-transform: capitalize;
   }
 
   .volume-menu-overlay {
@@ -1895,6 +2742,72 @@
 
   .volume-menu-slider {
     flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-surface-raised) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+  }
+
+  .volume-menu-slider:focus {
+    border-color: color-mix(in srgb, var(--color-secondary) 32%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary) 18%, transparent);
+  }
+
+  .volume-menu-slider::-webkit-slider-runnable-track {
+    height: 0.45rem;
+    border-radius: 999px;
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-primary) 45%, var(--color-surface-elevated) 55%) 0%,
+      color-mix(in srgb, var(--color-primary) 18%, var(--color-surface-elevated) 82%) 100%
+    );
+  }
+
+  .volume-menu-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-surface);
+    border: 2px solid color-mix(in srgb, var(--color-secondary) 60%, transparent);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    margin-top: -7px;
+  }
+
+  .volume-menu-slider::-moz-range-track {
+    height: 0.45rem;
+    border-radius: 999px;
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-primary) 45%, var(--color-surface-elevated) 55%) 0%,
+      color-mix(in srgb, var(--color-primary) 18%, var(--color-surface-elevated) 82%) 100%
+    );
+    border: none;
+  }
+
+  .volume-menu-slider::-moz-range-progress {
+    height: 0.45rem;
+    border-radius: 999px;
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--color-primary) 55%, var(--color-surface-elevated) 45%) 0%,
+      color-mix(in srgb, var(--color-primary) 24%, var(--color-surface-elevated) 76%) 100%
+    );
+  }
+
+  .volume-menu-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-surface);
+    border: 2px solid color-mix(in srgb, var(--color-secondary) 60%, transparent);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
   }
 
   .volume-percentage {

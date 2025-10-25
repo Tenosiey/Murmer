@@ -1,77 +1,56 @@
 # Murmer Server Guide
 
-This folder hosts the Rust WebSocket server built with Axum, providing chat and voice coordination services.
+This crate implements the Murmer WebSocket/HTTP server using **Axum 0.7**.
+Authentication is based on Ed25519 signatures and PostgreSQL is used for
+persistence.
 
-## Architecture Overview
-- **Framework**: Axum for HTTP/WebSocket handling
-- **Database**: PostgreSQL for persistent message storage
-- **Authentication**: Ed25519 signature verification with anti-replay protection
-- **Security**: Rate limiting, input validation, CORS protection
-- **File Handling**: Secure image upload with type validation and size limits
+## Development commands
+- `cargo check` – compile-time validation
+- `cargo fmt` – format Rust sources
+- `cargo clippy -- -D warnings` (optional but recommended)
+- `cargo run` – launch the server locally (requires `DATABASE_URL`)
 
-## Environment Variables
-- `DATABASE_URL` - PostgreSQL connection string (required)
-- `UPLOAD_DIR` - Directory for file uploads (default: "uploads")
-- `SERVER_PASSWORD` - Optional password for client authentication
-- `ADMIN_TOKEN` - Bearer token for administrative role management
+The repository includes a `docker-compose.yml` that provisions PostgreSQL and
+launches the server in one step: `docker compose up --build`.
 
-## API Endpoints
-- `GET /` - Health check endpoint
-- `WebSocket /ws` - Main chat and voice coordination
-- `POST /upload` - Image upload with security validation
-- `POST /role` - Admin endpoint for user role management
-- `GET /files/*` - Static file serving for uploaded images
+## Key modules
+- `main.rs` – sets up the Axum router, middleware and shared state
+- `ws.rs` – WebSocket handshake and message handling
+- `db.rs` – database connection + schema helpers
+- `upload.rs` – multipart image upload endpoint with MIME validation
+- `admin.rs` – `/role` endpoint guarded by a bearer token
+- `security.rs` – rate limiting, replay protection and validation utilities
 
-## WebSocket Message Types
-- `presence` - User authentication and registration
-- `chat` - Text messages with optional images
-- `switch-channel` - Change active text channel
-- `load-history` - Request message history (limited to 200 messages)
-- `create-channel`/`delete-channel` - Channel management
-- `create-voice-channel`/`delete-voice-channel` - Voice channel management
-- `voice-*` - Voice channel join/leave operations
+Each module starts with a short doc comment describing its responsibilities.
+Expand these comments when adding new behaviour.
 
-## Security Features
-- **Ed25519 Authentication**: Cryptographic signatures for user verification
-- **Replay Protection**: Nonce-based system prevents signature reuse
-- **Rate Limiting**: Configurable limits on auth attempts and messages
-- **Input Validation**: Channel names, usernames, and content validation
-- **File Security**: Type checking, size limits, and atomic writes
-- **Admin Protection**: Constant-time token comparison for admin operations
+## Configuration
+Required environment variables:
+- `DATABASE_URL` – PostgreSQL connection string
 
-## Database Schema
-- `messages` - Chat message storage with channel association
-- `roles` - User role assignments with color customization
-- `channels` - Text channel registry
-- `voice_channels` - Voice channel registry
+Optional environment variables:
+- `UPLOAD_DIR` – directory for uploaded images (`uploads/` by default)
+- `SERVER_PASSWORD` – shared secret required during presence/auth flows
+- `ADMIN_TOKEN` – enables the `/role` endpoint and channel management controls
+- `ENABLE_CORS` – set only during development to enable permissive CORS headers
+- `MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
+  `NONCE_EXPIRY_SECONDS` – override rate limiting defaults
 
-## Running
-The recommended way to run the server is using Docker Compose from the repository root:
+When `ADMIN_TOKEN` is set, only users with the roles `Admin`, `Mod` or `Owner`
+may create or delete text/voice channels. The server logs and returns an error
+for unauthorised attempts.
 
-```bash
-docker compose up --build
-```
+## Security notes
+- Client IP addresses are used for authentication rate limiting – ensure the
+  service runs behind a proxy that forwards the real IP if applicable.
+- Nonces combine the public key and timestamp; replayed signatures are rejected.
+- Uploaded files are streamed to disk after validating type, size and filename.
+- Admin tokens are compared using constant-time equality.
+- Avoid adding new WebSocket message types without updating validation helpers.
 
-The server listens on `ws://localhost:3001/ws` and HTTP on `http://localhost:3001`.
-
-## Development Guidelines
-- All database operations should handle errors gracefully
-- Input validation must be performed on all user-provided data
-- Rate limiting should be tested under load
-- Security features should be documented with SECURITY comments
-- Use structured logging for security events
-
-## Security Considerations
-- Private keys are never stored on the server
-- All timestamps are validated to prevent replay attacks
-- File uploads are restricted and validated by content type
-- Rate limiting prevents abuse and DoS attacks
-- Admin tokens use constant-time comparison to prevent timing attacks
-
-## Validation
-- Run `cargo check` to verify the code builds
-- Format code with `cargo fmt` before committing
-- Test WebSocket connections and authentication flows
-- Verify rate limiting under concurrent connections
-- Test file upload security restrictions
-- There are no automated tests - this should be added for production use
+## QA checklist
+- Run `cargo check` and `cargo fmt`.
+- Exercise WebSocket authentication (invalid signatures, stale timestamps).
+- Verify file uploads reject invalid MIME types and oversize payloads.
+- Confirm channel/voice channel management respects role permissions when
+  `ADMIN_TOKEN` is configured.

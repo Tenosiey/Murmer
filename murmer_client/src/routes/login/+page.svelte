@@ -1,3 +1,8 @@
+<!--
+  Login page for Murmer. Users supply a display name that is persisted in the
+  session store and then redirected to their server list. The page guards
+  against authenticated users revisiting the login screen.
+-->
 <script lang="ts">
   import { session } from '$lib/stores/session';
   import { goto } from '$app/navigation';

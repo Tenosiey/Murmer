@@ -1,8 +1,10 @@
-target/
-Dockerfile*
-.dockerignore
-.git
-.gitignore
+# Prune build context for the server image
+**/target
+**/.git
+**/.github
+**/.idea
+**/.vscode
+**/tests
+Dockerfile
 README.md
-AGENTS.md
-*.md
+.env

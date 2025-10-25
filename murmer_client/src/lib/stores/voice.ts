@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import type { RemotePeer, ConnectionStats } from '../types';
+import type { RemotePeer, ConnectionStats, VoiceChannelInfo } from '../types';
 import { VoiceManager } from '../voice/manager';
 
 const peers = writable<RemotePeer[]>([]);
@@ -8,7 +8,8 @@ manager.subscribe((list) => peers.set(list));
 
 export const voice = {
   subscribe: peers.subscribe,
-  join: (user: string, channel: string) => manager.join(user, channel, get(peers)),
+  join: (user: string, channel: string, info?: VoiceChannelInfo) =>
+    manager.join(user, channel, get(peers), info),
   leave: (channel: string) => manager.leave(channel, get(peers))
 };
 

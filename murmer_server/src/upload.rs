@@ -17,7 +17,7 @@ use tracing::{error, warn};
 use crate::AppState;
 
 /// Maximum file size in bytes (10MB)
-const MAX_FILE_SIZE: usize = 10 * 1024 * 1024;
+pub const MAX_FILE_SIZE: usize = 10 * 1024 * 1024;
 
 /// Allowed MIME types for uploads
 static ALLOWED_IMAGE_TYPES: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -42,70 +42,75 @@ fn detect_file_type(data: &[u8]) -> Option<&'static str> {
 
 /// Validate file extension
 fn has_valid_extension(filename: &str) -> bool {
-    if let Some(ext) = filename.split('.').last() {
+    if let Some(ext) = filename.rsplit('.').next() {
         ALLOWED_EXTENSIONS.contains(&ext.to_lowercase().as_str())
     } else {
         false
     }
 }
 
+#[tracing::instrument(skip(state, multipart))]
 pub async fn upload(State(state): State<Arc<AppState>>, mut multipart: Multipart) -> Response {
-    while let Ok(Some(field)) = multipart.next_field().await {
-        let mut filename = field
-            .file_name()
-            .map(|s| sanitize(s))
-            .unwrap_or_else(|| "upload".to_string());
-
-        if filename.is_empty() {
-            filename = "upload".to_string();
+    let field = match multipart.next_field().await {
+        Ok(Some(field)) => field,
+        Ok(None) => return StatusCode::BAD_REQUEST.into_response(),
+        Err(err) => {
+            warn!(?err, "Failed to read multipart field");
+            return StatusCode::BAD_REQUEST.into_response();
         }
+    };
 
-        // Validate file extension
-        if !has_valid_extension(&filename) {
-            warn!("Rejected upload with invalid extension: {}", filename);
-            return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    let mut filename = field
+        .file_name()
+        .map(sanitize)
+        .unwrap_or_else(|| "upload".to_string());
+
+    if filename.is_empty() {
+        filename = "upload".to_string();
+    }
+
+    if !has_valid_extension(&filename) {
+        warn!("Rejected upload with invalid extension: {}", filename);
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    }
+
+    let data = match field.bytes().await {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            error!(?err, "Failed to read multipart bytes");
+            return StatusCode::BAD_REQUEST.into_response();
         }
+    };
 
-        if let Ok(data) = field.bytes().await {
-            // Check file size
-            if data.len() > MAX_FILE_SIZE {
-                warn!("Rejected upload exceeding size limit: {} bytes", data.len());
-                return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    if data.len() > MAX_FILE_SIZE {
+        warn!("Rejected upload exceeding size limit: {} bytes", data.len());
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    }
+
+    if !detect_file_type(&data).is_some_and(|t| ALLOWED_IMAGE_TYPES.contains(&t)) {
+        warn!("Rejected upload with invalid file type for: {}", filename);
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    }
+
+    let key = format!("{}-{}", chrono::Utc::now().timestamp_millis(), filename);
+    let path = state.upload_dir.join(&key);
+    let temp_path = path.with_extension("tmp");
+
+    match tokio::fs::write(temp_path.as_path(), &data).await {
+        Ok(_) => match tokio::fs::rename(temp_path.as_path(), &path).await {
+            Ok(_) => {
+                let url = format!("/files/{}", key);
+                Json(serde_json::json!({"url": url})).into_response()
             }
-
-            // Validate file type by magic bytes
-            let detected_type = detect_file_type(&data);
-            if !detected_type.map_or(false, |t| ALLOWED_IMAGE_TYPES.contains(&t)) {
-                warn!("Rejected upload with invalid file type for: {}", filename);
-                return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+            Err(e) => {
+                error!("Failed to move uploaded file: {}", e);
+                let _ = tokio::fs::remove_file(temp_path).await;
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
             }
-
-            // Generate secure filename with timestamp
-            let key = format!("{}-{}", chrono::Utc::now().timestamp_millis(), filename);
-            let path = state.upload_dir.join(&key);
-
-            // Use atomic write operation
-            let temp_path = format!("{}.tmp", path.display());
-            let temp_path = std::path::Path::new(&temp_path);
-
-            match tokio::fs::write(temp_path, &data).await {
-                Ok(_) => match tokio::fs::rename(temp_path, &path).await {
-                    Ok(_) => {
-                        let url = format!("/files/{}", key);
-                        return Json(serde_json::json!({"url": url})).into_response();
-                    }
-                    Err(e) => {
-                        error!("Failed to move uploaded file: {}", e);
-                        let _ = tokio::fs::remove_file(temp_path).await;
-                        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-                    }
-                },
-                Err(e) => {
-                    error!("Failed to write uploaded file: {}", e);
-                    return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-                }
-            }
+        },
+        Err(e) => {
+            error!("Failed to write uploaded file: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
-    StatusCode::BAD_REQUEST.into_response()
 }

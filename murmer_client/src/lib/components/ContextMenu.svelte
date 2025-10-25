@@ -1,3 +1,7 @@
+<!--
+  Generic floating context menu used across chat lists. Accepts a list of menu
+  items and exposes coordinates for positioning relative to the user's cursor.
+-->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   export let items: { label: string; action: () => void }[] = [];

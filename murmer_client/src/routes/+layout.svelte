@@ -1,3 +1,7 @@
+<!--
+  Root layout for the Murmer desktop client. It initialises the theme store on
+  mount and injects shared typography and colour tokens for every page.
+-->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { APP_VERSION } from '$lib/version';
@@ -39,9 +43,9 @@
     --shadow-xs: 0 1px 2px rgba(2, 6, 23, 0.25);
     --shadow-sm: 0 8px 16px rgba(11, 15, 30, 0.28);
     --shadow-md: 0 18px 30px rgba(7, 11, 28, 0.32);
-    --radius-sm: 12px;
-    --radius-md: 16px;
-    --radius-lg: 22px;
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
     --transition: 180ms cubic-bezier(0.2, 0, 0, 1);
     --blur-elevated: saturate(140%) blur(24px);
   }
@@ -68,9 +72,9 @@
     --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.06);
     --shadow-sm: 0 10px 24px rgba(15, 23, 42, 0.08);
     --shadow-md: 0 24px 38px rgba(15, 23, 42, 0.12);
-    --radius-sm: 12px;
-    --radius-md: 16px;
-    --radius-lg: 22px;
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
     --transition: 180ms cubic-bezier(0.2, 0, 0, 1);
     --blur-elevated: saturate(120%) blur(18px);
   }
@@ -169,6 +173,10 @@
 :global(*::-webkit-scrollbar) {
     width: 0.5rem;
     height: 0.5rem;
+  }
+
+:global(*::-webkit-scrollbar-button) {
+    display: none;
   }
 
 :global(*::-webkit-scrollbar-track) {

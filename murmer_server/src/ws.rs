@@ -28,26 +28,75 @@
 
 use axum::{
     extract::{
-        State,
+        ConnectInfo, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
     response::IntoResponse,
 };
-use chrono::{DateTime, Utc};
 use base64::{Engine as _, engine::general_purpose};
-use ed25519_dalek::{PublicKey, Signature, Verifier};
+use chrono::{DateTime, Utc};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use futures::{SinkExt, StreamExt, stream::SplitSink};
 use serde_json::{Map, Value};
-use std::collections::HashSet;
+use std::net::SocketAddr;
 use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryInto,
+};
 use tokio::sync::broadcast;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, instrument};
 
 use crate::{
-    AppState, db,
+    AppState, VoiceChannelState, db,
     roles::{RoleInfo, default_color},
     security,
 };
+
+/// Roles that are allowed to create or delete channels when administrative
+/// controls are enabled.
+const CHANNEL_MANAGE_ROLES: &[&str] = &["Admin", "Mod", "Owner"];
+
+/// Default quality label assigned to new voice channels.
+const DEFAULT_VOICE_QUALITY: &str = "standard";
+/// Default bitrate (in bits per second) assigned to new voice channels.
+const DEFAULT_VOICE_BITRATE: i32 = 64_000;
+/// Upper bound to reject unreasonable bitrate configuration values.
+const MAX_ALLOWED_VOICE_BITRATE: i32 = 320_000;
+
+/// Allowed user status values broadcast to clients.
+const USER_STATUSES: &[&str] = &["online", "away", "busy", "offline"];
+
+fn normalize_status(value: &str) -> Option<&'static str> {
+    USER_STATUSES
+        .iter()
+        .copied()
+        .find(|status| status.eq_ignore_ascii_case(value))
+}
+
+fn validate_voice_quality(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty()
+        && trimmed.len() <= 32
+        && trimmed
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ' ')
+}
+
+fn validate_bitrate(value: i64) -> Option<i32> {
+    if value <= 0 || value > MAX_ALLOWED_VOICE_BITRATE as i64 {
+        return None;
+    }
+    i32::try_from(value).ok()
+}
+
+fn voice_channel_descriptor(name: &str, info: &VoiceChannelState) -> serde_json::Value {
+    serde_json::json!({
+        "name": name,
+        "quality": info.quality,
+        "bitrate": info.bitrate,
+    })
+}
 
 /// Broadcast the current list of online users to all connected clients.
 async fn broadcast_users(state: &Arc<AppState>) {
@@ -86,11 +135,11 @@ async fn send_users(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Mes
 /// Broadcast the users currently in a voice channel to all clients.
 async fn broadcast_voice(state: &Arc<AppState>, channel: &str) {
     let vc = state.voice_channels.lock().await;
-    let list: Vec<String> = vc
-        .get(channel)
-        .map(|set| set.iter().cloned().collect())
-        .unwrap_or_default();
+    let entry = vc.get(channel).cloned();
     drop(vc);
+    let list: Vec<String> = entry
+        .map(|info| info.users.into_iter().collect())
+        .unwrap_or_default();
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "voice-users",
         "channel": channel,
@@ -133,11 +182,24 @@ async fn send_all_roles(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket,
             "user": user,
             "role": info.role,
             "color": info.color,
-        })) {
-            if sender.send(Message::Text(msg)).await.is_err() {
-                break;
-            }
+        })) && sender.send(Message::Text(msg)).await.is_err()
+        {
+            break;
         }
+    }
+}
+
+/// Send all known user statuses to a newly connected client.
+async fn send_all_statuses(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    let statuses: HashMap<String, String> = state.statuses.lock().await.clone();
+    if statuses.is_empty() {
+        return;
+    }
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "status-snapshot",
+        "statuses": statuses,
+    })) {
+        let _ = sender.send(Message::Text(msg)).await;
     }
 }
 
@@ -154,10 +216,20 @@ async fn send_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, 
 
 /// Send the list of available voice channels to a client.
 async fn send_voice_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
-    let list: Vec<String> = state.voice_channels.lock().await.keys().cloned().collect();
+    let map = state.voice_channels.lock().await;
+    let mut entries: Vec<(String, VoiceChannelState)> = map
+        .iter()
+        .map(|(name, info)| (name.clone(), info.clone()))
+        .collect();
+    drop(map);
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    let channels: Vec<serde_json::Value> = entries
+        .iter()
+        .map(|(name, info)| voice_channel_descriptor(name, info))
+        .collect();
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "voice-channel-list",
-        "channels": list,
+        "channels": channels,
     })) {
         let _ = sender.send(Message::Text(msg)).await;
     }
@@ -166,16 +238,26 @@ async fn send_voice_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSo
 /// Send all voice channel member lists to a client.
 async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let map = state.voice_channels.lock().await.clone();
-    for (chan, users) in map {
+    for (chan, info) in map {
         if let Ok(msg) = serde_json::to_string(&serde_json::json!({
             "type": "voice-users",
             "channel": chan,
-            "users": users.into_iter().collect::<Vec<_>>(),
-        })) {
-            if sender.send(Message::Text(msg)).await.is_err() {
-                break;
-            }
+            "users": info.users.into_iter().collect::<Vec<_>>(),
+        })) && sender.send(Message::Text(msg)).await.is_err()
+        {
+            break;
         }
+    }
+}
+
+/// Broadcast a user's status change to all clients.
+async fn broadcast_status(state: &Arc<AppState>, user: &str, status: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "status-update",
+        "user": user,
+        "status": status,
+    })) {
+        let _ = state.tx.send(msg);
     }
 }
 
@@ -190,13 +272,51 @@ async fn broadcast_new_channel(state: &Arc<AppState>, name: &str) {
 }
 
 /// Broadcast to all clients that a new voice channel was created.
-async fn broadcast_new_voice_channel(state: &Arc<AppState>, name: &str) {
+async fn broadcast_new_voice_channel(state: &Arc<AppState>, name: &str, info: &VoiceChannelState) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "voice-channel-add",
         "channel": name,
+        "quality": info.quality,
+        "bitrate": info.bitrate,
     })) {
         let _ = state.tx.send(msg);
     }
+}
+
+async fn broadcast_voice_channel_update(
+    state: &Arc<AppState>,
+    name: &str,
+    info: &VoiceChannelState,
+) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "voice-channel-update",
+        "channel": name,
+        "quality": info.quality,
+        "bitrate": info.bitrate,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Determine whether a user is authorised to manage channel state.
+///
+/// When the server is running without an `ADMIN_TOKEN` every authenticated user
+/// is allowed to manage channels for backwards compatibility. Once an admin
+/// token is configured we restrict the action to privileged roles only.
+async fn can_manage_channels(state: &Arc<AppState>, user: &str) -> bool {
+    if state.admin_token.is_none() {
+        return true;
+    }
+
+    let roles = state.roles.lock().await;
+    roles
+        .get(user)
+        .map(|info| {
+            CHANNEL_MANAGE_ROLES
+                .iter()
+                .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
+        })
+        .unwrap_or(false)
 }
 
 /// Broadcast to all clients that a channel was deleted.
@@ -229,8 +349,9 @@ async fn get_or_create_channel(state: &Arc<AppState>, name: &str) -> broadcast::
 }
 
 /// Main WebSocket loop handling incoming messages and broadcasting events.
-async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
-    info!("Client connected");
+async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: SocketAddr) {
+    let client_ip = peer_addr.ip().to_string();
+    info!(%client_ip, "Client connected");
     let (mut sender, mut receiver) = socket.split();
     let mut global_rx = state.tx.subscribe();
     let mut channel = String::from("general");
@@ -257,7 +378,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         }
                         if !authenticated && t != "presence" {
                             let _ = sender
-                                .send(Message::Text("{\"type\":\"error\",\"message\":\"unauthenticated\"}".into()))
+                                .send(Message::Text("{\"type\":\"error\",\"message\":\"unauthenticated\"}".to_string()))
                                 .await;
                             break;
                         }
@@ -268,7 +389,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         let provided = v.get("password").and_then(|p| p.as_str());
                                         if provided != Some(required) {
                                             let _ = sender
-                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-password\"}".into()))
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-password\"}".to_string()))
                                                 .await;
                                             break;
                                         }
@@ -279,10 +400,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         v.get("timestamp").and_then(|t| t.as_str()),
                                     ) {
                                         // SECURITY: Rate limit authentication attempts to prevent brute force attacks
-                                        // TODO: Use actual client IP address instead of hardcoded localhost
-                                        if !security::check_auth_rate_limit(&state.rate_limiter, "127.0.0.1").await {
+                                        if !security::check_auth_rate_limit(&state.rate_limiter, &client_ip).await {
                                             let _ = sender
-                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"auth-rate-limit\"}".into()))
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"auth-rate-limit\"}".to_string()))
                                                 .await;
                                             break;
                                         }
@@ -294,7 +414,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             Err(err) => {
                                                 error!("Authentication failed - {}: {}", err, ts);
                                                 let _ = sender
-                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-timestamp\"}".into()))
+                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-timestamp\"}".to_string()))
                                                     .await;
                                                 break;
                                             }
@@ -305,7 +425,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         let nonce = format!("{}:{}", pk, timestamp);
                                         if !security::check_and_store_nonce(&state.rate_limiter, &nonce).await {
                                             let _ = sender
-                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"replay-attack\"}".into()))
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"replay-attack\"}".to_string()))
                                                 .await;
                                             break;
                                         }
@@ -314,34 +434,32 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             general_purpose::STANDARD.decode(pk),
                                             general_purpose::STANDARD.decode(sig),
                                         ) {
-                                            if pk_bytes.len() == 32 {
-                                                match PublicKey::from_bytes(&pk_bytes[..32]) {
-                                                    Ok(key) => {
-                                                        match Signature::from_bytes(&sig_bytes) {
-                                                            Ok(signature) => {
-                                                                if key.verify(ts.as_bytes(), &signature).is_ok() {
-                                                                    authenticated = true;
-                                                                } else {
-                                                                    error!("Authentication failed - signature verification failed for key: {}", pk);
-                                                                    let _ = sender
-                                                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature\"}".into()))
-                                                                        .await;
-                                                                    break;
-                                                                }
-                                                            }
-                                                            Err(e) => {
-                                                                error!("Authentication failed - invalid signature format: {}", e);
+                                            if let Ok(pk_array) = pk_bytes.as_slice().try_into() {
+                                                match VerifyingKey::from_bytes(&pk_array) {
+                                                    Ok(key) => match Signature::from_slice(&sig_bytes) {
+                                                        Ok(signature) => {
+                                                            if key.verify(ts.as_bytes(), &signature).is_ok() {
+                                                                authenticated = true;
+                                                            } else {
+                                                                error!("Authentication failed - signature verification failed for key: {}", pk);
                                                                 let _ = sender
-                                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature-format\"}".into()))
+                                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature\"}".to_string()))
                                                                     .await;
                                                                 break;
                                                             }
                                                         }
-                                                    }
+                                                        Err(e) => {
+                                                            error!("Authentication failed - invalid signature format: {}", e);
+                                                            let _ = sender
+                                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature-format\"}".to_string()))
+                                                                .await;
+                                                            break;
+                                                        }
+                                                    },
                                                     Err(e) => {
                                                         error!("Authentication failed - invalid public key: {}", e);
                                                         let _ = sender
-                                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-public-key\"}".into()))
+                                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-public-key\"}".to_string()))
                                                             .await;
                                                         break;
                                                     }
@@ -349,14 +467,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             } else {
                                                 error!("Authentication failed - public key wrong length: {}", pk_bytes.len());
                                                 let _ = sender
-                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-key-length\"}".into()))
+                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-key-length\"}".to_string()))
                                                     .await;
                                                 break;
                                             }
                                         } else {
                                             error!("Authentication failed - invalid base64 encoding");
                                             let _ = sender
-                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-encoding\"}".into()))
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-encoding\"}".to_string()))
                                                 .await;
                                             break;
                                         }
@@ -368,7 +486,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                         if !security::validate_user_name(u) {
                                             error!("Invalid user name: {}", u);
                                             let _ = sender
-                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-username\"}".into()))
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-username\"}".to_string()))
                                                 .await;
                                             break;
                                         }
@@ -380,6 +498,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             let mut known = state.known_users.lock().await;
                                             known.insert(u.to_string());
                                         }
+                                        {
+                                            let mut statuses = state.statuses.lock().await;
+                                            statuses.insert(u.to_string(), "online".to_string());
+                                        }
+                                        broadcast_status(&state, u, "online").await;
                                         broadcast_users(&state).await;
                                         user_name = Some(u.to_string());
                                         if let Some(pk) = v.get("publicKey").and_then(|p| p.as_str()) {
@@ -397,6 +520,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                             }
                                         }
                                         send_all_roles(&state, &mut sender).await;
+                                        send_all_statuses(&state, &mut sender).await;
                                         send_channels(&state, &mut sender).await;
                                         send_voice_channels(&state, &mut sender).await;
                                         send_users(&state, &mut sender).await;
@@ -405,7 +529,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     }
                                 } else {
                                     let _ = sender
-                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature\"}".into()))
+                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature\"}".to_string()))
                                         .await;
                                     break;
                                 }
@@ -436,18 +560,33 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     if !security::validate_channel_name(ch) {
                                         error!("Invalid channel name: {}", ch);
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".to_string()))
                                             .await;
                                         continue;
                                     }
 
-                                    // TODO: Add role-based authorization check here
-                                    // For now, any authenticated user can create channels
+                                    let requester = if let Some(name) = user_name.as_deref() {
+                                        name
+                                    } else {
+                                        error!("create-channel requested before presence was fully processed");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    };
+
+                                    if !can_manage_channels(&state, requester).await {
+                                        error!("User {requester} attempted to create channel without permission");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    }
 
                                     if let Err(e) = db::add_channel(&state.db, ch).await {
                                         error!("db add channel error: {e}");
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-creation-failed\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-creation-failed\"}".to_string()))
                                             .await;
                                     } else {
                                         get_or_create_channel(&state, ch).await;
@@ -461,7 +600,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     if !security::validate_channel_name(ch) {
                                         error!("Invalid channel name for deletion: {}", ch);
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".to_string()))
                                             .await;
                                         continue;
                                     }
@@ -469,18 +608,33 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     // Prevent deletion of general channel
                                     if ch == "general" {
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"cannot-delete-general\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"cannot-delete-general\"}".to_string()))
                                             .await;
                                         continue;
                                     }
 
-                                    // TODO: Add role-based authorization check here
-                                    // For now, any authenticated user can delete channels
+                                    let requester = if let Some(name) = user_name.as_deref() {
+                                        name
+                                    } else {
+                                        error!("delete-channel requested before presence was fully processed");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    };
+
+                                    if !can_manage_channels(&state, requester).await {
+                                        error!("User {requester} attempted to delete channel without permission");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    }
 
                                     if let Err(e) = db::remove_channel(&state.db, ch).await {
                                         error!("db remove channel error: {e}");
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-deletion-failed\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-deletion-failed\"}".to_string()))
                                             .await;
                                     } else {
                                         {
@@ -498,17 +652,217 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             }
                             "create-voice-channel" => {
                                 if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    if !security::validate_channel_name(ch) {
+                                        error!("Invalid voice channel name: {}", ch);
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    }
+
+                                    let requester = if let Some(name) = user_name.as_deref() {
+                                        name
+                                    } else {
+                                        error!("create-voice-channel requested before presence was fully processed");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    };
+
+                                    if !can_manage_channels(&state, requester).await {
+                                        error!("User {requester} attempted to create voice channel without permission");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    }
+
+                                    let quality_value = v
+                                        .get("quality")
+                                        .and_then(|q| q.as_str())
+                                        .map(str::trim)
+                                        .filter(|q| !q.is_empty())
+                                        .map(str::to_string)
+                                        .unwrap_or_else(|| DEFAULT_VOICE_QUALITY.to_string());
+                                    if !validate_voice_quality(&quality_value) {
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-quality\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    }
+
+                                    let bitrate_value = match v.get("bitrate") {
+                                        Some(val) if val.is_null() => None,
+                                        Some(val) => match val.as_i64().and_then(validate_bitrate) {
+                                            Some(valid) => Some(valid),
+                                            None => {
+                                                let _ = sender
+                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-bitrate\"}".to_string()))
+                                                    .await;
+                                                continue;
+                                            }
+                                        },
+                                        None => Some(DEFAULT_VOICE_BITRATE),
+                                    };
+
                                     let mut map = state.voice_channels.lock().await;
                                     if !map.contains_key(ch) {
-                                        map.insert(ch.to_string(), HashSet::new());
+                                        let info = VoiceChannelState {
+                                            users: HashSet::new(),
+                                            quality: quality_value.clone(),
+                                            bitrate: bitrate_value,
+                                        };
+                                        map.insert(ch.to_string(), info.clone());
                                         drop(map);
-                                        let _ = db::add_voice_channel(&state.db, ch).await;
-                                        broadcast_new_voice_channel(&state, ch).await;
+                                        let _ =
+                                            db::add_voice_channel(&state.db, ch, &info.quality, info.bitrate).await;
+                                        broadcast_new_voice_channel(&state, ch, &info).await;
+                                    }
+                                }
+                            }
+                            "update-voice-channel" => {
+                                if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    if !security::validate_channel_name(ch) {
+                                        error!("Invalid voice channel name for update: {}", ch);
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    }
+
+                                    let requester = if let Some(name) = user_name.as_deref() {
+                                        name
+                                    } else {
+                                        error!("update-voice-channel requested before presence was fully processed");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    };
+
+                                    if !can_manage_channels(&state, requester).await {
+                                        error!("User {requester} attempted to update voice channel without permission");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    }
+
+                                    let quality_override = if let Some(raw) =
+                                        v.get("quality").and_then(|q| q.as_str())
+                                    {
+                                        let trimmed = raw.trim();
+                                        if !validate_voice_quality(trimmed) {
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-quality\"}".to_string()))
+                                                .await;
+                                            continue;
+                                        }
+                                        Some(trimmed.to_string())
+                                    } else {
+                                        None
+                                    };
+
+                                    let bitrate_override = if let Some(val) = v.get("bitrate") {
+                                        if val.is_null() {
+                                            Some(None)
+                                        } else {
+                                            match val.as_i64().and_then(validate_bitrate) {
+                                                Some(valid) => Some(Some(valid)),
+                                                None => {
+                                                    let _ = sender
+                                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-bitrate\"}".to_string()))
+                                                        .await;
+                                                    continue;
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        None
+                                    };
+
+                                    let current = state.voice_channels.lock().await;
+                                    let Some(existing) = current.get(ch).cloned() else {
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"unknown-voice-channel\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    };
+                                    drop(current);
+
+                                    let next_quality =
+                                        quality_override.unwrap_or_else(|| existing.quality.clone());
+                                    let next_bitrate = match bitrate_override {
+                                        Some(value) => value,
+                                        None => existing.bitrate,
+                                    };
+
+                                    match db::update_voice_channel(
+                                        &state.db,
+                                        ch,
+                                        &next_quality,
+                                        next_bitrate,
+                                    )
+                                    .await
+                                    {
+                                        Ok(true) => {
+                                            let mut map = state.voice_channels.lock().await;
+                                            if let Some(entry) = map.get_mut(ch) {
+                                                entry.quality = next_quality.clone();
+                                                entry.bitrate = next_bitrate;
+                                                let snapshot = entry.clone();
+                                                drop(map);
+                                                broadcast_voice_channel_update(
+                                                    &state,
+                                                    ch,
+                                                    &snapshot,
+                                                )
+                                                .await;
+                                            }
+                                        }
+                                        Ok(false) => {
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"unknown-voice-channel\"}".to_string()))
+                                                .await;
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to update voice channel {ch}: {e}");
+                                            let _ = sender
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"voice-channel-update-failed\"}".to_string()))
+                                                .await;
+                                        }
                                     }
                                 }
                             }
                             "delete-voice-channel" => {
                                 if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
+                                    if !security::validate_channel_name(ch) {
+                                        error!("Invalid voice channel name for deletion: {}", ch);
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    }
+
+                                    let requester = if let Some(name) = user_name.as_deref() {
+                                        name
+                                    } else {
+                                        error!("delete-voice-channel requested before presence was fully processed");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    };
+
+                                    if !can_manage_channels(&state, requester).await {
+                                        error!("User {requester} attempted to delete voice channel without permission");
+                                        let _ = sender
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
+                                            .await;
+                                        continue;
+                                    }
+
                                     let mut map = state.voice_channels.lock().await;
                                     map.remove(ch);
                                     drop(map);
@@ -521,21 +875,21 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                             }
                             "chat" => {
                                 // Rate limit messages
-                                if let Some(ref user) = user_name {
-                                    if !security::check_message_rate_limit(&state.rate_limiter, user).await {
-                                        let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"message-rate-limit\"}".into()))
-                                            .await;
-                                        continue;
-                                    }
+                                if let Some(ref user) = user_name
+                                    && !security::check_message_rate_limit(&state.rate_limiter, user).await
+                                {
+                                    let _ = sender
+                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"message-rate-limit\"}".to_string()))
+                                        .await;
+                                    continue;
                                 }
 
                                 v["channel"] = Value::String(channel.clone());
                                 let timestamp = sanitize_message_timestamp(&mut v);
-                                if !v.get("reactions").is_some() {
+                                if v.get("reactions").is_none() {
                                     v["reactions"] = Value::Object(Map::new());
                                 }
-                                if !v.get("time").and_then(|t| t.as_str()).is_some() {
+                                if v.get("time").and_then(|t| t.as_str()).is_none() {
                                     v["time"] = Value::String(timestamp.format("%H:%M:%S").to_string());
                                 }
                                 let out = serde_json::to_string(&v).unwrap_or_else(|_| text.to_string());
@@ -556,31 +910,151 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     Err(e) => error!("db insert error: {e}"),
                                 }
                             }
+                            "delete-message" => {
+                                let requester = match user_name.clone() {
+                                    Some(name) => name,
+                                    None => {
+                                        let msg = serde_json::json!({
+                                            "type": "error",
+                                            "message": "not-authenticated",
+                                        })
+                                        .to_string();
+                                        let _ = sender.send(Message::Text(msg)).await;
+                                        continue;
+                                    }
+                                };
+
+                                let Some(raw_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
+                                    let msg = serde_json::json!({
+                                        "type": "error",
+                                        "message": "invalid-message-id",
+                                    })
+                                    .to_string();
+                                    let _ = sender.send(Message::Text(msg)).await;
+                                    continue;
+                                };
+
+                                let message_id32 = match i32::try_from(raw_id) {
+                                    Ok(id) => id,
+                                    Err(_) => {
+                                        let msg = serde_json::json!({
+                                            "type": "error",
+                                            "message": "invalid-message-id",
+                                        })
+                                        .to_string();
+                                        let _ = sender.send(Message::Text(msg)).await;
+                                        continue;
+                                    }
+                                };
+
+                                let record = match db::get_message_record(&state.db, message_id32).await {
+                                    Ok(Some(record)) => record,
+                                    Ok(None) => {
+                                        let msg = serde_json::json!({
+                                            "type": "error",
+                                            "message": "message-not-found",
+                                        })
+                                        .to_string();
+                                        let _ = sender.send(Message::Text(msg)).await;
+                                        continue;
+                                    }
+                                    Err(error) => {
+                                        error!("failed to load message {raw_id} for deletion: {error}");
+                                        let msg = serde_json::json!({
+                                            "type": "error",
+                                            "message": "message-delete-failed",
+                                        })
+                                        .to_string();
+                                        let _ = sender.send(Message::Text(msg)).await;
+                                        continue;
+                                    }
+                                };
+
+                                if record.channel != channel {
+                                    let msg = serde_json::json!({
+                                        "type": "error",
+                                        "message": "message-wrong-channel",
+                                    })
+                                    .to_string();
+                                    let _ = sender.send(Message::Text(msg)).await;
+                                    continue;
+                                }
+
+                                let owner = record
+                                    .content
+                                    .get("user")
+                                    .and_then(|user| user.as_str())
+                                    .map(|value| value.to_string());
+
+                                let mut allowed = owner.as_deref() == Some(requester.as_str());
+                                if !allowed && can_manage_channels(&state, &requester).await {
+                                    allowed = true;
+                                }
+
+                                if !allowed {
+                                    let msg = serde_json::json!({
+                                        "type": "error",
+                                        "message": "message-permission-denied",
+                                    })
+                                    .to_string();
+                                    let _ = sender.send(Message::Text(msg)).await;
+                                    continue;
+                                }
+
+                                match db::delete_message(&state.db, message_id32).await {
+                                    Ok(true) => {
+                                        let payload = serde_json::json!({
+                                            "type": "message-deleted",
+                                            "id": raw_id,
+                                            "channel": record.channel,
+                                        });
+                                        let chan_sender = get_or_create_channel(&state, &record.channel).await;
+                                        let _ = chan_sender.send(payload.to_string());
+                                    }
+                                    Ok(false) => {
+                                        let msg = serde_json::json!({
+                                            "type": "error",
+                                            "message": "message-not-found",
+                                        })
+                                        .to_string();
+                                        let _ = sender.send(Message::Text(msg)).await;
+                                    }
+                                    Err(error) => {
+                                        error!("failed to delete message {raw_id}: {error}");
+                                        let msg = serde_json::json!({
+                                            "type": "error",
+                                            "message": "message-delete-failed",
+                                        })
+                                        .to_string();
+                                        let _ = sender.send(Message::Text(msg)).await;
+                                    }
+                                }
+                            }
                             "react" => {
                                 let user = match user_name.clone() {
                                     Some(name) => name,
                                     None => {
                                         let msg = serde_json::json!({"type": "error", "message": "not-authenticated"}).to_string();
-                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        let _ = sender.send(Message::Text(msg)).await;
                                         continue;
                                     }
                                 };
 
                                 let Some(message_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
                                     let msg = serde_json::json!({"type": "error", "message": "invalid-message-id"}).to_string();
-                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    let _ = sender.send(Message::Text(msg)).await;
                                     continue;
                                 };
 
                                 let Some(action) = v.get("action").and_then(|a| a.as_str()) else {
                                     let msg = serde_json::json!({"type": "error", "message": "invalid-reaction-action"}).to_string();
-                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    let _ = sender.send(Message::Text(msg)).await;
                                     continue;
                                 };
 
                                 let Some(raw_emoji) = v.get("emoji").and_then(|e| e.as_str()) else {
                                     let msg = serde_json::json!({"type": "error", "message": "invalid-emoji"}).to_string();
-                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    let _ = sender.send(Message::Text(msg)).await;
                                     continue;
                                 };
 
@@ -590,7 +1064,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     || emoji.chars().any(|c| c.is_control() || c.is_whitespace())
                                 {
                                     let msg = serde_json::json!({"type": "error", "message": "invalid-emoji"}).to_string();
-                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    let _ = sender.send(Message::Text(msg)).await;
                                     continue;
                                 }
 
@@ -598,7 +1072,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     Ok(val) => val,
                                     Err(_) => {
                                         let msg = serde_json::json!({"type": "error", "message": "invalid-message-id"}).to_string();
-                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        let _ = sender.send(Message::Text(msg)).await;
                                         continue;
                                     }
                                 };
@@ -607,13 +1081,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     Ok(Some(ch)) => ch,
                                     Ok(None) => {
                                         let msg = serde_json::json!({"type": "error", "message": "message-not-found"}).to_string();
-                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        let _ = sender.send(Message::Text(msg)).await;
                                         continue;
                                     }
                                     Err(e) => {
                                         error!("failed to lookup message channel for reaction: {e}");
                                         let msg = serde_json::json!({"type": "error", "message": "reaction-failed"}).to_string();
-                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        let _ = sender.send(Message::Text(msg)).await;
                                         continue;
                                     }
                                 };
@@ -623,7 +1097,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     "remove" => db::remove_reaction(&state.db, message_id32, &user, emoji).await,
                                     _ => {
                                         let msg = serde_json::json!({"type": "error", "message": "invalid-reaction-action"}).to_string();
-                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        let _ = sender.send(Message::Text(msg)).await;
                                         continue;
                                     }
                                 };
@@ -631,7 +1105,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 if let Err(e) = result {
                                     error!("db reaction error: {e}");
                                     let msg = serde_json::json!({"type": "error", "message": "reaction-failed"}).to_string();
-                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    let _ = sender.send(Message::Text(msg)).await;
                                     continue;
                                 }
 
@@ -652,11 +1126,51 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                 let chan_sender = get_or_create_channel(&state, &target_channel).await;
                                 let _ = chan_sender.send(payload.to_string());
                             }
+                            "status-update" => {
+                                let user = match user_name.clone() {
+                                    Some(name) => name,
+                                    None => {
+                                        let msg = serde_json::json!({
+                                            "type": "error",
+                                            "message": "not-authenticated",
+                                        })
+                                        .to_string();
+                                        let _ = sender.send(Message::Text(msg)).await;
+                                        continue;
+                                    }
+                                };
+
+                                let Some(raw_status) = v.get("status").and_then(|s| s.as_str()) else {
+                                    let msg = serde_json::json!({
+                                        "type": "error",
+                                        "message": "invalid-status",
+                                    })
+                                    .to_string();
+                                    let _ = sender.send(Message::Text(msg)).await;
+                                    continue;
+                                };
+
+                                let Some(status) = normalize_status(raw_status) else {
+                                    let msg = serde_json::json!({
+                                        "type": "error",
+                                        "message": "invalid-status",
+                                    })
+                                    .to_string();
+                                    let _ = sender.send(Message::Text(msg)).await;
+                                    continue;
+                                };
+
+                                {
+                                    let mut statuses = state.statuses.lock().await;
+                                    statuses.insert(user.clone(), status.to_string());
+                                }
+                                broadcast_status(&state, &user, status).await;
+                            }
                             "ping" => {
                                 let id = v.get("id").cloned().unwrap_or(Value::Null);
                                 let msg = serde_json::json!({ "type": "pong", "id": id });
                                 let _ = sender
-                                    .send(Message::Text(msg.to_string().into()))
+                                    .send(Message::Text(msg.to_string()))
                                     .await;
                             }
                             "voice-join" => {
@@ -665,16 +1179,22 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     v.get("channel").and_then(|c| c.as_str()),
                                 ) {
                                     let mut map = state.voice_channels.lock().await;
-                                    for users in map.values_mut() {
-                                        users.remove(u);
+                                    for info in map.values_mut() {
+                                        info.users.remove(u);
                                     }
                                     let new_channel = !map.contains_key(ch);
-                                    let entry = map.entry(ch.to_string()).or_default();
-                                    entry.insert(u.to_string());
-                                    if new_channel {
-                                        broadcast_new_voice_channel(&state, ch).await;
-                                    }
+                                    let entry = map.entry(ch.to_string()).or_insert_with(|| VoiceChannelState {
+                                        users: HashSet::new(),
+                                        quality: DEFAULT_VOICE_QUALITY.to_string(),
+                                        bitrate: Some(DEFAULT_VOICE_BITRATE),
+                                    });
+                                    entry.users.insert(u.to_string());
                                     voice_channel = Some(ch.to_string());
+                                    let descriptor = entry.clone();
+                                    drop(map);
+                                    if new_channel {
+                                        broadcast_new_voice_channel(&state, ch, &descriptor).await;
+                                    }
                                 }
                                 if let Some(ch) = v.get("channel").and_then(|c| c.as_str()) {
                                     broadcast_voice(&state, ch).await;
@@ -687,8 +1207,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                                     v.get("channel").and_then(|c| c.as_str()),
                                 ) {
                                     let mut map = state.voice_channels.lock().await;
-                                    if let Some(set) = map.get_mut(ch) {
-                                        set.remove(u);
+                                    if let Some(info) = map.get_mut(ch) {
+                                        info.users.remove(u);
                                     }
                                     drop(map);
                                     broadcast_voice(&state, ch).await;
@@ -713,7 +1233,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             result = chan_rx.recv() => {
                 match result {
                     Ok(msg) => {
-                        if sender.send(Message::Text(msg.into())).await.is_err() { break; }
+                        if sender.send(Message::Text(msg)).await.is_err() { break; }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(_) => break,
@@ -722,7 +1242,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
             result = global_rx.recv() => {
                 match result {
                     Ok(msg) => {
-                        if sender.send(Message::Text(msg.into())).await.is_err() { break; }
+                        if sender.send(Message::Text(msg)).await.is_err() { break; }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(_) => break,
@@ -738,8 +1258,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         broadcast_users(&state).await;
         let mut map = state.voice_channels.lock().await;
         let mut ch_to_broadcast = None;
-        for (ch, users) in map.iter_mut() {
-            if users.remove(&name) {
+        for (ch, info) in map.iter_mut() {
+            if info.users.remove(&name) {
                 ch_to_broadcast = Some(ch.clone());
                 break;
             }
@@ -750,15 +1270,22 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
         }
         // Keep role and key mappings so clients can display roles
         // even when the user is offline.
+        {
+            let mut statuses = state.statuses.lock().await;
+            statuses.insert(name.clone(), "offline".to_string());
+        }
+        broadcast_status(&state, &name, "offline").await;
     }
-    info!("Client disconnected");
+    info!(%client_ip, "Client disconnected");
 }
 
 /// Axum handler that upgrades the HTTP connection to a WebSocket and
 /// spawns [`handle_socket`] for message processing.
+#[instrument(skip(ws, state), fields(client_addr = %addr))]
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
+    ws.on_upgrade(move |socket| handle_socket(socket, state, addr))
 }

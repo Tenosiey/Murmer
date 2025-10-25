@@ -1,44 +1,43 @@
 # Murmer Client Guide
 
-This directory contains the Tauri/SvelteKit desktop client for the Murmer chat application.
+The desktop client is built with **SvelteKit 2** and ships inside a **Tauri 2**
+shell. This document outlines the most common workflows for contributors.
 
-## Architecture Overview
-- **Frontend**: SvelteKit 2.x with TypeScript for the web interface
-- **Desktop Shell**: Tauri 2.x for native desktop integration
-- **State Management**: Svelte stores for reactive state management
-- **Communication**: WebSocket connection to the Rust server
-- **Cryptography**: Ed25519 signatures for authentication (using tweetnacl)
-- **UI**: Markdown support for rich text with DOMPurify sanitization
+## Development commands
+- `npm install` – install/update dependencies and refresh `package-lock.json`
+- `npm run dev` – run the Svelte dev server with hot module reloading
+- `npm run tauri dev` – launch the desktop shell backed by the dev server
+- `npm run build` – produce static assets consumed by Tauri
+- `npm run tauri build` – package installers/bundles for distribution
+- `npm run check` – TypeScript + Svelte diagnostics (run before committing)
 
-## Setup
-1. Run `npm install` to install dependencies
-2. Launch the app with `npm run tauri dev` for development
-3. Build for production with `npm run tauri build`
+The Tauri configuration in `src-tauri/tauri.conf.json` invokes `npm run dev`
+when you start the shell in development mode.
 
-The Tauri configuration in `src-tauri/tauri.conf.json` runs `npm run dev` during development.
+## Code organisation
+- `src/routes/` – SvelteKit pages (login, server selection, chat)
+- `src/lib/components/` – reusable UI primitives
+- `src/lib/stores/` – Svelte stores holding client state
+- `src/lib/voice/` – WebRTC helpers and push-to-talk tooling
+- `src-tauri/` – Rust-side glue for native integrations
 
-## Security Notes
-- Private keys are stored in localStorage (consider more secure storage for production)
-- WebSocket messages should be validated before processing
-- Markdown rendering uses DOMPurify but should be regularly updated
-- Content Security Policy should be configured in production
+Document complex components with HTML comments at the top of the file and prefer
+small, composable Svelte components. Re-export shared utilities from
+`src/lib/index.ts` if they need to be consumed in multiple places.
 
-## File Structure
-- `src/routes/` - SvelteKit pages (login, chat, servers)
-- `src/lib/components/` - Reusable Svelte components
-- `src/lib/stores/` - Reactive state management
-- `src/lib/voice/` - WebRTC voice chat implementation
-- `src-tauri/` - Rust code for desktop integration
+## Security considerations
+- Key pairs are stored in `localStorage`; treat this as acceptable for the
+  prototype but evaluate more secure storage for production.
+- Always validate server responses before mutating client state.
+- DOMPurify sanitises Markdown output – keep the dependency up to date.
+- Avoid `{@html ...}` unless the content is sanitised explicitly.
 
-## Development Guidelines
-- Use TypeScript for all new code
-- Validate all user inputs and server responses
-- Follow Svelte best practices for reactive programming
-- Test WebSocket reconnection and error scenarios
+## Rust (Tauri) side
+The native shell lives in `src-tauri/`. Run `cargo check` there after making
+changes. Keep the Rust code minimal – prefer implementing features in Svelte
+unless native APIs are required.
 
-## Validation
-- Run `npm run check` to perform Svelte and TypeScript checks
-- The Rust code in `src-tauri` should compile successfully with `cargo check`
-- Test the built application on the target platforms
-- Verify WebSocket connectivity and authentication flows
-- There are no automated tests yet - this should be added for production use
+## QA checklist
+- Run `npm run check` before submitting changes.
+- Exercise the reconnect flow and authentication failure cases manually.
+- Verify that push-to-talk works with the configured keybinding on Windows.

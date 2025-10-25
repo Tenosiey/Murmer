@@ -27,3 +27,11 @@ export interface RoleInfo {
   role: string;
   color?: string;
 }
+
+export type UserStatus = 'online' | 'away' | 'busy' | 'offline';
+
+export interface VoiceChannelInfo {
+  name: string;
+  quality: string;
+  bitrate: number | null;
+}
