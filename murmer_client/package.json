@@ -19,7 +19,7 @@
     "cookie": "^0.7.0"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/api": "^2.9.0",
     "@tauri-apps/plugin-notification": "^2.3.1",
     "@tauri-apps/plugin-opener": "^2.5.0",
     "@tauri-apps/plugin-window-state": "^2.4.0",
