@@ -2,5 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    murmer_client_lib::run()
+    if let Err(error) = murmer_client_lib::run() {
+        eprintln!("failed to launch Murmer client: {error}");
+        std::process::exit(1);
+    }
 }

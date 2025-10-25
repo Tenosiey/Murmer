@@ -29,7 +29,7 @@ pub async fn init(db_url: &str) -> Result<Client, tokio_postgres::Error> {
 
     tokio::spawn(async move {
         if let Err(e) = connection.await {
-            eprintln!("db connection error: {e}");
+            tracing::error!("db connection error: {e}");
         }
     });
 
@@ -151,19 +151,18 @@ pub async fn send_history(
             for (id, content) in rows.into_iter().rev() {
                 if let Ok(mut val) = serde_json::from_str::<Value>(&content) {
                     val["id"] = Value::from(id);
-                    if let Ok(id32) = i32::try_from(id) {
-                        if let Some(reactions) = reaction_map.get(&id32) {
-                            if let Ok(value) = serde_json::to_value(reactions) {
-                                val["reactions"] = value;
-                            }
-                        }
+                    if let Ok(id32) = i32::try_from(id)
+                        && let Some(reactions) = reaction_map.get(&id32)
+                        && let Ok(value) = serde_json::to_value(reactions)
+                    {
+                        val["reactions"] = value;
                     }
                     msgs.push(val);
                 }
             }
             if !msgs.is_empty() {
                 let payload = serde_json::json!({"type": "history", "messages": msgs});
-                let _ = sender.send(Message::Text(payload.to_string().into())).await;
+                let _ = sender.send(Message::Text(payload.to_string())).await;
             }
         }
         Err(e) => error!("db history error: {e}"),
