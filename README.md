@@ -21,14 +21,23 @@ small team can deploy a private chat space quickly.
 - `docker-compose.yml` – boots the server together with PostgreSQL
 - `CONTRIBUTING.md`, `AGENTS.md` – workflow notes for contributors
 
+## Requirements
+- [Rust](https://www.rust-lang.org/tools/install) 1.89 (managed automatically via `rust-toolchain.toml`)
+- [Node.js](https://nodejs.org) 22 or newer
+- Docker and Docker Compose (for container-based workflows)
+
+Copy `.env.example` to `.env` and adjust values before running the stack locally. The server expects a PostgreSQL instance; the
+provided Compose stack provisions one automatically.
+
 ## Quick start (Docker)
 1. Install Docker and Docker Compose.
-2. From the repository root run:
+2. Copy `.env.example` to `.env` and update values as needed.
+3. From the repository root run:
    ```bash
    docker compose up --build
    ```
-3. The server listens on `http://localhost:3001` (WebSocket at `/ws`).
-4. Launch the client locally:
+4. The server listens on `http://localhost:3001` (WebSocket at `/ws`).
+5. Launch the client locally:
    ```bash
    cd murmer_client
    npm install
@@ -56,12 +65,28 @@ cargo check          # compile-time checks
 cargo fmt            # format Rust code
 ```
 
+## Quality checks
+Run the following commands before opening a pull request to ensure code style, tests and security audits stay green:
+
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
+cargo audit
+
+cd murmer_client
+npm run check
+npm audit
+```
+
 Environment variables recognised by the server:
 - `DATABASE_URL` (required) – PostgreSQL connection string
 - `UPLOAD_DIR` – directory for stored uploads (defaults to `uploads/`)
 - `SERVER_PASSWORD` – optional shared secret required during presence/auth
 - `ADMIN_TOKEN` – enables the administrative `/role` endpoint
-- `ENABLE_CORS` – set during development to enable permissive CORS headers
+- `BIND_ADDRESS` – override the socket address (defaults to `0.0.0.0:3001`)
+- `CORS_ALLOW_ORIGINS` – comma-separated list of origins allowed to call HTTP endpoints (omit in production)
+- `MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`, `NONCE_EXPIRY_SECONDS` – tweak rate limiter thresholds
 
 When `ADMIN_TOKEN` is configured only users with the roles `Admin`, `Mod` or
 `Owner` may create or delete text/voice channels. Without an admin token the

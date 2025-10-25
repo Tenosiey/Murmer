@@ -35,14 +35,17 @@ use axum::{
 };
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
-use ed25519_dalek::{PublicKey, Signature, Verifier};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use futures::{SinkExt, StreamExt, stream::SplitSink};
 use serde_json::{Map, Value};
-use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryInto,
+};
 use tokio::sync::broadcast;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, instrument};
 
 use crate::{
     AppState, VoiceChannelState, db,
@@ -179,10 +182,9 @@ async fn send_all_roles(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket,
             "user": user,
             "role": info.role,
             "color": info.color,
-        })) {
-            if sender.send(Message::Text(msg)).await.is_err() {
-                break;
-            }
+        })) && sender.send(Message::Text(msg)).await.is_err()
+        {
+            break;
         }
     }
 }
@@ -241,10 +243,9 @@ async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket,
             "type": "voice-users",
             "channel": chan,
             "users": info.users.into_iter().collect::<Vec<_>>(),
-        })) {
-            if sender.send(Message::Text(msg)).await.is_err() {
-                break;
-            }
+        })) && sender.send(Message::Text(msg)).await.is_err()
+        {
+            break;
         }
     }
 }
@@ -377,7 +378,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                         }
                         if !authenticated && t != "presence" {
                             let _ = sender
-                                .send(Message::Text("{\"type\":\"error\",\"message\":\"unauthenticated\"}".into()))
+                                .send(Message::Text("{\"type\":\"error\",\"message\":\"unauthenticated\"}".to_string()))
                                 .await;
                             break;
                         }
@@ -388,7 +389,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                         let provided = v.get("password").and_then(|p| p.as_str());
                                         if provided != Some(required) {
                                             let _ = sender
-                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-password\"}".into()))
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-password\"}".to_string()))
                                                 .await;
                                             break;
                                         }
@@ -401,7 +402,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                         // SECURITY: Rate limit authentication attempts to prevent brute force attacks
                                         if !security::check_auth_rate_limit(&state.rate_limiter, &client_ip).await {
                                             let _ = sender
-                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"auth-rate-limit\"}".into()))
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"auth-rate-limit\"}".to_string()))
                                                 .await;
                                             break;
                                         }
@@ -413,7 +414,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                             Err(err) => {
                                                 error!("Authentication failed - {}: {}", err, ts);
                                                 let _ = sender
-                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-timestamp\"}".into()))
+                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-timestamp\"}".to_string()))
                                                     .await;
                                                 break;
                                             }
@@ -424,7 +425,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                         let nonce = format!("{}:{}", pk, timestamp);
                                         if !security::check_and_store_nonce(&state.rate_limiter, &nonce).await {
                                             let _ = sender
-                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"replay-attack\"}".into()))
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"replay-attack\"}".to_string()))
                                                 .await;
                                             break;
                                         }
@@ -433,34 +434,32 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                             general_purpose::STANDARD.decode(pk),
                                             general_purpose::STANDARD.decode(sig),
                                         ) {
-                                            if pk_bytes.len() == 32 {
-                                                match PublicKey::from_bytes(&pk_bytes[..32]) {
-                                                    Ok(key) => {
-                                                        match Signature::from_bytes(&sig_bytes) {
-                                                            Ok(signature) => {
-                                                                if key.verify(ts.as_bytes(), &signature).is_ok() {
-                                                                    authenticated = true;
-                                                                } else {
-                                                                    error!("Authentication failed - signature verification failed for key: {}", pk);
-                                                                    let _ = sender
-                                                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature\"}".into()))
-                                                                        .await;
-                                                                    break;
-                                                                }
-                                                            }
-                                                            Err(e) => {
-                                                                error!("Authentication failed - invalid signature format: {}", e);
+                                            if let Ok(pk_array) = pk_bytes.as_slice().try_into() {
+                                                match VerifyingKey::from_bytes(&pk_array) {
+                                                    Ok(key) => match Signature::from_slice(&sig_bytes) {
+                                                        Ok(signature) => {
+                                                            if key.verify(ts.as_bytes(), &signature).is_ok() {
+                                                                authenticated = true;
+                                                            } else {
+                                                                error!("Authentication failed - signature verification failed for key: {}", pk);
                                                                 let _ = sender
-                                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature-format\"}".into()))
+                                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature\"}".to_string()))
                                                                     .await;
                                                                 break;
                                                             }
                                                         }
-                                                    }
+                                                        Err(e) => {
+                                                            error!("Authentication failed - invalid signature format: {}", e);
+                                                            let _ = sender
+                                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature-format\"}".to_string()))
+                                                                .await;
+                                                            break;
+                                                        }
+                                                    },
                                                     Err(e) => {
                                                         error!("Authentication failed - invalid public key: {}", e);
                                                         let _ = sender
-                                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-public-key\"}".into()))
+                                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-public-key\"}".to_string()))
                                                             .await;
                                                         break;
                                                     }
@@ -468,14 +467,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                             } else {
                                                 error!("Authentication failed - public key wrong length: {}", pk_bytes.len());
                                                 let _ = sender
-                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-key-length\"}".into()))
+                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-key-length\"}".to_string()))
                                                     .await;
                                                 break;
                                             }
                                         } else {
                                             error!("Authentication failed - invalid base64 encoding");
                                             let _ = sender
-                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-encoding\"}".into()))
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-encoding\"}".to_string()))
                                                 .await;
                                             break;
                                         }
@@ -487,7 +486,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                         if !security::validate_user_name(u) {
                                             error!("Invalid user name: {}", u);
                                             let _ = sender
-                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-username\"}".into()))
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-username\"}".to_string()))
                                                 .await;
                                             break;
                                         }
@@ -530,7 +529,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     }
                                 } else {
                                     let _ = sender
-                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature\"}".into()))
+                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-signature\"}".to_string()))
                                         .await;
                                     break;
                                 }
@@ -561,7 +560,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     if !security::validate_channel_name(ch) {
                                         error!("Invalid channel name: {}", ch);
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".to_string()))
                                             .await;
                                         continue;
                                     }
@@ -571,7 +570,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     } else {
                                         error!("create-channel requested before presence was fully processed");
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
                                             .await;
                                         continue;
                                     };
@@ -579,7 +578,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     if !can_manage_channels(&state, requester).await {
                                         error!("User {requester} attempted to create channel without permission");
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
                                             .await;
                                         continue;
                                     }
@@ -587,7 +586,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     if let Err(e) = db::add_channel(&state.db, ch).await {
                                         error!("db add channel error: {e}");
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-creation-failed\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-creation-failed\"}".to_string()))
                                             .await;
                                     } else {
                                         get_or_create_channel(&state, ch).await;
@@ -601,7 +600,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     if !security::validate_channel_name(ch) {
                                         error!("Invalid channel name for deletion: {}", ch);
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".to_string()))
                                             .await;
                                         continue;
                                     }
@@ -609,7 +608,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     // Prevent deletion of general channel
                                     if ch == "general" {
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"cannot-delete-general\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"cannot-delete-general\"}".to_string()))
                                             .await;
                                         continue;
                                     }
@@ -619,7 +618,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     } else {
                                         error!("delete-channel requested before presence was fully processed");
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
                                             .await;
                                         continue;
                                     };
@@ -627,7 +626,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     if !can_manage_channels(&state, requester).await {
                                         error!("User {requester} attempted to delete channel without permission");
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
                                             .await;
                                         continue;
                                     }
@@ -635,7 +634,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     if let Err(e) = db::remove_channel(&state.db, ch).await {
                                         error!("db remove channel error: {e}");
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-deletion-failed\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-deletion-failed\"}".to_string()))
                                             .await;
                                     } else {
                                         {
@@ -656,7 +655,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     if !security::validate_channel_name(ch) {
                                         error!("Invalid voice channel name: {}", ch);
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".to_string()))
                                             .await;
                                         continue;
                                     }
@@ -666,7 +665,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     } else {
                                         error!("create-voice-channel requested before presence was fully processed");
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
                                             .await;
                                         continue;
                                     };
@@ -674,7 +673,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     if !can_manage_channels(&state, requester).await {
                                         error!("User {requester} attempted to create voice channel without permission");
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
                                             .await;
                                         continue;
                                     }
@@ -688,7 +687,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                         .unwrap_or_else(|| DEFAULT_VOICE_QUALITY.to_string());
                                     if !validate_voice_quality(&quality_value) {
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-quality\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-quality\"}".to_string()))
                                             .await;
                                         continue;
                                     }
@@ -699,7 +698,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                             Some(valid) => Some(valid),
                                             None => {
                                                 let _ = sender
-                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-bitrate\"}".into()))
+                                                    .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-bitrate\"}".to_string()))
                                                     .await;
                                                 continue;
                                             }
@@ -727,7 +726,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     if !security::validate_channel_name(ch) {
                                         error!("Invalid voice channel name for update: {}", ch);
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".to_string()))
                                             .await;
                                         continue;
                                     }
@@ -737,7 +736,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     } else {
                                         error!("update-voice-channel requested before presence was fully processed");
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
                                             .await;
                                         continue;
                                     };
@@ -745,7 +744,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     if !can_manage_channels(&state, requester).await {
                                         error!("User {requester} attempted to update voice channel without permission");
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
                                             .await;
                                         continue;
                                     }
@@ -756,7 +755,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                         let trimmed = raw.trim();
                                         if !validate_voice_quality(trimmed) {
                                             let _ = sender
-                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-quality\"}".into()))
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-quality\"}".to_string()))
                                                 .await;
                                             continue;
                                         }
@@ -773,7 +772,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                                 Some(valid) => Some(Some(valid)),
                                                 None => {
                                                     let _ = sender
-                                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-bitrate\"}".into()))
+                                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-voice-bitrate\"}".to_string()))
                                                         .await;
                                                     continue;
                                                 }
@@ -786,7 +785,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     let current = state.voice_channels.lock().await;
                                     let Some(existing) = current.get(ch).cloned() else {
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"unknown-voice-channel\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"unknown-voice-channel\"}".to_string()))
                                             .await;
                                         continue;
                                     };
@@ -824,13 +823,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                         }
                                         Ok(false) => {
                                             let _ = sender
-                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"unknown-voice-channel\"}".into()))
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"unknown-voice-channel\"}".to_string()))
                                                 .await;
                                         }
                                         Err(e) => {
                                             error!("Failed to update voice channel {ch}: {e}");
                                             let _ = sender
-                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"voice-channel-update-failed\"}".into()))
+                                                .send(Message::Text("{\"type\":\"error\",\"message\":\"voice-channel-update-failed\"}".to_string()))
                                                 .await;
                                         }
                                     }
@@ -841,7 +840,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     if !security::validate_channel_name(ch) {
                                         error!("Invalid voice channel name for deletion: {}", ch);
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"invalid-channel-name\"}".to_string()))
                                             .await;
                                         continue;
                                     }
@@ -851,7 +850,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     } else {
                                         error!("delete-voice-channel requested before presence was fully processed");
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
                                             .await;
                                         continue;
                                     };
@@ -859,7 +858,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     if !can_manage_channels(&state, requester).await {
                                         error!("User {requester} attempted to delete voice channel without permission");
                                         let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".into()))
+                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"channel-permission-denied\"}".to_string()))
                                             .await;
                                         continue;
                                     }
@@ -876,21 +875,21 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                             }
                             "chat" => {
                                 // Rate limit messages
-                                if let Some(ref user) = user_name {
-                                    if !security::check_message_rate_limit(&state.rate_limiter, user).await {
-                                        let _ = sender
-                                            .send(Message::Text("{\"type\":\"error\",\"message\":\"message-rate-limit\"}".into()))
-                                            .await;
-                                        continue;
-                                    }
+                                if let Some(ref user) = user_name
+                                    && !security::check_message_rate_limit(&state.rate_limiter, user).await
+                                {
+                                    let _ = sender
+                                        .send(Message::Text("{\"type\":\"error\",\"message\":\"message-rate-limit\"}".to_string()))
+                                        .await;
+                                    continue;
                                 }
 
                                 v["channel"] = Value::String(channel.clone());
                                 let timestamp = sanitize_message_timestamp(&mut v);
-                                if !v.get("reactions").is_some() {
+                                if v.get("reactions").is_none() {
                                     v["reactions"] = Value::Object(Map::new());
                                 }
-                                if !v.get("time").and_then(|t| t.as_str()).is_some() {
+                                if v.get("time").and_then(|t| t.as_str()).is_none() {
                                     v["time"] = Value::String(timestamp.format("%H:%M:%S").to_string());
                                 }
                                 let out = serde_json::to_string(&v).unwrap_or_else(|_| text.to_string());
@@ -916,26 +915,26 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     Some(name) => name,
                                     None => {
                                         let msg = serde_json::json!({"type": "error", "message": "not-authenticated"}).to_string();
-                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        let _ = sender.send(Message::Text(msg)).await;
                                         continue;
                                     }
                                 };
 
                                 let Some(message_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
                                     let msg = serde_json::json!({"type": "error", "message": "invalid-message-id"}).to_string();
-                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    let _ = sender.send(Message::Text(msg)).await;
                                     continue;
                                 };
 
                                 let Some(action) = v.get("action").and_then(|a| a.as_str()) else {
                                     let msg = serde_json::json!({"type": "error", "message": "invalid-reaction-action"}).to_string();
-                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    let _ = sender.send(Message::Text(msg)).await;
                                     continue;
                                 };
 
                                 let Some(raw_emoji) = v.get("emoji").and_then(|e| e.as_str()) else {
                                     let msg = serde_json::json!({"type": "error", "message": "invalid-emoji"}).to_string();
-                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    let _ = sender.send(Message::Text(msg)).await;
                                     continue;
                                 };
 
@@ -945,7 +944,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     || emoji.chars().any(|c| c.is_control() || c.is_whitespace())
                                 {
                                     let msg = serde_json::json!({"type": "error", "message": "invalid-emoji"}).to_string();
-                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    let _ = sender.send(Message::Text(msg)).await;
                                     continue;
                                 }
 
@@ -953,7 +952,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     Ok(val) => val,
                                     Err(_) => {
                                         let msg = serde_json::json!({"type": "error", "message": "invalid-message-id"}).to_string();
-                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        let _ = sender.send(Message::Text(msg)).await;
                                         continue;
                                     }
                                 };
@@ -962,13 +961,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     Ok(Some(ch)) => ch,
                                     Ok(None) => {
                                         let msg = serde_json::json!({"type": "error", "message": "message-not-found"}).to_string();
-                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        let _ = sender.send(Message::Text(msg)).await;
                                         continue;
                                     }
                                     Err(e) => {
                                         error!("failed to lookup message channel for reaction: {e}");
                                         let msg = serde_json::json!({"type": "error", "message": "reaction-failed"}).to_string();
-                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        let _ = sender.send(Message::Text(msg)).await;
                                         continue;
                                     }
                                 };
@@ -978,7 +977,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     "remove" => db::remove_reaction(&state.db, message_id32, &user, emoji).await,
                                     _ => {
                                         let msg = serde_json::json!({"type": "error", "message": "invalid-reaction-action"}).to_string();
-                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        let _ = sender.send(Message::Text(msg)).await;
                                         continue;
                                     }
                                 };
@@ -986,7 +985,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                 if let Err(e) = result {
                                     error!("db reaction error: {e}");
                                     let msg = serde_json::json!({"type": "error", "message": "reaction-failed"}).to_string();
-                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    let _ = sender.send(Message::Text(msg)).await;
                                     continue;
                                 }
 
@@ -1016,7 +1015,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                             "message": "not-authenticated",
                                         })
                                         .to_string();
-                                        let _ = sender.send(Message::Text(msg.into())).await;
+                                        let _ = sender.send(Message::Text(msg)).await;
                                         continue;
                                     }
                                 };
@@ -1027,7 +1026,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                         "message": "invalid-status",
                                     })
                                     .to_string();
-                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    let _ = sender.send(Message::Text(msg)).await;
                                     continue;
                                 };
 
@@ -1037,7 +1036,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                         "message": "invalid-status",
                                     })
                                     .to_string();
-                                    let _ = sender.send(Message::Text(msg.into())).await;
+                                    let _ = sender.send(Message::Text(msg)).await;
                                     continue;
                                 };
 
@@ -1051,7 +1050,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                 let id = v.get("id").cloned().unwrap_or(Value::Null);
                                 let msg = serde_json::json!({ "type": "pong", "id": id });
                                 let _ = sender
-                                    .send(Message::Text(msg.to_string().into()))
+                                    .send(Message::Text(msg.to_string()))
                                     .await;
                             }
                             "voice-join" => {
@@ -1114,7 +1113,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
             result = chan_rx.recv() => {
                 match result {
                     Ok(msg) => {
-                        if sender.send(Message::Text(msg.into())).await.is_err() { break; }
+                        if sender.send(Message::Text(msg)).await.is_err() { break; }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(_) => break,
@@ -1123,7 +1122,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
             result = global_rx.recv() => {
                 match result {
                     Ok(msg) => {
-                        if sender.send(Message::Text(msg.into())).await.is_err() { break; }
+                        if sender.send(Message::Text(msg)).await.is_err() { break; }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(_) => break,
@@ -1162,6 +1161,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
 
 /// Axum handler that upgrades the HTTP connection to a WebSocket and
 /// spawns [`handle_socket`] for message processing.
+#[instrument(skip(ws, state), fields(client_addr = %addr))]
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,

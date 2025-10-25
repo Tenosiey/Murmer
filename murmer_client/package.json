@@ -12,6 +12,12 @@
     "tauri": "tauri"
   },
   "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "overrides": {
+    "cookie": "^0.7.0"
+  },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",
     "@tauri-apps/plugin-notification": "^2.3.1",
@@ -31,7 +37,7 @@
     "svelte": "^5.39.6",
     "svelte-check": "^4.3.2",
     "typescript": "~5.9.2",
-    "vite": "^7.1.7",
+    "vite": "^7.1.11",
     "vite-plugin-devtools-json": "^1.0.0"
   }
 }
