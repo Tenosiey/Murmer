@@ -16,7 +16,7 @@ Use the checkboxes to track progress.
 - [ ] Channel permissions and moderation
 - [x] Code syntax highlighting
 - [ ] Direct messages between users
-- [ ] Enable deleting messages
+- [x] Enable deleting messages
 - [ ] Ephemeral messages that auto-delete
 - [ ] File sharing beyond images
 - [x] Keyboard shortcuts
@@ -24,8 +24,8 @@ Use the checkboxes to track progress.
 - [ ] Message history persistence
 - [ ] Message threading/replies
 - [x] Message timestamps
-- [ ] Notification settings per channel
-- [ ] Pin important messages in a channel
+- [x] Notification settings per channel
+- [x] Pin important messages in a channel
 - [ ] Search chat history
 - [ ] Slash commands for quick actions
 - [x] Support Markdown formatting in text chat

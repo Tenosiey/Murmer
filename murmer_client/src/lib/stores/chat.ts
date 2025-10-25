@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import type { Message } from '../types';
 import { session } from './session';
 import { notify } from '../notify';
+import { channelNotifications } from './channelNotifications';
 
 function createChatStore() {
   const { subscribe, update, set } = writable<Message[]>([]);
@@ -103,15 +104,22 @@ function createChatStore() {
           update((m) => [...m, prepared]);
           const current = get(session).user;
           if (!current || prepared.user !== current) {
+            const channelName = prepared.channel ?? 'general';
+            const preferences = get(channelNotifications);
+            const preference = preferences[channelName] ?? 'all';
             const mention = current ? containsMention(prepared.text, current) : false;
             const trimmedText = (prepared.text ?? '').trim();
-            if (mention) {
-              const body = trimmedText.length > 0 ? trimmedText : `${prepared.user ?? 'Someone'} mentioned you`;
-              notify(`Mention from ${prepared.user ?? 'Unknown user'}`, body);
-            } else {
-              const sender = prepared.user ?? 'Unknown user';
-              const body = trimmedText.length > 0 ? trimmedText : 'sent a message';
-              notify('New message', `${sender}: ${body}`);
+            const shouldNotify =
+              preference === 'all' ? true : preference === 'mentions' ? mention : false;
+            if (shouldNotify) {
+              if (mention) {
+                const body = trimmedText.length > 0 ? trimmedText : `${prepared.user ?? 'Someone'} mentioned you`;
+                notify(`Mention from ${prepared.user ?? 'Unknown user'}`, body);
+              } else {
+                const sender = prepared.user ?? 'Unknown user';
+                const body = trimmedText.length > 0 ? trimmedText : 'sent a message';
+                notify('New message', `${sender}: ${body}`);
+              }
             }
           }
         } else if (msg.type === 'history') {
@@ -130,6 +138,14 @@ function createChatStore() {
           }
           if (handlers['reaction-update']) {
             for (const handler of handlers['reaction-update']) handler(msg);
+          }
+        } else if (msg.type === 'message-deleted') {
+          const messageId = (msg.id as number | undefined) ?? (msg.messageId as number | undefined);
+          if (typeof messageId === 'number') {
+            update((messages) => messages.filter((m) => m.id !== messageId));
+          }
+          if (handlers['message-deleted']) {
+            for (const handler of handlers['message-deleted']) handler(msg);
           }
         } else if (msg.type && handlers[msg.type]) {
           for (const handler of handlers[msg.type]) {
@@ -191,7 +207,27 @@ function createChatStore() {
     set([]); // clear chat history on disconnect
   }
 
-  return { subscribe, connect, send, sendRaw, loadHistory, react, on, off, disconnect, clear: () => set([]) };
+  function deleteMessage(messageId: number) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (typeof messageId !== 'number' || Number.isNaN(messageId)) return;
+    const payload = { type: 'delete-message', messageId };
+    if (import.meta.env.DEV) console.log('Sending:', payload);
+    socket.send(JSON.stringify(payload));
+  }
+
+  return {
+    subscribe,
+    connect,
+    send,
+    sendRaw,
+    loadHistory,
+    react,
+    delete: deleteMessage,
+    on,
+    off,
+    disconnect,
+    clear: () => set([])
+  };
 }
 
 export const chat = createChatStore();
