@@ -43,6 +43,7 @@
   let message = '';
   let fileInput: HTMLInputElement;
   let messageInput: HTMLTextAreaElement;
+  let inputScrollable = false;
   let previewUrl: string | null = null;
   let menuOpen = false;
   let menuX = 0;
@@ -56,6 +57,7 @@
   let statusMenuButton: HTMLButtonElement | null = null;
   let statusMenuElement: HTMLDivElement | null = null;
   let statusMap: Record<string, UserStatus> = {};
+  const MESSAGE_INPUT_MAX_HEIGHT = 360;
 
   const VOICE_QUALITY_PRESETS: Array<{ quality: string; bitrate: number | null; label: string }> = [
     { quality: 'low', bitrate: 32_000, label: 'Low' },
@@ -158,8 +160,11 @@
   function autoResize() {
     if (messageInput) {
       messageInput.style.height = 'auto';
-      const h = Math.min(messageInput.scrollHeight, 400);
+      const h = Math.min(messageInput.scrollHeight, MESSAGE_INPUT_MAX_HEIGHT);
       messageInput.style.height = h + 'px';
+      inputScrollable = messageInput.scrollHeight > h;
+    } else {
+      inputScrollable = false;
     }
   }
 
@@ -1207,6 +1212,7 @@
       </div>
       <div class="input-row">
         <textarea
+          class:scrollable={inputScrollable}
           bind:value={message}
           bind:this={messageInput}
           rows="1"
@@ -1458,7 +1464,7 @@
   }
 
   .resizer {
-    width: 10px;
+    width: 6px;
     cursor: col-resize;
     position: relative;
     flex-shrink: 0;
@@ -1473,6 +1479,7 @@
     height: 36px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--color-on-surface) 12%, transparent);
+    transform: translateX(-50%);
   }
 
   .chat {
@@ -1714,7 +1721,6 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    scrollbar-gutter: stable both-edges;
     display: flex;
     flex-direction: column;
     gap: 0.8rem;
@@ -1921,7 +1927,7 @@
     min-height: 3rem;
     max-height: 360px;
     resize: none;
-    overflow-y: auto;
+    overflow-y: hidden;
     overflow-x: hidden;
     border-radius: var(--radius-md);
     border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
@@ -1929,6 +1935,10 @@
     color: var(--color-on-surface);
     padding: 0.85rem 1rem;
     line-height: 1.5;
+  }
+
+  textarea.scrollable {
+    overflow-y: auto;
   }
 
   .controls {
