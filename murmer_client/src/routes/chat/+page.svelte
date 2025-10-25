@@ -88,6 +88,24 @@
   let highlightTimer: ReturnType<typeof setTimeout> | null = null;
   let currentUserCanModerate = false;
 
+  const MIN_EPHEMERAL_SECONDS = 5;
+  const MAX_EPHEMERAL_SECONDS = 86_400;
+
+  let commandFeedback: string | null = null;
+  let commandFeedbackType: 'info' | 'error' = 'info';
+  let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+  let searchOpen = false;
+  let searchQuery = '';
+  let searchResults: Message[] = [];
+  let searchLoading = false;
+  let searchError: string | null = null;
+  let searchPerformed = false;
+  let searchInput: HTMLInputElement | null = null;
+
+  let now = Date.now();
+  let expiryTicker: number | null = null;
+
   const VOICE_QUALITY_PRESETS: Array<{ quality: string; bitrate: number | null; label: string }> = [
     { quality: 'low', bitrate: 32_000, label: 'Low' },
     { quality: 'standard', bitrate: 64_000, label: 'Standard' },
@@ -173,6 +191,111 @@
     }
 
     return blocks;
+  }
+
+  function describeDuration(seconds: number): string {
+    if (seconds < 60) {
+      return `${seconds} ${seconds === 1 ? 'second' : 'seconds'}`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    if (minutes < 60) {
+      if (remainingSeconds === 0) {
+        return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+      }
+      return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ${remainingSeconds} ${
+        remainingSeconds === 1 ? 'second' : 'seconds'
+      }`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (remainingMinutes === 0) {
+      return `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+    }
+    return `${hours} ${hours === 1 ? 'hour' : 'hours'} ${remainingMinutes} ${
+      remainingMinutes === 1 ? 'minute' : 'minutes'
+    }`;
+  }
+
+  function setCommandFeedback(message: string, type: 'info' | 'error' = 'info') {
+    commandFeedback = message;
+    commandFeedbackType = type;
+    if (feedbackTimer) {
+      clearTimeout(feedbackTimer);
+    }
+    feedbackTimer = setTimeout(() => {
+      commandFeedback = null;
+      feedbackTimer = null;
+    }, 4000);
+  }
+
+  function clearCommandFeedback() {
+    if (feedbackTimer) {
+      clearTimeout(feedbackTimer);
+      feedbackTimer = null;
+    }
+    commandFeedback = null;
+    commandFeedbackType = 'info';
+  }
+
+  function formatExpiry(expiresAt?: string): string | null {
+    if (!expiresAt) return null;
+    const parsed = Date.parse(expiresAt);
+    if (Number.isNaN(parsed)) return null;
+    const diff = parsed - now;
+    if (diff <= 0) return 'Expired';
+    const totalSeconds = Math.round(diff / 1000);
+    if (totalSeconds < 60) {
+      return `Expires in ${totalSeconds}s`;
+    }
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes < 60) {
+      return seconds === 0 ? `Expires in ${minutes}m` : `Expires in ${minutes}m ${seconds}s`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (hours < 24) {
+      if (remainingMinutes === 0) return `Expires in ${hours}h`;
+      return `Expires in ${hours}h ${remainingMinutes}m`;
+    }
+    const days = Math.floor(hours / 24);
+    const remainingHours = hours % 24;
+    if (remainingHours === 0) return `Expires in ${days}d`;
+    return `Expires in ${days}d ${remainingHours}h`;
+  }
+
+  function formatExpiryAbsolute(expiresAt?: string): string | null {
+    if (!expiresAt) return null;
+    const parsed = parseTimestampValue(expiresAt);
+    return parsed ? parsed.toLocaleString() : null;
+  }
+
+  function ephemeralInfo(message: Message): { label: string; absolute?: string } | null {
+    const expiresAt = typeof message.expiresAt === 'string' ? message.expiresAt : undefined;
+    const label = formatExpiry(expiresAt);
+    if (!label) return null;
+    const absolute = formatExpiryAbsolute(expiresAt) ?? undefined;
+    return { label, absolute };
+  }
+
+  function searchResultPreview(message: Message): string {
+    if (typeof message.text === 'string' && message.text.trim().length > 0) {
+      const normalized = message.text.trim().replace(/\s+/g, ' ');
+      return normalized.length > 120 ? `${normalized.slice(0, 117)}…` : normalized;
+    }
+    if (typeof message.image === 'string' && message.image.trim().length > 0) {
+      return '[Image]';
+    }
+    return 'Message';
+  }
+
+  function formatSearchTimestamp(message: Message): string {
+    const timestamp = typeof message.timestamp === 'string' ? message.timestamp : undefined;
+    const parsed = parseTimestampValue(timestamp);
+    if (parsed) return parsed.toLocaleString();
+    if (typeof message.time === 'string') return message.time;
+    return '';
   }
 
   function handleFileChange() {
@@ -485,6 +608,9 @@
       return;
     }
     roles.set({});
+    expiryTicker = window.setInterval(() => {
+      now = Date.now();
+    }, 1000);
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
     const entry = servers.get(url);
     chat.connect(url, async () => {
@@ -523,12 +649,29 @@
       clearTimeout(highlightTimer);
       highlightTimer = null;
     }
+    if (feedbackTimer) {
+      clearTimeout(feedbackTimer);
+      feedbackTimer = null;
+    }
+    if (expiryTicker !== null) {
+      window.clearInterval(expiryTicker);
+      expiryTicker = null;
+    }
   });
 
   function sendText() {
-    if (message.trim() === '') return;
+    const trimmed = message.trim();
+    if (trimmed === '') return;
+    if (trimmed.startsWith('/')) {
+      if (handleSlashCommand(trimmed)) {
+        message = '';
+        autoResize();
+        return;
+      }
+    }
     chat.send($session.user ?? 'anon', message);
     message = '';
+    autoResize();
   }
 
   async function sendImage() {
@@ -582,6 +725,188 @@
     if (!file && !hasMessage) return;
     if (file) await sendImage();
     if (hasMessage) sendText();
+  }
+
+  function handleSlashCommand(raw: string): boolean {
+    clearCommandFeedback();
+    const content = raw.slice(1).trim();
+    if (!content) {
+      return true;
+    }
+    const [command] = content.split(/\s+/);
+    const commandName = command.toLowerCase();
+    const rest = content.slice(command.length).trim();
+    const currentUser = get(session).user;
+
+    switch (commandName) {
+      case 'me': {
+        if (!rest) {
+          setCommandFeedback('Usage: /me <action>', 'error');
+          return true;
+        }
+        chat.send(currentUser ?? 'anon', `_${rest}_`);
+        return true;
+      }
+      case 'shrug': {
+        const shrug = '¯\_(ツ)_/¯';
+        const text = rest ? `${rest} ${shrug}` : shrug;
+        chat.send(currentUser ?? 'anon', text);
+        return true;
+      }
+      case 'topic': {
+        channelTopics.setTopic(currentChatChannel, rest);
+        setCommandFeedback(rest ? 'Updated the channel topic.' : 'Cleared the channel topic.');
+        return true;
+      }
+      case 'status': {
+        if (!rest) {
+          setCommandFeedback('Usage: /status <online|away|busy|offline>', 'error');
+          return true;
+        }
+        const normalized = rest.toLowerCase();
+        const match = USER_STATUS_VALUES.find((value) => value === normalized);
+        if (match) {
+          statuses.setSelf(match);
+          setCommandFeedback(`Status set to ${STATUS_LABELS[match]}.`);
+        } else {
+          setCommandFeedback(
+            `Unknown status "${rest}". Options: ${USER_STATUS_VALUES.join(', ')}.`,
+            'error'
+          );
+        }
+        return true;
+      }
+      case 'focus': {
+        const active = get(focusMode);
+        focusMode.set(!active);
+        setCommandFeedback(active ? 'Focus mode disabled.' : 'Focus mode enabled.');
+        return true;
+      }
+      case 'ephemeral':
+      case 'temp': {
+        if (!rest) {
+          setCommandFeedback('Usage: /ephemeral <seconds> <message>', 'error');
+          return true;
+        }
+        const parts = rest.split(/\s+/);
+        const durationPart = parts.shift();
+        const contentText = parts.join(' ').trim();
+        if (!durationPart || contentText === '') {
+          setCommandFeedback('Usage: /ephemeral <seconds> <message>', 'error');
+          return true;
+        }
+        const parsedDuration = Number(durationPart);
+        if (!Number.isFinite(parsedDuration)) {
+          setCommandFeedback('Ephemeral duration must be a number of seconds.', 'error');
+          return true;
+        }
+        let durationSeconds = Math.round(parsedDuration);
+        if (durationSeconds <= 0) {
+          setCommandFeedback('Ephemeral duration must be positive.', 'error');
+          return true;
+        }
+        const belowMinimum = durationSeconds < MIN_EPHEMERAL_SECONDS;
+        const aboveMaximum = durationSeconds > MAX_EPHEMERAL_SECONDS;
+        durationSeconds = Math.min(
+          Math.max(durationSeconds, MIN_EPHEMERAL_SECONDS),
+          MAX_EPHEMERAL_SECONDS
+        );
+        if (!currentUser) {
+          setCommandFeedback('You must be signed in to send messages.', 'error');
+          return true;
+        }
+        const expires = new Date(Date.now() + durationSeconds * 1000);
+        chat.sendEphemeral(currentUser, contentText, expires.toISOString());
+        let feedback = `Ephemeral message will expire in ${describeDuration(durationSeconds)}.`;
+        if (belowMinimum) {
+          feedback += ` Minimum duration is ${describeDuration(MIN_EPHEMERAL_SECONDS)}.`;
+        } else if (aboveMaximum) {
+          feedback += ` Maximum duration is ${describeDuration(MAX_EPHEMERAL_SECONDS)}.`;
+        }
+        setCommandFeedback(feedback.trim());
+        return true;
+      }
+      case 'search': {
+        openSearch(rest);
+        if (rest) {
+          void performSearch();
+        }
+        return true;
+      }
+      default: {
+        setCommandFeedback(`Unknown command: /${commandName}`, 'error');
+        return true;
+      }
+    }
+  }
+
+  function openSearch(initialQuery = '') {
+    clearCommandFeedback();
+    searchOpen = true;
+    searchLoading = false;
+    searchError = null;
+    searchPerformed = false;
+    searchResults = [];
+    searchQuery = initialQuery;
+    tick().then(() => {
+      if (searchInput) {
+        searchInput.focus();
+        if (initialQuery) {
+          searchInput.select();
+        }
+      }
+    });
+  }
+
+  function closeSearch() {
+    searchOpen = false;
+    searchLoading = false;
+    searchError = null;
+    searchPerformed = false;
+    searchResults = [];
+  }
+
+  async function performSearch() {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      searchError = 'Enter a search query.';
+      searchResults = [];
+      searchPerformed = false;
+      return;
+    }
+    searchLoading = true;
+    searchError = null;
+    try {
+      const results = await chat.search(currentChatChannel, trimmed, 50);
+      searchResults = results;
+      searchPerformed = true;
+    } catch (error) {
+      searchError = error instanceof Error ? error.message : 'Search failed.';
+      searchResults = [];
+      searchPerformed = true;
+    } finally {
+      searchLoading = false;
+    }
+  }
+
+  function focusSearchResult(result: Message) {
+    if (typeof result.id !== 'number') return;
+    closeSearch();
+    focusMessage(result.id);
+  }
+
+  function handleSearchKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeSearch();
+    }
+  }
+
+  function handleOverlayKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      closeSearch();
+    }
   }
 
   function joinChannel(ch: string) {
@@ -1336,6 +1661,23 @@
               </div>
             {/if}
           </div>
+          <button class="action-button" on:click={() => openSearch()} title="Search messages">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <line x1="20" y1="20" x2="16.65" y2="16.65" />
+            </svg>
+            <span class="sr-only">Search messages</span>
+          </button>
           <button class="action-button" on:click={openSettings} title="Settings">
             <svg
               width="20"
@@ -1393,6 +1735,64 @@
         </div>
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
+      {#if searchOpen}
+        <div
+          class="search-overlay"
+          role="button"
+          tabindex="0"
+          aria-label="Close search results"
+          on:click={closeSearch}
+          on:keydown={handleOverlayKeydown}
+        >
+          <div
+            class="search-panel"
+            role="dialog"
+            aria-modal="true"
+            tabindex="-1"
+            on:click|stopPropagation
+            on:keydown={handleSearchKeydown}
+          >
+            <form class="search-form" on:submit|preventDefault={performSearch}>
+              <input
+                type="search"
+                placeholder="Search messages"
+                aria-label="Search messages"
+                bind:value={searchQuery}
+                bind:this={searchInput}
+              />
+              <button type="submit" class="search-submit" disabled={searchLoading}>Search</button>
+              <button type="button" class="search-close" on:click={closeSearch}>Close</button>
+            </form>
+            {#if searchError}
+              <p class="search-error">{searchError}</p>
+            {/if}
+            {#if searchLoading}
+              <p class="search-status">Searching…</p>
+            {:else if searchResults.length > 0}
+              <ul class="search-results">
+                {#each searchResults as result (result.id ?? `${result.timestamp ?? ''}-${result.user ?? ''}`)}
+                  <li>
+                    <button type="button" class="search-result" on:click={() => focusSearchResult(result)}>
+                      <span class="search-result-text">{searchResultPreview(result)}</span>
+                      <span class="search-result-meta">
+                        <span class="search-result-user">{result.user ?? 'Unknown'}</span>
+                        <span class="search-result-time">{formatSearchTimestamp(result)}</span>
+                      </span>
+                      {#if result.ephemeral}
+                        {#if ephemeralInfo(result)}
+                          <span class="search-result-ephemeral">{ephemeralInfo(result)?.label}</span>
+                        {/if}
+                      {/if}
+                    </button>
+                  </li>
+                {/each}
+              </ul>
+            {:else if searchPerformed}
+              <p class="search-status">No matches found.</p>
+            {/if}
+          </div>
+        </div>
+      {/if}
       {#if pinnedEntries.length > 0}
         <div class="pinned-bar" role="region" aria-label="Pinned messages">
           <div class="pinned-header">
@@ -1446,20 +1846,30 @@
                 {/if}
                 <div class="content-wrapper">
                   <span class="content">
-                    {#if block.message.text}
-                      {@html renderMarkdown(block.message.text)}
+                  {#if block.message.text}
+                    {@html renderMarkdown(block.message.text)}
+                  {/if}
+                  {#if block.links.length > 0}
+                    <div class="link-previews">
+                      {#each block.links as link (link)}
+                        <LinkPreview url={link} />
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if block.message.image}
+                    <img src={block.message.image as string} alt="" />
+                  {/if}
+                  {#if block.message.ephemeral}
+                    {#if ephemeralInfo(block.message)}
+                      <span
+                        class="ephemeral-badge"
+                        title={ephemeralInfo(block.message)?.absolute ?? undefined}
+                      >
+                        {ephemeralInfo(block.message)?.label}
+                      </span>
                     {/if}
-                    {#if block.links.length > 0}
-                      <div class="link-previews">
-                        {#each block.links as link (link)}
-                          <LinkPreview url={link} />
-                        {/each}
-                      </div>
-                    {/if}
-                    {#if block.message.image}
-                      <img src={block.message.image as string} alt="" />
-                    {/if}
-                  </span>
+                  {/if}
+                </span>
                   {#if typeof block.message.id === 'number' && (canPinMessage(block.message) || canDeleteMessage(block.message))}
                     <div class="message-actions">
                       {#if canPinMessage(block.message)}
@@ -1511,6 +1921,9 @@
         </div>
       </div>
       <div class="input-row">
+        {#if commandFeedback}
+          <div class={`command-feedback ${commandFeedbackType}`}>{commandFeedback}</div>
+        {/if}
         <textarea
           class:scrollable={inputScrollable}
           bind:value={message}
@@ -2107,6 +2520,22 @@
     line-height: 1.65;
   }
 
+  .ephemeral-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: color-mix(in srgb, var(--color-warning) 15%, transparent);
+    color: color-mix(in srgb, var(--color-warning) 80%, var(--color-on-surface) 20%);
+    width: fit-content;
+  }
+
   .message-actions {
     display: inline-flex;
     align-items: center;
@@ -2443,6 +2872,26 @@
     box-shadow: var(--shadow-sm);
   }
 
+  .command-feedback {
+    grid-column: 1 / -1;
+    padding: 0.45rem 0.75rem;
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid color-mix(in srgb, var(--color-success) 25%, transparent);
+    background: color-mix(in srgb, var(--color-success) 12%, transparent);
+    color: color-mix(in srgb, var(--color-success) 80%, var(--color-on-surface) 20%);
+  }
+
+  .command-feedback.error {
+    border-color: color-mix(in srgb, var(--color-error) 32%, transparent);
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
+    color: color-mix(in srgb, var(--color-error) 85%, var(--color-on-surface) 15%);
+  }
+
   textarea {
     width: 100%;
     min-height: 3rem;
@@ -2707,6 +3156,135 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
+  }
+
+  .search-overlay {
+    position: fixed;
+    inset: 0;
+    background: color-mix(in srgb, var(--color-overlay) 85%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(1.5rem, 4vw, 3rem);
+    z-index: 60;
+  }
+
+  .search-panel {
+    width: min(720px, 92vw);
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    background: color-mix(in srgb, var(--color-surface-elevated) 96%, transparent);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-surface-outline);
+    box-shadow: var(--shadow-lg);
+    padding: clamp(1rem, 3vw, 1.75rem);
+  }
+
+  .search-form {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  .search-form input {
+    flex: 1;
+    min-width: 12rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+    background: color-mix(in srgb, var(--color-surface-raised) 92%, transparent);
+    color: var(--color-on-surface);
+  }
+
+  .search-form input:focus {
+    outline: 2px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+    outline-offset: 2px;
+  }
+
+  .search-form button {
+    padding: 0.6rem 0.95rem;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+    color: var(--color-on-surface);
+    transition: background var(--transition), transform var(--transition), opacity var(--transition);
+  }
+
+  .search-form button:not([disabled]):hover {
+    transform: translateY(-1px);
+  }
+
+  .search-form button[disabled] {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .search-form .search-close {
+    background: color-mix(in srgb, var(--color-muted) 16%, transparent);
+    border-color: color-mix(in srgb, var(--color-muted) 24%, transparent);
+  }
+
+  .search-error {
+    color: color-mix(in srgb, var(--color-error) 85%, var(--color-on-surface) 15%);
+    font-weight: 600;
+  }
+
+  .search-status {
+    color: var(--color-muted);
+    font-size: 0.9rem;
+  }
+
+  .search-results {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+
+  .search-result {
+    width: 100%;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 92%, transparent);
+    color: var(--color-on-surface);
+    padding: 0.75rem 0.9rem;
+    transition: border-color var(--transition), transform var(--transition);
+  }
+
+  .search-result:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--color-primary) 32%, transparent);
+  }
+
+  .search-result-text {
+    font-weight: 600;
+  }
+
+  .search-result-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    font-size: 0.8rem;
+    color: var(--color-muted);
+  }
+
+  .search-result-ephemeral {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: color-mix(in srgb, var(--color-warning) 75%, var(--color-on-surface) 25%);
   }
 
   .volume-menu-header {

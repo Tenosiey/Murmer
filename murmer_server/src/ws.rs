@@ -34,7 +34,7 @@ use axum::{
     response::IntoResponse,
 };
 use base64::{Engine as _, engine::general_purpose};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use futures::{SinkExt, StreamExt, stream::SplitSink};
 use serde_json::{Map, Value};
@@ -66,6 +66,9 @@ const MAX_ALLOWED_VOICE_BITRATE: i32 = 320_000;
 
 /// Allowed user status values broadcast to clients.
 const USER_STATUSES: &[&str] = &["online", "away", "busy", "offline"];
+const MIN_EPHEMERAL_SECONDS: i64 = 5;
+const MAX_EPHEMERAL_SECONDS: i64 = 86_400;
+const MAX_SEARCH_RESULTS: i64 = 200;
 
 fn normalize_status(value: &str) -> Option<&'static str> {
     USER_STATUSES
@@ -554,6 +557,127 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
 
                                 db::send_history(&state.db, &mut sender, &channel, before, limit).await;
                             }
+                            "search-history" => {
+                                let request_id = v.get("requestId").cloned().unwrap_or(Value::Null);
+                                let request_id_for_error = request_id.clone();
+
+                                let Some(raw_query) = v.get("query").and_then(|q| q.as_str()) else {
+                                    let payload = serde_json::json!({
+                                        "type": "search-error",
+                                        "message": "missing-query",
+                                        "requestId": request_id_for_error,
+                                    });
+                                    let _ = sender.send(Message::Text(payload.to_string())).await;
+                                    continue;
+                                };
+
+                                let trimmed_query = raw_query.trim();
+                                if trimmed_query.is_empty() {
+                                    let payload = serde_json::json!({
+                                        "type": "search-results",
+                                        "requestId": request_id,
+                                        "channel": channel,
+                                        "messages": [],
+                                    });
+                                    let _ = sender.send(Message::Text(payload.to_string())).await;
+                                    continue;
+                                }
+
+                                let requested_channel = v
+                                    .get("channel")
+                                    .and_then(|c| c.as_str())
+                                    .map(|c| c.trim())
+                                    .filter(|c| !c.is_empty());
+
+                                let channel_to_search = if let Some(ch) = requested_channel {
+                                    if !security::validate_channel_name(ch) {
+                                        let payload = serde_json::json!({
+                                            "type": "search-error",
+                                            "message": "invalid-channel",
+                                            "requestId": request_id_for_error,
+                                        });
+                                        let _ = sender.send(Message::Text(payload.to_string())).await;
+                                        continue;
+                                    }
+                                    ch.to_string()
+                                } else {
+                                    channel.clone()
+                                };
+
+                                let mut limit = v.get("limit").and_then(|l| l.as_i64()).unwrap_or(50);
+                                if limit < 1 {
+                                    limit = 1;
+                                }
+                                if limit > MAX_SEARCH_RESULTS {
+                                    limit = MAX_SEARCH_RESULTS;
+                                }
+
+                                match db::search_messages(&state.db, &channel_to_search, trimmed_query, limit).await {
+                                    Ok(rows) => {
+                                        let mut ids = Vec::new();
+                                        for (id, _) in &rows {
+                                            if let Ok(value) = i32::try_from(*id) {
+                                                ids.push(value);
+                                            }
+                                        }
+
+                                        let reaction_map = if ids.is_empty() {
+                                            HashMap::new()
+                                        } else {
+                                            match db::get_reactions_for_messages(&state.db, &ids).await {
+                                                Ok(map) => map,
+                                                Err(error) => {
+                                                    error!(
+                                                        "Failed to load reactions for search results in {channel_to_search}: {error}"
+                                                    );
+                                                    HashMap::new()
+                                                }
+                                            }
+                                        };
+
+                                        let mut messages = Vec::new();
+                                        for (id, content) in rows {
+                                            if let Ok(mut value) = serde_json::from_str::<Value>(&content) {
+                                                value["id"] = Value::from(id);
+                                                if value.get("channel").and_then(|c| c.as_str()).is_none() {
+                                                    value["channel"] = Value::String(channel_to_search.clone());
+                                                }
+                                                if let Ok(id32) = i32::try_from(id) {
+                                                    if let Some(reactions) = reaction_map.get(&id32) {
+                                                        if let Ok(reaction_value) = serde_json::to_value(reactions) {
+                                                            value["reactions"] = reaction_value;
+                                                        }
+                                                    }
+                                                }
+                                                if value.get("reactions").is_none() {
+                                                    value["reactions"] = Value::Object(Map::new());
+                                                }
+                                                messages.push(value);
+                                            }
+                                        }
+
+                                        let payload = serde_json::json!({
+                                            "type": "search-results",
+                                            "requestId": request_id,
+                                            "channel": channel_to_search,
+                                            "messages": messages,
+                                        });
+                                        let _ = sender.send(Message::Text(payload.to_string())).await;
+                                    }
+                                    Err(error) => {
+                                        error!(
+                                            "Search query failed for channel {channel_to_search} and user {:?}: {error}",
+                                            user_name
+                                        );
+                                        let payload = serde_json::json!({
+                                            "type": "search-error",
+                                            "message": "Search failed",
+                                            "requestId": request_id_for_error,
+                                        });
+                                        let _ = sender.send(Message::Text(payload.to_string())).await;
+                                    }
+                                }
+                            }
                             "create-channel" => {
                                 if let Some(ch) = v.get("name").and_then(|c| c.as_str()) {
                                     // Validate channel name
@@ -886,6 +1010,28 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
 
                                 v["channel"] = Value::String(channel.clone());
                                 let timestamp = sanitize_message_timestamp(&mut v);
+                                let mut ephemeral_expiry: Option<DateTime<Utc>> = None;
+                                if let Some(raw_expiry) = v.get("expiresAt").and_then(|value| value.as_str()) {
+                                    if let Ok(parsed) = DateTime::parse_from_rfc3339(raw_expiry) {
+                                        let mut expiry = parsed.with_timezone(&Utc);
+                                        let min_allowed = timestamp + ChronoDuration::seconds(MIN_EPHEMERAL_SECONDS);
+                                        let max_allowed = timestamp + ChronoDuration::seconds(MAX_EPHEMERAL_SECONDS);
+                                        if expiry < min_allowed {
+                                            expiry = min_allowed;
+                                        }
+                                        if expiry > max_allowed {
+                                            expiry = max_allowed;
+                                        }
+                                        v["expiresAt"] = Value::String(expiry.to_rfc3339());
+                                        v["ephemeral"] = Value::Bool(true);
+                                        ephemeral_expiry = Some(expiry);
+                                    } else if let Some(map) = v.as_object_mut() {
+                                        map.remove("expiresAt");
+                                        map.remove("ephemeral");
+                                    }
+                                } else if let Some(map) = v.as_object_mut() {
+                                    map.remove("ephemeral");
+                                }
                                 if v.get("reactions").is_none() {
                                     v["reactions"] = Value::Object(Map::new());
                                 }
@@ -906,6 +1052,41 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                         v["id"] = Value::from(id);
                                         let out_with_id = serde_json::to_string(&v).unwrap_or_else(|_| out.clone());
                                         let _ = chan_tx.send(out_with_id);
+                                        if let Some(expiry) = ephemeral_expiry {
+                                            let state_clone = Arc::clone(&state);
+                                            let channel_clone = channel.clone();
+                                            tokio::spawn(async move {
+                                                let mut delay = expiry.signed_duration_since(Utc::now());
+                                                if delay < ChronoDuration::zero() {
+                                                    delay = ChronoDuration::zero();
+                                                }
+                                                if delay > ChronoDuration::seconds(MAX_EPHEMERAL_SECONDS) {
+                                                    delay = ChronoDuration::seconds(MAX_EPHEMERAL_SECONDS);
+                                                }
+                                                if let Ok(duration) = delay.to_std() {
+                                                    tokio::time::sleep(duration).await;
+                                                }
+                                                if let Ok(id32) = i32::try_from(id) {
+                                                    match db::delete_message(&state_clone.db, id32).await {
+                                                        Ok(true) => {
+                                                            let payload = serde_json::json!({
+                                                                "type": "message-deleted",
+                                                                "id": id,
+                                                                "channel": channel_clone,
+                                                            });
+                                                            let chan_sender = get_or_create_channel(&state_clone, &channel_clone).await;
+                                                            let _ = chan_sender.send(payload.to_string());
+                                                        }
+                                                        Ok(false) => {}
+                                                        Err(error) => {
+                                                            error!(
+                                                                "failed to delete ephemeral message {id}: {error}"
+                                                            );
+                                                        }
+                                                    }
+                                                }
+                                            });
+                                        }
                                     }
                                     Err(e) => error!("db insert error: {e}"),
                                 }

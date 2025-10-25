@@ -14,6 +14,8 @@ small team can deploy a private chat space quickly.
 - Configurable user roles with optional colour accents
 - Secure image uploads (content-type checks, size limits and path sanitisation)
 - Desktop client with auto-reconnect and connection quality indicators
+- Slash commands, ephemeral messaging, and history search controls documented in
+  [`docs/chat-commands.md`](docs/chat-commands.md)
 
 ## Repository layout
 - `murmer_client/` – Tauri + SvelteKit desktop client (TypeScript)
