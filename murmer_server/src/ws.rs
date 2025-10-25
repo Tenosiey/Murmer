@@ -910,6 +910,126 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     Err(e) => error!("db insert error: {e}"),
                                 }
                             }
+                            "delete-message" => {
+                                let requester = match user_name.clone() {
+                                    Some(name) => name,
+                                    None => {
+                                        let msg = serde_json::json!({
+                                            "type": "error",
+                                            "message": "not-authenticated",
+                                        })
+                                        .to_string();
+                                        let _ = sender.send(Message::Text(msg)).await;
+                                        continue;
+                                    }
+                                };
+
+                                let Some(raw_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
+                                    let msg = serde_json::json!({
+                                        "type": "error",
+                                        "message": "invalid-message-id",
+                                    })
+                                    .to_string();
+                                    let _ = sender.send(Message::Text(msg)).await;
+                                    continue;
+                                };
+
+                                let message_id32 = match i32::try_from(raw_id) {
+                                    Ok(id) => id,
+                                    Err(_) => {
+                                        let msg = serde_json::json!({
+                                            "type": "error",
+                                            "message": "invalid-message-id",
+                                        })
+                                        .to_string();
+                                        let _ = sender.send(Message::Text(msg)).await;
+                                        continue;
+                                    }
+                                };
+
+                                let record = match db::get_message_record(&state.db, message_id32).await {
+                                    Ok(Some(record)) => record,
+                                    Ok(None) => {
+                                        let msg = serde_json::json!({
+                                            "type": "error",
+                                            "message": "message-not-found",
+                                        })
+                                        .to_string();
+                                        let _ = sender.send(Message::Text(msg)).await;
+                                        continue;
+                                    }
+                                    Err(error) => {
+                                        error!("failed to load message {raw_id} for deletion: {error}");
+                                        let msg = serde_json::json!({
+                                            "type": "error",
+                                            "message": "message-delete-failed",
+                                        })
+                                        .to_string();
+                                        let _ = sender.send(Message::Text(msg)).await;
+                                        continue;
+                                    }
+                                };
+
+                                if record.channel != channel {
+                                    let msg = serde_json::json!({
+                                        "type": "error",
+                                        "message": "message-wrong-channel",
+                                    })
+                                    .to_string();
+                                    let _ = sender.send(Message::Text(msg)).await;
+                                    continue;
+                                }
+
+                                let owner = record
+                                    .content
+                                    .get("user")
+                                    .and_then(|user| user.as_str())
+                                    .map(|value| value.to_string());
+
+                                let mut allowed = owner.as_deref() == Some(requester.as_str());
+                                if !allowed && can_manage_channels(&state, &requester).await {
+                                    allowed = true;
+                                }
+
+                                if !allowed {
+                                    let msg = serde_json::json!({
+                                        "type": "error",
+                                        "message": "message-permission-denied",
+                                    })
+                                    .to_string();
+                                    let _ = sender.send(Message::Text(msg)).await;
+                                    continue;
+                                }
+
+                                match db::delete_message(&state.db, message_id32).await {
+                                    Ok(true) => {
+                                        let payload = serde_json::json!({
+                                            "type": "message-deleted",
+                                            "id": raw_id,
+                                            "channel": record.channel,
+                                        });
+                                        let chan_sender = get_or_create_channel(&state, &record.channel).await;
+                                        let _ = chan_sender.send(payload.to_string());
+                                    }
+                                    Ok(false) => {
+                                        let msg = serde_json::json!({
+                                            "type": "error",
+                                            "message": "message-not-found",
+                                        })
+                                        .to_string();
+                                        let _ = sender.send(Message::Text(msg)).await;
+                                    }
+                                    Err(error) => {
+                                        error!("failed to delete message {raw_id}: {error}");
+                                        let msg = serde_json::json!({
+                                            "type": "error",
+                                            "message": "message-delete-failed",
+                                        })
+                                        .to_string();
+                                        let _ = sender.send(Message::Text(msg)).await;
+                                    }
+                                }
+                            }
                             "react" => {
                                 let user = match user_name.clone() {
                                     Some(name) => name,

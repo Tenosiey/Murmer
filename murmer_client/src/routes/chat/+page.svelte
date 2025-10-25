@@ -29,6 +29,9 @@
   import { channelTopics } from '$lib/stores/channelTopics';
   import { theme } from '$lib/stores/theme';
   import { statuses, STATUS_LABELS, STATUS_EMOJIS, USER_STATUS_VALUES } from '$lib/stores/status';
+  import { pinned } from '$lib/stores/pins';
+  import type { PinnedEntry } from '$lib/stores/pins';
+  import { channelNotifications, type ChannelNotificationPreference } from '$lib/stores/channelNotifications';
   import { loadKeyPair, sign } from '$lib/keypair';
   import { renderMarkdown } from '$lib/markdown';
   import { extractLinks } from '$lib/link-preview';
@@ -58,6 +61,32 @@
   let statusMenuElement: HTMLDivElement | null = null;
   let statusMap: Record<string, UserStatus> = {};
   const MESSAGE_INPUT_MAX_HEIGHT = 360;
+
+  const MODERATOR_ROLES = ['Admin', 'Mod', 'Owner'];
+  const NOTIFICATION_OPTIONS: Array<{
+    value: ChannelNotificationPreference;
+    label: string;
+    description: string;
+    icon: string;
+  }> = [
+    { value: 'all', label: 'All messages', description: 'Send alerts for every new message', icon: '🔔' },
+    { value: 'mentions', label: 'Mentions only', description: 'Only alert when you are mentioned', icon: '@' },
+    { value: 'mute', label: 'Muted', description: 'Do not show notifications for this channel', icon: '🔕' }
+  ];
+
+  let notificationMenuOpen = false;
+  let notificationMenuButton: HTMLButtonElement | null = null;
+  let notificationMenuElement: HTMLDivElement | null = null;
+  let currentNotificationPreference: ChannelNotificationPreference = 'all';
+  let notificationMenuLabel = 'All messages';
+
+  const PIN_PREVIEW_LIMIT = 120;
+
+  let pinnedEntries: PinnedEntry[] = [];
+  let highlightedMessageId: number | null = null;
+  let pendingScrollToMessage: number | null = null;
+  let highlightTimer: ReturnType<typeof setTimeout> | null = null;
+  let currentUserCanModerate = false;
 
   const VOICE_QUALITY_PRESETS: Array<{ quality: string; bitrate: number | null; label: string }> = [
     { quality: 'low', bitrate: 32_000, label: 'Low' },
@@ -200,6 +229,9 @@
 
   function toggleStatusMenu(event: MouseEvent) {
     event.stopPropagation();
+    if (notificationMenuOpen) {
+      notificationMenuOpen = false;
+    }
     statusMenuOpen = !statusMenuOpen;
   }
 
@@ -208,17 +240,55 @@
     statusMenuOpen = false;
   }
 
-  function handleStatusMenuOutside(event: MouseEvent) {
-    if (!statusMenuOpen) return;
+  function toggleNotificationMenu(event: MouseEvent) {
+    event.stopPropagation();
+    if (statusMenuOpen) {
+      statusMenuOpen = false;
+    }
+    notificationMenuOpen = !notificationMenuOpen;
+  }
+
+  function selectNotificationPreference(value: ChannelNotificationPreference) {
+    channelNotifications.setPreference(currentChatChannel, value);
+    notificationMenuOpen = false;
+  }
+
+  function notificationButtonIcon(value: ChannelNotificationPreference): string {
+    switch (value) {
+      case 'mentions':
+        return '@';
+      case 'mute':
+        return '🔕';
+      default:
+        return '🔔';
+    }
+  }
+
+  function handleMenuOutside(event: MouseEvent) {
     const target = event.target as Node | null;
-    if (statusMenuElement && target && statusMenuElement.contains(target)) return;
-    if (statusMenuButton && target && statusMenuButton.contains(target)) return;
-    statusMenuOpen = false;
+    if (statusMenuOpen) {
+      if (statusMenuElement && target && statusMenuElement.contains(target)) return;
+      if (statusMenuButton && target && statusMenuButton.contains(target)) return;
+      statusMenuOpen = false;
+    }
+    if (notificationMenuOpen) {
+      if (notificationMenuElement && target && notificationMenuElement.contains(target)) return;
+      if (notificationMenuButton && target && notificationMenuButton.contains(target)) return;
+      notificationMenuOpen = false;
+    }
   }
 
   function handleStatusMenuKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
       statusMenuOpen = false;
+      event.stopPropagation();
+      event.preventDefault();
+    }
+  }
+
+  function handleNotificationMenuKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      notificationMenuOpen = false;
       event.stopPropagation();
       event.preventDefault();
     }
@@ -243,6 +313,13 @@
     ? ensureStatus(statusMap, $session.user, 'online')
     : 'offline';
   $: currentUserStatusLabel = STATUS_LABELS[currentUserStatus];
+  $: currentUserCanModerate = (() => {
+    const user = $session.user;
+    if (!user) return false;
+    const info = $roles[user];
+    if (!info) return false;
+    return MODERATOR_ROLES.some((role) => info.role?.toLowerCase() === role.toLowerCase());
+  })();
 
   $: autoResize();
   let inVoice = false;
@@ -253,6 +330,12 @@
 
   $: channelMessages = $chat.filter((m) => (m.channel ?? 'general') === currentChatChannel);
   $: messageBlocks = buildMessageBlocks(channelMessages);
+  $: pinnedEntries = $pinned[currentChatChannel] ?? [];
+  $: currentNotificationPreference = ($channelNotifications[currentChatChannel] ?? 'all') as ChannelNotificationPreference;
+  $: notificationMenuLabel = (() => {
+    const found = NOTIFICATION_OPTIONS.find((option) => option.value === currentNotificationPreference);
+    return found ? found.label : 'All messages';
+  })();
 
   $: if ($channels.length && !$channels.includes(currentChatChannel)) {
     currentChatChannel = $channels[0];
@@ -428,12 +511,18 @@
   });
 
   onDestroy(() => {
+    chat.off('history', handleHistory);
+    chat.off('message-deleted', handleMessageDeleted);
     chat.disconnect();
     if (currentVoiceChannel) {
       voice.leave(currentVoiceChannel);
     }
     ping.stop();
     roles.set({});
+    if (highlightTimer) {
+      clearTimeout(highlightTimer);
+      highlightTimer = null;
+    }
   });
 
   function sendText() {
@@ -498,6 +587,8 @@
   function joinChannel(ch: string) {
     if (ch === currentChatChannel) return;
     currentChatChannel = ch;
+    statusMenuOpen = false;
+    notificationMenuOpen = false;
     chat.clear();
     chat.sendRaw({ type: 'join', channel: ch });
     scrollBottom();
@@ -620,6 +711,92 @@
     channelTopics.setTopic(currentChatChannel, input);
   }
 
+  function canDeleteMessage(msg: Message): boolean {
+    const current = $session.user;
+    if (!current || typeof msg.id !== 'number') return false;
+    if (msg.user === current) return true;
+    return currentUserCanModerate;
+  }
+
+  function canPinMessage(msg: Message): boolean {
+    return typeof msg.id === 'number';
+  }
+
+  function isMessagePinned(msg: Message): boolean {
+    if (typeof msg.id !== 'number') return false;
+    return pinned.isPinned(currentChatChannel, msg.id);
+  }
+
+  function togglePinMessage(msg: Message) {
+    if (typeof msg.id !== 'number') return;
+    if (isMessagePinned(msg)) {
+      pinned.unpin(currentChatChannel, msg.id);
+    } else {
+      pinned.pin(currentChatChannel, msg);
+    }
+  }
+
+  function deleteChatMessage(msg: Message) {
+    if (typeof msg.id !== 'number') return;
+    const confirmed = confirm('Delete this message?');
+    if (!confirmed) return;
+    chat.delete(msg.id);
+  }
+
+  function resolvePinnedMessage(entry: PinnedEntry): Message | undefined {
+    return channelMessages.find((message) => message.id === entry.id);
+  }
+
+  function formatPinnedPreview(entry: PinnedEntry): string {
+    const message = resolvePinnedMessage(entry);
+    const base = message?.text ?? entry.text ?? '';
+    const trimmed = base.trim();
+    if (trimmed.length > 0) {
+      return trimmed.length > PIN_PREVIEW_LIMIT ? `${trimmed.slice(0, PIN_PREVIEW_LIMIT)}…` : trimmed;
+    }
+    if (message?.image || entry.image) {
+      return 'Image attachment';
+    }
+    return 'Message';
+  }
+
+  function pinnedAuthor(entry: PinnedEntry): string {
+    const message = resolvePinnedMessage(entry);
+    return message?.user ?? entry.user ?? 'Unknown';
+  }
+
+  function pinnedTimestamp(entry: PinnedEntry): string {
+    const source = resolvePinnedMessage(entry)?.timestamp ?? entry.timestamp ?? entry.pinnedAt;
+    if (!source) return '';
+    const parsed = Date.parse(source);
+    if (Number.isNaN(parsed)) return '';
+    return new Date(parsed).toLocaleString();
+  }
+
+  function highlightMessageById(messageId: number): boolean {
+    if (!messagesContainer) return false;
+    const element = messagesContainer.querySelector<HTMLDivElement>(`[data-message-id="${messageId}"]`);
+    if (!element) return false;
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    highlightedMessageId = messageId;
+    if (highlightTimer) {
+      clearTimeout(highlightTimer);
+    }
+    highlightTimer = setTimeout(() => {
+      if (highlightedMessageId === messageId) {
+        highlightedMessageId = null;
+      }
+    }, 2000);
+    return true;
+  }
+
+  function focusMessage(messageId: number) {
+    if (!Number.isFinite(messageId)) return;
+    if (highlightMessageById(messageId)) return;
+    pendingScrollToMessage = messageId;
+    chat.loadHistory(currentChatChannel, messageId + 1, 200);
+  }
+
   function toggleMicrophone() {
     microphoneMuted.update(muted => !muted);
   }
@@ -728,20 +905,46 @@
     }
   }
 
-  chat.on('history', async () => {
+  const handleHistory = async () => {
     await tick();
     if (messagesContainer) {
       messagesContainer.scrollTop = messagesContainer.scrollHeight - prevHeight;
     }
     loadingHistory = false;
-  });
+    if (pendingScrollToMessage !== null) {
+      const target = pendingScrollToMessage;
+      if (highlightMessageById(target)) {
+        pendingScrollToMessage = null;
+      }
+    }
+  };
+  chat.on('history', handleHistory);
+
+  const handleMessageDeleted = (event: Message) => {
+    const messageId = (event.id as number | undefined) ?? (event.messageId as number | undefined);
+    const channelName = (event.channel as string | undefined) ?? currentChatChannel;
+    if (typeof messageId !== 'number') return;
+    pinned.removeMessage(channelName, messageId);
+    if (highlightedMessageId === messageId) {
+      highlightedMessageId = null;
+    }
+    if (pendingScrollToMessage === messageId) {
+      pendingScrollToMessage = null;
+    }
+  };
+  chat.on('message-deleted', handleMessageDeleted);
 
   afterUpdate(() => {
+    const handledPending =
+      pendingScrollToMessage !== null && highlightMessageById(pendingScrollToMessage);
+    if (handledPending) {
+      pendingScrollToMessage = null;
+    }
     if (messagesContainer) {
-      const filteredLength = $chat.filter(m => (m.channel ?? 'general') === currentChatChannel).length;
+      const filteredLength = $chat.filter((m) => (m.channel ?? 'general') === currentChatChannel).length;
       if (filteredLength !== lastLength) {
         lastLength = filteredLength;
-        if (!loadingHistory) {
+        if (!loadingHistory && !handledPending) {
           messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
       }
@@ -783,14 +986,14 @@
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', stopResize);
     window.addEventListener('keydown', handleGlobalShortcut);
-    window.addEventListener('click', handleStatusMenuOutside);
+    window.addEventListener('click', handleMenuOutside);
   });
 
   onDestroy(() => {
     window.removeEventListener('mousemove', handleMouseMove);
     window.removeEventListener('mouseup', stopResize);
     window.removeEventListener('keydown', handleGlobalShortcut);
-    window.removeEventListener('click', handleStatusMenuOutside);
+    window.removeEventListener('click', handleMenuOutside);
   });
 </script>
 
@@ -1095,6 +1298,44 @@
               <span>Focus</span>
             {/if}
           </button>
+          <div class="notification-control">
+            <button
+              class="action-button"
+              bind:this={notificationMenuButton}
+              aria-haspopup="true"
+              aria-expanded={notificationMenuOpen}
+              on:click={toggleNotificationMenu}
+              title={`Channel notifications: ${notificationMenuLabel}`}
+            >
+              <span class="notification-icon">{notificationButtonIcon(currentNotificationPreference)}</span>
+              <span class="sr-only">Configure channel notifications</span>
+            </button>
+            {#if notificationMenuOpen}
+              <div
+                class="notification-menu"
+                bind:this={notificationMenuElement}
+                role="menu"
+                tabindex="-1"
+                on:click|stopPropagation
+                on:keydown={handleNotificationMenuKeydown}
+              >
+                {#each NOTIFICATION_OPTIONS as option}
+                  <button
+                    class:active={option.value === currentNotificationPreference}
+                    on:click={() => selectNotificationPreference(option.value)}
+                    role="menuitemradio"
+                    aria-checked={option.value === currentNotificationPreference}
+                  >
+                    <span class="notification-option-icon" aria-hidden="true">{option.icon}</span>
+                    <span class="notification-option-text">
+                      <span class="label">{option.label}</span>
+                      <span class="description">{option.description}</span>
+                    </span>
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
           <button class="action-button" on:click={openSettings} title="Settings">
             <svg
               width="20"
@@ -1152,6 +1393,34 @@
         </div>
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
+      {#if pinnedEntries.length > 0}
+        <div class="pinned-bar" role="region" aria-label="Pinned messages">
+          <div class="pinned-header">
+            <span class="pinned-title">Pinned</span>
+            <span class="pinned-count">{pinnedEntries.length}</span>
+          </div>
+          <ul class="pinned-list">
+            {#each pinnedEntries as entry (entry.id)}
+              <li class="pinned-item">
+                <button class="pinned-preview" on:click={() => focusMessage(entry.id)}>
+                  <span class="pinned-author">{pinnedAuthor(entry)}</span>
+                  <span class="pinned-text">{formatPinnedPreview(entry)}</span>
+                  {#if pinnedTimestamp(entry)}
+                    <span class="pinned-timestamp">{pinnedTimestamp(entry)}</span>
+                  {/if}
+                </button>
+                <button
+                  class="pinned-remove"
+                  on:click={() => pinned.unpin(currentChatChannel, entry.id)}
+                  aria-label="Unpin message"
+                >
+                  ✕
+                </button>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
       <div class="messages-shell">
         <div class="messages" bind:this={messagesContainer} on:scroll={onScroll}>
           {#each messageBlocks as block (block.key)}
@@ -1160,7 +1429,11 @@
                 <span>{block.label}</span>
               </div>
             {:else if block.kind === 'message'}
-              <div class="message">
+              <div
+                class="message"
+                data-message-id={typeof block.message.id === 'number' ? block.message.id : undefined}
+                class:highlighted={highlightedMessageId === block.message.id}
+              >
                 <span class="timestamp">{block.message.time}</span>
                 <span class="username">{block.message.user}</span>
                 {#if block.message.user && $roles[block.message.user]}
@@ -1171,21 +1444,48 @@
                     {$roles[block.message.user].role}
                   </span>
                 {/if}
-                <span class="content">
-                  {#if block.message.text}
-                    {@html renderMarkdown(block.message.text)}
-                  {/if}
-                  {#if block.links.length > 0}
-                    <div class="link-previews">
-                      {#each block.links as link (link)}
-                        <LinkPreview url={link} />
-                      {/each}
+                <div class="content-wrapper">
+                  <span class="content">
+                    {#if block.message.text}
+                      {@html renderMarkdown(block.message.text)}
+                    {/if}
+                    {#if block.links.length > 0}
+                      <div class="link-previews">
+                        {#each block.links as link (link)}
+                          <LinkPreview url={link} />
+                        {/each}
+                      </div>
+                    {/if}
+                    {#if block.message.image}
+                      <img src={block.message.image as string} alt="" />
+                    {/if}
+                  </span>
+                  {#if typeof block.message.id === 'number' && (canPinMessage(block.message) || canDeleteMessage(block.message))}
+                    <div class="message-actions">
+                      {#if canPinMessage(block.message)}
+                        <button
+                          type="button"
+                          class="message-action"
+                          class:active={isMessagePinned(block.message)}
+                          on:click={() => togglePinMessage(block.message)}
+                          title={isMessagePinned(block.message) ? 'Unpin message' : 'Pin message'}
+                        >
+                          📌
+                        </button>
+                      {/if}
+                      {#if canDeleteMessage(block.message)}
+                        <button
+                          type="button"
+                          class="message-action danger"
+                          on:click={() => deleteChatMessage(block.message)}
+                          title="Delete message"
+                        >
+                          🗑️
+                        </button>
+                      {/if}
                     </div>
                   {/if}
-                  {#if block.message.image}
-                    <img src={block.message.image as string} alt="" />
-                  {/if}
-                </span>
+                </div>
                 {#if typeof block.message.id === 'number'}
                   <div class="reactions">
                     {#each reactionEntries(block.message) as reaction (reaction.emoji)}
@@ -1771,6 +2071,11 @@
     box-shadow: var(--shadow-xs);
   }
 
+  .message.highlighted {
+    border-color: color-mix(in srgb, var(--color-secondary) 45%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-secondary) 28%, transparent);
+  }
+
   .message .timestamp {
     font-size: 0.72rem;
     color: var(--color-muted);
@@ -1789,10 +2094,53 @@
     align-self: center;
   }
 
-  .message .content {
+  .content-wrapper {
     grid-column: 1 / -1;
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+
+  .message .content {
+    flex: 1;
     color: var(--color-on-surface);
     line-height: 1.65;
+  }
+
+  .message-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .message-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem 0.45rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
+    color: var(--color-on-surface);
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background var(--transition), border-color var(--transition), transform var(--transition);
+  }
+
+  .message-action:hover,
+  .message-action.active {
+    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+    border-color: color-mix(in srgb, var(--color-primary) 36%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .message-action.danger {
+    color: color-mix(in srgb, #ef4444 80%, var(--color-on-surface));
+  }
+
+  .message-action.danger:hover {
+    background: color-mix(in srgb, #ef4444 18%, transparent);
+    border-color: color-mix(in srgb, #ef4444 32%, transparent);
   }
 
   .link-previews {
@@ -1880,6 +2228,179 @@
     margin-top: 0.65rem;
     border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
     box-shadow: var(--shadow-xs);
+  }
+
+  .notification-control {
+    position: relative;
+  }
+
+  .notification-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .notification-menu {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    right: 0;
+    min-width: 16rem;
+    padding: 0.5rem;
+    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 95%, transparent);
+    box-shadow: var(--shadow-lg);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    z-index: 80;
+  }
+
+  .notification-menu button {
+    display: flex;
+    gap: 0.65rem;
+    align-items: center;
+    padding: 0.5rem 0.65rem;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: transparent;
+    color: var(--color-on-surface);
+    cursor: pointer;
+    text-align: left;
+    transition: background var(--transition), transform var(--transition);
+  }
+
+  .notification-menu button:hover,
+  .notification-menu button.active {
+    background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .notification-option-icon {
+    font-size: 1rem;
+  }
+
+  .notification-option-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  .notification-option-text .label {
+    font-weight: 600;
+  }
+
+  .notification-option-text .description {
+    font-size: 0.82rem;
+    color: color-mix(in srgb, var(--color-on-surface) 70%, transparent);
+  }
+
+  .pinned-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 90%, transparent);
+  }
+
+  .pinned-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: var(--color-on-surface);
+  }
+
+  .pinned-title {
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .pinned-count {
+    font-size: 0.75rem;
+    padding: 0.1rem 0.6rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+    color: var(--color-on-surface);
+  }
+
+  .pinned-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .pinned-item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+  }
+
+  .pinned-preview {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    text-align: left;
+    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
+    padding: 0.6rem 0.75rem;
+    color: var(--color-on-surface);
+    cursor: pointer;
+    transition: background var(--transition), border-color var(--transition), transform var(--transition);
+  }
+
+  .pinned-preview:hover {
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .pinned-author {
+    font-weight: 600;
+    font-size: 0.9rem;
+  }
+
+  .pinned-text {
+    font-size: 0.88rem;
+    color: color-mix(in srgb, var(--color-on-surface) 88%, transparent);
+    word-break: break-word;
+  }
+
+  .pinned-timestamp {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+
+  .pinned-remove {
+    border: none;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    color: var(--color-on-surface);
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background var(--transition), transform var(--transition);
+  }
+
+  .pinned-remove:hover {
+    background: color-mix(in srgb, #ef4444 22%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .pinned-remove:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+    outline-offset: 2px;
   }
 
   .reactions {

@@ -254,6 +254,48 @@ pub async fn get_message_channel(
         .map(|row| row.map(|r| r.get(0)))
 }
 
+/// Metadata for a stored message.
+#[derive(Debug, Clone)]
+pub struct MessageRecord {
+    pub channel: String,
+    pub content: Value,
+}
+
+/// Fetch a message record including its channel and JSON payload.
+pub async fn get_message_record(
+    db: &Client,
+    message_id: i32,
+) -> Result<Option<MessageRecord>, tokio_postgres::Error> {
+    match db
+        .query_opt(
+            "SELECT channel, content FROM messages WHERE id = $1",
+            &[&message_id],
+        )
+        .await?
+    {
+        Some(row) => {
+            let channel: String = row.get(0);
+            let raw_content: String = row.get(1);
+            let content = match serde_json::from_str::<Value>(&raw_content) {
+                Ok(value) => value,
+                Err(error) => {
+                    error!("Failed to parse stored message JSON (id {message_id}): {error}");
+                    Value::Null
+                }
+            };
+            Ok(Some(MessageRecord { channel, content }))
+        }
+        None => Ok(None),
+    }
+}
+
+/// Delete a message by ID. Returns `true` if a row was removed.
+pub async fn delete_message(db: &Client, message_id: i32) -> Result<bool, tokio_postgres::Error> {
+    db.execute("DELETE FROM messages WHERE id = $1", &[&message_id])
+        .await
+        .map(|affected| affected > 0)
+}
+
 /// Get the role for a user by public key, if any.
 pub async fn get_role(db: &Client, key: &str) -> Option<(String, Option<String>)> {
     db.query_opt(
