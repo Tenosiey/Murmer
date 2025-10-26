@@ -605,12 +605,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                 };
 
                                 let mut limit = v.get("limit").and_then(|l| l.as_i64()).unwrap_or(50);
-                                if limit < 1 {
-                                    limit = 1;
-                                }
-                                if limit > MAX_SEARCH_RESULTS {
-                                    limit = MAX_SEARCH_RESULTS;
-                                }
+                                limit = limit.clamp(1, MAX_SEARCH_RESULTS);
 
                                 match db::search_messages(&state.db, &channel_to_search, trimmed_query, limit).await {
                                     Ok(rows) => {
@@ -642,12 +637,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                                 if value.get("channel").and_then(|c| c.as_str()).is_none() {
                                                     value["channel"] = Value::String(channel_to_search.clone());
                                                 }
-                                                if let Ok(id32) = i32::try_from(id) {
-                                                    if let Some(reactions) = reaction_map.get(&id32) {
-                                                        if let Ok(reaction_value) = serde_json::to_value(reactions) {
-                                                            value["reactions"] = reaction_value;
-                                                        }
-                                                    }
+                                                if let Ok(id32) = i32::try_from(id)
+                                                    && let Some(reactions) = reaction_map.get(&id32)
+                                                    && let Ok(reaction_value) = serde_json::to_value(reactions)
+                                                {
+                                                    value["reactions"] = reaction_value;
                                                 }
                                                 if value.get("reactions").is_none() {
                                                     value["reactions"] = Value::Object(Map::new());
