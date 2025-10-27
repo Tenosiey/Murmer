@@ -12,8 +12,14 @@
     "tauri": "node ./scripts/run-tauri.js"
   },
   "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "overrides": {
+    "cookie": "^0.7.0"
+  },
   "dependencies": {
-    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/api": "^2.9.0",
     "@tauri-apps/plugin-notification": "^2.3.1",
     "@tauri-apps/plugin-opener": "^2.5.0",
     "@tauri-apps/plugin-window-state": "^2.4.0",
@@ -26,12 +32,12 @@
     "@sveltejs/adapter-static": "^3.0.9",
     "@sveltejs/kit": "^2.43.5",
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
-    "@tauri-apps/cli": "^2.8.4",
+    "@tauri-apps/cli": "^2.9.1",
     "@types/node": "^24.5.2",
     "svelte": "^5.39.6",
     "svelte-check": "^4.3.2",
     "typescript": "~5.9.2",
-    "vite": "^7.1.7",
+    "vite": "^7.1.11",
     "vite-plugin-devtools-json": "^1.0.0"
   }
 }

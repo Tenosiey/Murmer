@@ -23,14 +23,20 @@ services:
       MAX_MESSAGES_PER_MINUTE: 300
       MAX_AUTH_ATTEMPTS_PER_MINUTE: 5
       NONCE_EXPIRY_SECONDS: 300
-      # Enable CORS for development (comment out for production)
-      ENABLE_CORS: "1"
+      # Allow the desktop client dev server to access the HTTP endpoints during development
+      CORS_ALLOW_ORIGINS: http://localhost:1420
     depends_on:
       - db
     ports:
       - "3001:3001"
     volumes:
       - uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 volumes:
   db_data:
   uploads:

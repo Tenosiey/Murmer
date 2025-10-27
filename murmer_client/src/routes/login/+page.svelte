@@ -23,90 +23,133 @@
   }
 </script>
 
-<main class="login-view">
-  <section class="hero">
-    <div class="badge">Welcome back</div>
-    <h1>Sign in to Murmer</h1>
-    <p class="subtitle">
-      Connect instantly with your communities using secure voice and text. Pick a display name to continue.
-    </p>
-  </section>
-  <form class="login-card" on:submit|preventDefault={login} aria-labelledby="login-heading">
-    <div class="card-header">
-      <h2 id="login-heading">Your details</h2>
-      <p>We only use this name inside your active server.</p>
+<main class="login-page page-container">
+  <div class="login-grid">
+    <section class="login-hero">
+      <div class="eyebrow">Welcome back</div>
+      <h1 class="headline-hero">Sign in to Murmer</h1>
+      <p class="body-muted">
+        Connect instantly with your communities using secure voice and text. Choose a display name and we will sync the rest across your servers.
+      </p>
+    <div class="feature-grid" role="list">
+      <article class="feature-card surface-tonal surface-outline" role="listitem">
+        <span class="feature-icon" aria-hidden="true">🔒</span>
+        <div>
+          <h3>Secure presence</h3>
+          <p>Keyed sessions live locally, so you keep control of your identity.</p>
+        </div>
+      </article>
+      <article class="feature-card surface-tonal surface-outline" role="listitem">
+        <span class="feature-icon" aria-hidden="true">🎙️</span>
+        <div>
+          <h3>Voice ready</h3>
+          <p>Jump into channels instantly with adaptive voice activation modes.</p>
+        </div>
+      </article>
     </div>
-    <label class="field">
-      <span>Display name</span>
-      <input
-        bind:value={username}
-        placeholder="e.g. Phoenix"
-        autocomplete="username"
-        autocapitalize="none"
-        spellcheck={false}
-        required
-      />
-    </label>
-    <button type="submit" class="cta">Continue</button>
-    <p class="hint">You can change this later from Settings.</p>
-  </form>
+    </section>
+
+    <form class="login-card surface-card" on:submit|preventDefault={login} aria-labelledby="login-heading">
+      <div class="card-header">
+        <h2 id="login-heading">Your details</h2>
+        <p>We only use this name inside your active server.</p>
+      </div>
+      <label class="field">
+        <span>Display name</span>
+        <input
+          bind:value={username}
+          placeholder="e.g. Phoenix"
+          autocomplete="username"
+          autocapitalize="none"
+          spellcheck={false}
+          required
+        />
+      </label>
+      <button type="submit" class="button-primary">Continue</button>
+      <p class="hint">You can change this later from Settings.</p>
+    </form>
+  </div>
 </main>
 
 <style>
-  .login-view {
+  .login-page {
+    position: relative;
     min-height: calc(100vh - 4rem);
-    padding: clamp(2rem, 5vw, 4rem);
+  }
+
+  .login-page::after {
+    content: '';
+    position: absolute;
+    inset: 3rem 2rem auto auto;
+    width: clamp(160px, 18vw, 220px);
+    height: clamp(160px, 18vw, 220px);
+    border-radius: 40%;
+    background: radial-gradient(circle, rgba(137, 112, 255, 0.28) 0%, transparent 70%);
+    filter: blur(0.5px);
+    pointer-events: none;
+  }
+
+  .login-grid {
     display: grid;
-    gap: clamp(2rem, 4vw, 6rem);
-    align-items: center;
-    justify-items: center;
+    gap: clamp(2rem, 4vw, 5rem);
+    align-items: start;
     grid-template-columns: repeat(auto-fit, minmax(280px, 420px));
   }
 
-  .hero {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-    text-align: center;
-    max-width: 420px;
-  }
-
-  .hero h1 {
-    font-size: clamp(2rem, 4vw, 2.9rem);
-    margin: 0;
-    letter-spacing: -0.02em;
-  }
-
-  .subtitle {
-    margin: 0;
-    color: var(--color-muted);
-    line-height: 1.6;
-    font-size: 1rem;
-  }
-
-  .badge {
-    align-self: center;
-    padding: 0.35rem 0.9rem;
-    border-radius: 999px;
-    font-size: 0.75rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
-    color: var(--color-secondary);
-    font-weight: 600;
-  }
-
-  .login-card {
-    width: min(420px, 100%);
+  .login-hero {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
-    padding: clamp(1.75rem, 4vw, 2.75rem);
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-elevated) 78%, transparent);
-    box-shadow: var(--shadow-sm);
-    border: 1px solid var(--color-surface-outline);
-    backdrop-filter: var(--blur-elevated);
+    max-width: 520px;
+  }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+  }
+
+  .feature-card {
+    display: flex;
+    gap: 0.9rem;
+    padding: 1rem 1.2rem;
+    border-radius: var(--radius-md);
+    align-items: flex-start;
+  }
+
+  .feature-icon {
+    font-size: 1.4rem;
+  }
+
+  .feature-card h3 {
+    margin: 0 0 0.35rem;
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+  }
+
+  .feature-card p {
+    margin: 0;
+    color: var(--md-sys-color-muted);
+    line-height: 1.5;
+  }
+
+  .login-card {
+    position: relative;
+    width: min(420px, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 1.6rem;
+    padding: clamp(2rem, 4vw, 2.9rem);
+  }
+
+  .login-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 24%, transparent);
+    opacity: 0.45;
+    pointer-events: none;
   }
 
   .card-header {
@@ -123,63 +166,39 @@
 
   .card-header p {
     margin: 0;
-    color: var(--color-muted);
+    color: var(--md-sys-color-muted);
   }
 
   .field {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    font-weight: 500;
-    color: var(--color-on-surface-variant);
+    font-weight: 600;
+    color: var(--md-sys-color-on-surface-variant);
+  }
+
+  .field span {
+    font-size: 0.9rem;
+    text-transform: none;
   }
 
   .field input {
     width: 100%;
   }
 
-  .cta {
-    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
-    color: var(--color-on-primary);
-    padding: 0.9rem;
-    border-radius: var(--radius-sm);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    font-size: 1rem;
-    box-shadow: 0 18px 38px rgba(97, 81, 211, 0.35);
-  }
-
-  .cta:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 20px 44px rgba(97, 81, 211, 0.42);
-  }
-
-  .cta:active {
-    transform: translateY(0);
-    box-shadow: 0 12px 24px rgba(97, 81, 211, 0.28);
-  }
-
   .hint {
     margin: 0;
-    color: var(--color-muted);
+    color: var(--md-sys-color-muted);
     font-size: 0.9rem;
   }
 
   @media (max-width: 720px) {
-    .login-view {
+    .login-grid {
       grid-template-columns: 1fr;
-      justify-items: stretch;
     }
 
-    .hero {
-      text-align: left;
-      align-items: flex-start;
-    }
-
-    .badge {
-      align-self: flex-start;
+    .login-hero {
+      max-width: 100%;
     }
   }
-</style>
+  </style>

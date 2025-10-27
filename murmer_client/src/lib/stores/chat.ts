@@ -2,12 +2,30 @@ import { writable, get } from 'svelte/store';
 import type { Message } from '../types';
 import { session } from './session';
 import { notify } from '../notify';
+import { channelNotifications } from './channelNotifications';
 
 function createChatStore() {
   const { subscribe, update, set } = writable<Message[]>([]);
   let socket: WebSocket | null = null;
   let currentUrl: string | null = null;
   const handlers: Record<string, Array<(msg: Message) => void>> = {};
+  let requestIdCounter = 1;
+  type PendingSearch = {
+    resolve: (messages: Message[]) => void;
+    reject: (error: Error) => void;
+    timeout: ReturnType<typeof setTimeout>;
+  };
+  const pendingSearches = new Map<number, PendingSearch>();
+  const SEARCH_TIMEOUT_MS = 5000;
+  const MAX_SEARCH_RESULTS = 200;
+
+  function clearPendingSearches(reason: string) {
+    for (const [id, entry] of pendingSearches.entries()) {
+      clearTimeout(entry.timeout);
+      entry.reject(new Error(reason));
+      pendingSearches.delete(id);
+    }
+  }
 
   function normalizeReactions(value: unknown): Record<string, string[]> {
     if (!value || typeof value !== 'object') return {};
@@ -42,6 +60,23 @@ function createChatStore() {
       msg.time = new Date().toLocaleTimeString();
     }
     msg.reactions = normalizeReactions(raw.reactions);
+    let normalizedExpiry: string | undefined;
+    if (typeof raw.expiresAt === 'string') {
+      const parsed = Date.parse(raw.expiresAt);
+      if (!Number.isNaN(parsed)) {
+        normalizedExpiry = new Date(parsed).toISOString();
+      }
+    }
+    if (normalizedExpiry) {
+      msg.expiresAt = normalizedExpiry;
+    } else {
+      delete (msg as any).expiresAt;
+    }
+    if (raw.ephemeral === true || Boolean(normalizedExpiry)) {
+      msg.ephemeral = true;
+    } else {
+      delete (msg as any).ephemeral;
+    }
     return msg;
   }
 
@@ -103,15 +138,22 @@ function createChatStore() {
           update((m) => [...m, prepared]);
           const current = get(session).user;
           if (!current || prepared.user !== current) {
+            const channelName = prepared.channel ?? 'general';
+            const preferences = get(channelNotifications);
+            const preference = preferences[channelName] ?? 'all';
             const mention = current ? containsMention(prepared.text, current) : false;
             const trimmedText = (prepared.text ?? '').trim();
-            if (mention) {
-              const body = trimmedText.length > 0 ? trimmedText : `${prepared.user ?? 'Someone'} mentioned you`;
-              notify(`Mention from ${prepared.user ?? 'Unknown user'}`, body);
-            } else {
-              const sender = prepared.user ?? 'Unknown user';
-              const body = trimmedText.length > 0 ? trimmedText : 'sent a message';
-              notify('New message', `${sender}: ${body}`);
+            const shouldNotify =
+              preference === 'all' ? true : preference === 'mentions' ? mention : false;
+            if (shouldNotify) {
+              if (mention) {
+                const body = trimmedText.length > 0 ? trimmedText : `${prepared.user ?? 'Someone'} mentioned you`;
+                notify(`Mention from ${prepared.user ?? 'Unknown user'}`, body);
+              } else {
+                const sender = prepared.user ?? 'Unknown user';
+                const body = trimmedText.length > 0 ? trimmedText : 'sent a message';
+                notify('New message', `${sender}: ${body}`);
+              }
             }
           }
         } else if (msg.type === 'history') {
@@ -131,6 +173,42 @@ function createChatStore() {
           if (handlers['reaction-update']) {
             for (const handler of handlers['reaction-update']) handler(msg);
           }
+        } else if (msg.type === 'message-deleted') {
+          const messageId = (msg.id as number | undefined) ?? (msg.messageId as number | undefined);
+          if (typeof messageId === 'number') {
+            update((messages) => messages.filter((m) => m.id !== messageId));
+          }
+          if (handlers['message-deleted']) {
+            for (const handler of handlers['message-deleted']) handler(msg);
+          }
+        } else if (msg.type === 'search-results') {
+          const payload = msg as any;
+          const requestId = Number(payload.requestId);
+          if (!Number.isNaN(requestId)) {
+            const pending = pendingSearches.get(requestId);
+            if (pending) {
+              pendingSearches.delete(requestId);
+              clearTimeout(pending.timeout);
+              const list: Message[] = Array.isArray(payload.messages)
+                ? (payload.messages as Message[])
+                : [];
+              const prepared = list.map((item) => prepareMessage(item));
+              pending.resolve(prepared);
+            }
+          }
+        } else if (msg.type === 'search-error') {
+          const payload = msg as any;
+          const requestId = Number(payload.requestId);
+          if (!Number.isNaN(requestId)) {
+            const pending = pendingSearches.get(requestId);
+            if (pending) {
+              pendingSearches.delete(requestId);
+              clearTimeout(pending.timeout);
+              const errorMessage =
+                typeof payload.message === 'string' ? payload.message : 'Search failed';
+              pending.reject(new Error(errorMessage));
+            }
+          }
         } else if (msg.type && handlers[msg.type]) {
           for (const handler of handlers[msg.type]) {
             handler(msg);
@@ -142,9 +220,11 @@ function createChatStore() {
       if (import.meta.env.DEV) console.log('WebSocket connection closed');
       socket = null;
       currentUrl = null;
+      clearPendingSearches('Connection closed');
     });
     socket.addEventListener('error', (e) => {
       if (import.meta.env.DEV) console.error('WebSocket error', e);
+      clearPendingSearches('WebSocket error');
     });
   }
 
@@ -157,6 +237,23 @@ function createChatStore() {
         text,
         time: now.toLocaleTimeString(),
         timestamp: now.toISOString()
+      };
+      if (import.meta.env.DEV) console.log('Sending:', payload);
+      socket.send(JSON.stringify(payload));
+    }
+  }
+
+  function sendEphemeral(user: string, text: string, expiresAt: string) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      const now = new Date();
+      const payload = {
+        type: 'chat',
+        user,
+        text,
+        time: now.toLocaleTimeString(),
+        timestamp: now.toISOString(),
+        ephemeral: true,
+        expiresAt
       };
       if (import.meta.env.DEV) console.log('Sending:', payload);
       socket.send(JSON.stringify(payload));
@@ -183,15 +280,68 @@ function createChatStore() {
     socket.send(JSON.stringify(payload));
   }
 
+  function search(channel: string, query: string, limit = 50): Promise<Message[]> {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error('Not connected to server'));
+    }
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+      return Promise.resolve([]);
+    }
+    const trimmedChannel = channel.trim() || 'general';
+    const boundedLimit = Math.min(Math.max(Math.floor(limit), 1), MAX_SEARCH_RESULTS);
+    const requestId = requestIdCounter++;
+    return new Promise<Message[]>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        if (pendingSearches.delete(requestId)) {
+          reject(new Error('Search timed out'));
+        }
+      }, SEARCH_TIMEOUT_MS);
+      pendingSearches.set(requestId, { resolve, reject, timeout });
+      const payload = {
+        type: 'search-history',
+        channel: trimmedChannel,
+        query: trimmedQuery,
+        limit: boundedLimit,
+        requestId
+      };
+      if (import.meta.env.DEV) console.log('Sending:', payload);
+      socket!.send(JSON.stringify(payload));
+    });
+  }
+
   function disconnect() {
     if (socket) {
       socket.close();
       // 'close' event handler will reset state
     }
     set([]); // clear chat history on disconnect
+    clearPendingSearches('Disconnected');
   }
 
-  return { subscribe, connect, send, sendRaw, loadHistory, react, on, off, disconnect, clear: () => set([]) };
+  function deleteMessage(messageId: number) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (typeof messageId !== 'number' || Number.isNaN(messageId)) return;
+    const payload = { type: 'delete-message', messageId };
+    if (import.meta.env.DEV) console.log('Sending:', payload);
+    socket.send(JSON.stringify(payload));
+  }
+
+  return {
+    subscribe,
+    connect,
+    send,
+    sendEphemeral,
+    sendRaw,
+    loadHistory,
+    react,
+    search,
+    delete: deleteMessage,
+    on,
+    off,
+    disconnect,
+    clear: () => set([])
+  };
 }
 
 export const chat = createChatStore();

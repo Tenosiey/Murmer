@@ -9,6 +9,20 @@ use std::collections::HashMap;
 use tokio_postgres::{Client, NoTls};
 use tracing::{error, warn};
 
+fn escape_like_pattern(input: &str) -> String {
+    let mut escaped = String::with_capacity(input.len());
+    for ch in input.chars() {
+        match ch {
+            '\\' | '%' | '_' => {
+                escaped.push('\\');
+                escaped.push(ch);
+            }
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
 /// Initialize a PostgreSQL [`Client`] and ensure the `messages` table exists.
 /// The connection is retried for a few seconds if the database is not ready.
 pub async fn init(db_url: &str) -> Result<Client, tokio_postgres::Error> {
@@ -29,7 +43,7 @@ pub async fn init(db_url: &str) -> Result<Client, tokio_postgres::Error> {
 
     tokio::spawn(async move {
         if let Err(e) = connection.await {
-            eprintln!("db connection error: {e}");
+            tracing::error!("db connection error: {e}");
         }
     });
 
@@ -55,7 +69,9 @@ CREATE TABLE IF NOT EXISTS channels (
     name TEXT PRIMARY KEY
 );
 CREATE TABLE IF NOT EXISTS voice_channels (
-    name TEXT PRIMARY KEY
+    name TEXT PRIMARY KEY,
+    quality TEXT NOT NULL DEFAULT 'standard',
+    bitrate INTEGER
 );
 INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
 "#,
@@ -67,9 +83,34 @@ INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
         })?;
 
     client
-        .batch_execute("ALTER TABLE roles ADD COLUMN IF NOT EXISTS color TEXT;")
+        .batch_execute(
+            "ALTER TABLE roles ADD COLUMN IF NOT EXISTS color TEXT;\nALTER TABLE voice_channels ADD COLUMN IF NOT EXISTS quality TEXT NOT NULL DEFAULT 'standard';\nALTER TABLE voice_channels ADD COLUMN IF NOT EXISTS bitrate INTEGER;\nUPDATE voice_channels SET quality = 'standard' WHERE quality IS NULL OR trim(quality) = '';\nUPDATE voice_channels SET bitrate = 64000 WHERE bitrate IS NULL;",
+        )
         .await
         .ok();
+
+    if let Err(e) = client
+        .batch_execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
+        .await
+    {
+        warn!("Failed to enable pg_trgm extension: {e}");
+    }
+
+    if let Err(e) = client
+        .batch_execute("CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages (channel);")
+        .await
+    {
+        warn!("Failed to ensure messages channel index: {e}");
+    }
+
+    if let Err(e) = client
+        .batch_execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_content_trgm ON messages USING GIN (content gin_trgm_ops);",
+        )
+        .await
+    {
+        warn!("Failed to ensure trigram index for message content: {e}");
+    }
 
     Ok(client)
 }
@@ -147,23 +188,42 @@ pub async fn send_history(
             for (id, content) in rows.into_iter().rev() {
                 if let Ok(mut val) = serde_json::from_str::<Value>(&content) {
                     val["id"] = Value::from(id);
-                    if let Ok(id32) = i32::try_from(id) {
-                        if let Some(reactions) = reaction_map.get(&id32) {
-                            if let Ok(value) = serde_json::to_value(reactions) {
-                                val["reactions"] = value;
-                            }
-                        }
+                    if let Ok(id32) = i32::try_from(id)
+                        && let Some(reactions) = reaction_map.get(&id32)
+                        && let Ok(value) = serde_json::to_value(reactions)
+                    {
+                        val["reactions"] = value;
                     }
                     msgs.push(val);
                 }
             }
             if !msgs.is_empty() {
                 let payload = serde_json::json!({"type": "history", "messages": msgs});
-                let _ = sender.send(Message::Text(payload.to_string().into())).await;
+                let _ = sender.send(Message::Text(payload.to_string())).await;
             }
         }
         Err(e) => error!("db history error: {e}"),
     }
+}
+
+/// Search for messages containing a query string within a channel.
+pub async fn search_messages(
+    db: &Client,
+    channel: &str,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<(i64, String)>, tokio_postgres::Error> {
+    let pattern = format!("%{}%", escape_like_pattern(query));
+    let rows = db
+        .query(
+            "SELECT id::bigint, content FROM messages WHERE channel = $1 AND content ILIKE $2 ESCAPE '\\\\' ORDER BY id DESC LIMIT $3",
+            &[&channel, &pattern, &limit],
+        )
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| (row.get::<_, i64>(0), row.get(1)))
+        .collect())
 }
 
 /// Retrieve reactions for a set of message IDs, grouped by emoji.
@@ -251,6 +311,48 @@ pub async fn get_message_channel(
         .map(|row| row.map(|r| r.get(0)))
 }
 
+/// Metadata for a stored message.
+#[derive(Debug, Clone)]
+pub struct MessageRecord {
+    pub channel: String,
+    pub content: Value,
+}
+
+/// Fetch a message record including its channel and JSON payload.
+pub async fn get_message_record(
+    db: &Client,
+    message_id: i32,
+) -> Result<Option<MessageRecord>, tokio_postgres::Error> {
+    match db
+        .query_opt(
+            "SELECT channel, content FROM messages WHERE id = $1",
+            &[&message_id],
+        )
+        .await?
+    {
+        Some(row) => {
+            let channel: String = row.get(0);
+            let raw_content: String = row.get(1);
+            let content = match serde_json::from_str::<Value>(&raw_content) {
+                Ok(value) => value,
+                Err(error) => {
+                    error!("Failed to parse stored message JSON (id {message_id}): {error}");
+                    Value::Null
+                }
+            };
+            Ok(Some(MessageRecord { channel, content }))
+        }
+        None => Ok(None),
+    }
+}
+
+/// Delete a message by ID. Returns `true` if a row was removed.
+pub async fn delete_message(db: &Client, message_id: i32) -> Result<bool, tokio_postgres::Error> {
+    db.execute("DELETE FROM messages WHERE id = $1", &[&message_id])
+        .await
+        .map(|affected| affected > 0)
+}
+
 /// Get the role for a user by public key, if any.
 pub async fn get_role(db: &Client, key: &str) -> Option<(String, Option<String>)> {
     db.query_opt(
@@ -308,24 +410,62 @@ pub async fn remove_channel(db: &Client, name: &str) -> Result<(), tokio_postgre
 }
 
 /// Retrieve the list of voice channels.
-pub async fn get_voice_channels(db: &Client) -> Vec<String> {
+#[derive(Clone)]
+pub struct VoiceChannelRecord {
+    pub name: String,
+    pub quality: String,
+    pub bitrate: Option<i32>,
+}
+
+pub async fn get_voice_channels(db: &Client) -> Vec<VoiceChannelRecord> {
     match db
-        .query("SELECT name FROM voice_channels ORDER BY name", &[])
+        .query(
+            "SELECT name, quality, bitrate FROM voice_channels ORDER BY name",
+            &[],
+        )
         .await
     {
-        Ok(rows) => rows.into_iter().map(|row| row.get(0)).collect(),
+        Ok(rows) => rows
+            .into_iter()
+            .map(|row| VoiceChannelRecord {
+                name: row.get(0),
+                quality: row.get(1),
+                bitrate: row.get(2),
+            })
+            .collect(),
         Err(_) => Vec::new(),
     }
 }
 
 /// Insert a new voice channel if it does not already exist.
-pub async fn add_voice_channel(db: &Client, name: &str) -> Result<(), tokio_postgres::Error> {
+pub async fn add_voice_channel(
+    db: &Client,
+    name: &str,
+    quality: &str,
+    bitrate: Option<i32>,
+) -> Result<(), tokio_postgres::Error> {
     db.execute(
-        "INSERT INTO voice_channels (name) VALUES ($1) ON CONFLICT DO NOTHING",
-        &[&name],
+        "INSERT INTO voice_channels (name, quality, bitrate) VALUES ($1, $2, $3) \
+            ON CONFLICT (name) DO NOTHING",
+        &[&name, &quality, &bitrate],
     )
     .await
     .map(|_| ())
+}
+
+/// Update an existing voice channel configuration.
+pub async fn update_voice_channel(
+    db: &Client,
+    name: &str,
+    quality: &str,
+    bitrate: Option<i32>,
+) -> Result<bool, tokio_postgres::Error> {
+    db.execute(
+        "UPDATE voice_channels SET quality = $2, bitrate = $3 WHERE name = $1",
+        &[&name, &quality, &bitrate],
+    )
+    .await
+    .map(|count| count > 0)
 }
 
 /// Delete an existing voice channel.

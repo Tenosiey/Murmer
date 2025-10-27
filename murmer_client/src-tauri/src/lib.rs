@@ -2,7 +2,7 @@
 //!
 //! Sets up the system tray and window event handlers before running the app.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+pub fn run() -> tauri::Result<()> {
     use tauri::{
         menu::{MenuBuilder, MenuItemBuilder},
         tray::{TrayIconBuilder, TrayIconEvent},
@@ -10,6 +10,16 @@ pub fn run() {
     };
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
     use tauri_plugin_window_state::Builder as WindowStateBuilder;
+    use tracing_subscriber::EnvFilter;
+
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("murmer_client=info,tauri=info")),
+        )
+        .with_target(false)
+        .compact()
+        .try_init();
 
     tauri::Builder::default()
         .plugin(WindowStateBuilder::default().build())
@@ -59,11 +69,12 @@ pub fn run() {
                         if minimize {
                             let _ = window_clone.hide();
                         } else {
-                            std::process::exit(0);
+                            window_clone.app_handle().exit(0);
                         }
                     });
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!())?;
+
+    Ok(())
 }

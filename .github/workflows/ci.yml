@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "work"]
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev curl
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.89.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            murmer_server
+            murmer_client/src-tauri
+      - name: Format (server)
+        working-directory: murmer_server
+        run: cargo fmt --all --check
+      - name: Clippy (server)
+        working-directory: murmer_server
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Tests (server)
+        working-directory: murmer_server
+        run: cargo test
+      - name: Cargo audit (server)
+        working-directory: murmer_server
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
+      - name: Format (client shell)
+        working-directory: murmer_client/src-tauri
+        run: cargo fmt --all --check
+      - name: Clippy (client shell)
+        working-directory: murmer_client/src-tauri
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Cargo audit (client shell)
+        working-directory: murmer_client/src-tauri
+        run: cargo audit
+
+  client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: murmer_client/package-lock.json
+      - name: Install dependencies
+        working-directory: murmer_client
+        run: npm ci
+      - name: Svelte/TypeScript checks
+        working-directory: murmer_client
+        run: npm run check
+      - name: npm audit
+        working-directory: murmer_client
+        run: npm audit
