@@ -29,7 +29,7 @@ Use the checkboxes to track progress.
 - [x] Search chat history
 - [x] Slash commands for quick actions
 - [x] Support Markdown formatting in text chat
-- [ ] Text-to-speech
+- [x] Text-to-speech
 - [ ] User nicknames per server
 - [ ] User profiles/avatars
 - [x] User status indicators (away, busy, etc.)

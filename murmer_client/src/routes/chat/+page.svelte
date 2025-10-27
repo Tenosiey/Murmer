@@ -17,6 +17,7 @@
   import { remoteSpeaking, setRemoteSpeaking } from '$lib/stores/voiceSpeaking';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
+  import { browser } from '$app/environment';
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import PingDot from '$lib/components/PingDot.svelte';
@@ -61,6 +62,13 @@
   let statusMenuElement: HTMLDivElement | null = null;
   let statusMap: Record<string, UserStatus> = {};
   const MESSAGE_INPUT_MAX_HEIGHT = 360;
+
+  const speechSupported =
+    browser &&
+    typeof window !== 'undefined' &&
+    'speechSynthesis' in window &&
+    typeof SpeechSynthesisUtterance !== 'undefined';
+  let speakingMessageKey: string | null = null;
 
   const MODERATOR_ROLES = ['Admin', 'Mod', 'Owner'];
   const NOTIFICATION_OPTIONS: Array<{
@@ -715,6 +723,7 @@
       window.clearInterval(expiryTicker);
       expiryTicker = null;
     }
+    stopSpeaking();
   });
 
   function sendText() {
@@ -1128,6 +1137,68 @@
     const confirmation = await Promise.resolve(confirm('Delete this message?') as boolean | Promise<boolean>);
     if (!confirmation) return;
     chat.delete(msg.id);
+  }
+
+  function messageSpeechKey(msg: Message): string {
+    if (typeof msg.id === 'number') return `id:${msg.id}`;
+    if (msg.timestamp) return `ts:${msg.timestamp}`;
+    if (msg.time && msg.user) return `time:${msg.time}-${msg.user}`;
+    return `text:${(msg.text ?? '').slice(0, 32)}`;
+  }
+
+  function getSpeakableText(msg: Message): string | null {
+    if (!speechSupported) return null;
+    const raw = (msg.text ?? '').trim();
+    const image = msg.image;
+    const hasImage = typeof image === 'string' && image.length > 0;
+    let plain = raw;
+    if (raw.length > 0) {
+      const div = document.createElement('div');
+      div.innerHTML = renderMarkdown(raw);
+      plain = div.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    }
+    const pieces: string[] = [];
+    if (plain.length > 0) pieces.push(plain);
+    if (hasImage) pieces.push('Image attachment');
+    if (pieces.length === 0) return null;
+    const body = pieces.join('. ');
+    return msg.user && msg.user.trim().length > 0 ? `${msg.user} says: ${body}` : body;
+  }
+
+  function canSpeakMessage(msg: Message): boolean {
+    if (!speechSupported) return false;
+    return getSpeakableText(msg) !== null;
+  }
+
+  function stopSpeaking() {
+    if (!speechSupported) return;
+    window.speechSynthesis.cancel();
+    speakingMessageKey = null;
+  }
+
+  function speakChatMessage(msg: Message) {
+    if (!speechSupported) return;
+    const key = messageSpeechKey(msg);
+    if (speakingMessageKey === key) {
+      stopSpeaking();
+      return;
+    }
+    const text = getSpeakableText(msg);
+    if (!text) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    speakingMessageKey = key;
+    utterance.onend = () => {
+      if (speakingMessageKey === key) {
+        speakingMessageKey = null;
+      }
+    };
+    utterance.onerror = () => {
+      if (speakingMessageKey === key) {
+        speakingMessageKey = null;
+      }
+    };
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
   }
 
   function resolvePinnedMessage(entry: PinnedEntry): Message | undefined {
@@ -1974,28 +2045,50 @@
                     {/if}
                   {/if}
                 </span>
-                  {#if typeof block.message.id === 'number' && (canPinMessage(block.message) || canDeleteMessage(block.message))}
+                  {#if canSpeakMessage(block.message) || typeof block.message.id === 'number'}
                     <div class="message-actions">
-                      {#if canPinMessage(block.message)}
+                      {#if canSpeakMessage(block.message)}
                         <button
                           type="button"
                           class="message-action"
-                          class:active={isMessagePinned(block.message)}
-                          on:click={() => togglePinMessage(block.message)}
-                          title={isMessagePinned(block.message) ? 'Unpin message' : 'Pin message'}
+                          class:active={speakingMessageKey === messageSpeechKey(block.message)}
+                          on:click={() => speakChatMessage(block.message)}
+                          title={
+                            speakingMessageKey === messageSpeechKey(block.message)
+                              ? 'Stop text-to-speech'
+                              : 'Play text-to-speech'
+                          }
+                          aria-label={
+                            speakingMessageKey === messageSpeechKey(block.message)
+                              ? 'Stop text-to-speech'
+                              : 'Play text-to-speech'
+                          }
                         >
-                          📌
+                          {speakingMessageKey === messageSpeechKey(block.message) ? '⏹️' : '🔈'}
                         </button>
                       {/if}
-                      {#if canDeleteMessage(block.message)}
-                        <button
-                          type="button"
-                          class="message-action danger"
-                          on:click={() => deleteChatMessage(block.message)}
-                          title="Delete message"
-                        >
-                          🗑️
-                        </button>
+                      {#if typeof block.message.id === 'number'}
+                        {#if canPinMessage(block.message)}
+                          <button
+                            type="button"
+                            class="message-action"
+                            class:active={isMessagePinned(block.message)}
+                            on:click={() => togglePinMessage(block.message)}
+                            title={isMessagePinned(block.message) ? 'Unpin message' : 'Pin message'}
+                          >
+                            📌
+                          </button>
+                        {/if}
+                        {#if canDeleteMessage(block.message)}
+                          <button
+                            type="button"
+                            class="message-action danger"
+                            on:click={() => deleteChatMessage(block.message)}
+                            title="Delete message"
+                          >
+                            🗑️
+                          </button>
+                        {/if}
                       {/if}
                     </div>
                   {/if}
