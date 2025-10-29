@@ -44,12 +44,10 @@ pub const CHANNEL_PERMISSION_DENIED: &str =
     r#"{"type":"error","message":"channel-permission-denied"}"#;
 
 /// Failed to create channel in database.
-pub const CHANNEL_CREATION_FAILED: &str =
-    r#"{"type":"error","message":"channel-creation-failed"}"#;
+pub const CHANNEL_CREATION_FAILED: &str = r#"{"type":"error","message":"channel-creation-failed"}"#;
 
 /// Failed to delete channel from database.
-pub const CHANNEL_DELETION_FAILED: &str =
-    r#"{"type":"error","message":"channel-deletion-failed"}"#;
+pub const CHANNEL_DELETION_FAILED: &str = r#"{"type":"error","message":"channel-deletion-failed"}"#;
 
 /// Cannot delete the general channel.
 pub const CANNOT_DELETE_GENERAL: &str = r#"{"type":"error","message":"cannot-delete-general"}"#;
@@ -69,4 +67,3 @@ pub const UNKNOWN_VOICE_CHANNEL: &str = r#"{"type":"error","message":"unknown-vo
 /// Failed to update voice channel configuration.
 pub const VOICE_CHANNEL_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"voice-channel-update-failed"}"#;
-

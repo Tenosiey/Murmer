@@ -38,19 +38,19 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         let database_url = env::var("DATABASE_URL")
             .map_err(|_| anyhow::anyhow!("DATABASE_URL environment variable is required"))?;
-        
+
         let bind_addr = env::var("BIND_ADDRESS")
             .unwrap_or_else(|_| "0.0.0.0:3001".to_string())
             .parse()
             .context("failed to parse BIND_ADDRESS as a socket address")?;
-        
+
         let upload_dir = env::var("UPLOAD_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("uploads"));
-        
+
         let password = env::var("SERVER_PASSWORD").ok().filter(|s| !s.is_empty());
         let admin_token = env::var("ADMIN_TOKEN").ok().filter(|s| !s.is_empty());
-        
+
         let cors_allowlist = Self::parse_cors_origins()?;
 
         Ok(Self {
@@ -77,7 +77,11 @@ impl Config {
                         format!("invalid origin '{trimmed}' in CORS_ALLOW_ORIGINS")
                     })?);
                 }
-                Ok(if origins.is_empty() { None } else { Some(origins) })
+                Ok(if origins.is_empty() {
+                    None
+                } else {
+                    Some(origins)
+                })
             }
             Err(_) => Ok(None),
         }
@@ -101,4 +105,3 @@ impl Config {
         self.cors_allowlist.as_ref()
     }
 }
-

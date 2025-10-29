@@ -29,4 +29,3 @@ pub const MAX_HISTORY_LIMIT: i64 = 200;
 
 /// Default number of messages to load when no limit is specified.
 pub const DEFAULT_HISTORY_LIMIT: i64 = 50;
-

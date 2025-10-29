@@ -21,7 +21,9 @@ use axum::{
     routing::{get, post},
 };
 use dotenvy::dotenv;
-use murmer_server::{AppState, RateLimiter, VoiceChannelState, admin, config::Config, db, upload, ws};
+use murmer_server::{
+    AppState, RateLimiter, VoiceChannelState, admin, config::Config, db, upload, ws,
+};
 use std::{
     collections::{HashMap, HashSet},
     net::SocketAddr,
@@ -34,9 +36,7 @@ use tokio::{
 };
 use tower::ServiceBuilder;
 use tower_http::{
-    compression::CompressionLayer,
-    services::ServeDir,
-    set_header::SetResponseHeaderLayer,
+    compression::CompressionLayer, services::ServeDir, set_header::SetResponseHeaderLayer,
     trace::TraceLayer,
 };
 use tracing::info;

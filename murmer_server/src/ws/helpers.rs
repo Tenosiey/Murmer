@@ -3,8 +3,8 @@
 use crate::{AppState, VoiceChannelState};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{DateTime, Utc};
-use futures::stream::SplitSink;
 use futures::SinkExt;
+use futures::stream::SplitSink;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -104,6 +104,7 @@ pub async fn broadcast_role(state: &Arc<AppState>, user: &str, role: &str, color
 pub async fn send_all_roles(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let roles = state.roles.lock().await.clone();
     for (user, info) in roles {
+        #[allow(clippy::collapsible_if)]
         if let Ok(msg) = serde_json::to_string(&serde_json::json!({
             "type": "role-update",
             "user": user,
@@ -243,6 +244,7 @@ pub async fn send_voice_channels(
 pub async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let map = state.voice_channels.lock().await.clone();
     for (chan, info) in map {
+        #[allow(clippy::collapsible_if)]
         if let Ok(msg) = serde_json::to_string(&serde_json::json!({
             "type": "voice-users",
             "channel": chan,
@@ -301,4 +303,3 @@ pub fn ensure_time(value: &mut Value, timestamp: &DateTime<Utc>) {
         value["time"] = Value::String(timestamp.format("%H:%M:%S").to_string());
     }
 }
-

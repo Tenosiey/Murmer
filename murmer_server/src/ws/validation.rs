@@ -34,4 +34,3 @@ pub fn validate_bitrate(value: i64) -> Option<i32> {
     }
     i32::try_from(value).ok()
 }
-

@@ -22,13 +22,14 @@ use crate::{
     roles::{RoleInfo, default_color},
 };
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct RoleBody {
     pub key: String,
     pub role: String,
     pub color: Option<String>,
 }
 
+#[tracing::instrument(skip(state, bearer), fields(key = %body.key, role = %body.role))]
 pub async fn set_role(
     State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,

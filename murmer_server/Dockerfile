@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
-ARG RUST_VERSION=1.89.0
-FROM docker.io/library/rust:${RUST_VERSION}-slim-bookworm@sha256:d7fc7de78bb8c1469933aeecbf801314d30d7d6e9f0578bba4cfa285bfa37fe6 AS builder
+ARG RUST_VERSION=1.90.0
+FROM docker.io/library/rust:${RUST_VERSION}-slim-bookworm@sha256:64232e656c058f4468e8d024e990acff04f0fd5a5c0a88a574dc37773d7325c9 AS builder
 WORKDIR /app
 
 # Cache dependencies
