@@ -13,6 +13,13 @@ npm run tauri dev
 
 Running `npm run tauri dev` starts the SvelteKit dev server and opens the Tauri shell with hot reloading.
 
+> [!NOTE]
+> On Linux systems with Snap installed we strip any `/snap/core*` entries from
+> `LD_LIBRARY_PATH` before launching the Tauri CLI. This avoids runtime errors
+> such as `undefined symbol: __libc_pthread_init` caused by mixing the Snap
+> glibc with the system toolchain. If you invoke the Tauri CLI manually, ensure
+> that environment variable is unset or similarly cleaned.
+
 ## Stores
 
 Several Svelte stores persist client state:
