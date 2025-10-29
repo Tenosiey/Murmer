@@ -1,7 +1,10 @@
 //! Security utilities for rate limiting and replay attack prevention.
 
 use crate::RateLimiter;
-use std::time::{Duration, Instant};
+use std::{
+    collections::VecDeque,
+    time::{Duration, Instant},
+};
 use tracing::warn;
 
 /// Get rate limiting configuration from environment variables with defaults
@@ -26,6 +29,19 @@ pub fn get_nonce_expiry_seconds() -> u64 {
         .unwrap_or(300) // 5 minutes
 }
 
+/// Clean up timestamps older than the cutoff time from a VecDeque.
+///
+/// This is a helper function to reduce duplication between different rate limiters.
+fn cleanup_old_timestamps(timestamps: &mut VecDeque<Instant>, cutoff: Instant) {
+    while let Some(&front) = timestamps.front() {
+        if front < cutoff {
+            timestamps.pop_front();
+        } else {
+            break;
+        }
+    }
+}
+
 /// Check if an IP address is rate limited for authentication attempts.
 ///
 /// This function implements a sliding window rate limiter that allows up to
@@ -42,17 +58,11 @@ pub fn get_nonce_expiry_seconds() -> u64 {
 pub async fn check_auth_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool {
     let now = Instant::now();
     let mut attempts = rate_limiter.auth_attempts.lock().await;
+    let cutoff = now - Duration::from_secs(60);
 
     // Clean up old entries outside the rate limiting window
-    let cutoff = now - Duration::from_secs(60);
     if let Some(timestamps) = attempts.get_mut(ip) {
-        while let Some(&front) = timestamps.front() {
-            if front < cutoff {
-                timestamps.pop_front();
-            } else {
-                break;
-            }
-        }
+        cleanup_old_timestamps(timestamps, cutoff);
     }
 
     // Check if this IP has exceeded the rate limit
@@ -71,17 +81,11 @@ pub async fn check_auth_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool
 pub async fn check_message_rate_limit(rate_limiter: &RateLimiter, user: &str) -> bool {
     let now = Instant::now();
     let mut message_times = rate_limiter.message_times.lock().await;
+    let cutoff = now - Duration::from_secs(60);
 
     // Clean up old entries
-    let cutoff = now - Duration::from_secs(60);
     if let Some(timestamps) = message_times.get_mut(user) {
-        while let Some(&front) = timestamps.front() {
-            if front < cutoff {
-                timestamps.pop_front();
-            } else {
-                break;
-            }
-        }
+        cleanup_old_timestamps(timestamps, cutoff);
     }
 
     // Check current message count
@@ -146,13 +150,18 @@ pub fn validate_timestamp(timestamp_str: &str) -> Result<i64, &'static str> {
     Ok(timestamp)
 }
 
-/// Validate channel name for security
-pub fn validate_channel_name(name: &str) -> bool {
-    if name.is_empty() || name.len() > 50 {
+/// Generic name validator for security.
+///
+/// Validates that a name:
+/// - Is not empty and within the specified maximum length
+/// - Contains only alphanumeric characters, dashes, underscores, and spaces
+/// - Has no leading or trailing whitespace
+/// - Is not composed entirely of whitespace
+fn validate_name(name: &str, max_length: usize) -> bool {
+    if name.is_empty() || name.len() > max_length {
         return false;
     }
 
-    // Allow alphanumeric, dash, underscore, and spaces
     // Reject names that are only whitespace or have leading/trailing spaces
     let trimmed = name.trim();
     if trimmed.is_empty() || trimmed != name {
@@ -163,19 +172,12 @@ pub fn validate_channel_name(name: &str) -> bool {
         .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ' ')
 }
 
-/// Validate user name for security  
+/// Validate channel name for security (max 50 characters)
+pub fn validate_channel_name(name: &str) -> bool {
+    validate_name(name, 50)
+}
+
+/// Validate user name for security (max 32 characters)
 pub fn validate_user_name(name: &str) -> bool {
-    if name.is_empty() || name.len() > 32 {
-        return false;
-    }
-
-    // Allow alphanumeric, dash, underscore, and spaces
-    // Reject names that are only whitespace or have leading/trailing spaces
-    let trimmed = name.trim();
-    if trimmed.is_empty() || trimmed != name {
-        return false;
-    }
-
-    name.chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ' ')
+    validate_name(name, 32)
 }

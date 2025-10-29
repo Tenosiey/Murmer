@@ -17,16 +17,14 @@ use anyhow::{Context, Result};
 use axum::{
     Router,
     extract::DefaultBodyLimit,
-    http::{HeaderValue, Method, StatusCode, header},
+    http::{HeaderValue, StatusCode, header},
     routing::{get, post},
 };
 use dotenvy::dotenv;
-use murmer_server::{AppState, RateLimiter, VoiceChannelState, admin, db, upload, ws};
+use murmer_server::{AppState, RateLimiter, VoiceChannelState, admin, config::Config, db, upload, ws};
 use std::{
     collections::{HashMap, HashSet},
-    env,
     net::SocketAddr,
-    path::PathBuf,
     sync::{Arc, OnceLock},
 };
 use tokio::{
@@ -37,77 +35,11 @@ use tokio::{
 use tower::ServiceBuilder;
 use tower_http::{
     compression::CompressionLayer,
-    cors::{AllowOrigin, CorsLayer},
     services::ServeDir,
     set_header::SetResponseHeaderLayer,
     trace::TraceLayer,
 };
 use tracing::info;
-
-#[derive(Debug, Clone)]
-struct Config {
-    bind_addr: SocketAddr,
-    database_url: String,
-    upload_dir: PathBuf,
-    password: Option<String>,
-    admin_token: Option<String>,
-    cors_allowlist: Option<Vec<HeaderValue>>,
-}
-
-impl Config {
-    fn from_env() -> Result<Self> {
-        let database_url = env::var("DATABASE_URL")
-            .map_err(|_| anyhow::anyhow!("DATABASE_URL environment variable is required"))?;
-        let bind_addr = env::var("BIND_ADDRESS")
-            .unwrap_or_else(|_| "0.0.0.0:3001".to_string())
-            .parse()
-            .context("failed to parse BIND_ADDRESS as a socket address")?;
-        let upload_dir = env::var("UPLOAD_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("uploads"));
-        let password = env::var("SERVER_PASSWORD").ok().filter(|s| !s.is_empty());
-        let admin_token = env::var("ADMIN_TOKEN").ok().filter(|s| !s.is_empty());
-        let cors_allowlist = match env::var("CORS_ALLOW_ORIGINS") {
-            Ok(raw) => {
-                let mut origins = Vec::new();
-                for origin in raw.split(',') {
-                    let trimmed = origin.trim();
-                    if trimmed.is_empty() {
-                        continue;
-                    }
-                    origins.push(HeaderValue::from_str(trimmed).with_context(|| {
-                        format!("invalid origin '{trimmed}' in CORS_ALLOW_ORIGINS")
-                    })?);
-                }
-                if origins.is_empty() {
-                    None
-                } else {
-                    Some(origins)
-                }
-            }
-            Err(_) => None,
-        };
-
-        Ok(Self {
-            bind_addr,
-            database_url,
-            upload_dir,
-            password,
-            admin_token,
-            cors_allowlist,
-        })
-    }
-
-    fn cors_layer(&self) -> Option<CorsLayer> {
-        self.cors_allowlist.as_ref().map(|origins| {
-            let allowed = AllowOrigin::list(origins.clone());
-            CorsLayer::new()
-                .allow_origin(allowed)
-                .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-                .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
-        })
-    }
-}
 
 fn init_tracing() {
     static INIT: OnceLock<()> = OnceLock::new();
@@ -217,7 +149,7 @@ async fn main() -> Result<()> {
         .layer(security_headers);
 
     if let Some(cors) = config.cors_layer() {
-        if let Some(origins) = &config.cors_allowlist {
+        if let Some(origins) = config.cors_origins() {
             info!(?origins, "CORS enabled for configured origins");
         }
         router = router.layer(cors);
