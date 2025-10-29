@@ -5,11 +5,26 @@ import type { Message } from '../types';
 function createPingStore() {
   const { subscribe, set } = writable(0);
   let currentId: number | null = null;
+  let lastSentAt: number | null = null;
   let interval: number | null = null;
 
+  const STALE_PING_MS = 10_000;
+
   function sendPing() {
-    if (currentId !== null) return;
-    currentId = Date.now();
+    const now = Date.now();
+
+    if (currentId !== null) {
+      if (lastSentAt && now - lastSentAt < STALE_PING_MS) {
+        return;
+      }
+
+      if (lastSentAt) {
+        set(now - lastSentAt);
+      }
+    }
+
+    currentId = now;
+    lastSentAt = now;
     chat.sendRaw({ type: 'ping', id: currentId });
   }
 
@@ -17,6 +32,7 @@ function createPingStore() {
     if (typeof msg.id === 'number' && msg.id === currentId) {
       set(Date.now() - msg.id);
       currentId = null;
+      lastSentAt = null;
     }
   }
 
@@ -34,6 +50,8 @@ function createPingStore() {
     }
     chat.off('pong');
     currentId = null;
+    lastSentAt = null;
+    set(0);
   }
 
   return { subscribe, start, stop };

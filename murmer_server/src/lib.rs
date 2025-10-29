@@ -4,6 +4,7 @@
 //! them to exercise rate limiting and validation logic.
 
 pub mod admin;
+pub mod config;
 pub mod db;
 pub mod roles;
 pub mod security;
