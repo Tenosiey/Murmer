@@ -37,3 +37,19 @@ export interface VoiceChannelInfo {
   quality: string;
   bitrate: number | null;
 }
+
+export interface ScreenShareSettings {
+  width: number;
+  height: number;
+  frameRate: number;
+}
+
+export interface ScreenSharePeer {
+  userId: string;
+  stream: MediaStream;
+}
+
+export interface ScreenShareActive {
+  userId: string;
+  channelName: string;
+}

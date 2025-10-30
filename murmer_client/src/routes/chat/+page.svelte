@@ -32,10 +32,13 @@
   import { pinned } from '$lib/stores/pins';
   import type { PinnedEntry } from '$lib/stores/pins';
   import { channelNotifications, type ChannelNotificationPreference } from '$lib/stores/channelNotifications';
+  import { activeScreenShares, screenSharePeers, viewScreenShare } from '$lib/stores/screenShare';
+  import ScreenShareControls from '$lib/components/ScreenShareControls.svelte';
+  import ScreenShareViewer from '$lib/components/ScreenShareViewer.svelte';
   import { loadKeyPair, sign } from '$lib/keypair';
   import { renderMarkdown } from '$lib/markdown';
   import { extractLinks } from '$lib/link-preview';
-  import type { Message, UserStatus, VoiceChannelInfo } from '$lib/types';
+  import type { Message, UserStatus, VoiceChannelInfo, ScreenSharePeer } from '$lib/types';
   function pingToStrength(ms: number): number {
     return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
   }
@@ -133,6 +136,9 @@
 
   let now = Date.now();
   let expiryTicker: number | null = null;
+
+  // Screen share viewer state
+  let viewingScreenShare: ScreenSharePeer | null = null;
 
   const VOICE_QUALITY_PRESETS: Array<{ quality: string; bitrate: number | null; label: string }> = [
     { quality: 'low', bitrate: 32_000, label: 'Low' },
@@ -996,6 +1002,24 @@
     inVoice = false;
   }
 
+  async function handleViewScreenShare(userId: string) {
+    try {
+      await viewScreenShare(userId);
+      const peers = $screenSharePeers;
+      const peer = peers.find(p => p.userId === userId);
+      if (peer) {
+        viewingScreenShare = peer;
+      }
+    } catch (error) {
+      console.error('Failed to view screen share:', error);
+      alert('Failed to view screen share');
+    }
+  }
+
+  function closeScreenShareViewer() {
+    viewingScreenShare = null;
+  }
+
   function leaveServer() {
     chat.disconnect();
     if (currentVoiceChannel) {
@@ -1436,6 +1460,18 @@
                       >{$roles[user].role}</span
                     >
                   {/if}
+                  {#if $activeScreenShares[ch.name]?.includes(user)}
+                    <button
+                      class="screenshare-indicator"
+                      on:click={() => handleViewScreenShare(user)}
+                      title="View {user}'s screen"
+                      aria-label="View {user}'s screen share"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
+                      </svg>
+                    </button>
+                  {/if}
                   <ConnectionBars
                     strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)}
                   />
@@ -1495,17 +1531,19 @@
                 title={$outputMuted ? 'Unmute Output' : 'Mute Output'}
               >
                 <span class="btn-icon">{$outputMuted ? '🔇' : '🔊'}</span>
-                <span class="btn-text">{$outputMuted ? 'Unmute Out' : 'Mute Out'}</span>
-              </button>
-            </div>
-          {:else}
-            <button class="voice-control-btn join" on:click={joinVoice}>
-              <span class="btn-icon">🔊</span>
-              <span class="btn-text">Join Voice</span>
+              <span class="btn-text">{$outputMuted ? 'Unmute Out' : 'Mute Out'}</span>
             </button>
-          {/if}
-        </div>
+          </div>
+          
+          <ScreenShareControls {currentVoiceChannel} {inVoice} />
+        {:else}
+          <button class="voice-control-btn join" on:click={joinVoice}>
+            <span class="btn-icon">🔊</span>
+            <span class="btn-text">Join Voice</span>
+          </button>
+        {/if}
       </div>
+    </div>
     </div>
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="resizer" role="separator" aria-label="Resize channel list" on:mousedown={startLeftResize}></div>
@@ -2194,6 +2232,10 @@
       </div>
     </div>
   </div>
+{/if}
+
+{#if viewingScreenShare}
+  <ScreenShareViewer peer={viewingScreenShare} onClose={closeScreenShareViewer} />
 {/if}
 
 <style>
@@ -3237,6 +3279,29 @@
 
   .sidebar .status-label {
     text-transform: capitalize;
+  }
+
+  .screenshare-indicator {
+    background: transparent;
+    border: none;
+    padding: 0.25rem;
+    cursor: pointer;
+    color: var(--color-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    transition: all 0.2s;
+  }
+
+  .screenshare-indicator:hover {
+    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+    color: var(--color-on-primary);
+  }
+
+  .screenshare-indicator svg {
+    width: 1rem;
+    height: 1rem;
   }
 
   .volume-menu-overlay {
