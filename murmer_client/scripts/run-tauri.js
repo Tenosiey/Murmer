@@ -19,9 +19,10 @@ if (process.platform === 'linux') {
   }
 }
 
-const child = spawn('tauri', args, {
+const child = spawn('npx', ['tauri', ...args], {
   env,
-  stdio: 'inherit'
+  stdio: 'inherit',
+  shell: true
 });
 
 child.on('exit', (code, signal) => {
