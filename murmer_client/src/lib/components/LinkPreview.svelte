@@ -204,70 +204,100 @@
 
 <style>
   .link-preview {
-    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
-    border-radius: 8px;
-    background: var(--panel-color, rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: var(--radius-md);
+    background: var(--md-sys-color-surface-container-high);
+    backdrop-filter: var(--blur-elevated);
     overflow: hidden;
-    max-width: 420px;
+    max-width: 460px;
+    box-shadow: var(--shadow-01);
+    transition: all var(--motion-duration-short) var(--motion-easing-standard);
+  }
+
+  .link-preview:hover {
+    border-color: var(--md-sys-color-outline-variant);
+    box-shadow: var(--shadow-02);
   }
 
   .link-preview iframe {
     width: 100%;
-    height: 200px;
+    height: 220px;
     border: none;
-    background: transparent;
+    background: color-mix(in srgb, var(--md-sys-color-surface) 95%, transparent);
   }
 
   .preview-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.5rem 0.75rem;
+    padding: 0.7rem 1rem;
     font-size: 0.85rem;
-    font-weight: 500;
-    background: var(--panel-header, rgba(255, 255, 255, 0.05));
+    font-weight: 600;
+    background: color-mix(in srgb, var(--md-sys-color-surface-container) 90%, transparent);
+    border-bottom: 1px solid var(--md-sys-color-outline);
+  }
+
+  .preview-header .host {
+    color: var(--md-sys-color-on-surface-variant);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
   }
 
   .preview-header a {
-    color: var(--accent-color, #4ba3ff);
+    color: var(--md-sys-color-secondary);
     text-decoration: none;
     font-weight: 600;
+    transition: color var(--motion-duration-short) var(--motion-easing-standard);
   }
 
   .preview-header a:hover,
   .preview-header a:focus-visible {
+    color: var(--md-sys-color-primary);
     text-decoration: underline;
   }
 
   .preview-fallback {
-    padding: 0.75rem;
-    font-size: 0.85rem;
-    color: var(--muted-color, rgba(255, 255, 255, 0.7));
+    padding: 1.2rem;
+    font-size: 0.9rem;
+    color: var(--md-sys-color-muted);
+    text-align: center;
   }
 
   .preview-fallback a {
-    color: var(--accent-color, #4ba3ff);
+    color: var(--md-sys-color-secondary);
     text-decoration: none;
+    font-weight: 600;
   }
 
   .preview-fallback a:hover,
   .preview-fallback a:focus-visible {
+    color: var(--md-sys-color-primary);
     text-decoration: underline;
   }
 
   .youtube {
     display: flex;
-    gap: 0.75rem;
-    padding: 0.75rem;
+    gap: 1rem;
+    padding: 1rem;
   }
 
   .youtube-thumb {
     position: relative;
-    width: 150px;
+    width: 160px;
     flex-shrink: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     display: block;
+    transition: transform var(--motion-duration-short) var(--motion-easing-standard);
+  }
+
+  .youtube-thumb:hover {
+    transform: scale(1.02);
+  }
+
+  .youtube-thumb:hover .youtube-icon {
+    transform: translate(-50%, -50%) scale(1.1);
+    background: rgba(0, 0, 0, 0.75);
   }
 
   .youtube-thumb img {
@@ -281,15 +311,18 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(8px);
     border-radius: 50%;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
-    font-size: 1.2rem;
+    font-size: 1.3rem;
+    transition: all var(--motion-duration-short) var(--motion-easing-standard);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
   .youtube-meta {
@@ -297,30 +330,35 @@
     flex-direction: column;
     justify-content: center;
     font-size: 0.85rem;
-    gap: 0.25rem;
+    gap: 0.4rem;
   }
 
   .youtube-label {
-    font-weight: 600;
-    color: var(--accent-color, #ff4b4b);
+    font-weight: 700;
+    color: var(--md-sys-color-error);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
+    font-size: 0.7rem;
   }
 
   .youtube-title {
     margin: 0;
     font-weight: 600;
-    line-height: 1.2;
+    line-height: 1.3;
+    color: var(--md-sys-color-on-surface);
+    font-size: 0.95rem;
   }
 
   .youtube-author {
     margin: 0;
-    color: var(--muted-color, rgba(255, 255, 255, 0.75));
+    color: var(--md-sys-color-muted);
+    font-size: 0.85rem;
   }
 
   .youtube-error {
     margin: 0;
-    color: var(--muted-color, rgba(255, 255, 255, 0.75));
+    color: var(--md-sys-color-muted);
     font-style: italic;
+    font-size: 0.8rem;
   }
 </style>
