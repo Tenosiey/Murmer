@@ -305,7 +305,13 @@ export class ScreenShareManager {
   /**
    * Request to view a specific user's screen share
    */
-  async viewScreenShare(userId: string): Promise<void> {
+  async viewScreenShare(userId: string, viewerName?: string, channel?: string): Promise<void> {
+    // Set viewer info if provided and not already set
+    if (viewerName && channel && !this.userName && !this.channel) {
+      this.userName = viewerName;
+      this.channel = channel;
+    }
+
     if (!this.userName || !this.channel) {
       throw new Error('Not in a voice channel');
     }
@@ -319,6 +325,21 @@ export class ScreenShareManager {
    */
   stopViewing(userId: string): void {
     this.cleanupPeer(userId);
+  }
+
+  /**
+   * Leave the screen share session as a viewer (cleanup without stopping sharing)
+   */
+  leaveAsViewer(): void {
+    // Only clean up if not actively sharing
+    if (!this.isSharing()) {
+      for (const userId of Object.keys(this.peers)) {
+        this.cleanupPeer(userId);
+      }
+      this.userName = null;
+      this.channel = null;
+      this.emit([]);
+    }
   }
 
   /**

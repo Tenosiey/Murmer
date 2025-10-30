@@ -32,7 +32,7 @@
   import { pinned } from '$lib/stores/pins';
   import type { PinnedEntry } from '$lib/stores/pins';
   import { channelNotifications, type ChannelNotificationPreference } from '$lib/stores/channelNotifications';
-  import { activeScreenShares, screenSharePeers, viewScreenShare } from '$lib/stores/screenShare';
+  import { activeScreenShares, screenSharePeers, viewScreenShare, leaveScreenShareAsViewer } from '$lib/stores/screenShare';
   import ScreenShareControls from '$lib/components/ScreenShareControls.svelte';
   import ScreenShareViewer from '$lib/components/ScreenShareViewer.svelte';
   import { loadKeyPair, sign } from '$lib/keypair';
@@ -1000,11 +1000,22 @@
       voice.leave(currentVoiceChannel);
     }
     inVoice = false;
+    // Close any active screen share viewer
+    if (viewingScreenShare) {
+      viewingScreenShare = null;
+    }
+    // Clean up screen share viewer session
+    leaveScreenShareAsViewer();
   }
 
   async function handleViewScreenShare(userId: string) {
     try {
-      await viewScreenShare(userId);
+      if (!$session.user || !currentVoiceChannel) {
+        alert('You must be in a voice channel to view screen shares');
+        return;
+      }
+      
+      await viewScreenShare(userId, $session.user, currentVoiceChannel);
       const peers = $screenSharePeers;
       const peer = peers.find(p => p.userId === userId);
       if (peer) {

@@ -101,8 +101,8 @@ export function stopScreenShare(): void {
 /**
  * View a user's screen share
  */
-export async function viewScreenShare(userId: string): Promise<void> {
-  await screenShareManager.viewScreenShare(userId);
+export async function viewScreenShare(userId: string, viewerName?: string, channel?: string): Promise<void> {
+  await screenShareManager.viewScreenShare(userId, viewerName, channel);
 }
 
 /**
@@ -110,6 +110,13 @@ export async function viewScreenShare(userId: string): Promise<void> {
  */
 export function stopViewingScreenShare(userId: string): void {
   screenShareManager.stopViewing(userId);
+}
+
+/**
+ * Leave screen share session as a viewer
+ */
+export function leaveScreenShareAsViewer(): void {
+  screenShareManager.leaveAsViewer();
 }
 
 /**
