@@ -4,7 +4,7 @@
  * Manages the global screen share instance and tracks active screen shares
  * across all voice channels.
  */
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { ScreenShareManager } from '../screenshare/manager';
 import type { ScreenSharePeer, ScreenShareActive, ScreenShareSettings } from '../types';
 import { chat } from './chat';
@@ -85,13 +85,7 @@ chat.on('screenshare-stop', (msg: Message) => {
  * Start sharing screen
  */
 export async function startScreenShare(user: string, channel: string): Promise<void> {
-  const settings = await new Promise<ScreenShareSettings>((resolve) => {
-    const unsubscribe = screenShareSettings.subscribe(s => {
-      unsubscribe();
-      resolve(s);
-    });
-  });
-
+  const settings = get(screenShareSettings);
   await screenShareManager.startSharing(user, channel, settings);
   isScreenSharing.set(true);
 }
