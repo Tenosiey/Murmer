@@ -2030,7 +2030,7 @@ dependencies = [
 
 [[package]]
 name = "murmer_client"
-version = "2025.7.24-alpha.2"
+version = "2026.3.6-alpha.1"
 dependencies = [
  "serde",
  "serde_json",
