@@ -718,13 +718,6 @@
     scrollBottom();
   }
 
-  function joinVoice() {
-    if ($session.user && currentVoiceChannel) {
-      const info = $voiceChannels.find((vc) => vc.name === currentVoiceChannel);
-      voice.join($session.user, currentVoiceChannel, info);
-      inVoice = true;
-    }
-  }
 
   function leaveVoice() {
     if (currentVoiceChannel) {
@@ -821,6 +814,54 @@
     volumeMenuOpen = false;
     volumeMenuUser = null;
   }
+
+  let userRoleMenuOpen = false;
+  let userRoleMenuX = 0;
+  let userRoleMenuY = 0;
+  let userRoleMenuTarget: string | null = null;
+
+  const ASSIGNABLE_ROLES = ['Owner', 'Admin', 'Mod'] as const;
+
+  $: currentUserIsOwner = (() => {
+    const user = $session.user;
+    if (!user) return false;
+    const info = $roles[user];
+    return info?.role?.toLowerCase() === 'owner';
+  })();
+
+  function openUserRoleMenu(event: MouseEvent, user: string) {
+    if (!currentUserIsOwner) return;
+    if (user === $session.user) return;
+    event.preventDefault();
+    event.stopPropagation();
+    userRoleMenuX = event.clientX;
+    userRoleMenuY = event.clientY;
+    userRoleMenuTarget = user;
+    userRoleMenuOpen = true;
+  }
+
+  function assignRole(user: string, role: string) {
+    chat.sendRaw({ type: 'set-role', user, role });
+  }
+
+  function removeRole(user: string) {
+    chat.sendRaw({ type: 'remove-role', user });
+  }
+
+  $: userRoleMenuItems = (() => {
+    if (!userRoleMenuTarget) return [];
+    const target = userRoleMenuTarget;
+    const currentRole = $roles[target]?.role;
+    const items: { label: string; action: () => void; danger?: boolean; icon?: string }[] = [];
+    for (const role of ASSIGNABLE_ROLES) {
+      if (currentRole?.toLowerCase() === role.toLowerCase()) continue;
+      items.push({ label: `Set as ${role}`, action: () => assignRole(target, role) });
+    }
+    if (currentRole) {
+      items.push({ label: 'Remove Role', action: () => removeRole(target), danger: true });
+    }
+    return items;
+  })();
 
   function openChannelMenu(event: MouseEvent, channel?: string, voice?: boolean) {
     event.preventDefault();
@@ -992,15 +1033,10 @@
         if (inVoice) {
           leaveVoice();
         } else {
-          if (!currentVoiceChannel) {
-            const channels = $voiceChannels;
-            if (channels.length) {
-              currentVoiceChannel = channels[0].name;
-            } else {
-              break;
-            }
+          const channels = $voiceChannels;
+          if (channels.length) {
+            joinVoiceChannel(currentVoiceChannel ?? channels[0].name);
           }
-          joinVoice();
         }
         break;
       default:
@@ -1233,62 +1269,69 @@
         <div class="voice-controls-panel">
           {#if inVoice}
             <div class="voice-controls-header">Voice Controls</div>
-            <div class="voice-controls-buttons">
+          {/if}
+          <div class="voice-controls-buttons">
+            {#if inVoice}
               <button class="voice-control-btn leave" on:click={leaveVoice}>
                 <span class="btn-icon">⬅️</span>
                 <span class="btn-text">Leave Voice</span>
               </button>
-              <button
-                class="voice-control-btn mute"
-                class:muted={$microphoneMuted}
-                class:active={$voiceMode === 'vad' && $voiceActivity}
-                class:ptt-active={$voiceMode === 'ptt' && $isPttActive}
-                on:click={toggleMicrophone}
-                title={$microphoneMuted ? 'Unmute Microphone' : 'Mute Microphone'}
-              >
-                <span class="btn-icon">
-                  {#if $microphoneMuted}
-                    🎤🚫
-                  {:else if $voiceMode === 'vad' && $voiceActivity}
-                    🎤✨
-                  {:else if $voiceMode === 'ptt' && $isPttActive}
-                    🎤🔥
-                  {:else}
-                    🎤
-                  {/if}
-                </span>
-                <span class="btn-text">
-                  {#if $microphoneMuted}
-                    Unmute Mic
-                  {:else if $voiceMode === 'continuous'}
-                    Always On
-                  {:else if $voiceMode === 'vad'}
-                    Voice Detection
-                  {:else if $voiceMode === 'ptt'}
-                    Push to Talk
-                  {:else}
-                    Mute Mic
-                  {/if}
-                </span>
-              </button>
-              <button
-                class="voice-control-btn mute"
-                class:muted={$outputMuted}
-                on:click={toggleOutput}
-                title={$outputMuted ? 'Unmute Output' : 'Mute Output'}
-              >
-                <span class="btn-icon">{$outputMuted ? '🔇' : '🔊'}</span>
-              <span class="btn-text">{$outputMuted ? 'Unmute Out' : 'Mute Out'}</span>
+            {/if}
+            <button
+              class="voice-control-btn mute"
+              class:muted={inVoice && $microphoneMuted}
+              class:active={inVoice && $voiceMode === 'vad' && $voiceActivity}
+              class:ptt-active={inVoice && $voiceMode === 'ptt' && $isPttActive}
+              class:disabled={!inVoice}
+              on:click={toggleMicrophone}
+              disabled={!inVoice}
+              title={!inVoice ? 'Join a voice channel first' : $microphoneMuted ? 'Unmute Microphone' : 'Mute Microphone'}
+            >
+              <span class="btn-icon">
+                {#if !inVoice}
+                  🎤
+                {:else if $microphoneMuted}
+                  🎤🚫
+                {:else if $voiceMode === 'vad' && $voiceActivity}
+                  🎤✨
+                {:else if $voiceMode === 'ptt' && $isPttActive}
+                  🎤🔥
+                {:else}
+                  🎤
+                {/if}
+              </span>
+              <span class="btn-text">
+                {#if !inVoice}
+                  Microphone
+                {:else if $microphoneMuted}
+                  Unmute Mic
+                {:else if $voiceMode === 'continuous'}
+                  Always On
+                {:else if $voiceMode === 'vad'}
+                  Voice Detection
+                {:else if $voiceMode === 'ptt'}
+                  Push to Talk
+                {:else}
+                  Mute Mic
+                {/if}
+              </span>
+            </button>
+            <button
+              class="voice-control-btn mute"
+              class:muted={inVoice && $outputMuted}
+              class:disabled={!inVoice}
+              on:click={toggleOutput}
+              disabled={!inVoice}
+              title={!inVoice ? 'Join a voice channel first' : $outputMuted ? 'Unmute Output' : 'Mute Output'}
+            >
+              <span class="btn-icon">{inVoice && $outputMuted ? '🔇' : '🔊'}</span>
+              <span class="btn-text">{!inVoice ? 'Speaker' : $outputMuted ? 'Unmute Out' : 'Mute Out'}</span>
             </button>
           </div>
           
-          <ScreenShareControls {currentVoiceChannel} {inVoice} />
-        {:else}
-          <button class="voice-control-btn join" on:click={joinVoice}>
-            <span class="btn-icon">🔊</span>
-            <span class="btn-text">Join Voice</span>
-          </button>
-        {/if}
+          {#if inVoice}
+            <ScreenShareControls {currentVoiceChannel} {inVoice} />
+          {/if}
       </div>
     </div>
     </div>
@@ -1813,7 +1856,11 @@
       <h3>Online</h3>
       <ul>
         {#each $onlineUsers as user}
-          <li>
+          <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+          <li
+            class:clickable={currentUserIsOwner && user !== $session.user}
+            on:contextmenu={(e) => openUserRoleMenu(e, user)}
+          >
             <span class={`status ${ensureStatus(statusMap, user, 'online')}`}></span>
             <span class="status-label">{STATUS_LABELS[ensureStatus(statusMap, user, 'online')]}</span>
             <span
@@ -1834,7 +1881,11 @@
       <h3>Offline</h3>
       <ul>
         {#each $offlineUsers as user}
-          <li>
+          <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+          <li
+            class:clickable={currentUserIsOwner && user !== $session.user}
+            on:contextmenu={(e) => openUserRoleMenu(e, user)}
+          >
             <span class={`status ${ensureStatus(statusMap, user)}`}></span>
             <span class="status-label">{STATUS_LABELS[ensureStatus(statusMap, user)]}</span>
             <span
@@ -1856,6 +1907,7 @@
 </div>
 
 <ContextMenu bind:open={menuOpen} x={menuX} y={menuY} items={channelMenuItems} />
+<ContextMenu bind:open={userRoleMenuOpen} x={userRoleMenuX} y={userRoleMenuY} items={userRoleMenuItems} />
 
 <VolumeMenu
   open={volumeMenuOpen}
@@ -1983,11 +2035,13 @@
     background: var(--color-success);
     opacity: 0.5;
     flex-shrink: 0;
+    transition: opacity 0.15s ease-in, box-shadow 0.15s ease-in;
   }
 
   .voice-user-list .status.voice.talking {
     opacity: 1;
     box-shadow: 0 0 6px color-mix(in srgb, var(--color-success) 50%, transparent);
+    transition: opacity 0.05s ease-out, box-shadow 0.05s ease-out;
   }
 
   .voice-user-list .username {
@@ -2930,6 +2984,12 @@
     border-color: color-mix(in srgb, var(--color-error) 60%, transparent);
   }
 
+  .voice-control-btn.disabled {
+    opacity: 0.4;
+    cursor: default;
+    pointer-events: none;
+  }
+
   .voice-control-btn.mute.muted {
     background: color-mix(in srgb, var(--color-error) 15%, transparent);
     border-color: color-mix(in srgb, var(--color-error) 45%, transparent);
@@ -2991,6 +3051,10 @@
 
   .sidebar li:hover {
     background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  }
+
+  .sidebar li.clickable {
+    cursor: context-menu;
   }
 
   .status {

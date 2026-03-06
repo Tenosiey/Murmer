@@ -62,7 +62,7 @@ Use the checkboxes to track progress.
 ### 🛠️ Other Features
 
 - [ ] Anonymous chat modes
-- [ ] Customizable user roles & permissions
+- [x] Customizable user roles & permissions
 - [ ] Decentralized/mesh networking option
 - [x] Desktop notifications for @mentions
 - [ ] End-to-end encryption for private channels

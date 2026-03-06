@@ -12,6 +12,16 @@ function createRoleStore() {
       update(r => ({ ...r, [user]: { role, color } }));
     }
   });
+  chat.on('role-remove', (msg: Message) => {
+    const user = msg.user;
+    if (typeof user === 'string') {
+      update(r => {
+        const copy = { ...r };
+        delete copy[user];
+        return copy;
+      });
+    }
+  });
   return { subscribe, set };
 }
 

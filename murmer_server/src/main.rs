@@ -57,6 +57,12 @@ fn init_tracing() {
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv().ok();
+
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() >= 2 && args[1] == "set-role" {
+        return cli_set_role(&args[2..]).await;
+    }
+
     init_tracing();
 
     let config = Config::from_env()?;
@@ -168,6 +174,43 @@ async fn main() -> Result<()> {
     .await
     .context("server task failed")?;
 
+    Ok(())
+}
+
+/// CLI subcommand: assign a role directly in the database.
+///
+/// Usage: `murmer_server set-role <public_key> <role> [color]`
+///
+/// Designed to be run from inside the Docker container so the server
+/// operator can bootstrap the initial Owner without needing the client.
+async fn cli_set_role(args: &[String]) -> Result<()> {
+    if args.len() < 2 {
+        eprintln!("Usage: murmer_server set-role <public_key> <role> [color]");
+        eprintln!();
+        eprintln!("Roles: Owner, Admin, Mod (or any custom name)");
+        eprintln!("Color: optional hex color, e.g. #3b82f6");
+        std::process::exit(1);
+    }
+
+    let key = &args[0];
+    let role = &args[1];
+    let color = args
+        .get(2)
+        .cloned()
+        .or_else(|| murmer_server::roles::default_color(role));
+
+    let db_url = std::env::var("DATABASE_URL")
+        .map_err(|_| anyhow::anyhow!("DATABASE_URL environment variable is required"))?;
+    let client = db::init(&db_url).await.context("failed to connect to database")?;
+
+    db::set_role(&client, key, role, color.as_deref())
+        .await
+        .context("failed to set role in database")?;
+
+    println!("Role '{role}' assigned to key {key}");
+    if let Some(c) = &color {
+        println!("Color: {c}");
+    }
     Ok(())
 }
 

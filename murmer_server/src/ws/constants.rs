@@ -3,6 +3,9 @@
 /// Roles that are allowed to create or delete channels when administrative controls are enabled.
 pub const CHANNEL_MANAGE_ROLES: &[&str] = &["Admin", "Mod", "Owner"];
 
+/// Roles that are allowed to assign or remove roles from other users.
+pub const ROLE_MANAGE_ROLES: &[&str] = &["Owner"];
+
 /// Default quality label assigned to new voice channels.
 pub const DEFAULT_VOICE_QUALITY: &str = "standard";
 

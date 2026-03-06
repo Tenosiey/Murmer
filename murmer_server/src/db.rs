@@ -384,6 +384,13 @@ pub async fn set_role(
     .map(|_| ())
 }
 
+/// Remove a user's role by public key.
+pub async fn remove_role(db: &Client, key: &str) -> Result<bool, tokio_postgres::Error> {
+    db.execute("DELETE FROM roles WHERE public_key = $1", &[&key])
+        .await
+        .map(|affected| affected > 0)
+}
+
 /// Retrieve the list of text channels.
 pub async fn get_channels(db: &Client) -> Vec<String> {
     match db

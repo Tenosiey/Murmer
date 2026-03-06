@@ -121,6 +121,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                             "screenshare-offer" | "screenshare-answer" | "screenshare-candidate" => {
                                 let _ = state.tx.send(text.to_string());
                             }
+                            "set-role" => {
+                                handle_set_role(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "remove-role" => {
+                                handle_remove_role(&state, &mut sender, &v, &user_name).await;
+                            }
                             _ => {
                                 error!("unknown message type: {t}");
                             }
@@ -1314,6 +1320,149 @@ async fn handle_voice_leave(
         }
     }
     let _ = state.tx.send(text.to_string());
+}
+
+/// Handle set-role request from an Owner.
+///
+/// The requesting user must hold a role listed in [`ROLE_MANAGE_ROLES`]. The
+/// target user is identified by username and must have connected at least once
+/// so their public key is known.
+async fn handle_set_role(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let requester = match user_name.as_deref() {
+        Some(name) => name,
+        None => {
+            let _ = sender
+                .send(Message::Text(errors::ROLE_PERMISSION_DENIED.to_string()))
+                .await;
+            return;
+        }
+    };
+
+    if !can_manage_roles(state, requester).await {
+        let _ = sender
+            .send(Message::Text(errors::ROLE_PERMISSION_DENIED.to_string()))
+            .await;
+        return;
+    }
+
+    let Some(target_user) = v.get("user").and_then(|u| u.as_str()) else {
+        let _ = sender
+            .send(Message::Text(errors::ROLE_TARGET_NOT_FOUND.to_string()))
+            .await;
+        return;
+    };
+
+    let Some(role) = v.get("role").and_then(|r| r.as_str()) else {
+        let _ = sender
+            .send(Message::Text(errors::ROLE_UPDATE_FAILED.to_string()))
+            .await;
+        return;
+    };
+
+    let target_key = {
+        let keys = state.user_keys.lock().await;
+        keys.get(target_user).cloned()
+    };
+
+    let Some(key) = target_key else {
+        let _ = sender
+            .send(Message::Text(errors::ROLE_TARGET_NOT_FOUND.to_string()))
+            .await;
+        return;
+    };
+
+    let color = v
+        .get("color")
+        .and_then(|c| c.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| crate::roles::default_color(role));
+
+    if let Err(e) = db::set_role(&state.db, &key, role, color.as_deref()).await {
+        error!("Failed to set role for {target_user} (key {key}): {e}");
+        let _ = sender
+            .send(Message::Text(errors::ROLE_UPDATE_FAILED.to_string()))
+            .await;
+        return;
+    }
+
+    let info = RoleInfo {
+        role: role.to_string(),
+        color,
+    };
+    state
+        .roles
+        .lock()
+        .await
+        .insert(target_user.to_string(), info.clone());
+    broadcast_role(state, target_user, &info.role, info.color.as_deref()).await;
+    info!(requester, target_user, role, "Role assigned via WebSocket");
+}
+
+/// Handle remove-role request from an Owner.
+async fn handle_remove_role(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let requester = match user_name.as_deref() {
+        Some(name) => name,
+        None => {
+            let _ = sender
+                .send(Message::Text(errors::ROLE_PERMISSION_DENIED.to_string()))
+                .await;
+            return;
+        }
+    };
+
+    if !can_manage_roles(state, requester).await {
+        let _ = sender
+            .send(Message::Text(errors::ROLE_PERMISSION_DENIED.to_string()))
+            .await;
+        return;
+    }
+
+    let Some(target_user) = v.get("user").and_then(|u| u.as_str()) else {
+        let _ = sender
+            .send(Message::Text(errors::ROLE_TARGET_NOT_FOUND.to_string()))
+            .await;
+        return;
+    };
+
+    let target_key = {
+        let keys = state.user_keys.lock().await;
+        keys.get(target_user).cloned()
+    };
+
+    let Some(key) = target_key else {
+        let _ = sender
+            .send(Message::Text(errors::ROLE_TARGET_NOT_FOUND.to_string()))
+            .await;
+        return;
+    };
+
+    if let Err(e) = db::remove_role(&state.db, &key).await {
+        error!("Failed to remove role for {target_user} (key {key}): {e}");
+        let _ = sender
+            .send(Message::Text(errors::ROLE_UPDATE_FAILED.to_string()))
+            .await;
+        return;
+    }
+
+    state.roles.lock().await.remove(target_user);
+
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "role-remove",
+        "user": target_user,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+    info!(requester, target_user, "Role removed via WebSocket");
 }
 
 /// Handle client disconnect cleanup.

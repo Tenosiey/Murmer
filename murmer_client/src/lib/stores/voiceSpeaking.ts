@@ -1,39 +1,47 @@
 import { writable } from 'svelte/store';
 
-/**
- * Reactive map of remote users that are currently speaking.
- *
- * A user is present in the map only while they are considered active to keep
- * subscriptions lightweight.
- */
+const HOLD_MS = 500;
+
 const initial: Record<string, boolean> = {};
 
 export const remoteSpeaking = writable<Record<string, boolean>>(initial);
 
-/**
- * Update the speaking state for a remote user.
- */
+const releaseTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 export function setRemoteSpeaking(userId: string, speaking: boolean) {
-  remoteSpeaking.update((current) => {
-    const prev = current[userId] ?? false;
-    if (prev === speaking) {
-      return current;
+  if (speaking) {
+    const pending = releaseTimers.get(userId);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      releaseTimers.delete(userId);
     }
 
-    if (speaking) {
+    remoteSpeaking.update((current) => {
+      if (current[userId]) return current;
       return { ...current, [userId]: true };
-    }
+    });
+  } else {
+    if (releaseTimers.has(userId)) return;
 
-    const next = { ...current };
-    delete next[userId];
-    return next;
-  });
+    releaseTimers.set(
+      userId,
+      setTimeout(() => {
+        releaseTimers.delete(userId);
+        remoteSpeaking.update((current) => {
+          if (!current[userId]) return current;
+          const next = { ...current };
+          delete next[userId];
+          return next;
+        });
+      }, HOLD_MS)
+    );
+  }
 }
 
-/**
- * Clear all remote speaking indicators, typically when leaving a voice
- * channel.
- */
 export function resetRemoteSpeaking() {
+  for (const timer of releaseTimers.values()) {
+    clearTimeout(timer);
+  }
+  releaseTimers.clear();
   remoteSpeaking.set({});
 }

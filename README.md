@@ -120,6 +120,38 @@ Environment variables recognised by the server:
 When `ADMIN_TOKEN` is configured only users with the roles `Admin`, `Mod` or
 `Owner` may create or delete text/voice channels.
 
+## Role management
+
+Roles control who can manage channels and delete other users' messages. The
+available built-in roles are **Owner**, **Admin** and **Mod**.
+
+### Bootstrapping the Owner from Docker
+
+The first Owner must be assigned from the server terminal because no one has
+permission to grant roles yet. Run the CLI subcommand inside the Docker
+container:
+
+```bash
+docker exec <server-container> murmer_server set-role <public_key> Owner
+```
+
+Replace `<public_key>` with the user's Ed25519 public key (shown in the client
+settings) and `<server-container>` with the container name (e.g.
+`murmer-server-1`). You can also pass an optional hex colour as a third
+argument.
+
+### Managing roles from the client
+
+Once a user has the **Owner** role they can assign or remove roles for other
+users directly in the desktop client. Right-click any user in the sidebar user
+list and choose a role from the context menu. The change takes effect
+immediately for all connected clients.
+
+### Using the HTTP endpoint
+
+The `POST /role` endpoint (guarded by `ADMIN_TOKEN`) still works for scripted or
+external integrations. See the configuration table above for details.
+
 ## Windows build instructions
 
 1. Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)

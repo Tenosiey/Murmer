@@ -278,6 +278,22 @@ pub async fn can_manage_channels(state: &Arc<AppState>, user: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Determine whether a user is authorised to manage roles.
+///
+/// Only users with a role listed in [`ROLE_MANAGE_ROLES`] may assign or remove
+/// roles from other users.
+pub async fn can_manage_roles(state: &Arc<AppState>, user: &str) -> bool {
+    let roles = state.roles.lock().await;
+    roles
+        .get(user)
+        .map(|info| {
+            super::constants::ROLE_MANAGE_ROLES
+                .iter()
+                .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
+        })
+        .unwrap_or(false)
+}
+
 /// Retrieve the broadcast channel for the given chat room, creating it if necessary.
 pub async fn get_or_create_channel(
     state: &Arc<AppState>,

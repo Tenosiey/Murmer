@@ -151,10 +151,8 @@ export class VoiceManager {
       }
     }
 
-    if (this.shouldTransmit !== shouldTransmit) {
-      this.shouldTransmit = shouldTransmit;
-      this.applyTransmissionState();
-    }
+    this.shouldTransmit = shouldTransmit;
+    this.applyTransmissionState();
   }
 
   private applyTransmissionState() {
