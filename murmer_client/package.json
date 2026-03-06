@@ -1,6 +1,6 @@
 {
   "name": "murmer",
-  "version": "2025.7.24-alpha.2",
+  "version": "2026.3.6-alpha.1",
   "description": "",
   "type": "module",
   "scripts": {
@@ -15,29 +15,27 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "overrides": {
-    "cookie": "^0.7.0"
-  },
+  "overrides": {},
   "dependencies": {
-    "@tauri-apps/api": "^2.9.0",
+    "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-notification": "^2.3.1",
-    "@tauri-apps/plugin-opener": "^2.5.0",
+    "@tauri-apps/plugin-opener": "^2.5.3",
     "@tauri-apps/plugin-window-state": "^2.4.0",
     "dompurify": "^3.2.7",
     "highlight.js": "^11.11.1",
-    "marked": "^16.3.0",
+    "marked": "^17.0.4",
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.9",
-    "@sveltejs/kit": "^2.43.5",
-    "@sveltejs/vite-plugin-svelte": "^6.2.1",
-    "@tauri-apps/cli": "^2.9.1",
-    "@types/node": "^24.5.2",
-    "svelte": "^5.39.6",
-    "svelte-check": "^4.3.2",
+    "@sveltejs/kit": "^2.53.4",
+    "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "@tauri-apps/cli": "^2.10.1",
+    "@types/node": "^25.3.5",
+    "svelte": "^5.53.7",
+    "svelte-check": "^4.4.4",
     "typescript": "~5.9.2",
-    "vite": "^7.1.11",
+    "vite": "^7.3.1",
     "vite-plugin-devtools-json": "^1.0.0"
   }
 }

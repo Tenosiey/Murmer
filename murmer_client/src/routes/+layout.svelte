@@ -231,8 +231,79 @@
     background: color-mix(in srgb, var(--md-sys-color-primary) 80%, transparent);
   }
 
+  /* Smooth scroll behavior */
+  :global(html) {
+    scroll-behavior: smooth;
+  }
+
+  /* Additional animation utilities */
+  :global(.fade-in) {
+    animation: fadeIn 0.4s var(--motion-easing-standard);
+  }
+
+  :global(.slide-up) {
+    animation: slideUp 0.5s var(--motion-easing-standard);
+  }
+
+  :global(.scale-in) {
+    animation: scaleIn 0.3s var(--motion-easing-standard);
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  /* Shimmer loading effect */
+  :global(.shimmer) {
+    background: linear-gradient(
+      90deg,
+      var(--md-sys-color-surface-container) 0%,
+      var(--md-sys-color-surface-container-high) 50%,
+      var(--md-sys-color-surface-container) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    :global(*) {
+    :global(*),
+    :global(html) {
       animation-duration: 0.001ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.001ms !important;

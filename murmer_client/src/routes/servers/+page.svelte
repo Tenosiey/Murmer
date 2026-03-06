@@ -201,6 +201,10 @@
 
   <SettingsModal open={settingsOpen} close={closeSettings} />
 
+  {#if error}
+    <div class="error-banner" role="alert">{error}</div>
+  {/if}
+
   <section class="create-card surface-card" aria-labelledby="create-title">
     <div class="card-copy">
       <h2 id="create-title">Add a server</h2>
@@ -247,6 +251,19 @@
               <button type="button" class="secondary" on:click={() => join(server)}>
                 <span aria-hidden="true">↗</span>
                 <span>Join</span>
+              </button>
+              <button
+                type="button"
+                class="ghost"
+                on:click={() => copyInvite(server)}
+                title={copiedServer === server.url ? 'Copied!' : 'Copy invite link'}
+              >
+                {#if copiedServer === server.url}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                {:else}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                {/if}
+                <span class="sr-only">{copiedServer === server.url ? 'Copied' : 'Copy invite link'}</span>
               </button>
               <button type="button" class="ghost danger" on:click={() => removeServer(server.url)}>
                 <svg
@@ -455,13 +472,6 @@
     padding: 0.55rem;
   }
 
-  .card-actions .ghost {
-    width: 2.6rem;
-    height: 2.6rem;
-    border-radius: 0.85rem;
-    padding: 0.45rem;
-  }
-
   .create-card {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -574,7 +584,9 @@
   .server-card {
     position: relative;
     padding: 1.6rem;
-    gap: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
     outline: none;
   }
 
@@ -625,19 +637,36 @@
 
   .card-actions {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    gap: 0.85rem;
+    gap: 0.5rem;
     position: relative;
     z-index: 1;
+    margin-top: auto;
   }
 
   .card-actions .secondary {
     flex: 1;
   }
 
+  .card-actions .ghost {
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 0.85rem;
+    padding: 0.45rem;
+  }
+
   .card-actions .secondary span:first-child {
     font-size: 1.1rem;
+  }
+
+  .error-banner {
+    padding: 0.75rem 1.1rem;
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    font-weight: 600;
+    border: 1px solid color-mix(in srgb, var(--md-sys-color-error) 35%, transparent);
+    background: color-mix(in srgb, var(--md-sys-color-error) 12%, transparent);
+    color: var(--md-sys-color-error);
   }
 
   .sr-only {

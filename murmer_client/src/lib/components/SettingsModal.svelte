@@ -328,7 +328,7 @@
 
   .setting-group {
     display: grid;
-    gap: 0.75rem;
+    gap: 0.5rem;
   }
 
   .setting-label {
@@ -353,21 +353,35 @@
 
   .slider-container {
     position: relative;
-    height: 10px;
+    height: 2.25rem;
+    display: flex;
+    align-items: center;
+  }
+
+  .slider-container::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 6px;
+    top: 50%;
+    transform: translateY(-50%);
     background: color-mix(in srgb, var(--color-surface-raised) 86%, transparent);
     border-radius: 999px;
     border: 1px solid var(--color-surface-outline);
-    overflow: hidden;
+    pointer-events: none;
   }
 
   .slider-track-fill {
     position: absolute;
     left: 0;
-    top: 0;
-    bottom: 0;
+    height: 6px;
+    top: 50%;
+    transform: translateY(-50%);
     background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
-    border-radius: inherit;
+    border-radius: 999px;
     pointer-events: none;
+    z-index: 1;
   }
 
   .volume-slider {
@@ -378,38 +392,48 @@
     background: transparent;
     position: relative;
     z-index: 2;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
   }
 
   .volume-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 22px;
-    height: 22px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
     background: var(--color-on-primary);
-    border: 3px solid var(--color-primary);
-    box-shadow: var(--shadow-sm);
+    border: 2.5px solid var(--color-primary);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
     cursor: pointer;
-    transition: transform var(--transition);
+    transition: transform var(--transition), box-shadow var(--transition);
   }
 
   .volume-slider::-webkit-slider-thumb:hover {
-    transform: scale(1.05);
+    transform: scale(1.12);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
   .volume-slider::-moz-range-thumb {
-    width: 22px;
-    height: 22px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
     background: var(--color-on-primary);
-    border: 3px solid var(--color-primary);
-    box-shadow: var(--shadow-sm);
+    border: 2.5px solid var(--color-primary);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
     cursor: pointer;
-    transition: transform var(--transition);
+    transition: transform var(--transition), box-shadow var(--transition);
   }
 
   .volume-slider::-moz-range-thumb:hover {
-    transform: scale(1.05);
+    transform: scale(1.12);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  .volume-slider::-moz-range-track {
+    background: transparent;
+    border: none;
   }
 
   .select-container {

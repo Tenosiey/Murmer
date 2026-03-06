@@ -13,7 +13,7 @@
   import { onlineUsers } from '$lib/stores/online';
   import { allUsers, offlineUsers } from '$lib/stores/users';
   import { voiceUsers } from '$lib/stores/voiceUsers';
-  import { volume, outputDeviceId, outputMuted, microphoneMuted, userVolumes, setUserVolume, voiceMode, voiceActivity, isPttActive } from '$lib/stores/settings';
+  import { volume, outputDeviceId, outputMuted, microphoneMuted, userVolumes, voiceMode, voiceActivity, isPttActive } from '$lib/stores/settings';
   import { remoteSpeaking, setRemoteSpeaking } from '$lib/stores/voiceSpeaking';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
@@ -32,13 +32,42 @@
   import { pinned } from '$lib/stores/pins';
   import type { PinnedEntry } from '$lib/stores/pins';
   import { channelNotifications, type ChannelNotificationPreference } from '$lib/stores/channelNotifications';
+  import { activeScreenShares, screenSharePeers, viewScreenShare, leaveScreenShareAsViewer } from '$lib/stores/screenShare';
+  import ScreenShareControls from '$lib/components/ScreenShareControls.svelte';
+  import ScreenShareViewer from '$lib/components/ScreenShareViewer.svelte';
   import { loadKeyPair, sign } from '$lib/keypair';
   import { renderMarkdown } from '$lib/markdown';
-  import { extractLinks } from '$lib/link-preview';
-  import type { Message, UserStatus, VoiceChannelInfo } from '$lib/types';
-  function pingToStrength(ms: number): number {
-    return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
-  }
+  import type { Message, UserStatus, VoiceChannelInfo, ScreenSharePeer } from '$lib/types';
+  import {
+    pingToStrength,
+    buildMessageBlocks,
+    describeDuration,
+    ephemeralInfo,
+    formatVoiceQuality,
+    promptVoicePreset,
+    reactionEntries,
+    notificationButtonIcon,
+    type MessageBlock
+  } from '$lib/chat/helpers';
+  import {
+    MODERATOR_ROLES,
+    MESSAGE_INPUT_MAX_HEIGHT,
+    PIN_PREVIEW_LIMIT,
+    MIN_EPHEMERAL_SECONDS,
+    MAX_EPHEMERAL_SECONDS,
+    VOICE_QUALITY_PRESETS,
+    NOTIFICATION_OPTIONS
+  } from '$lib/chat/constants';
+
+  const statusOptions: Array<{ value: UserStatus; label: string; emoji: string }> =
+    USER_STATUS_VALUES.map((value) => ({
+      value,
+      label: STATUS_LABELS[value],
+      emoji: STATUS_EMOJIS[value]
+    }));
+  import SearchOverlay from '$lib/components/SearchOverlay.svelte';
+  import HelpOverlay from '$lib/components/HelpOverlay.svelte';
+  import VolumeMenu from '$lib/components/VolumeMenu.svelte';
 
   let serverStrength = 0;
   $: serverStrength = pingToStrength($ping);
@@ -51,28 +80,10 @@
   let menuOpen = false;
   let menuX = 0;
   let menuY = 0;
-  const statusOptions: Array<{ value: UserStatus; label: string; emoji: string }> = USER_STATUS_VALUES.map((value) => ({
-    value,
-    label: STATUS_LABELS[value],
-    emoji: STATUS_EMOJIS[value]
-  }));
   let statusMenuOpen = false;
   let statusMenuButton: HTMLButtonElement | null = null;
   let statusMenuElement: HTMLDivElement | null = null;
   let statusMap: Record<string, UserStatus> = {};
-  const MESSAGE_INPUT_MAX_HEIGHT = 360;
-
-  const MODERATOR_ROLES = ['Admin', 'Mod', 'Owner'];
-  const NOTIFICATION_OPTIONS: Array<{
-    value: ChannelNotificationPreference;
-    label: string;
-    description: string;
-    icon: string;
-  }> = [
-    { value: 'all', label: 'All messages', description: 'Send alerts for every new message', icon: '🔔' },
-    { value: 'mentions', label: 'Mentions only', description: 'Only alert when you are mentioned', icon: '@' },
-    { value: 'mute', label: 'Muted', description: 'Do not show notifications for this channel', icon: '🔕' }
-  ];
 
   let notificationMenuOpen = false;
   let notificationMenuButton: HTMLButtonElement | null = null;
@@ -80,170 +91,29 @@
   let currentNotificationPreference: ChannelNotificationPreference = 'all';
   let notificationMenuLabel = 'All messages';
 
-  const PIN_PREVIEW_LIMIT = 120;
-
   let pinnedEntries: PinnedEntry[] = [];
   let highlightedMessageId: number | null = null;
   let pendingScrollToMessage: number | null = null;
   let highlightTimer: ReturnType<typeof setTimeout> | null = null;
   let currentUserCanModerate = false;
 
-  const MIN_EPHEMERAL_SECONDS = 5;
-  const MAX_EPHEMERAL_SECONDS = 86_400;
-
-  const HELP_COMMANDS: Array<{ usage: string; description: string; aliases?: string[] }> = [
-    { usage: '/help', description: 'Show this list of available slash commands.' },
-    { usage: '/me <action>', description: 'Send an italicised third-person emote.' },
-    { usage: '/shrug [message]', description: 'Append the classic shrug emoticon to your message.' },
-    {
-      usage: '/topic <text>',
-      description: 'Update the current channel topic or clear it when run without text.'
-    },
-    {
-      usage: '/status <online|away|busy|offline>',
-      description: 'Change your presence indicator across all connected clients.'
-    },
-    { usage: '/focus', description: 'Toggle focus mode for a distraction-free chat view.' },
-    {
-      usage: '/ephemeral <seconds> <message>',
-      description: 'Send a message that automatically deletes itself after the requested duration.',
-      aliases: ['/temp <seconds> <message>']
-    },
-    {
-      usage: '/search [query]',
-      description: 'Open the search overlay and optionally pre-fill it with a query.'
-    }
-  ];
-
   let commandFeedback: string | null = null;
   let commandFeedbackType: 'info' | 'error' = 'info';
   let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
   let searchOpen = false;
-  let searchQuery = '';
-  let searchResults: Message[] = [];
-  let searchLoading = false;
-  let searchError: string | null = null;
-  let searchPerformed = false;
-  let searchInput: HTMLInputElement | null = null;
+  let searchOverlay: SearchOverlay;
 
   let helpOpen = false;
-  let helpPanel: HTMLDivElement | null = null;
-  let helpCloseButton: HTMLButtonElement | null = null;
+  let helpOverlay: HelpOverlay;
 
   let now = Date.now();
   let expiryTicker: number | null = null;
 
-  const VOICE_QUALITY_PRESETS: Array<{ quality: string; bitrate: number | null; label: string }> = [
-    { quality: 'low', bitrate: 32_000, label: 'Low' },
-    { quality: 'standard', bitrate: 64_000, label: 'Standard' },
-    { quality: 'high', bitrate: 96_000, label: 'High' },
-    { quality: 'ultra', bitrate: 128_000, label: 'Ultra' },
-    { quality: 'lossless', bitrate: null, label: 'Lossless' }
-  ];
-  const DEFAULT_VOICE_PRESET = VOICE_QUALITY_PRESETS[1];
-
-  function formatVoiceQuality(info: VoiceChannelInfo): string {
-    const preset = VOICE_QUALITY_PRESETS.find((p) => p.quality === info.quality);
-    const bitrate = info.bitrate ?? preset?.bitrate ?? null;
-    const label = preset ? preset.label : info.quality;
-    return bitrate && bitrate > 0 ? `${label} (${Math.round(bitrate / 1000)} kbps)` : label;
-  }
-
-  function promptVoicePreset(): { quality: string; bitrate: number | null } {
-    const input = prompt(
-      'Voice quality (low, standard, high, ultra, lossless)',
-      DEFAULT_VOICE_PRESET.quality
-    );
-    if (!input) return { quality: DEFAULT_VOICE_PRESET.quality, bitrate: DEFAULT_VOICE_PRESET.bitrate };
-    const normalized = input.trim().toLowerCase();
-    const preset = VOICE_QUALITY_PRESETS.find((p) => p.quality === normalized) ?? DEFAULT_VOICE_PRESET;
-    return { quality: preset.quality, bitrate: preset.bitrate };
-  }
-
-  type MessageBlock =
-    | { kind: 'separator'; label: string; key: string }
-    | { kind: 'message'; message: Message; key: string; links: string[] };
+  let viewingScreenShare: ScreenSharePeer | null = null;
 
   let channelMessages: Message[] = [];
   let messageBlocks: MessageBlock[] = [];
-
-  function parseTimestampValue(timestamp: string | undefined): Date | null {
-    if (!timestamp) return null;
-    const parsed = Date.parse(timestamp);
-    if (Number.isNaN(parsed)) return null;
-    return new Date(parsed);
-  }
-
-  function dateKey(date: Date): string {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  }
-
-  function formatDayHeading(date: Date): string {
-    const today = new Date();
-    const key = dateKey(date);
-    const todayKey = dateKey(today);
-    if (key === todayKey) return 'Today';
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    if (key === dateKey(yesterday)) return 'Yesterday';
-    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-  }
-
-  function buildMessageBlocks(messages: Message[]): MessageBlock[] {
-    const blocks: MessageBlock[] = [];
-    let lastDateKey: string | null = null;
-
-    for (let index = 0; index < messages.length; index += 1) {
-      const message = messages[index];
-      const timestamp = parseTimestampValue(message.timestamp);
-      if (timestamp) {
-        const currentKey = dateKey(timestamp);
-        if (lastDateKey !== currentKey) {
-          blocks.push({
-            kind: 'separator',
-            label: formatDayHeading(timestamp),
-            key: `separator-${currentKey}-${message.id ?? index}`
-          });
-          lastDateKey = currentKey;
-        }
-      }
-
-      const links = extractLinks(message.text);
-      blocks.push({
-        kind: 'message',
-        message,
-        key: `message-${message.id ?? `${index}-${message.time ?? ''}`}`,
-        links
-      });
-    }
-
-    return blocks;
-  }
-
-  function describeDuration(seconds: number): string {
-    if (seconds < 60) {
-      return `${seconds} ${seconds === 1 ? 'second' : 'seconds'}`;
-    }
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    if (minutes < 60) {
-      if (remainingSeconds === 0) {
-        return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
-      }
-      return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ${remainingSeconds} ${
-        remainingSeconds === 1 ? 'second' : 'seconds'
-      }`;
-    }
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    if (remainingMinutes === 0) {
-      return `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
-    }
-    return `${hours} ${hours === 1 ? 'hour' : 'hours'} ${remainingMinutes} ${
-      remainingMinutes === 1 ? 'minute' : 'minutes'
-    }`;
-  }
 
   function setCommandFeedback(message: string, type: 'info' | 'error' = 'info') {
     commandFeedback = message;
@@ -269,91 +139,11 @@
   function openHelp() {
     clearCommandFeedback();
     helpOpen = true;
-    tick().then(() => {
-      if (helpPanel) {
-        helpPanel.focus();
-      } else if (helpCloseButton) {
-        helpCloseButton.focus();
-      }
-    });
+    helpOverlay?.focusPanel();
   }
 
   function closeHelp() {
     helpOpen = false;
-  }
-
-  function handleHelpKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      closeHelp();
-    }
-  }
-
-  function handleHelpOverlayKeydown(event: KeyboardEvent) {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      closeHelp();
-    }
-  }
-
-  function formatExpiry(expiresAt?: string): string | null {
-    if (!expiresAt) return null;
-    const parsed = Date.parse(expiresAt);
-    if (Number.isNaN(parsed)) return null;
-    const diff = parsed - now;
-    if (diff <= 0) return 'Expired';
-    const totalSeconds = Math.round(diff / 1000);
-    if (totalSeconds < 60) {
-      return `Expires in ${totalSeconds}s`;
-    }
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    if (minutes < 60) {
-      return seconds === 0 ? `Expires in ${minutes}m` : `Expires in ${minutes}m ${seconds}s`;
-    }
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    if (hours < 24) {
-      if (remainingMinutes === 0) return `Expires in ${hours}h`;
-      return `Expires in ${hours}h ${remainingMinutes}m`;
-    }
-    const days = Math.floor(hours / 24);
-    const remainingHours = hours % 24;
-    if (remainingHours === 0) return `Expires in ${days}d`;
-    return `Expires in ${days}d ${remainingHours}h`;
-  }
-
-  function formatExpiryAbsolute(expiresAt?: string): string | null {
-    if (!expiresAt) return null;
-    const parsed = parseTimestampValue(expiresAt);
-    return parsed ? parsed.toLocaleString() : null;
-  }
-
-  function ephemeralInfo(message: Message): { label: string; absolute?: string } | null {
-    const expiresAt = typeof message.expiresAt === 'string' ? message.expiresAt : undefined;
-    const label = formatExpiry(expiresAt);
-    if (!label) return null;
-    const absolute = formatExpiryAbsolute(expiresAt) ?? undefined;
-    return { label, absolute };
-  }
-
-  function searchResultPreview(message: Message): string {
-    if (typeof message.text === 'string' && message.text.trim().length > 0) {
-      const normalized = message.text.trim().replace(/\s+/g, ' ');
-      return normalized.length > 120 ? `${normalized.slice(0, 117)}…` : normalized;
-    }
-    if (typeof message.image === 'string' && message.image.trim().length > 0) {
-      return '[Image]';
-    }
-    return 'Message';
-  }
-
-  function formatSearchTimestamp(message: Message): string {
-    const timestamp = typeof message.timestamp === 'string' ? message.timestamp : undefined;
-    const parsed = parseTimestampValue(timestamp);
-    if (parsed) return parsed.toLocaleString();
-    if (typeof message.time === 'string') return message.time;
-    return '';
   }
 
   function handleFileChange() {
@@ -376,13 +166,6 @@
     } else {
       inputScrollable = false;
     }
-  }
-
-  function reactionEntries(msg: Message | undefined) {
-    if (!msg) return [] as Array<{ emoji: string; users: string[] }>;
-    return Object.entries(msg.reactions ?? {})
-      .map(([emoji, users]) => ({ emoji, users }))
-      .filter((entry) => entry.users.length > 0);
   }
 
   function toggleReaction(messageId: number | undefined, emoji: string, users: string[]) {
@@ -432,17 +215,6 @@
   function selectNotificationPreference(value: ChannelNotificationPreference) {
     channelNotifications.setPreference(currentChatChannel, value);
     notificationMenuOpen = false;
-  }
-
-  function notificationButtonIcon(value: ChannelNotificationPreference): string {
-    switch (value) {
-      case 'mentions':
-        return '@';
-      case 'mute':
-        return '🔕';
-      default:
-        return '🔔';
-    }
   }
 
   function handleMenuOutside(event: MouseEvent) {
@@ -891,7 +663,7 @@
       case 'search': {
         openSearch(rest);
         if (rest) {
-          void performSearch();
+          tick().then(() => searchOverlay?.triggerSearch());
         }
         return true;
       }
@@ -905,70 +677,20 @@
   function openSearch(initialQuery = '') {
     clearCommandFeedback();
     searchOpen = true;
-    searchLoading = false;
-    searchError = null;
-    searchPerformed = false;
-    searchResults = [];
-    searchQuery = initialQuery;
-    tick().then(() => {
-      if (searchInput) {
-        searchInput.focus();
-        if (initialQuery) {
-          searchInput.select();
-        }
-      }
-    });
+    searchOverlay?.openWith(initialQuery);
   }
 
   function closeSearch() {
     searchOpen = false;
-    searchLoading = false;
-    searchError = null;
-    searchPerformed = false;
-    searchResults = [];
   }
 
-  async function performSearch() {
-    const trimmed = searchQuery.trim();
-    if (!trimmed) {
-      searchError = 'Enter a search query.';
-      searchResults = [];
-      searchPerformed = false;
-      return;
-    }
-    searchLoading = true;
-    searchError = null;
-    try {
-      const results = await chat.search(currentChatChannel, trimmed, 50);
-      searchResults = results;
-      searchPerformed = true;
-    } catch (error) {
-      searchError = error instanceof Error ? error.message : 'Search failed.';
-      searchResults = [];
-      searchPerformed = true;
-    } finally {
-      searchLoading = false;
-    }
+  function handleSearchResult(msg: Message) {
+    if (typeof msg.id !== 'number') return;
+    focusMessage(msg.id);
   }
 
-  function focusSearchResult(result: Message) {
-    if (typeof result.id !== 'number') return;
-    closeSearch();
-    focusMessage(result.id);
-  }
-
-  function handleSearchKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      closeSearch();
-    }
-  }
-
-  function handleOverlayKeydown(event: KeyboardEvent) {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      closeSearch();
-    }
+  function doSearch(query: string): Promise<Message[]> {
+    return chat.search(currentChatChannel, query, 50);
   }
 
   function joinChannel(ch: string) {
@@ -994,6 +716,35 @@
       voice.leave(currentVoiceChannel);
     }
     inVoice = false;
+    // Close any active screen share viewer
+    if (viewingScreenShare) {
+      viewingScreenShare = null;
+    }
+    // Clean up screen share viewer session
+    leaveScreenShareAsViewer();
+  }
+
+  async function handleViewScreenShare(userId: string) {
+    try {
+      if (!$session.user || !currentVoiceChannel) {
+        alert('You must be in a voice channel to view screen shares');
+        return;
+      }
+      
+      await viewScreenShare(userId, $session.user, currentVoiceChannel);
+      const peers = $screenSharePeers;
+      const peer = peers.find(p => p.userId === userId);
+      if (peer) {
+        viewingScreenShare = peer;
+      }
+    } catch (error) {
+      console.error('Failed to view screen share:', error);
+      alert('Failed to view screen share');
+    }
+  }
+
+  function closeScreenShareViewer() {
+    viewingScreenShare = null;
   }
 
   function leaveServer() {
@@ -1046,6 +797,11 @@
   let volumeMenuY = 0;
   let volumeMenuUser: string | null = null;
 
+  function closeVolumeMenu() {
+    volumeMenuOpen = false;
+    volumeMenuUser = null;
+  }
+
   function openChannelMenu(event: MouseEvent, channel?: string, voice?: boolean) {
     event.preventDefault();
     event.stopPropagation();
@@ -1067,11 +823,6 @@
     volumeMenuY = event.clientY;
     volumeMenuUser = user;
     volumeMenuOpen = true;
-  }
-
-  function closeVolumeMenu() {
-    volumeMenuOpen = false;
-    volumeMenuUser = null;
   }
 
   function logout() {
@@ -1436,6 +1187,18 @@
                       >{$roles[user].role}</span
                     >
                   {/if}
+                  {#if $activeScreenShares[ch.name]?.includes(user)}
+                    <button
+                      class="screenshare-indicator"
+                      on:click={() => handleViewScreenShare(user)}
+                      title="View {user}'s screen"
+                      aria-label="View {user}'s screen share"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
+                      </svg>
+                    </button>
+                  {/if}
                   <ConnectionBars
                     strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)}
                   />
@@ -1495,17 +1258,19 @@
                 title={$outputMuted ? 'Unmute Output' : 'Mute Output'}
               >
                 <span class="btn-icon">{$outputMuted ? '🔇' : '🔊'}</span>
-                <span class="btn-text">{$outputMuted ? 'Unmute Out' : 'Mute Out'}</span>
-              </button>
-            </div>
-          {:else}
-            <button class="voice-control-btn join" on:click={joinVoice}>
-              <span class="btn-icon">🔊</span>
-              <span class="btn-text">Join Voice</span>
+              <span class="btn-text">{$outputMuted ? 'Unmute Out' : 'Mute Out'}</span>
             </button>
-          {/if}
-        </div>
+          </div>
+          
+          <ScreenShareControls {currentVoiceChannel} {inVoice} />
+        {:else}
+          <button class="voice-control-btn join" on:click={joinVoice}>
+            <span class="btn-icon">🔊</span>
+            <span class="btn-text">Join Voice</span>
+          </button>
+        {/if}
       </div>
+    </div>
     </div>
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="resizer" role="separator" aria-label="Resize channel list" on:mousedown={startLeftResize}></div>
@@ -1520,8 +1285,9 @@
           {/if}
         </div>
         <div class="actions">
-          <div class="user">{$session.user}</div>
-          <div class="status-control">
+          <div class="action-group">
+            <div class="user">{$session.user}</div>
+            <div class="status-control">
             <button
               class="action-button status-button"
               bind:this={statusMenuButton}
@@ -1570,10 +1336,12 @@
               </div>
             {/if}
           </div>
-          <div class="connection-info">
-            <PingDot ping={$ping} />
-            <ConnectionBars strength={serverStrength} />
+            <div class="connection-info">
+              <PingDot ping={$ping} />
+              <ConnectionBars strength={serverStrength} />
+            </div>
           </div>
+          <div class="action-group">
           <button
             class="action-button"
             on:click={() => theme.toggle()}
@@ -1723,6 +1491,8 @@
               </div>
             {/if}
           </div>
+          </div>
+          <div class="action-group">
           <button class="action-button" on:click={() => openSearch()} title="Search messages">
             <svg
               width="20"
@@ -1777,6 +1547,8 @@
             </svg>
             <span class="sr-only">Leave server</span>
           </button>
+          </div>
+          <div class="action-group">
           <button class="action-button danger" on:click={logout} title="Logout">
             <svg
               width="20"
@@ -1794,109 +1566,19 @@
             </svg>
             <span class="sr-only">Sign out</span>
           </button>
+          </div>
         </div>
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
-      {#if helpOpen}
-        <div
-          class="help-overlay"
-          role="button"
-          tabindex="0"
-          aria-label="Close command reference"
-          on:click={closeHelp}
-          on:keydown={handleHelpOverlayKeydown}
-        >
-          <div
-            class="help-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="help-title"
-            tabindex="-1"
-            bind:this={helpPanel}
-            on:click|stopPropagation
-            on:keydown={handleHelpKeydown}
-          >
-            <div class="help-header">
-              <h2 id="help-title">Slash commands</h2>
-              <p class="help-description">Type a forward slash to run these quick actions.</p>
-            </div>
-            <ul class="help-command-list">
-              {#each HELP_COMMANDS as command (command.usage)}
-                <li class="help-command">
-                  <div class="help-command-heading">
-                    <code class="help-command-usage">{command.usage}</code>
-                    {#if command.aliases?.length}
-                      <span class="help-command-aliases">Also: {command.aliases.join(', ')}</span>
-                    {/if}
-                  </div>
-                  <p class="help-command-description">{command.description}</p>
-                </li>
-              {/each}
-            </ul>
-            <button type="button" class="help-close" on:click={closeHelp} bind:this={helpCloseButton}>
-              Close
-            </button>
-          </div>
-        </div>
-      {/if}
-      {#if searchOpen}
-        <div
-          class="search-overlay"
-          role="button"
-          tabindex="0"
-          aria-label="Close search results"
-          on:click={closeSearch}
-          on:keydown={handleOverlayKeydown}
-        >
-          <div
-            class="search-panel"
-            role="dialog"
-            aria-modal="true"
-            tabindex="-1"
-            on:click|stopPropagation
-            on:keydown={handleSearchKeydown}
-          >
-            <form class="search-form" on:submit|preventDefault={performSearch}>
-              <input
-                type="search"
-                placeholder="Search messages"
-                aria-label="Search messages"
-                bind:value={searchQuery}
-                bind:this={searchInput}
-              />
-              <button type="submit" class="search-submit" disabled={searchLoading}>Search</button>
-              <button type="button" class="search-close" on:click={closeSearch}>Close</button>
-            </form>
-            {#if searchError}
-              <p class="search-error">{searchError}</p>
-            {/if}
-            {#if searchLoading}
-              <p class="search-status">Searching…</p>
-            {:else if searchResults.length > 0}
-              <ul class="search-results">
-                {#each searchResults as result (result.id ?? `${result.timestamp ?? ''}-${result.user ?? ''}`)}
-                  <li>
-                    <button type="button" class="search-result" on:click={() => focusSearchResult(result)}>
-                      <span class="search-result-text">{searchResultPreview(result)}</span>
-                      <span class="search-result-meta">
-                        <span class="search-result-user">{result.user ?? 'Unknown'}</span>
-                        <span class="search-result-time">{formatSearchTimestamp(result)}</span>
-                      </span>
-                      {#if result.ephemeral}
-                        {#if ephemeralInfo(result)}
-                          <span class="search-result-ephemeral">{ephemeralInfo(result)?.label}</span>
-                        {/if}
-                      {/if}
-                    </button>
-                  </li>
-                {/each}
-              </ul>
-            {:else if searchPerformed}
-              <p class="search-status">No matches found.</p>
-            {/if}
-          </div>
-        </div>
-      {/if}
+      <HelpOverlay bind:this={helpOverlay} open={helpOpen} onClose={closeHelp} />
+      <SearchOverlay
+        bind:this={searchOverlay}
+        open={searchOpen}
+        onClose={closeSearch}
+        onSearch={doSearch}
+        onFocusResult={handleSearchResult}
+        {now}
+      />
       {#if pinnedEntries.length > 0}
         <div class="pinned-bar" role="region" aria-label="Pinned messages">
           <div class="pinned-header">
@@ -1964,12 +1646,13 @@
                     <img src={block.message.image as string} alt="" />
                   {/if}
                   {#if block.message.ephemeral}
-                    {#if ephemeralInfo(block.message)}
+                    {@const eInfo = ephemeralInfo(block.message, now)}
+                    {#if eInfo}
                       <span
                         class="ephemeral-badge"
-                        title={ephemeralInfo(block.message)?.absolute ?? undefined}
+                        title={eInfo.absolute ?? undefined}
                       >
-                        {ephemeralInfo(block.message)?.label}
+                        {eInfo.label}
                       </span>
                     {/if}
                   {/if}
@@ -2154,46 +1837,16 @@
 
 <ContextMenu bind:open={menuOpen} x={menuX} y={menuY} items={channelMenuItems} />
 
-{#if volumeMenuOpen && volumeMenuUser}
-  <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <div class="volume-menu-overlay" on:click={closeVolumeMenu}>
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <div 
-      class="volume-menu" 
-      style="left: {volumeMenuX}px; top: {volumeMenuY}px;"
-      on:click|stopPropagation
-    >
-      <div class="volume-menu-header">
-        <span class="volume-menu-user">{volumeMenuUser}</span>
-        <span class="volume-menu-title">Volume Control</span>
-      </div>
-      <div class="volume-menu-content">
-        <div class="volume-control-row">
-          <span class="volume-icon">🔊</span>
-          <input
-            class="volume-menu-slider"
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={$userVolumes[volumeMenuUser] ?? 1.0}
-            on:input={(e) => {
-              if (!volumeMenuUser) return;
-              setUserVolume(volumeMenuUser, parseFloat(e.currentTarget.value));
-            }}
-          />
-          <span class="volume-percentage">{Math.round(($userVolumes[volumeMenuUser] ?? 1.0) * 100)}%</span>
-        </div>
-        <div class="volume-presets">
-          <button class="preset-btn" on:click={() => volumeMenuUser && setUserVolume(volumeMenuUser, 0)}>Mute</button>
-          <button class="preset-btn" on:click={() => volumeMenuUser && setUserVolume(volumeMenuUser, 0.5)}>50%</button>
-          <button class="preset-btn" on:click={() => volumeMenuUser && setUserVolume(volumeMenuUser, 1.0)}>100%</button>
-        </div>
-      </div>
-    </div>
-  </div>
+<VolumeMenu
+  open={volumeMenuOpen}
+  x={volumeMenuX}
+  y={volumeMenuY}
+  user={volumeMenuUser}
+  onClose={closeVolumeMenu}
+/>
+
+{#if viewingScreenShare}
+  <ScreenShareViewer peer={viewingScreenShare} onClose={closeScreenShareViewer} />
 {/if}
 
 <style>
@@ -2229,32 +1882,104 @@
     padding: clamp(1rem, 2vw, 1.25rem);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem;
+    overflow-y: auto;
   }
 
   .channels .section {
-    margin: 0.75rem 0 0.35rem 0;
-    font-size: 0.72rem;
+    margin: 0.6rem 0 0.15rem 0;
+    font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.14em;
     color: var(--color-muted);
   }
 
   .channels button {
     width: 100%;
-    padding: 0.6rem 0.9rem;
+    padding: 0.5rem 0.75rem;
     border: 1px solid transparent;
     background: transparent;
     color: var(--color-muted);
     text-align: left;
     border-radius: var(--radius-sm);
     font-weight: 600;
+    font-size: 0.9rem;
     letter-spacing: 0.01em;
     display: flex;
     align-items: center;
-    gap: 0.55rem;
+    gap: 0.5rem;
     position: relative;
+  }
+
+  .chan-icon {
+    font-size: 1rem;
+    opacity: 0.65;
+    width: 1.2rem;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .voice-group {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .voice-user-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.2rem 0 0 1.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .voice-user-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.3rem 0.55rem;
+    border-radius: var(--radius-xs);
+    font-size: 0.88rem;
+    transition: background var(--transition);
+  }
+
+  .voice-user-list li.clickable {
+    cursor: context-menu;
+  }
+
+  .voice-user-list li:hover {
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  }
+
+  .voice-user-list li.talking {
+    background: color-mix(in srgb, var(--color-success) 10%, transparent);
+  }
+
+  .voice-user-list .status.voice {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--color-success);
+    opacity: 0.5;
+    flex-shrink: 0;
+  }
+
+  .voice-user-list .status.voice.talking {
+    opacity: 1;
+    box-shadow: 0 0 6px color-mix(in srgb, var(--color-success) 50%, transparent);
+  }
+
+  .voice-user-list .username {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--color-on-surface);
+  }
+
+  .voice-user-list .role {
+    font-size: 0.7rem;
+    font-weight: 600;
+    opacity: 0.75;
   }
 
   .voice-channel-name {
@@ -2355,8 +2080,27 @@
   .actions {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.35rem;
     flex-wrap: wrap;
+  }
+
+  .action-group {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding-inline: 0.2rem;
+    position: relative;
+  }
+
+  .action-group + .action-group::before {
+    content: '';
+    position: absolute;
+    left: -0.1rem;
+    top: 20%;
+    bottom: 20%;
+    width: 1px;
+    background: color-mix(in srgb, var(--color-on-surface) 12%, transparent);
+    border-radius: 999px;
   }
 
   .user {
@@ -2574,9 +2318,10 @@
   .message {
     display: grid;
     grid-template-columns: auto auto 1fr;
-    gap: 0.75rem;
-    align-items: start;
-    padding: 0.85rem 1rem;
+    column-gap: 0.55rem;
+    row-gap: 0.3rem;
+    align-items: baseline;
+    padding: 0.65rem 0.9rem;
     border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--color-primary) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
@@ -2830,9 +2575,8 @@
   .pinned-bar {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
-    margin-bottom: 1rem;
-    padding: 0.85rem 1rem;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
     border-radius: var(--radius-lg);
     border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
     background: color-mix(in srgb, var(--color-surface-elevated) 90%, transparent);
@@ -2937,10 +2681,11 @@
   }
 
   .reactions {
+    grid-column: 1 / -1;
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
-    margin-top: 0.35rem;
+    margin-top: 0.15rem;
   }
 
   .reaction-chip {
@@ -3071,6 +2816,16 @@
     border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
     background: color-mix(in srgb, var(--color-primary) 10%, transparent);
     color: var(--color-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .file-button svg,
+  .send svg {
+    width: 1.2rem;
+    height: 1.2rem;
   }
 
   .file-button:hover,
@@ -3087,48 +2842,58 @@
 
   .voice-controls-container {
     margin-top: auto;
-    padding-top: 1rem;
+    padding-top: 0.75rem;
     border-top: 1px solid var(--color-surface-outline);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem;
   }
 
   .voice-controls-panel {
-    border-radius: var(--radius-lg);
-    padding: 1rem;
+    border-radius: var(--radius-md);
+    padding: 0.75rem;
     background: color-mix(in srgb, var(--color-surface-raised) 86%, transparent);
     border: 1px solid var(--color-surface-outline);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.55rem;
   }
 
   .voice-controls-header {
-    font-size: 0.85rem;
-    font-weight: 600;
+    font-size: 0.72rem;
+    font-weight: 700;
     color: var(--color-muted);
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
   }
 
   .voice-controls-buttons {
     display: flex;
     flex-direction: column;
-    gap: 0.65rem;
+    gap: 0.4rem;
   }
 
   .voice-control-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.7rem 0.85rem;
+    gap: 0.45rem;
+    padding: 0.5rem 0.7rem;
     border-radius: var(--radius-sm);
     border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
     background: color-mix(in srgb, var(--color-primary) 8%, transparent);
     color: var(--color-on-surface);
     font-weight: 600;
+    font-size: 0.85rem;
     width: 100%;
+  }
+
+  .btn-icon {
+    font-size: 0.95rem;
+    line-height: 1;
+  }
+
+  .btn-text {
+    font-size: 0.82rem;
   }
 
   .voice-control-btn:hover {
@@ -3167,21 +2932,23 @@
     padding: clamp(1rem, 2vw, 1.3rem);
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
+    gap: 0.75rem;
     min-width: 0;
+    overflow-y: auto;
   }
 
   .sidebar h2 {
     margin: 0;
-    font-size: 1.25rem;
+    font-size: 1.15rem;
   }
 
   .sidebar h3 {
     margin: 0;
-    font-size: 0.85rem;
+    font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.12em;
     color: var(--color-muted);
+    font-weight: 700;
   }
 
   .sidebar ul {
@@ -3190,15 +2957,16 @@
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.2rem;
   }
 
   .sidebar li {
     display: flex;
     align-items: center;
-    gap: 0.55rem;
-    padding: 0.4rem 0.55rem;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
     border-radius: var(--radius-sm);
+    font-size: 0.9rem;
   }
 
   .sidebar li:hover {
@@ -3239,359 +3007,31 @@
     text-transform: capitalize;
   }
 
-  .volume-menu-overlay {
-    position: fixed;
-    inset: 0;
-    background: var(--color-overlay);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 40;
-  }
-
-  .volume-menu {
-    position: absolute;
-    width: min(320px, 90vw);
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--color-surface-outline);
-    box-shadow: var(--shadow-md);
-    padding: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .help-overlay,
-  .search-overlay {
-    position: fixed;
-    inset: 0;
-    background: color-mix(in srgb, var(--color-overlay) 85%, transparent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: clamp(1.5rem, 4vw, 3rem);
-    z-index: 60;
-  }
-
-  .help-panel,
-  .search-panel {
-    width: min(720px, 92vw);
-    display: flex;
-    flex-direction: column;
-    gap: 0.85rem;
-    background: color-mix(in srgb, var(--color-surface-elevated) 96%, transparent);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--color-surface-outline);
-    box-shadow: var(--shadow-lg);
-    padding: clamp(1rem, 3vw, 1.75rem);
-  }
-
-  .help-panel {
-    max-height: min(70vh, 640px);
-    overflow: hidden;
-  }
-
-  .help-header {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-
-  .help-description {
-    color: var(--color-muted);
-    font-size: 0.95rem;
-  }
-
-  .help-command-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    overflow-y: auto;
-  }
-
-  .help-command {
-    border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 92%, transparent);
-    padding: 0.75rem 0.9rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-
-  .help-command-heading {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    align-items: center;
-  }
-
-  .help-command-usage {
-    font-family: var(--font-mono);
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    border-radius: var(--radius-sm);
-    padding: 0.2rem 0.4rem;
-  }
-
-  .help-command-aliases {
-    color: var(--color-muted);
-    font-size: 0.85rem;
-  }
-
-  .help-command-description {
-    margin: 0;
-    color: var(--color-muted);
-    font-size: 0.95rem;
-  }
-
-  .help-close {
-    align-self: flex-end;
-    padding: 0.55rem 0.9rem;
-    border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-muted) 24%, transparent);
-    background: color-mix(in srgb, var(--color-muted) 18%, transparent);
-    color: var(--color-on-surface);
-    font-weight: 600;
-    transition: transform var(--transition);
-  }
-
-  .help-close:hover {
-    transform: translateY(-1px);
-  }
-
-  .search-form {
-    display: flex;
-    gap: 0.6rem;
-    flex-wrap: wrap;
-  }
-
-  .search-form input {
-    flex: 1;
-    min-width: 12rem;
-    padding: 0.65rem 0.85rem;
-    border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-surface-raised) 92%, transparent);
-    color: var(--color-on-surface);
-  }
-
-  .search-form input:focus {
-    outline: 2px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
-    outline-offset: 2px;
-  }
-
-  .search-form button {
-    padding: 0.6rem 0.95rem;
-    border-radius: var(--radius-md);
-    font-weight: 600;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
-    color: var(--color-on-surface);
-    transition: background var(--transition), transform var(--transition), opacity var(--transition);
-  }
-
-  .search-form button:not([disabled]):hover {
-    transform: translateY(-1px);
-  }
-
-  .search-form button[disabled] {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-  }
-
-  .search-form .search-close {
-    background: color-mix(in srgb, var(--color-muted) 16%, transparent);
-    border-color: color-mix(in srgb, var(--color-muted) 24%, transparent);
-  }
-
-  .search-error {
-    color: color-mix(in srgb, var(--color-error) 85%, var(--color-on-surface) 15%);
-    font-weight: 600;
-  }
-
-  .search-status {
-    color: var(--color-muted);
-    font-size: 0.9rem;
-  }
-
-  .search-results {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    max-height: 320px;
-    overflow-y: auto;
-  }
-
-  .search-result {
-    width: 100%;
-    text-align: left;
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-    border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 92%, transparent);
-    color: var(--color-on-surface);
-    padding: 0.75rem 0.9rem;
-    transition: border-color var(--transition), transform var(--transition);
-  }
-
-  .search-result:hover {
-    transform: translateY(-1px);
-    border-color: color-mix(in srgb, var(--color-primary) 32%, transparent);
-  }
-
-  .search-result-text {
-    font-weight: 600;
-  }
-
-  .search-result-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.6rem;
-    font-size: 0.8rem;
-    color: var(--color-muted);
-  }
-
-  .search-result-ephemeral {
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: color-mix(in srgb, var(--color-warning) 75%, var(--color-on-surface) 25%);
-  }
-
-  .volume-menu-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 0.5rem;
-  }
-
-  .volume-menu-user {
-    font-weight: 600;
-  }
-
-  .volume-menu-title {
-    font-size: 0.85rem;
-    color: var(--color-muted);
-  }
-
-  .volume-menu-content {
-    display: grid;
-    gap: 1.1rem;
-  }
-
-  .volume-control-row {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .volume-icon {
-    font-size: 1.2rem;
-  }
-
-  .volume-menu-slider {
-    flex: 1;
-    -webkit-appearance: none;
-    appearance: none;
-    height: 0.45rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--color-surface-raised) 88%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
-    outline: none;
-    transition: border-color var(--transition), box-shadow var(--transition);
-  }
-
-  .volume-menu-slider:focus {
-    border-color: color-mix(in srgb, var(--color-secondary) 32%, transparent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary) 18%, transparent);
-  }
-
-  .volume-menu-slider::-webkit-slider-runnable-track {
-    height: 0.45rem;
-    border-radius: 999px;
-    background: linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--color-primary) 45%, var(--color-surface-elevated) 55%) 0%,
-      color-mix(in srgb, var(--color-primary) 18%, var(--color-surface-elevated) 82%) 100%
-    );
-  }
-
-  .volume-menu-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: var(--color-surface);
-    border: 2px solid color-mix(in srgb, var(--color-secondary) 60%, transparent);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-    margin-top: -7px;
-  }
-
-  .volume-menu-slider::-moz-range-track {
-    height: 0.45rem;
-    border-radius: 999px;
-    background: linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--color-primary) 45%, var(--color-surface-elevated) 55%) 0%,
-      color-mix(in srgb, var(--color-primary) 18%, var(--color-surface-elevated) 82%) 100%
-    );
+  .screenshare-indicator {
+    background: transparent;
     border: none;
-  }
-
-  .volume-menu-slider::-moz-range-progress {
-    height: 0.45rem;
-    border-radius: 999px;
-    background: linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--color-primary) 55%, var(--color-surface-elevated) 45%) 0%,
-      color-mix(in srgb, var(--color-primary) 24%, var(--color-surface-elevated) 76%) 100%
-    );
-  }
-
-  .volume-menu-slider::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: var(--color-surface);
-    border: 2px solid color-mix(in srgb, var(--color-secondary) 60%, transparent);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-  }
-
-  .volume-percentage {
-    font-size: 0.82rem;
-    color: var(--color-muted);
-  }
-
-  .volume-presets {
+    padding: 0.25rem;
+    cursor: pointer;
+    color: var(--color-primary);
     display: flex;
-    gap: 0.5rem;
-  }
-
-  .preset-btn {
-    flex: 1;
-    padding: 0.55rem 0.75rem;
+    align-items: center;
+    justify-content: center;
     border-radius: var(--radius-sm);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-    color: var(--color-secondary);
+    transition: all 0.2s;
   }
 
-  .preset-btn:hover {
-    border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
+  .screenshare-indicator:hover {
+    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+    color: var(--color-on-primary);
   }
+
+  .screenshare-indicator svg {
+    width: 1rem;
+    height: 1rem;
+  }
+
+
+  /* Styles for extracted overlay components are in their respective .svelte files */
 
   .sr-only {
     border: 0;
