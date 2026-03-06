@@ -181,20 +181,21 @@ export class ScreenShareManager {
     const pc = new RTCPeerConnection(this.config);
     this.peers[userId] = pc;
 
-    // Add local screen share tracks if available
-    if (this.localStream && initiator) {
+    if (this.localStream) {
       for (const track of this.localStream.getTracks()) {
         pc.addTrack(track, this.localStream);
       }
+    } else if (initiator) {
+      // Viewer: declare intent to receive video so the offer SDP contains a
+      // video media section the sharer can attach their track to.
+      pc.addTransceiver('video', { direction: 'recvonly' });
     }
 
-    // Handle incoming tracks
     pc.ontrack = (ev) => {
       console.log('Received screen share track from', userId);
       this.emit(this.getPeersList());
     };
 
-    // Handle ICE candidates
     pc.onicecandidate = (ev) => {
       if (ev.candidate && this.userName) {
         chat.sendRaw({
@@ -207,14 +208,12 @@ export class ScreenShareManager {
       }
     };
 
-    // Handle connection state changes
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
         this.cleanupPeer(userId);
       }
     };
 
-    // If initiator, create and send offer
     if (initiator && this.userName) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
