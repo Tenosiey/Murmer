@@ -112,6 +112,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                             "voice-offer" | "voice-answer" | "voice-candidate" => {
                                 let _ = state.tx.send(text.to_string());
                             }
+                            "screenshare-start" => {
+                                let _ = state.tx.send(text.to_string());
+                            }
+                            "screenshare-stop" => {
+                                let _ = state.tx.send(text.to_string());
+                            }
+                            "screenshare-offer" | "screenshare-answer" | "screenshare-candidate" => {
+                                let _ = state.tx.send(text.to_string());
+                            }
                             _ => {
                                 error!("unknown message type: {t}");
                             }

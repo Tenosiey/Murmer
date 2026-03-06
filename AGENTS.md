@@ -18,6 +18,15 @@ specifics.
 - Document complex security-sensitive logic with inline comments.
 - Sanitize or validate all user-supplied data before acting on it.
 
+## Client code organisation
+- `src/routes/` – SvelteKit pages (login, server selection, chat)
+- `src/lib/components/` – reusable UI primitives and overlays
+- `src/lib/stores/` – Svelte stores holding client state
+- `src/lib/chat/` – constants and helpers shared by the chat page
+- `src/lib/voice/` – WebRTC helpers and push-to-talk tooling
+- `src/lib/screenshare/` – WebRTC screen sharing manager
+- `src-tauri/` – Rust-side glue for native integrations
+
 ## Security expectations
 - Authentication relies on Ed25519 signatures with replay protection.
 - Rate limiting exists for both authentication and chat traffic.
@@ -44,5 +53,4 @@ bump versions:
 - Ensure CI-equivalent commands above pass before opening a pull request.
 - Perform manual smoke tests after changing networking, authentication or file
   handling logic.
-- Keep documentation (`README.md`, `AGENTS.md`, `TODO.md`) in sync with code
-  behaviour.
+- Keep documentation (`README.md`, `AGENTS.md`) in sync with code behaviour.

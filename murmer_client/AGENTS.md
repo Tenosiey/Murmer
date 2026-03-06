@@ -1,7 +1,7 @@
 # Murmer Client Guide
 
 The desktop client is built with **SvelteKit 2** and ships inside a **Tauri 2**
-shell. This document outlines the most common workflows for contributors.
+shell.
 
 ## Development commands
 - `npm install` – install/update dependencies and refresh `package-lock.json`
@@ -11,18 +11,17 @@ shell. This document outlines the most common workflows for contributors.
 - `npm run tauri build` – package installers/bundles for distribution
 - `npm run check` – TypeScript + Svelte diagnostics (run before committing)
 
-The Tauri configuration in `src-tauri/tauri.conf.json` invokes `npm run dev`
-when you start the shell in development mode.
-
 ## Code organisation
 - `src/routes/` – SvelteKit pages (login, server selection, chat)
-- `src/lib/components/` – reusable UI primitives
+- `src/lib/components/` – reusable UI primitives (buttons, overlays, etc.)
+- `src/lib/components/ui/` – generic design-system components
 - `src/lib/stores/` – Svelte stores holding client state
+- `src/lib/chat/` – constants and helper functions for the chat page
 - `src/lib/voice/` – WebRTC helpers and push-to-talk tooling
+- `src/lib/screenshare/` – WebRTC screen sharing manager
 - `src-tauri/` – Rust-side glue for native integrations
 
-Document complex components with HTML comments at the top of the file and prefer
-small, composable Svelte components. Re-export shared utilities from
+Prefer small, composable Svelte components. Re-export shared utilities from
 `src/lib/index.ts` if they need to be consumed in multiple places.
 
 ## Security considerations
