@@ -99,7 +99,7 @@
   .login-hero {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1.25rem;
     max-width: 520px;
   }
 
@@ -111,8 +111,8 @@
 
   .feature-card {
     display: flex;
-    gap: 0.9rem;
-    padding: 1rem 1.2rem;
+    gap: 0.85rem;
+    padding: 0.9rem 1.1rem;
     border-radius: var(--radius-md);
     align-items: flex-start;
   }

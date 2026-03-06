@@ -1285,8 +1285,9 @@
           {/if}
         </div>
         <div class="actions">
-          <div class="user">{$session.user}</div>
-          <div class="status-control">
+          <div class="action-group">
+            <div class="user">{$session.user}</div>
+            <div class="status-control">
             <button
               class="action-button status-button"
               bind:this={statusMenuButton}
@@ -1335,10 +1336,12 @@
               </div>
             {/if}
           </div>
-          <div class="connection-info">
-            <PingDot ping={$ping} />
-            <ConnectionBars strength={serverStrength} />
+            <div class="connection-info">
+              <PingDot ping={$ping} />
+              <ConnectionBars strength={serverStrength} />
+            </div>
           </div>
+          <div class="action-group">
           <button
             class="action-button"
             on:click={() => theme.toggle()}
@@ -1488,6 +1491,8 @@
               </div>
             {/if}
           </div>
+          </div>
+          <div class="action-group">
           <button class="action-button" on:click={() => openSearch()} title="Search messages">
             <svg
               width="20"
@@ -1542,6 +1547,8 @@
             </svg>
             <span class="sr-only">Leave server</span>
           </button>
+          </div>
+          <div class="action-group">
           <button class="action-button danger" on:click={logout} title="Logout">
             <svg
               width="20"
@@ -1559,6 +1566,7 @@
             </svg>
             <span class="sr-only">Sign out</span>
           </button>
+          </div>
         </div>
       </div>
       <SettingsModal open={settingsOpen} close={closeSettings} />
@@ -1874,32 +1882,104 @@
     padding: clamp(1rem, 2vw, 1.25rem);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem;
+    overflow-y: auto;
   }
 
   .channels .section {
-    margin: 0.75rem 0 0.35rem 0;
-    font-size: 0.72rem;
+    margin: 0.6rem 0 0.15rem 0;
+    font-size: 0.7rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.14em;
     color: var(--color-muted);
   }
 
   .channels button {
     width: 100%;
-    padding: 0.6rem 0.9rem;
+    padding: 0.5rem 0.75rem;
     border: 1px solid transparent;
     background: transparent;
     color: var(--color-muted);
     text-align: left;
     border-radius: var(--radius-sm);
     font-weight: 600;
+    font-size: 0.9rem;
     letter-spacing: 0.01em;
     display: flex;
     align-items: center;
-    gap: 0.55rem;
+    gap: 0.5rem;
     position: relative;
+  }
+
+  .chan-icon {
+    font-size: 1rem;
+    opacity: 0.65;
+    width: 1.2rem;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .voice-group {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .voice-user-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.2rem 0 0 1.6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .voice-user-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.3rem 0.55rem;
+    border-radius: var(--radius-xs);
+    font-size: 0.88rem;
+    transition: background var(--transition);
+  }
+
+  .voice-user-list li.clickable {
+    cursor: context-menu;
+  }
+
+  .voice-user-list li:hover {
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  }
+
+  .voice-user-list li.talking {
+    background: color-mix(in srgb, var(--color-success) 10%, transparent);
+  }
+
+  .voice-user-list .status.voice {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--color-success);
+    opacity: 0.5;
+    flex-shrink: 0;
+  }
+
+  .voice-user-list .status.voice.talking {
+    opacity: 1;
+    box-shadow: 0 0 6px color-mix(in srgb, var(--color-success) 50%, transparent);
+  }
+
+  .voice-user-list .username {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--color-on-surface);
+  }
+
+  .voice-user-list .role {
+    font-size: 0.7rem;
+    font-weight: 600;
+    opacity: 0.75;
   }
 
   .voice-channel-name {
@@ -2000,8 +2080,27 @@
   .actions {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.35rem;
     flex-wrap: wrap;
+  }
+
+  .action-group {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding-inline: 0.2rem;
+    position: relative;
+  }
+
+  .action-group + .action-group::before {
+    content: '';
+    position: absolute;
+    left: -0.1rem;
+    top: 20%;
+    bottom: 20%;
+    width: 1px;
+    background: color-mix(in srgb, var(--color-on-surface) 12%, transparent);
+    border-radius: 999px;
   }
 
   .user {
@@ -2219,9 +2318,10 @@
   .message {
     display: grid;
     grid-template-columns: auto auto 1fr;
-    gap: 0.75rem;
-    align-items: start;
-    padding: 0.85rem 1rem;
+    column-gap: 0.55rem;
+    row-gap: 0.3rem;
+    align-items: baseline;
+    padding: 0.65rem 0.9rem;
     border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--color-primary) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
@@ -2475,9 +2575,8 @@
   .pinned-bar {
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
-    margin-bottom: 1rem;
-    padding: 0.85rem 1rem;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
     border-radius: var(--radius-lg);
     border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
     background: color-mix(in srgb, var(--color-surface-elevated) 90%, transparent);
@@ -2582,10 +2681,11 @@
   }
 
   .reactions {
+    grid-column: 1 / -1;
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
-    margin-top: 0.35rem;
+    margin-top: 0.15rem;
   }
 
   .reaction-chip {
@@ -2716,6 +2816,16 @@
     border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
     background: color-mix(in srgb, var(--color-primary) 10%, transparent);
     color: var(--color-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .file-button svg,
+  .send svg {
+    width: 1.2rem;
+    height: 1.2rem;
   }
 
   .file-button:hover,
@@ -2732,48 +2842,58 @@
 
   .voice-controls-container {
     margin-top: auto;
-    padding-top: 1rem;
+    padding-top: 0.75rem;
     border-top: 1px solid var(--color-surface-outline);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem;
   }
 
   .voice-controls-panel {
-    border-radius: var(--radius-lg);
-    padding: 1rem;
+    border-radius: var(--radius-md);
+    padding: 0.75rem;
     background: color-mix(in srgb, var(--color-surface-raised) 86%, transparent);
     border: 1px solid var(--color-surface-outline);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.55rem;
   }
 
   .voice-controls-header {
-    font-size: 0.85rem;
-    font-weight: 600;
+    font-size: 0.72rem;
+    font-weight: 700;
     color: var(--color-muted);
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
   }
 
   .voice-controls-buttons {
     display: flex;
     flex-direction: column;
-    gap: 0.65rem;
+    gap: 0.4rem;
   }
 
   .voice-control-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.7rem 0.85rem;
+    gap: 0.45rem;
+    padding: 0.5rem 0.7rem;
     border-radius: var(--radius-sm);
     border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
     background: color-mix(in srgb, var(--color-primary) 8%, transparent);
     color: var(--color-on-surface);
     font-weight: 600;
+    font-size: 0.85rem;
     width: 100%;
+  }
+
+  .btn-icon {
+    font-size: 0.95rem;
+    line-height: 1;
+  }
+
+  .btn-text {
+    font-size: 0.82rem;
   }
 
   .voice-control-btn:hover {
@@ -2812,21 +2932,23 @@
     padding: clamp(1rem, 2vw, 1.3rem);
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
+    gap: 0.75rem;
     min-width: 0;
+    overflow-y: auto;
   }
 
   .sidebar h2 {
     margin: 0;
-    font-size: 1.25rem;
+    font-size: 1.15rem;
   }
 
   .sidebar h3 {
     margin: 0;
-    font-size: 0.85rem;
+    font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.12em;
     color: var(--color-muted);
+    font-weight: 700;
   }
 
   .sidebar ul {
@@ -2835,15 +2957,16 @@
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.2rem;
   }
 
   .sidebar li {
     display: flex;
     align-items: center;
-    gap: 0.55rem;
-    padding: 0.4rem 0.55rem;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
     border-radius: var(--radius-sm);
+    font-size: 0.9rem;
   }
 
   .sidebar li:hover {
