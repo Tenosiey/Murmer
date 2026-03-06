@@ -111,6 +111,7 @@
   let expiryTicker: number | null = null;
 
   let viewingScreenShare: ScreenSharePeer | null = null;
+  let pendingScreenShareView: string | null = null;
 
   let channelMessages: Message[] = [];
   let messageBlocks: MessageBlock[] = [];
@@ -280,6 +281,20 @@
   let currentChatChannel = 'general';
   let currentVoiceChannel: string | null = null;
   let currentTopic = '';
+
+  $: if (pendingScreenShareView && $screenSharePeers) {
+    const peer = $screenSharePeers.find(p => p.userId === pendingScreenShareView);
+    if (peer) {
+      viewingScreenShare = peer;
+      pendingScreenShareView = null;
+    }
+  }
+
+  $: if (viewingScreenShare && $screenSharePeers) {
+    if (!$screenSharePeers.find(p => p.userId === viewingScreenShare?.userId)) {
+      viewingScreenShare = null;
+    }
+  }
 
   $: channelMessages = $chat.filter((m) => (m.channel ?? 'general') === currentChatChannel);
   $: messageBlocks = buildMessageBlocks(channelMessages);
@@ -717,9 +732,8 @@
     }
     inVoice = false;
     // Close any active screen share viewer
-    if (viewingScreenShare) {
-      viewingScreenShare = null;
-    }
+    viewingScreenShare = null;
+    pendingScreenShareView = null;
     // Clean up screen share viewer session
     leaveScreenShareAsViewer();
   }
@@ -730,14 +744,20 @@
         alert('You must be in a voice channel to view screen shares');
         return;
       }
+
+      if (userId === $session.user) return;
       
+      pendingScreenShareView = userId;
       await viewScreenShare(userId, $session.user, currentVoiceChannel);
-      const peers = $screenSharePeers;
-      const peer = peers.find(p => p.userId === userId);
+
+      // Check if the peer stream is already available (rare but possible)
+      const peer = $screenSharePeers.find(p => p.userId === userId);
       if (peer) {
         viewingScreenShare = peer;
+        pendingScreenShareView = null;
       }
     } catch (error) {
+      pendingScreenShareView = null;
       console.error('Failed to view screen share:', error);
       alert('Failed to view screen share');
     }
@@ -1187,7 +1207,7 @@
                       >{$roles[user].role}</span
                     >
                   {/if}
-                  {#if $activeScreenShares[ch.name]?.includes(user)}
+                  {#if $activeScreenShares[ch.name]?.includes(user) && user !== $session.user}
                     <button
                       class="screenshare-indicator"
                       on:click={() => handleViewScreenShare(user)}
