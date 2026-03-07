@@ -66,13 +66,20 @@ CREATE TABLE IF NOT EXISTS roles (
     role TEXT NOT NULL,
     color TEXT
 );
+CREATE TABLE IF NOT EXISTS categories (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS channels (
-    name TEXT PRIMARY KEY
+    name TEXT PRIMARY KEY,
+    category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL
 );
 CREATE TABLE IF NOT EXISTS voice_channels (
     name TEXT PRIMARY KEY,
     quality TEXT NOT NULL DEFAULT 'standard',
-    bitrate INTEGER
+    bitrate INTEGER,
+    category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL
 );
 INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
 "#,
@@ -85,7 +92,13 @@ INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
 
     client
         .batch_execute(
-            "ALTER TABLE roles ADD COLUMN IF NOT EXISTS color TEXT;\nALTER TABLE voice_channels ADD COLUMN IF NOT EXISTS quality TEXT NOT NULL DEFAULT 'standard';\nALTER TABLE voice_channels ADD COLUMN IF NOT EXISTS bitrate INTEGER;\nUPDATE voice_channels SET quality = 'standard' WHERE quality IS NULL OR trim(quality) = '';\nUPDATE voice_channels SET bitrate = 64000 WHERE bitrate IS NULL;",
+            "ALTER TABLE roles ADD COLUMN IF NOT EXISTS color TEXT;\n\
+             ALTER TABLE voice_channels ADD COLUMN IF NOT EXISTS quality TEXT NOT NULL DEFAULT 'standard';\n\
+             ALTER TABLE voice_channels ADD COLUMN IF NOT EXISTS bitrate INTEGER;\n\
+             UPDATE voice_channels SET quality = 'standard' WHERE quality IS NULL OR trim(quality) = '';\n\
+             UPDATE voice_channels SET bitrate = 64000 WHERE bitrate IS NULL;\n\
+             ALTER TABLE channels ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL;\n\
+             ALTER TABLE voice_channels ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL;",
         )
         .await
         .ok();
@@ -391,25 +404,124 @@ pub async fn remove_role(db: &Client, key: &str) -> Result<bool, tokio_postgres:
         .map(|affected| affected > 0)
 }
 
-/// Retrieve the list of text channels.
-pub async fn get_channels(db: &Client) -> Vec<String> {
+/// A category grouping text and voice channels.
+#[derive(Clone)]
+pub struct CategoryRecord {
+    pub id: i32,
+    pub name: String,
+    pub position: i32,
+}
+
+/// Retrieve all categories ordered by position then id.
+pub async fn get_categories(db: &Client) -> Vec<CategoryRecord> {
     match db
-        .query("SELECT name FROM channels ORDER BY name", &[])
+        .query(
+            "SELECT id, name, position FROM categories ORDER BY position, id",
+            &[],
+        )
         .await
     {
-        Ok(rows) => rows.into_iter().map(|row| row.get(0)).collect(),
+        Ok(rows) => rows
+            .into_iter()
+            .map(|row| CategoryRecord {
+                id: row.get(0),
+                name: row.get(1),
+                position: row.get(2),
+            })
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
+/// Create a new category and return its id.
+pub async fn add_category(
+    db: &Client,
+    name: &str,
+    position: i32,
+) -> Result<i32, tokio_postgres::Error> {
+    let row = db
+        .query_one(
+            "INSERT INTO categories (name, position) VALUES ($1, $2) RETURNING id",
+            &[&name, &position],
+        )
+        .await?;
+    Ok(row.get(0))
+}
+
+/// Rename an existing category. Returns true if a row was updated.
+pub async fn rename_category(
+    db: &Client,
+    id: i32,
+    name: &str,
+) -> Result<bool, tokio_postgres::Error> {
+    db.execute(
+        "UPDATE categories SET name = $2 WHERE id = $1",
+        &[&id, &name],
+    )
+    .await
+    .map(|count| count > 0)
+}
+
+/// Delete a category by id. Channels in this category have their category_id set to NULL.
+pub async fn remove_category(db: &Client, id: i32) -> Result<bool, tokio_postgres::Error> {
+    db.execute("DELETE FROM categories WHERE id = $1", &[&id])
+        .await
+        .map(|count| count > 0)
+}
+
+/// A text channel with its optional category assignment.
+#[derive(Clone)]
+pub struct ChannelRecord {
+    pub name: String,
+    pub category_id: Option<i32>,
+}
+
+/// Retrieve the list of text channels with their category assignments.
+pub async fn get_channels(db: &Client) -> Vec<ChannelRecord> {
+    match db
+        .query(
+            "SELECT name, category_id FROM channels ORDER BY name",
+            &[],
+        )
+        .await
+    {
+        Ok(rows) => rows
+            .into_iter()
+            .map(|row| ChannelRecord {
+                name: row.get(0),
+                category_id: row.get(1),
+            })
+            .collect(),
         Err(_) => Vec::new(),
     }
 }
 
 /// Insert a new channel if it does not already exist.
-pub async fn add_channel(db: &Client, name: &str) -> Result<(), tokio_postgres::Error> {
+pub async fn add_channel(
+    db: &Client,
+    name: &str,
+    category_id: Option<i32>,
+) -> Result<(), tokio_postgres::Error> {
     db.execute(
-        "INSERT INTO channels (name) VALUES ($1) ON CONFLICT DO NOTHING",
-        &[&name],
+        "INSERT INTO channels (name, category_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        &[&name, &category_id],
     )
     .await
     .map(|_| ())
+}
+
+/// Move a text channel to a different category (or none).
+pub async fn move_channel(
+    db: &Client,
+    name: &str,
+    category_id: Option<i32>,
+) -> Result<bool, tokio_postgres::Error> {
+    db.execute(
+        "UPDATE channels SET category_id = $2 WHERE name = $1",
+        &[&name, &category_id],
+    )
+    .await
+    .map(|count| count > 0)
 }
 
 /// Delete an existing channel.
@@ -425,12 +537,13 @@ pub struct VoiceChannelRecord {
     pub name: String,
     pub quality: String,
     pub bitrate: Option<i32>,
+    pub category_id: Option<i32>,
 }
 
 pub async fn get_voice_channels(db: &Client) -> Vec<VoiceChannelRecord> {
     match db
         .query(
-            "SELECT name, quality, bitrate FROM voice_channels ORDER BY name",
+            "SELECT name, quality, bitrate, category_id FROM voice_channels ORDER BY name",
             &[],
         )
         .await
@@ -441,6 +554,7 @@ pub async fn get_voice_channels(db: &Client) -> Vec<VoiceChannelRecord> {
                 name: row.get(0),
                 quality: row.get(1),
                 bitrate: row.get(2),
+                category_id: row.get(3),
             })
             .collect(),
         Err(_) => Vec::new(),
@@ -453,14 +567,29 @@ pub async fn add_voice_channel(
     name: &str,
     quality: &str,
     bitrate: Option<i32>,
+    category_id: Option<i32>,
 ) -> Result<(), tokio_postgres::Error> {
     db.execute(
-        "INSERT INTO voice_channels (name, quality, bitrate) VALUES ($1, $2, $3) \
+        "INSERT INTO voice_channels (name, quality, bitrate, category_id) VALUES ($1, $2, $3, $4) \
             ON CONFLICT (name) DO NOTHING",
-        &[&name, &quality, &bitrate],
+        &[&name, &quality, &bitrate, &category_id],
     )
     .await
     .map(|_| ())
+}
+
+/// Move a voice channel to a different category (or none).
+pub async fn move_voice_channel(
+    db: &Client,
+    name: &str,
+    category_id: Option<i32>,
+) -> Result<bool, tokio_postgres::Error> {
+    db.execute(
+        "UPDATE voice_channels SET category_id = $2 WHERE name = $1",
+        &[&name, &category_id],
+    )
+    .await
+    .map(|count| count > 0)
 }
 
 /// Update an existing voice channel configuration.

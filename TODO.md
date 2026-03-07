@@ -11,9 +11,9 @@ Use the checkboxes to track progress.
 
 - [x] Add reactions with emojis
 - [ ] Bot integration/webhooks
-- [ ] Channel categories and folders
-- [x] Channel description/topics
-- [ ] Channel permissions and moderation
+- [x] Channel categories and folders (server-side done, client pending)
+- [ ] Channel description/topics (client-only, no server persistence)
+- [ ] Channel permissions and moderation (basic role-gating exists, no ban/kick/mute)
 - [x] Code syntax highlighting
 - [ ] Direct messages between users
 - [x] Enable deleting messages
@@ -21,11 +21,11 @@ Use the checkboxes to track progress.
 - [ ] File sharing beyond images
 - [x] Keyboard shortcuts
 - [x] Load chat history only for the selected channel
-- [ ] Message history persistence
+- [x] Message history persistence
 - [ ] Message threading/replies
 - [x] Message timestamps
 - [x] Notification settings per channel
-- [x] Pin important messages in a channel
+- [ ] Pin important messages in a channel (client-local only, no server persistence)
 - [x] Search chat history
 - [x] Slash commands for quick actions
 - [x] Support Markdown formatting in text chat
@@ -38,7 +38,7 @@ Use the checkboxes to track progress.
 
 - [x] Add mute microphone and mute output button
 - [x] Add quality bars to display connection strength (like Discord)
-- [ ] Add volume of other users slider
+- [x] Add volume of other users slider
 - [ ] Breakout rooms
 - [ ] Collaborative whiteboard during voice chats
 - [ ] Custom sound effects and soundboards
@@ -47,14 +47,14 @@ Use the checkboxes to track progress.
 - [ ] Meeting notes that auto-generate from voice
 - [ ] Noise suppression and echo cancellation
 - [ ] Optional spatial/3D audio
-- [ ] Push-to-talk and voice activity detection
+- [x] Push-to-talk and voice activity detection
 - [ ] Record and play back voice messages
 - [ ] Real-time transcription of voice to text
 - [ ] Temporary voice channels
 - [ ] Virtual backgrounds
 - [ ] Voice activity heatmaps
 - [x] Voice activity indicators
-- [ ] Voice channels with different quality settings
+- [x] Voice channels with different quality settings
 - [ ] Voice-controlled commands
 - [ ] Voice effects and filters
 - [ ] Voice sentiment analysis
@@ -88,7 +88,7 @@ _(no known bugs yet)_
 
 ## 💡 Future Ideas
 
-- [ ] Add screen sharing with annotation support
+- [x] Screen sharing (annotation support not yet implemented)
 - [ ] AI-powered chat summarization
 - [ ] Offline LAN party mode without Internet
 - [ ] Proximity voice channels for events

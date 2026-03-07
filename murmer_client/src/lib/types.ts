@@ -36,6 +36,18 @@ export interface VoiceChannelInfo {
   name: string;
   quality: string;
   bitrate: number | null;
+  categoryId: number | null;
+}
+
+export interface CategoryInfo {
+  id: number;
+  name: string;
+  position: number;
+}
+
+export interface ChannelInfo {
+  name: string;
+  categoryId: number | null;
 }
 
 export interface ScreenShareSettings {

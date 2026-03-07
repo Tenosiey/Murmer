@@ -78,3 +78,24 @@ pub const ROLE_TARGET_NOT_FOUND: &str =
 
 /// Failed to update role in database.
 pub const ROLE_UPDATE_FAILED: &str = r#"{"type":"error","message":"role-update-failed"}"#;
+
+/// Category name validation failed.
+pub const INVALID_CATEGORY_NAME: &str = r#"{"type":"error","message":"invalid-category-name"}"#;
+
+/// Failed to create category in database.
+pub const CATEGORY_CREATION_FAILED: &str =
+    r#"{"type":"error","message":"category-creation-failed"}"#;
+
+/// Failed to rename category in database.
+pub const CATEGORY_RENAME_FAILED: &str =
+    r#"{"type":"error","message":"category-rename-failed"}"#;
+
+/// Failed to delete category from database.
+pub const CATEGORY_DELETION_FAILED: &str =
+    r#"{"type":"error","message":"category-deletion-failed"}"#;
+
+/// The referenced category does not exist.
+pub const UNKNOWN_CATEGORY: &str = r#"{"type":"error","message":"unknown-category"}"#;
+
+/// Failed to move channel to category.
+pub const CHANNEL_MOVE_FAILED: &str = r#"{"type":"error","message":"channel-move-failed"}"#;

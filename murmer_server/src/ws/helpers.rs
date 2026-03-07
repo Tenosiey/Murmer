@@ -85,6 +85,7 @@ pub fn voice_channel_descriptor(name: &str, info: &VoiceChannelState) -> Value {
         "name": name,
         "quality": info.quality,
         "bitrate": info.bitrate,
+        "categoryId": info.category_id,
     })
 }
 
@@ -144,10 +145,15 @@ pub async fn broadcast_status(state: &Arc<AppState>, user: &str, status: &str) {
 }
 
 /// Broadcast to all clients that a new channel was created.
-pub async fn broadcast_new_channel(state: &Arc<AppState>, name: &str) {
+pub async fn broadcast_new_channel(
+    state: &Arc<AppState>,
+    name: &str,
+    category_id: Option<i32>,
+) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "channel-add",
         "channel": name,
+        "categoryId": category_id,
     })) {
         let _ = state.tx.send(msg);
     }
@@ -174,6 +180,7 @@ pub async fn broadcast_new_voice_channel(
         "channel": name,
         "quality": info.quality,
         "bitrate": info.bitrate,
+        "categoryId": info.category_id,
     })) {
         let _ = state.tx.send(msg);
     }
@@ -208,9 +215,39 @@ pub async fn broadcast_remove_voice_channel(state: &Arc<AppState>, name: &str) {
 /// Send the list of available channels to a client.
 pub async fn send_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let list = crate::db::get_channels(&state.db).await;
+    let channels: Vec<Value> = list
+        .iter()
+        .map(|ch| {
+            serde_json::json!({
+                "name": ch.name,
+                "categoryId": ch.category_id,
+            })
+        })
+        .collect();
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "channel-list",
-        "channels": list,
+        "channels": channels,
+    })) {
+        let _ = sender.send(Message::Text(msg)).await;
+    }
+}
+
+/// Send the list of categories to a client.
+pub async fn send_categories(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    let list = crate::db::get_categories(&state.db).await;
+    let categories: Vec<Value> = list
+        .iter()
+        .map(|cat| {
+            serde_json::json!({
+                "id": cat.id,
+                "name": cat.name,
+                "position": cat.position,
+            })
+        })
+        .collect();
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "category-list",
+        "categories": categories,
     })) {
         let _ = sender.send(Message::Text(msg)).await;
     }
@@ -254,6 +291,56 @@ pub async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSoc
                 break;
             }
         }
+    }
+}
+
+/// Broadcast to all clients that a new category was created.
+pub async fn broadcast_new_category(state: &Arc<AppState>, id: i32, name: &str, position: i32) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "category-add",
+        "id": id,
+        "name": name,
+        "position": position,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast to all clients that a category was renamed.
+pub async fn broadcast_rename_category(state: &Arc<AppState>, id: i32, name: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "category-update",
+        "id": id,
+        "name": name,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast to all clients that a category was deleted.
+pub async fn broadcast_remove_category(state: &Arc<AppState>, id: i32) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "category-remove",
+        "id": id,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast to all clients that a channel was moved to a different category.
+pub async fn broadcast_channel_move(
+    state: &Arc<AppState>,
+    channel: &str,
+    category_id: Option<i32>,
+    voice: bool,
+) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "channel-move",
+        "channel": channel,
+        "categoryId": category_id,
+        "voice": voice,
+    })) {
+        let _ = state.tx.send(msg);
     }
 }
 

@@ -18,7 +18,8 @@ function normalizeChannel(value: any): VoiceChannelInfo | null {
       bitrate = Math.max(0, Math.round(parsed));
     }
   }
-  return { name, quality, bitrate };
+  const categoryId = typeof value.categoryId === 'number' ? value.categoryId : null;
+  return { name, quality, bitrate, categoryId };
 }
 
 function createVoiceChannelStore() {
@@ -60,12 +61,22 @@ function createVoiceChannelStore() {
     }
   });
 
-  function create(name: string, preset?: Pick<VoiceChannelInfo, 'quality' | 'bitrate'>) {
+  chat.on('channel-move', (msg: Message) => {
+    const raw = msg as any;
+    if (raw.voice !== true) return;
+    const name = typeof raw.channel === 'string' ? raw.channel : null;
+    if (!name) return;
+    const categoryId = typeof raw.categoryId === 'number' ? raw.categoryId : null;
+    update((chs) => chs.map((c) => (c.name === name ? { ...c, categoryId } : c)));
+  });
+
+  function create(name: string, preset?: Pick<VoiceChannelInfo, 'quality' | 'bitrate'>, categoryId?: number | null) {
     const payload: Record<string, unknown> = { type: 'create-voice-channel', name };
     if (preset) {
       payload.quality = preset.quality;
       payload.bitrate = preset.bitrate ?? null;
     }
+    if (categoryId != null) payload.categoryId = categoryId;
     chat.sendRaw(payload);
   }
 

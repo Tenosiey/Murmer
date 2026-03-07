@@ -79,6 +79,18 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                     continue;
                                 }
                             }
+                            "move-channel" => {
+                                handle_move_channel(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "create-category" => {
+                                handle_create_category(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "rename-category" => {
+                                handle_rename_category(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "delete-category" => {
+                                handle_delete_category(&state, &mut sender, &v, &user_name).await;
+                            }
                             "create-voice-channel" => {
                                 handle_create_voice_channel(&state, &mut sender, &v, &user_name).await;
                             }
@@ -321,6 +333,7 @@ async fn handle_presence(
             // Send initial state
             send_all_roles(state, sender).await;
             send_all_statuses(state, sender).await;
+            send_categories(state, sender).await;
             send_channels(state, sender).await;
             send_voice_channels(state, sender).await;
             send_users(state, sender).await;
@@ -546,14 +559,19 @@ async fn handle_create_channel(
         return;
     }
 
-    if let Err(e) = db::add_channel(&state.db, ch).await {
+    let category_id = v
+        .get("categoryId")
+        .and_then(|c| c.as_i64())
+        .map(|id| id as i32);
+
+    if let Err(e) = db::add_channel(&state.db, ch, category_id).await {
         error!("db add channel error: {e}");
         let _ = sender
             .send(Message::Text(errors::CHANNEL_CREATION_FAILED.to_string()))
             .await;
     } else {
         get_or_create_channel(state, ch).await;
-        broadcast_new_channel(state, ch).await;
+        broadcast_new_channel(state, ch, category_id).await;
     }
 }
 
@@ -691,16 +709,24 @@ async fn handle_create_voice_channel(
         None => Some(DEFAULT_VOICE_BITRATE),
     };
 
+    let category_id = v
+        .get("categoryId")
+        .and_then(|c| c.as_i64())
+        .map(|id| id as i32);
+
     let mut map = state.voice_channels.lock().await;
     if !map.contains_key(ch) {
         let info = VoiceChannelState {
             users: HashSet::new(),
             quality: quality_value.clone(),
             bitrate: bitrate_value,
+            category_id,
         };
         map.insert(ch.to_string(), info.clone());
         drop(map);
-        let _ = db::add_voice_channel(&state.db, ch, &info.quality, info.bitrate).await;
+        let _ =
+            db::add_voice_channel(&state.db, ch, &info.quality, info.bitrate, info.category_id)
+                .await;
         broadcast_new_voice_channel(state, ch, &info).await;
     }
 }
@@ -860,6 +886,243 @@ async fn handle_delete_voice_channel(
     broadcast_remove_voice_channel(state, ch).await;
     if voice_channel.as_deref() == Some(ch) {
         *voice_channel = None;
+    }
+}
+
+/// Handle create category request.
+async fn handle_create_category(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(name) = v.get("name").and_then(|n| n.as_str()) else {
+        return;
+    };
+
+    if !security::validate_channel_name(name) {
+        let _ = sender
+            .send(Message::Text(errors::INVALID_CATEGORY_NAME.to_string()))
+            .await;
+        return;
+    }
+
+    let requester = match user_name.as_deref() {
+        Some(n) => n,
+        None => {
+            let _ = sender
+                .send(Message::Text(errors::CHANNEL_PERMISSION_DENIED.to_string()))
+                .await;
+            return;
+        }
+    };
+
+    if !can_manage_channels(state, requester).await {
+        let _ = sender
+            .send(Message::Text(errors::CHANNEL_PERMISSION_DENIED.to_string()))
+            .await;
+        return;
+    }
+
+    let position = v
+        .get("position")
+        .and_then(|p| p.as_i64())
+        .map(|p| p as i32)
+        .unwrap_or(0);
+
+    match db::add_category(&state.db, name, position).await {
+        Ok(id) => {
+            broadcast_new_category(state, id, name, position).await;
+        }
+        Err(e) => {
+            error!("db add category error: {e}");
+            let _ = sender
+                .send(Message::Text(errors::CATEGORY_CREATION_FAILED.to_string()))
+                .await;
+        }
+    }
+}
+
+/// Handle rename category request.
+async fn handle_rename_category(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(id) = v.get("id").and_then(|i| i.as_i64()).map(|i| i as i32) else {
+        return;
+    };
+    let Some(name) = v.get("name").and_then(|n| n.as_str()) else {
+        return;
+    };
+
+    if !security::validate_channel_name(name) {
+        let _ = sender
+            .send(Message::Text(errors::INVALID_CATEGORY_NAME.to_string()))
+            .await;
+        return;
+    }
+
+    let requester = match user_name.as_deref() {
+        Some(n) => n,
+        None => {
+            let _ = sender
+                .send(Message::Text(errors::CHANNEL_PERMISSION_DENIED.to_string()))
+                .await;
+            return;
+        }
+    };
+
+    if !can_manage_channels(state, requester).await {
+        let _ = sender
+            .send(Message::Text(errors::CHANNEL_PERMISSION_DENIED.to_string()))
+            .await;
+        return;
+    }
+
+    match db::rename_category(&state.db, id, name).await {
+        Ok(true) => {
+            broadcast_rename_category(state, id, name).await;
+        }
+        Ok(false) => {
+            let _ = sender
+                .send(Message::Text(errors::UNKNOWN_CATEGORY.to_string()))
+                .await;
+        }
+        Err(e) => {
+            error!("db rename category error: {e}");
+            let _ = sender
+                .send(Message::Text(errors::CATEGORY_RENAME_FAILED.to_string()))
+                .await;
+        }
+    }
+}
+
+/// Handle delete category request.
+async fn handle_delete_category(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(id) = v.get("id").and_then(|i| i.as_i64()).map(|i| i as i32) else {
+        return;
+    };
+
+    let requester = match user_name.as_deref() {
+        Some(n) => n,
+        None => {
+            let _ = sender
+                .send(Message::Text(errors::CHANNEL_PERMISSION_DENIED.to_string()))
+                .await;
+            return;
+        }
+    };
+
+    if !can_manage_channels(state, requester).await {
+        let _ = sender
+            .send(Message::Text(errors::CHANNEL_PERMISSION_DENIED.to_string()))
+            .await;
+        return;
+    }
+
+    match db::remove_category(&state.db, id).await {
+        Ok(true) => {
+            broadcast_remove_category(state, id).await;
+        }
+        Ok(false) => {
+            let _ = sender
+                .send(Message::Text(errors::UNKNOWN_CATEGORY.to_string()))
+                .await;
+        }
+        Err(e) => {
+            error!("db delete category error: {e}");
+            let _ = sender
+                .send(Message::Text(errors::CATEGORY_DELETION_FAILED.to_string()))
+                .await;
+        }
+    }
+}
+
+/// Handle move channel to a category (or remove from category).
+async fn handle_move_channel(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(channel_name) = v.get("channel").and_then(|c| c.as_str()) else {
+        return;
+    };
+
+    if !security::validate_channel_name(channel_name) {
+        let _ = sender
+            .send(Message::Text(errors::INVALID_CHANNEL_NAME.to_string()))
+            .await;
+        return;
+    }
+
+    let requester = match user_name.as_deref() {
+        Some(n) => n,
+        None => {
+            let _ = sender
+                .send(Message::Text(errors::CHANNEL_PERMISSION_DENIED.to_string()))
+                .await;
+            return;
+        }
+    };
+
+    if !can_manage_channels(state, requester).await {
+        let _ = sender
+            .send(Message::Text(errors::CHANNEL_PERMISSION_DENIED.to_string()))
+            .await;
+        return;
+    }
+
+    let category_id = if v.get("categoryId").map_or(false, |c| c.is_null()) {
+        None
+    } else {
+        v.get("categoryId").and_then(|c| c.as_i64()).map(|i| i as i32)
+    };
+
+    let is_voice = v
+        .get("voice")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let result = if is_voice {
+        match db::move_voice_channel(&state.db, channel_name, category_id).await {
+            Ok(updated) => {
+                if updated {
+                    let mut map = state.voice_channels.lock().await;
+                    if let Some(entry) = map.get_mut(channel_name) {
+                        entry.category_id = category_id;
+                    }
+                }
+                Ok(updated)
+            }
+            Err(e) => Err(e),
+        }
+    } else {
+        db::move_channel(&state.db, channel_name, category_id).await
+    };
+
+    match result {
+        Ok(true) => {
+            broadcast_channel_move(state, channel_name, category_id, is_voice).await;
+        }
+        Ok(false) => {
+            let _ = sender
+                .send(Message::Text(errors::CHANNEL_MOVE_FAILED.to_string()))
+                .await;
+        }
+        Err(e) => {
+            error!("db move channel error: {e}");
+            let _ = sender
+                .send(Message::Text(errors::CHANNEL_MOVE_FAILED.to_string()))
+                .await;
+        }
     }
 }
 
@@ -1283,12 +1546,21 @@ async fn handle_voice_join(
                 users: HashSet::new(),
                 quality: DEFAULT_VOICE_QUALITY.to_string(),
                 bitrate: Some(DEFAULT_VOICE_BITRATE),
+                category_id: None,
             });
         entry.users.insert(u.to_string());
         *voice_channel = Some(ch.to_string());
         let descriptor = entry.clone();
         drop(map);
         if new_channel {
+            let _ = db::add_voice_channel(
+                &state.db,
+                ch,
+                &descriptor.quality,
+                descriptor.bitrate,
+                descriptor.category_id,
+            )
+            .await;
             broadcast_new_voice_channel(state, ch, &descriptor).await;
         }
     }

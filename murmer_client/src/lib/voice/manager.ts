@@ -96,7 +96,7 @@ export class VoiceManager {
       } else if (typeof (msg as any).bitrate === 'number' && Number.isFinite((msg as any).bitrate)) {
         bitrate = Math.max(0, Math.round((msg as any).bitrate));
       }
-      this.channelConfig = { name: channel, quality, bitrate };
+      this.channelConfig = { name: channel, quality, bitrate, categoryId: this.channelConfig?.categoryId ?? null };
       this.applyChannelConfigToPeers();
     });
   }
@@ -373,8 +373,8 @@ export class VoiceManager {
     this.userName = user;
     this.channel = channel;
     this.channelConfig = info
-      ? { name: channel, quality: info.quality, bitrate: info.bitrate }
-      : { name: channel, quality: 'standard', bitrate: DEFAULT_AUDIO_BITRATE };
+      ? { name: channel, quality: info.quality, bitrate: info.bitrate, categoryId: info.categoryId ?? null }
+      : { name: channel, quality: 'standard', bitrate: DEFAULT_AUDIO_BITRATE, categoryId: null };
     resetRemoteSpeaking();
     chat.on('voice-join', (m) => this.handleJoin(m, peersList));
     chat.on('voice-offer', (m) => this.handleOffer(m, peersList));

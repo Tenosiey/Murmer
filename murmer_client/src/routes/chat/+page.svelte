@@ -25,6 +25,8 @@
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
+  import { categories } from '$lib/stores/categories';
+  import type { ChannelInfo, CategoryInfo } from '$lib/types';
   import { leftSidebarWidth, rightSidebarWidth, focusMode } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
   import { theme } from '$lib/stores/theme';
@@ -305,12 +307,63 @@
     return found ? found.label : 'All messages';
   })();
 
-  $: if ($channels.length && !$channels.includes(currentChatChannel)) {
-    currentChatChannel = $channels[0];
+  $: if ($channels.length && !$channels.some((c) => c.name === currentChatChannel)) {
+    currentChatChannel = $channels[0].name;
     chat.sendRaw({ type: 'join', channel: currentChatChannel });
   }
 
   $: currentTopic = $channelTopics[currentChatChannel] ?? '';
+
+  let collapsedCategories: Set<number> = new Set();
+  function toggleCategory(id: number) {
+    if (collapsedCategories.has(id)) {
+      collapsedCategories.delete(id);
+    } else {
+      collapsedCategories.add(id);
+    }
+    collapsedCategories = collapsedCategories;
+  }
+
+  interface CategoryGroup {
+    category: CategoryInfo | null;
+    textChannels: ChannelInfo[];
+    voiceChannels: VoiceChannelInfo[];
+  }
+
+  $: categoryGroups = (() => {
+    const groups: CategoryGroup[] = [];
+    const catMap = new Map<number, CategoryGroup>();
+
+    for (const cat of $categories) {
+      const group: CategoryGroup = { category: cat, textChannels: [], voiceChannels: [] };
+      catMap.set(cat.id, group);
+      groups.push(group);
+    }
+
+    const uncategorized: CategoryGroup = { category: null, textChannels: [], voiceChannels: [] };
+
+    for (const ch of $channels) {
+      if (ch.categoryId != null && catMap.has(ch.categoryId)) {
+        catMap.get(ch.categoryId)!.textChannels.push(ch);
+      } else {
+        uncategorized.textChannels.push(ch);
+      }
+    }
+
+    for (const vc of $voiceChannels) {
+      if (vc.categoryId != null && catMap.has(vc.categoryId)) {
+        catMap.get(vc.categoryId)!.voiceChannels.push(vc);
+      } else {
+        uncategorized.voiceChannels.push(vc);
+      }
+    }
+
+    if (uncategorized.textChannels.length || uncategorized.voiceChannels.length) {
+      groups.unshift(uncategorized);
+    }
+
+    return groups;
+  })();
 
 
   function stream(node: HTMLAudioElement, data: { stream: MediaStream, userId: string }) {
@@ -784,7 +837,7 @@
         voice.leave(currentVoiceChannel);
       }
       currentVoiceChannel = name;
-      voice.join($session.user, name, { name, quality: preset.quality, bitrate: preset.bitrate });
+      voice.join($session.user, name, { name, quality: preset.quality, bitrate: preset.bitrate, categoryId: null });
       inVoice = true;
       scrollBottom();
     }
@@ -805,6 +858,7 @@
 
   let menuChannel: string | null = null;
   let menuVoiceChannel: string | null = null;
+  let menuCategoryId: number | null = null;
   let volumeMenuOpen = false;
   let volumeMenuX = 0;
   let volumeMenuY = 0;
@@ -870,10 +924,22 @@
     menuY = event.clientY;
     menuChannel = null;
     menuVoiceChannel = null;
+    menuCategoryId = null;
     if (channel) {
       if (voice) menuVoiceChannel = channel;
       else menuChannel = channel;
     }
+    menuOpen = true;
+  }
+
+  function openCategoryMenu(event: MouseEvent, category: CategoryInfo) {
+    event.preventDefault();
+    event.stopPropagation();
+    menuX = event.clientX;
+    menuY = event.clientY;
+    menuChannel = null;
+    menuVoiceChannel = null;
+    menuCategoryId = category.id;
     menuOpen = true;
   }
 
@@ -1044,10 +1110,53 @@
     }
   }
 
+  function createCategoryPrompt() {
+    const name = prompt('New category name');
+    if (name) categories.create(name);
+  }
+
+  function renameCategoryPrompt(id: number) {
+    const cat = $categories.find((c) => c.id === id);
+    const name = prompt('Rename category', cat?.name ?? '');
+    if (name) categories.rename(id, name);
+  }
+
+  function buildMoveToItems(channelName: string, voice: boolean): Array<{ label: string; action: () => void }> {
+    const items: Array<{ label: string; action: () => void }> = [];
+    const currentCh = voice
+      ? $voiceChannels.find((c) => c.name === channelName)
+      : $channels.find((c) => c.name === channelName);
+    const currentCatId = currentCh?.categoryId ?? null;
+
+    if (currentCatId !== null) {
+      items.push({
+        label: 'Move to: (no category)',
+        action: () => channels.move(channelName, null, voice)
+      });
+    }
+
+    for (const cat of $categories) {
+      if (cat.id !== currentCatId) {
+        items.push({
+          label: `Move to: ${cat.name}`,
+          action: () => channels.move(channelName, cat.id, voice)
+        });
+      }
+    }
+
+    return items;
+  }
+
   $: channelMenuItems = [
     { label: 'Create Text Channel', action: createChannelPrompt },
     { label: 'Create Voice Channel', action: createVoiceChannelPrompt },
-    ...(menuChannel ? [{ label: 'Delete Channel', action: () => channels.remove(menuChannel!) }] : []),
+    { label: 'Create Category', action: createCategoryPrompt },
+    ...(menuChannel
+      ? [
+          ...buildMoveToItems(menuChannel, false),
+          { label: 'Delete Channel', action: () => channels.remove(menuChannel!), danger: true }
+        ]
+      : []),
     ...(menuVoiceChannel
       ? [
           ...VOICE_QUALITY_PRESETS.map((preset) => ({
@@ -1061,7 +1170,14 @@
                 bitrate: preset.bitrate
               })
           })),
-          { label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannel!) }
+          ...buildMoveToItems(menuVoiceChannel, true),
+          { label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannel!), danger: true }
+        ]
+      : []),
+    ...(menuCategoryId != null
+      ? [
+          { label: 'Rename Category', action: () => renameCategoryPrompt(menuCategoryId!) },
+          { label: 'Delete Category', action: () => categories.remove(menuCategoryId!), danger: true }
         ]
       : [])
   ];
@@ -1193,76 +1309,101 @@
 
   <div class="page" class:focus={$focusMode}>
     <div class="channels" role="navigation" on:contextmenu={openChannelMenu} style="width: {$leftSidebarWidth}px">
-      <h3 class="section">Chat Channels</h3>
-      {#each $channels as ch}
-        <button
-          class:active={ch === currentChatChannel}
-          on:click={() => joinChannel(ch)}
-          on:contextmenu={(e) => openChannelMenu(e, ch)}
-        >
-          <span class="chan-icon">#</span> {ch}
-        </button>
-      {/each}
-      <h3 class="section">Voice Channels</h3>
-      {#each $voiceChannels as ch (ch.name)}
-        <div class="voice-group">
-          <button on:click={() => joinVoiceChannel(ch.name)} on:contextmenu={(e) => openChannelMenu(e, ch.name, true)}>
-            <span class="chan-icon">🔊</span>
-            <span class="voice-channel-name">{ch.name}</span>
-            <span class="voice-channel-quality">{formatVoiceQuality(ch)}</span>
-          </button>
-          {#if $voiceUsers[ch.name]?.length}
-            <ul class="voice-user-list">
-              {#each $voiceUsers[ch.name] as user}
-                <li
-                  on:contextmenu={(e) => user !== $session.user && openUserVolumeMenu(e, user)}
-                  class:clickable={user !== $session.user}
-                  class:talking={
-                    user === $session.user
-                      ? !$microphoneMuted && $voiceActivity
-                      : Boolean($remoteSpeaking[user])
-                  }
-                >
-                  <span
-                    class="status voice"
-                    class:talking={
-                      user === $session.user
-                        ? !$microphoneMuted && $voiceActivity
-                        : Boolean($remoteSpeaking[user])
-                    }
-                  ></span>
-                  <span
-                    class="username"
-                    style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
-                    >{user}</span
-                  >
-                  {#if $roles[user]}
-                    <span
-                      class="role"
-                      style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
-                      >{$roles[user].role}</span
-                    >
-                  {/if}
-                  {#if $activeScreenShares[ch.name]?.includes(user) && user !== $session.user}
-                    <button
-                      class="screenshare-indicator"
-                      on:click={() => handleViewScreenShare(user)}
-                      title="View {user}'s screen"
-                      aria-label="View {user}'s screen share"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
-                      </svg>
-                    </button>
-                  {/if}
-                  <ConnectionBars
-                    strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)}
-                  />
-                </li>
-              {/each}
-            </ul>
+      {#each categoryGroups as group (group.category?.id ?? '__uncategorized')}
+        {#if group.category}
+          <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
+          <h3
+            class="section category-header"
+            role="button"
+            tabindex="0"
+            on:click={() => toggleCategory(group.category?.id ?? 0)}
+            on:contextmenu={(e) => { if (group.category) openCategoryMenu(e, group.category); }}
+          >
+            <span class="category-chevron" class:collapsed={collapsedCategories.has(group.category?.id ?? 0)}>&#9662;</span>
+            {group.category?.name ?? ''}
+          </h3>
+        {:else}
+          {#if group.textChannels.length}
+            <h3 class="section">Channels</h3>
           {/if}
-        </div>
+        {/if}
+        {#if !group.category || !collapsedCategories.has(group.category.id)}
+          {#each group.textChannels as ch (ch.name)}
+            <button
+              class:active={ch.name === currentChatChannel}
+              on:click={() => joinChannel(ch.name)}
+              on:contextmenu={(e) => openChannelMenu(e, ch.name)}
+            >
+              <span class="chan-icon">#</span> {ch.name}
+            </button>
+          {/each}
+          {#if group.voiceChannels.length}
+            {#if !group.category && !group.textChannels.length}
+              <h3 class="section">Voice Channels</h3>
+            {/if}
+          {/if}
+          {#each group.voiceChannels as ch (ch.name)}
+            <div class="voice-group">
+              <button on:click={() => joinVoiceChannel(ch.name)} on:contextmenu={(e) => openChannelMenu(e, ch.name, true)}>
+                <span class="chan-icon">&#x1f50a;</span>
+                <span class="voice-channel-name">{ch.name}</span>
+                <span class="voice-channel-quality">{formatVoiceQuality(ch)}</span>
+              </button>
+              {#if $voiceUsers[ch.name]?.length}
+                <ul class="voice-user-list">
+                  {#each $voiceUsers[ch.name] as user}
+                    <li
+                      on:contextmenu={(e) => user !== $session.user && openUserVolumeMenu(e, user)}
+                      class:clickable={user !== $session.user}
+                      class:talking={
+                        user === $session.user
+                          ? !$microphoneMuted && $voiceActivity
+                          : Boolean($remoteSpeaking[user])
+                      }
+                    >
+                      <span
+                        class="status voice"
+                        class:talking={
+                          user === $session.user
+                            ? !$microphoneMuted && $voiceActivity
+                            : Boolean($remoteSpeaking[user])
+                        }
+                      ></span>
+                      <span
+                        class="username"
+                        style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
+                        >{user}</span
+                      >
+                      {#if $roles[user]}
+                        <span
+                          class="role"
+                          style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
+                          >{$roles[user].role}</span
+                        >
+                      {/if}
+                      {#if $activeScreenShares[ch.name]?.includes(user) && user !== $session.user}
+                        <button
+                          class="screenshare-indicator"
+                          on:click={() => handleViewScreenShare(user)}
+                          title="View {user}'s screen"
+                          aria-label="View {user}'s screen share"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
+                          </svg>
+                        </button>
+                      {/if}
+                      <ConnectionBars
+                        strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)}
+                      />
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
+          {/each}
+        {/if}
       {/each}
 
       <div class="voice-controls-container">
@@ -1965,6 +2106,32 @@
     text-transform: uppercase;
     letter-spacing: 0.14em;
     color: var(--color-muted);
+  }
+
+  .category-header {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    user-select: none;
+    border-radius: var(--radius-sm, 4px);
+    padding: 0.15rem 0.25rem;
+    transition: background 0.15s;
+  }
+
+  .category-header:hover {
+    background: color-mix(in srgb, var(--color-surface-elevated) 60%, transparent);
+  }
+
+  .category-chevron {
+    display: inline-block;
+    font-size: 0.6rem;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+  }
+
+  .category-chevron.collapsed {
+    transform: rotate(-90deg);
   }
 
   .channels button {

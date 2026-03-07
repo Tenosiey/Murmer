@@ -53,6 +53,7 @@ pub struct VoiceChannelState {
     pub users: HashSet<String>,
     pub quality: String,
     pub bitrate: Option<i32>,
+    pub category_id: Option<i32>,
 }
 
 /// Shared application state passed to handlers.

@@ -99,6 +99,7 @@ async fn main() -> Result<()> {
                         users: HashSet::new(),
                         quality: record.quality.clone(),
                         bitrate: record.bitrate,
+                        category_id: record.category_id,
                     },
                 );
             }
