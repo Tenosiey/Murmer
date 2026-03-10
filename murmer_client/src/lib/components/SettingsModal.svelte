@@ -5,18 +5,27 @@
 <script lang="ts">
   import { volume, inputDeviceId, outputDeviceId, voiceMode, vadSensitivity, pttKey } from '$lib/stores/settings';
   import { APP_VERSION } from '$lib/version';
+  import { loadKeyPair } from '$lib/keypair';
   import { onMount } from 'svelte';
   import { PushToTalkManager } from '$lib/voice/ptt';
   export let open: boolean;
   export let close: () => void;
 
   let updateMessage = '';
+  let publicKey = '';
+  let keyCopied = false;
 
   let inputs: MediaDeviceInfo[] = [];
   let outputs: MediaDeviceInfo[] = [];
   let capturingPttKey = false;
 
   onMount(async () => {
+    try {
+      const kp = loadKeyPair();
+      publicKey = kp.publicKey;
+    } catch (e) {
+      console.error('Failed to load key pair', e);
+    }
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       inputs = devices.filter((d) => d.kind === 'audioinput');
@@ -25,6 +34,16 @@
       console.error('Failed to enumerate devices', e);
     }
   });
+
+  async function copyPublicKey() {
+    try {
+      await navigator.clipboard.writeText(publicKey);
+      keyCopied = true;
+      setTimeout(() => { keyCopied = false; }, 2000);
+    } catch (e) {
+      console.error('Failed to copy public key', e);
+    }
+  }
 
   async function checkUpdates() {
     updateMessage = 'Checking...';
@@ -221,6 +240,37 @@
               </div>
             </div>
           {/if}
+        </div>
+
+        <div class="settings-section">
+          <h3 class="section-title">🔑 Identity</h3>
+          <div class="setting-group">
+            <label class="setting-label" for="public-key-display">Public Key</label>
+            <div class="pubkey-row">
+              <input
+                id="public-key-display"
+                class="pubkey-input"
+                type="text"
+                readonly
+                value={publicKey}
+              />
+              <button class="copy-btn" on:click={copyPublicKey} title="Copy public key">
+                {#if keyCopied}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20,6 9,17 4,12"></polyline>
+                  </svg>
+                {:else}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                {/if}
+              </button>
+            </div>
+            <div class="setting-description">
+              Your Ed25519 public key identifies you on the server. Share it with the server admin to receive a role.
+            </div>
+          </div>
         </div>
 
         <div class="settings-section">
@@ -434,6 +484,45 @@
   .volume-slider::-moz-range-track {
     background: transparent;
     border: none;
+  }
+
+  .pubkey-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .pubkey-input {
+    flex: 1;
+    padding: 0.65rem 0.85rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-surface-outline);
+    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
+    color: var(--color-muted);
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.78rem;
+    cursor: text;
+    user-select: all;
+  }
+
+  .copy-btn {
+    flex-shrink: 0;
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--color-secondary);
+    cursor: pointer;
+    padding: 0.55rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+  }
+
+  .copy-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-xs);
+    border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
   }
 
   .select-container {
