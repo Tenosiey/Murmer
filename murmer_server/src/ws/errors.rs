@@ -55,6 +55,9 @@ pub const CANNOT_DELETE_GENERAL: &str = r#"{"type":"error","message":"cannot-del
 /// Message rate limit exceeded.
 pub const MESSAGE_RATE_LIMIT: &str = r#"{"type":"error","message":"message-rate-limit"}"#;
 
+/// Message content exceeds the maximum allowed length.
+pub const MESSAGE_TOO_LONG: &str = r#"{"type":"error","message":"message-too-long"}"#;
+
 /// Voice quality parameter is invalid.
 pub const INVALID_VOICE_QUALITY: &str = r#"{"type":"error","message":"invalid-voice-quality"}"#;
 
