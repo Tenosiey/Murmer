@@ -2362,15 +2362,16 @@
   .bot-badge {
     display: inline-flex;
     align-items: center;
+    justify-self: start;
     padding: 0.1rem 0.4rem;
     border-radius: var(--radius-xs, 4px);
     font-size: 0.62rem;
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    background: color-mix(in srgb, var(--color-primary) 22%, transparent);
-    color: var(--color-primary);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+    background: color-mix(in srgb, #06b6d4 22%, transparent);
+    color: #22d3ee;
+    border: 1px solid color-mix(in srgb, #06b6d4 35%, transparent);
     align-self: center;
     line-height: 1.3;
   }
