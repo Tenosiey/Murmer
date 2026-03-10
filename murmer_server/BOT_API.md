@@ -48,7 +48,8 @@ The response includes a `token` field – **save it**, it is only shown once:
 ### 2. Send a message
 
 ```bash
-curl -X POST http://localhost:3001/api/v1/channels/general/messages \
+# Use the numeric channel ID (e.g. 1 for "general")
+curl -X POST http://localhost:3001/api/v1/channels/1/messages \
   -H "Authorization: Bearer mrm_abc123..." \
   -H "Content-Type: application/json" \
   -d '{"text": "Hello from GreeterBot!"}'
@@ -57,7 +58,7 @@ curl -X POST http://localhost:3001/api/v1/channels/general/messages \
 ### 3. Read messages
 
 ```bash
-curl http://localhost:3001/api/v1/channels/general/messages \
+curl http://localhost:3001/api/v1/channels/1/messages \
   -H "Authorization: Bearer mrm_abc123..."
 ```
 
@@ -266,7 +267,7 @@ Returns server metadata. Requires any valid bot token (no specific permission).
     "version": "2026.3.6-alpha.1",
     "bot_api_version": "1",
     "online_users": 5,
-    "channels": ["general", "random"],
+    "channels": [{"id": 1, "name": "general"}, {"id": 2, "name": "random"}],
     "has_password": false
   }
 }
@@ -281,10 +282,17 @@ Authorization: Bearer <bot_token>
 
 **Permission required:** `read_channels`
 
+Channels are identified by numeric IDs. Use the `id` field when constructing
+URLs for other endpoints.
+
 ```json
 {
   "data": {
-    "channels": ["general", "random", "dev"]
+    "channels": [
+      {"id": 1, "name": "general"},
+      {"id": 2, "name": "random"},
+      {"id": 3, "name": "dev"}
+    ]
   }
 }
 ```
@@ -292,7 +300,7 @@ Authorization: Bearer <bot_token>
 ### Read messages
 
 ```
-GET /api/v1/channels/:channel/messages
+GET /api/v1/channels/:channel_id/messages
 Authorization: Bearer <bot_token>
 ```
 
@@ -311,7 +319,7 @@ Messages are always returned in ascending (chronological) order.
 ```json
 {
   "data": {
-    "channel": "general",
+    "channelId": 1,
     "messages": [
       {
         "id": 42,
@@ -320,7 +328,7 @@ Messages are always returned in ascending (chronological) order.
         "text": "Hello!",
         "timestamp": "2026-03-10T12:00:00+00:00",
         "time": "12:00:00",
-        "channel": "general",
+        "channelId": 1,
         "reactions": {"👍": ["Bob"]},
         "bot": false
       }
@@ -334,17 +342,17 @@ Messages are always returned in ascending (chronological) order.
 `id` you've seen and poll with `?after=<id>`:
 
 ```bash
-# Initial fetch
-curl ".../channels/general/messages?limit=10"
+# Initial fetch (1 = channel ID for "general")
+curl ".../channels/1/messages?limit=10"
 
 # Subsequent polls (replace 42 with highest seen id)
-curl ".../channels/general/messages?after=42"
+curl ".../channels/1/messages?after=42"
 ```
 
 ### Send message
 
 ```
-POST /api/v1/channels/:channel/messages
+POST /api/v1/channels/:channel_id/messages
 Authorization: Bearer <bot_token>
 ```
 
@@ -368,7 +376,7 @@ Authorization: Bearer <bot_token>
     "user": "GreeterBot",
     "text": "Hello!",
     "timestamp": "2026-03-10T12:05:00+00:00",
-    "channel": "general",
+    "channelId": 1,
     "bot": true,
     "reactions": {}
   }
@@ -381,7 +389,7 @@ channel.
 ### Delete message
 
 ```
-DELETE /api/v1/channels/:channel/messages/:message_id
+DELETE /api/v1/channels/:channel_id/messages/:message_id
 Authorization: Bearer <bot_token>
 ```
 
@@ -393,7 +401,7 @@ for other users' messages.
 ### Add reaction
 
 ```
-POST /api/v1/channels/:channel/messages/:message_id/reactions
+POST /api/v1/channels/:channel_id/messages/:message_id/reactions
 Authorization: Bearer <bot_token>
 ```
 
@@ -408,7 +416,7 @@ Authorization: Bearer <bot_token>
 ### Remove reaction
 
 ```
-DELETE /api/v1/channels/:channel/messages/:message_id/reactions/:emoji
+DELETE /api/v1/channels/:channel_id/messages/:message_id/reactions/:emoji
 Authorization: Bearer <bot_token>
 ```
 
@@ -517,7 +525,7 @@ All errors follow a consistent format:
 | 401 | `invalid-bot-token` | The bot token is invalid or the bot is deactivated |
 | 403 | `missing-permission:*` | The bot lacks the required permission |
 | 404 | `bot-not-found` | No bot with the given ID exists |
-| 404 | `channel-not-found` | No channel with the given name exists |
+| 404 | `channel-not-found` | No channel with the given ID exists |
 | 404 | `message-not-found` | No message with the given ID exists in that channel |
 | 429 | `rate-limit-exceeded` | Too many messages sent in the time window |
 | 500 | various | Internal server error |
@@ -540,31 +548,41 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 
-def send_message(channel, text):
+def send_message(channel_id, text):
     r = requests.post(
-        f"{SERVER}/api/v1/channels/{channel}/messages",
+        f"{SERVER}/api/v1/channels/{channel_id}/messages",
         headers=HEADERS,
         json={"text": text},
     )
     r.raise_for_status()
     return r.json()
 
-def poll_messages(channel, after=None):
+def poll_messages(channel_id, after=None):
     params = {"limit": 50}
     if after:
         params["after"] = after
     r = requests.get(
-        f"{SERVER}/api/v1/channels/{channel}/messages",
+        f"{SERVER}/api/v1/channels/{channel_id}/messages",
         headers=HEADERS,
         params=params,
     )
     r.raise_for_status()
     return r.json()["data"]
 
+def get_channel_id(name):
+    """Look up a channel's numeric ID by name."""
+    r = requests.get(f"{SERVER}/api/v1/channels", headers=HEADERS)
+    r.raise_for_status()
+    for ch in r.json()["data"]["channels"]:
+        if ch["name"] == name:
+            return ch["id"]
+    raise ValueError(f"Channel '{name}' not found")
+
 # Simple echo bot
+general_id = get_channel_id("general")
 last_id = None
 while True:
-    data = poll_messages("general", after=last_id)
+    data = poll_messages(general_id, after=last_id)
     for msg in data["messages"]:
         last_id = msg["id"]
         user = msg.get("user", "")
@@ -572,7 +590,7 @@ while True:
         if msg.get("bot"):
             continue  # ignore other bots
         if text.startswith("!echo "):
-            send_message("general", text[6:])
+            send_message(general_id, text[6:])
     time.sleep(2)
 ```
 

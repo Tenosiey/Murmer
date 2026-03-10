@@ -47,16 +47,16 @@ pub async fn send_users(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket,
 }
 
 /// Broadcast the users currently in a voice channel to all clients.
-pub async fn broadcast_voice(state: &Arc<AppState>, channel: &str) {
+pub async fn broadcast_voice(state: &Arc<AppState>, channel_id: i32) {
     let list: Vec<String> = {
         let vc = state.voice_channels.lock().await;
-        vc.get(channel)
+        vc.get(&channel_id)
             .map(|info| info.users.iter().cloned().collect())
             .unwrap_or_default()
     };
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "voice-users",
-        "channel": channel,
+        "channelId": channel_id,
         "users": list,
     })) {
         let _ = state.tx.send(msg);
@@ -64,9 +64,6 @@ pub async fn broadcast_voice(state: &Arc<AppState>, channel: &str) {
 }
 
 /// Sanitize and normalize a message timestamp.
-///
-/// If the message contains a valid timestamp, it's parsed and normalized.
-/// Otherwise, the current time is used.
 pub fn sanitize_message_timestamp(value: &mut Value) -> DateTime<Utc> {
     let now = Utc::now();
     let parsed = value
@@ -80,11 +77,13 @@ pub fn sanitize_message_timestamp(value: &mut Value) -> DateTime<Utc> {
 }
 
 /// Create a JSON descriptor for a voice channel.
-pub fn voice_channel_descriptor(name: &str, info: &VoiceChannelState) -> Value {
+pub fn voice_channel_descriptor(id: i32, info: &VoiceChannelState) -> Value {
     serde_json::json!({
-        "name": name,
+        "id": id,
+        "name": info.name,
         "quality": info.quality,
         "bitrate": info.bitrate,
+        "categoryId": info.category_id,
     })
 }
 
@@ -144,36 +143,41 @@ pub async fn broadcast_status(state: &Arc<AppState>, user: &str, status: &str) {
 }
 
 /// Broadcast to all clients that a new channel was created.
-pub async fn broadcast_new_channel(state: &Arc<AppState>, name: &str) {
+pub async fn broadcast_new_channel(
+    state: &Arc<AppState>,
+    id: i32,
+    name: &str,
+    category_id: Option<i32>,
+) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "channel-add",
-        "channel": name,
+        "channelId": id,
+        "name": name,
+        "categoryId": category_id,
     })) {
         let _ = state.tx.send(msg);
     }
 }
 
 /// Broadcast to all clients that a channel was deleted.
-pub async fn broadcast_remove_channel(state: &Arc<AppState>, name: &str) {
+pub async fn broadcast_remove_channel(state: &Arc<AppState>, channel_id: i32) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "channel-remove",
-        "channel": name,
+        "channelId": channel_id,
     })) {
         let _ = state.tx.send(msg);
     }
 }
 
 /// Broadcast to all clients that a new voice channel was created.
-pub async fn broadcast_new_voice_channel(
-    state: &Arc<AppState>,
-    name: &str,
-    info: &VoiceChannelState,
-) {
+pub async fn broadcast_new_voice_channel(state: &Arc<AppState>, id: i32, info: &VoiceChannelState) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "voice-channel-add",
-        "channel": name,
+        "channelId": id,
+        "name": info.name,
         "quality": info.quality,
         "bitrate": info.bitrate,
+        "categoryId": info.category_id,
     })) {
         let _ = state.tx.send(msg);
     }
@@ -182,12 +186,13 @@ pub async fn broadcast_new_voice_channel(
 /// Broadcast an update to a voice channel's configuration.
 pub async fn broadcast_voice_channel_update(
     state: &Arc<AppState>,
-    name: &str,
+    channel_id: i32,
     info: &VoiceChannelState,
 ) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "voice-channel-update",
-        "channel": name,
+        "channelId": channel_id,
+        "name": info.name,
         "quality": info.quality,
         "bitrate": info.bitrate,
     })) {
@@ -196,10 +201,10 @@ pub async fn broadcast_voice_channel_update(
 }
 
 /// Broadcast to all clients that a voice channel was deleted.
-pub async fn broadcast_remove_voice_channel(state: &Arc<AppState>, name: &str) {
+pub async fn broadcast_remove_voice_channel(state: &Arc<AppState>, channel_id: i32) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "voice-channel-remove",
-        "channel": name,
+        "channelId": channel_id,
     })) {
         let _ = state.tx.send(msg);
     }
@@ -208,9 +213,40 @@ pub async fn broadcast_remove_voice_channel(state: &Arc<AppState>, name: &str) {
 /// Send the list of available channels to a client.
 pub async fn send_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let list = crate::db::get_channels(&state.db).await;
+    let channels: Vec<Value> = list
+        .iter()
+        .map(|ch| {
+            serde_json::json!({
+                "id": ch.id,
+                "name": ch.name,
+                "categoryId": ch.category_id,
+            })
+        })
+        .collect();
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "channel-list",
-        "channels": list,
+        "channels": channels,
+    })) {
+        let _ = sender.send(Message::Text(msg)).await;
+    }
+}
+
+/// Send the list of categories to a client.
+pub async fn send_categories(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    let list = crate::db::get_categories(&state.db).await;
+    let categories: Vec<Value> = list
+        .iter()
+        .map(|cat| {
+            serde_json::json!({
+                "id": cat.id,
+                "name": cat.name,
+                "position": cat.position,
+            })
+        })
+        .collect();
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "category-list",
+        "categories": categories,
     })) {
         let _ = sender.send(Message::Text(msg)).await;
     }
@@ -221,16 +257,14 @@ pub async fn send_voice_channels(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
 ) {
-    let mut entries: Vec<(String, VoiceChannelState)> = {
+    let mut entries: Vec<(i32, VoiceChannelState)> = {
         let map = state.voice_channels.lock().await;
-        map.iter()
-            .map(|(name, info)| (name.clone(), info.clone()))
-            .collect()
+        map.iter().map(|(id, info)| (*id, info.clone())).collect()
     };
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    entries.sort_by(|a, b| a.1.name.cmp(&b.1.name));
     let channels: Vec<Value> = entries
         .iter()
-        .map(|(name, info)| voice_channel_descriptor(name, info))
+        .map(|(id, info)| voice_channel_descriptor(*id, info))
         .collect();
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "voice-channel-list",
@@ -243,17 +277,67 @@ pub async fn send_voice_channels(
 /// Send all voice channel member lists to a client.
 pub async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let map = state.voice_channels.lock().await.clone();
-    for (chan, info) in map {
+    for (id, info) in map {
         #[allow(clippy::collapsible_if)]
         if let Ok(msg) = serde_json::to_string(&serde_json::json!({
             "type": "voice-users",
-            "channel": chan,
+            "channelId": id,
             "users": info.users.into_iter().collect::<Vec<_>>(),
         })) {
             if sender.send(Message::Text(msg)).await.is_err() {
                 break;
             }
         }
+    }
+}
+
+/// Broadcast to all clients that a new category was created.
+pub async fn broadcast_new_category(state: &Arc<AppState>, id: i32, name: &str, position: i32) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "category-add",
+        "id": id,
+        "name": name,
+        "position": position,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast to all clients that a category was renamed.
+pub async fn broadcast_rename_category(state: &Arc<AppState>, id: i32, name: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "category-update",
+        "id": id,
+        "name": name,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast to all clients that a category was deleted.
+pub async fn broadcast_remove_category(state: &Arc<AppState>, id: i32) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "category-remove",
+        "id": id,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast to all clients that a channel was moved to a different category.
+pub async fn broadcast_channel_move(
+    state: &Arc<AppState>,
+    channel_id: i32,
+    category_id: Option<i32>,
+    voice: bool,
+) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "channel-move",
+        "channelId": channel_id,
+        "categoryId": category_id,
+        "voice": voice,
+    })) {
+        let _ = state.tx.send(msg);
     }
 }
 
@@ -278,14 +362,27 @@ pub async fn can_manage_channels(state: &Arc<AppState>, user: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Retrieve the broadcast channel for the given chat room, creating it if necessary.
+/// Determine whether a user is authorised to manage roles.
+pub async fn can_manage_roles(state: &Arc<AppState>, user: &str) -> bool {
+    let roles = state.roles.lock().await;
+    roles
+        .get(user)
+        .map(|info| {
+            super::constants::ROLE_MANAGE_ROLES
+                .iter()
+                .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
+        })
+        .unwrap_or(false)
+}
+
+/// Retrieve the broadcast channel for the given channel ID, creating it if necessary.
 pub async fn get_or_create_channel(
     state: &Arc<AppState>,
-    name: &str,
+    channel_id: i32,
 ) -> tokio::sync::broadcast::Sender<String> {
     let mut channels = state.channels.lock().await;
     channels
-        .entry(name.to_string())
+        .entry(channel_id)
         .or_insert_with(|| tokio::sync::broadcast::channel::<String>(100).0)
         .clone()
 }

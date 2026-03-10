@@ -8,18 +8,12 @@
 import { chat } from '../stores/chat';
 import type { Message, ScreenShareSettings, ScreenSharePeer } from '../types';
 
-/**
- * Default screen share settings - 720p at 30fps
- */
 const DEFAULT_SETTINGS: ScreenShareSettings = {
   width: 1280,
   height: 720,
   frameRate: 30
 };
 
-/**
- * Quality presets for easy selection
- */
 export const QUALITY_PRESETS = {
   '480p': { width: 854, height: 480, frameRate: 15 },
   '720p': { width: 1280, height: 720, frameRate: 30 },
@@ -31,23 +25,19 @@ export const QUALITY_PRESETS = {
 
 export type QualityPreset = keyof typeof QUALITY_PRESETS;
 
-/**
- * Manages screen sharing WebRTC connections and signaling.
- */
 export class ScreenShareManager {
   private peers: Record<string, RTCPeerConnection> = {};
   private localStream: MediaStream | null = null;
   private userName: string | null = null;
-  private channel: string | null = null;
+  private channelId: number | null = null;
   private listeners: Array<(peers: ScreenSharePeer[]) => void> = [];
   private settings: ScreenShareSettings = DEFAULT_SETTINGS;
-  
+
   private config: RTCConfiguration = {
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   };
 
   constructor() {
-    // Listen for signaling messages
     this.setupSignaling();
   }
 
@@ -58,9 +48,6 @@ export class ScreenShareManager {
     chat.on('screenshare-stop', (msg) => this.handleRemoteStop(msg));
   }
 
-  /**
-   * Subscribe to screen share peer updates
-   */
   subscribe(cb: (peers: ScreenSharePeer[]) => void) {
     this.listeners.push(cb);
     return () => {
@@ -72,9 +59,6 @@ export class ScreenShareManager {
     for (const cb of this.listeners) cb(peers);
   }
 
-  /**
-   * Get current peers list from all connections
-   */
   private getPeersList(): ScreenSharePeer[] {
     const peers: ScreenSharePeer[] = [];
     for (const [userId, pc] of Object.entries(this.peers)) {
@@ -83,19 +67,16 @@ export class ScreenShareManager {
         if (receiver.track && receiver.track.kind === 'video') {
           const stream = new MediaStream([receiver.track]);
           peers.push({ userId, stream });
-          break; // Only need one video track per peer
+          break;
         }
       }
     }
     return peers;
   }
 
-  /**
-   * Start sharing screen with specified settings
-   */
   async startSharing(
     user: string,
-    channel: string,
+    channelId: number,
     settings: Partial<ScreenShareSettings> = {}
   ): Promise<void> {
     if (this.localStream) {
@@ -103,118 +84,99 @@ export class ScreenShareManager {
     }
 
     this.userName = user;
-    this.channel = channel;
+    this.channelId = channelId;
     this.settings = { ...DEFAULT_SETTINGS, ...settings };
 
     try {
-      // Request screen sharing with specified constraints
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           width: { ideal: this.settings.width },
           height: { ideal: this.settings.height },
           frameRate: { ideal: this.settings.frameRate }
         },
-        audio: false // Can be enabled if system audio sharing is desired
+        audio: false
       });
 
       this.localStream = stream;
 
-      // Notify server and peers
       chat.sendRaw({
         type: 'screenshare-start',
         user,
-        channel,
+        channelId,
         settings: this.settings
       });
 
-      // Listen for when user stops sharing via browser UI
       stream.getVideoTracks()[0].addEventListener('ended', () => {
         this.stopSharing();
       });
     } catch (error) {
       this.userName = null;
-      this.channel = null;
+      this.channelId = null;
       throw error;
     }
   }
 
-  /**
-   * Stop sharing screen
-   */
   stopSharing(): void {
-    if (!this.localStream || !this.userName || !this.channel) return;
+    if (!this.localStream || !this.userName || this.channelId === null) return;
 
-    // Stop all tracks
-    this.localStream.getTracks().forEach(track => track.stop());
+    this.localStream.getTracks().forEach((track) => track.stop());
     this.localStream = null;
 
-    // Notify peers
     chat.sendRaw({
       type: 'screenshare-stop',
       user: this.userName,
-      channel: this.channel
+      channelId: this.channelId
     });
 
-    // Clean up all peer connections
     for (const userId of Object.keys(this.peers)) {
       this.cleanupPeer(userId);
     }
 
     this.userName = null;
-    this.channel = null;
+    this.channelId = null;
     this.emit([]);
   }
 
-  /**
-   * Update screen share quality settings (requires restart)
-   */
   updateSettings(settings: Partial<ScreenShareSettings>): void {
     this.settings = { ...this.settings, ...settings };
   }
 
-  /**
-   * Create or get existing peer connection
-   */
   private async createPeer(userId: string, initiator: boolean): Promise<RTCPeerConnection> {
     if (this.peers[userId]) return this.peers[userId];
 
     const pc = new RTCPeerConnection(this.config);
     this.peers[userId] = pc;
 
-    // Add local screen share tracks if available
-    if (this.localStream && initiator) {
+    if (this.localStream) {
       for (const track of this.localStream.getTracks()) {
         pc.addTrack(track, this.localStream);
       }
+    } else if (initiator) {
+      pc.addTransceiver('video', { direction: 'recvonly' });
     }
 
-    // Handle incoming tracks
-    pc.ontrack = (ev) => {
-      console.log('Received screen share track from', userId);
+    pc.ontrack = () => {
       this.emit(this.getPeersList());
     };
 
-    // Handle ICE candidates
     pc.onicecandidate = (ev) => {
       if (ev.candidate && this.userName) {
         chat.sendRaw({
           type: 'screenshare-candidate',
           user: this.userName,
           target: userId,
-          channel: this.channel,
+          channelId: this.channelId,
           candidate: ev.candidate
         });
       }
     };
 
-    // Handle connection state changes
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
         this.cleanupPeer(userId);
       }
     };
 
-    // If initiator, create and send offer
     if (initiator && this.userName) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -222,7 +184,7 @@ export class ScreenShareManager {
         type: 'screenshare-offer',
         user: this.userName,
         target: userId,
-        channel: this.channel,
+        channelId: this.channelId,
         sdp: offer
       });
     }
@@ -230,11 +192,13 @@ export class ScreenShareManager {
     return pc;
   }
 
-  /**
-   * Handle incoming offer
-   */
   private async handleOffer(msg: Message): Promise<void> {
-    if (!this.userName || msg.target !== this.userName || msg.channel !== this.channel) return;
+    if (
+      !this.userName ||
+      msg.target !== this.userName ||
+      (msg as any).channelId !== this.channelId
+    )
+      return;
 
     const userId = msg.user as string;
     const pc = await this.createPeer(userId, false);
@@ -247,16 +211,18 @@ export class ScreenShareManager {
       type: 'screenshare-answer',
       user: this.userName,
       target: userId,
-      channel: this.channel,
+      channelId: this.channelId,
       sdp: answer
     });
   }
 
-  /**
-   * Handle incoming answer
-   */
   private async handleAnswer(msg: Message): Promise<void> {
-    if (!this.userName || msg.target !== this.userName || msg.channel !== this.channel) return;
+    if (
+      !this.userName ||
+      msg.target !== this.userName ||
+      (msg as any).channelId !== this.channelId
+    )
+      return;
 
     const pc = this.peers[msg.user as string];
     if (pc && !pc.currentRemoteDescription) {
@@ -264,11 +230,13 @@ export class ScreenShareManager {
     }
   }
 
-  /**
-   * Handle incoming ICE candidate
-   */
   private async handleCandidate(msg: Message): Promise<void> {
-    if (!this.userName || msg.target !== this.userName || msg.channel !== this.channel) return;
+    if (
+      !this.userName ||
+      msg.target !== this.userName ||
+      (msg as any).channelId !== this.channelId
+    )
+      return;
 
     const pc = this.peers[msg.user as string];
     if (pc) {
@@ -280,19 +248,13 @@ export class ScreenShareManager {
     }
   }
 
-  /**
-   * Handle remote user stopping their screen share
-   */
   private handleRemoteStop(msg: Message): void {
     const userId = msg.user as string;
-    if (msg.channel === this.channel) {
+    if ((msg as any).channelId === this.channelId) {
       this.cleanupPeer(userId);
     }
   }
 
-  /**
-   * Clean up a peer connection
-   */
   private cleanupPeer(userId: string): void {
     const pc = this.peers[userId];
     if (pc) {
@@ -302,63 +264,42 @@ export class ScreenShareManager {
     }
   }
 
-  /**
-   * Request to view a specific user's screen share
-   */
-  async viewScreenShare(userId: string, viewerName?: string, channel?: string): Promise<void> {
-    // Set viewer info if provided and not already set
-    if (viewerName && channel && !this.userName && !this.channel) {
+  async viewScreenShare(userId: string, viewerName?: string, channelId?: number): Promise<void> {
+    if (viewerName && channelId !== undefined && !this.userName && this.channelId === null) {
       this.userName = viewerName;
-      this.channel = channel;
+      this.channelId = channelId;
     }
 
-    if (!this.userName || !this.channel) {
+    if (!this.userName || this.channelId === null) {
       throw new Error('Not in a voice channel');
     }
 
-    // Create peer connection as initiator
     await this.createPeer(userId, true);
   }
 
-  /**
-   * Stop viewing a specific user's screen share
-   */
   stopViewing(userId: string): void {
     this.cleanupPeer(userId);
   }
 
-  /**
-   * Leave the screen share session as a viewer (cleanup without stopping sharing)
-   */
   leaveAsViewer(): void {
-    // Only clean up if not actively sharing
     if (!this.isSharing()) {
       for (const userId of Object.keys(this.peers)) {
         this.cleanupPeer(userId);
       }
       this.userName = null;
-      this.channel = null;
+      this.channelId = null;
       this.emit([]);
     }
   }
 
-  /**
-   * Check if currently sharing
-   */
   isSharing(): boolean {
     return this.localStream !== null;
   }
 
-  /**
-   * Get current settings
-   */
   getSettings(): ScreenShareSettings {
     return { ...this.settings };
   }
 
-  /**
-   * Clean up all resources
-   */
   destroy(): void {
     this.stopSharing();
     chat.off('screenshare-offer');
@@ -367,4 +308,3 @@ export class ScreenShareManager {
     chat.off('screenshare-stop');
   }
 }
-

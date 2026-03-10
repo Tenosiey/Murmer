@@ -20,16 +20,15 @@ const screenShareManager = new ScreenShareManager();
  */
 const screenSharePeersStore = writable<ScreenSharePeer[]>([]);
 
-// Subscribe to screen share manager updates
 screenShareManager.subscribe((peers) => {
   screenSharePeersStore.set(peers);
 });
 
 /**
  * Store tracking which users are actively sharing their screen
- * Key: channelName, Value: array of usernames
+ * Key: channelId (number), Value: array of usernames
  */
-export const activeScreenShares = writable<Record<string, string[]>>({});
+export const activeScreenShares = writable<Record<number, string[]>>({});
 
 /**
  * Store for local screen share state
@@ -45,20 +44,17 @@ export const screenShareSettings = writable<ScreenShareSettings>({
   frameRate: 30
 });
 
-/**
- * Initialize screen share event listeners
- */
 chat.on('screenshare-start', (msg: Message) => {
   const user = msg.user as string;
-  const channel = msg.channel as string;
-  
-  if (user && channel) {
-    activeScreenShares.update(shares => {
-      const channelShares = shares[channel] || [];
+  const channelId = (msg as any).channelId as number;
+
+  if (user && typeof channelId === 'number') {
+    activeScreenShares.update((shares) => {
+      const channelShares = shares[channelId] || [];
       if (!channelShares.includes(user)) {
         return {
           ...shares,
-          [channel]: [...channelShares, user]
+          [channelId]: [...channelShares, user]
         };
       }
       return shares;
@@ -66,16 +62,29 @@ chat.on('screenshare-start', (msg: Message) => {
   }
 });
 
+chat.on('screenshare-active', (msg: Message) => {
+  const channelId = (msg as any).channelId as number;
+  const users = (msg as any).users as string[];
+
+  if (typeof channelId === 'number' && Array.isArray(users)) {
+    activeScreenShares.update((shares) => {
+      const existing = shares[channelId] || [];
+      const merged = [...new Set([...existing, ...users])];
+      return { ...shares, [channelId]: merged };
+    });
+  }
+});
+
 chat.on('screenshare-stop', (msg: Message) => {
   const user = msg.user as string;
-  const channel = msg.channel as string;
-  
-  if (user && channel) {
-    activeScreenShares.update(shares => {
-      const channelShares = shares[channel] || [];
+  const channelId = (msg as any).channelId as number;
+
+  if (user && typeof channelId === 'number') {
+    activeScreenShares.update((shares) => {
+      const channelShares = shares[channelId] || [];
       return {
         ...shares,
-        [channel]: channelShares.filter(u => u !== user)
+        [channelId]: channelShares.filter((u) => u !== user)
       };
     });
   }
@@ -84,9 +93,9 @@ chat.on('screenshare-stop', (msg: Message) => {
 /**
  * Start sharing screen
  */
-export async function startScreenShare(user: string, channel: string): Promise<void> {
+export async function startScreenShare(user: string, channelId: number): Promise<void> {
   const settings = get(screenShareSettings);
-  await screenShareManager.startSharing(user, channel, settings);
+  await screenShareManager.startSharing(user, channelId, settings);
   isScreenSharing.set(true);
 }
 
@@ -101,8 +110,12 @@ export function stopScreenShare(): void {
 /**
  * View a user's screen share
  */
-export async function viewScreenShare(userId: string, viewerName?: string, channel?: string): Promise<void> {
-  await screenShareManager.viewScreenShare(userId, viewerName, channel);
+export async function viewScreenShare(
+  userId: string,
+  viewerName?: string,
+  channelId?: number
+): Promise<void> {
+  await screenShareManager.viewScreenShare(userId, viewerName, channelId);
 }
 
 /**
@@ -123,7 +136,7 @@ export function leaveScreenShareAsViewer(): void {
  * Update screen share quality settings
  */
 export function updateScreenShareSettings(settings: Partial<ScreenShareSettings>): void {
-  screenShareSettings.update(current => ({ ...current, ...settings }));
+  screenShareSettings.update((current) => ({ ...current, ...settings }));
   screenShareManager.updateSettings(settings);
 }
 
@@ -134,9 +147,6 @@ export const screenSharePeers = {
   subscribe: screenSharePeersStore.subscribe
 };
 
-/**
- * Cleanup on module unload
- */
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
     screenShareManager.destroy();

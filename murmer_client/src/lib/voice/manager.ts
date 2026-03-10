@@ -6,7 +6,16 @@
  * currently connected.
  */
 import { chat } from '../stores/chat';
-import { volume, inputDeviceId, microphoneMuted, voiceMode, vadSensitivity, pttKey, isPttActive, voiceActivity } from '../stores/settings';
+import {
+  volume,
+  inputDeviceId,
+  microphoneMuted,
+  voiceMode,
+  vadSensitivity,
+  pttKey,
+  isPttActive,
+  voiceActivity
+} from '../stores/settings';
 import { resetRemoteSpeaking } from '../stores/voiceSpeaking';
 import { get } from 'svelte/store';
 import type { Message, RemotePeer, ConnectionStats, VoiceChannelInfo } from '../types';
@@ -15,24 +24,18 @@ import { PushToTalkManager } from './ptt';
 
 const DEFAULT_AUDIO_BITRATE = 64_000;
 
-/**
- * Handles WebRTC peer connections and signaling for voice chat.
- * Updates listeners with the list of active remote peers and their stats.
- */
 export class VoiceManager {
   private peers: Record<string, RTCPeerConnection> = {};
   private statsIntervals: Record<string, number> = {};
   private localStream: MediaStream | null = null;
   private userName: string | null = null;
-  private channel: string | null = null;
+  private channelId: number | null = null;
   private listeners: Array<(peers: RemotePeer[]) => void> = [];
-  
-  // VAD and PTT components
+
   private vad: VoiceActivityDetector | null = null;
   private ptt: PushToTalkManager | null = null;
   private shouldTransmit = false;
-  
-  // Audio processing for VAD/PTT control
+
   private audioContext: AudioContext | null = null;
   private gainNode: GainNode | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
@@ -53,16 +56,14 @@ export class VoiceManager {
       this.joinSound.volume = v;
       this.leaveSound.volume = v;
     });
-    
+
     microphoneMuted.subscribe(() => {
       this.updateTransmissionState();
     });
 
-    // Initialize VAD and PTT systems
     this.vad = new VoiceActivityDetector();
     this.ptt = new PushToTalkManager(get(pttKey));
 
-    // Subscribe to settings changes
     voiceMode.subscribe(() => this.updateTransmissionMode());
     vadSensitivity.subscribe(() => this.updateVadSensitivity());
     pttKey.subscribe((key) => {
@@ -71,48 +72,49 @@ export class VoiceManager {
       }
     });
 
-    // Setup VAD listener
     this.vad.subscribe((isActive, level) => {
       voiceActivity.set(isActive);
       this.updateTransmissionState();
     });
 
-    // Setup PTT listener
     this.ptt.subscribe((isPressed) => {
       isPttActive.set(isPressed);
       this.updateTransmissionState();
     });
 
     chat.on('voice-channel-update', (msg) => {
-      const channel = (msg as any).channel;
-      if (typeof channel !== 'string' || this.channel !== channel) return;
+      const chId = (msg as any).channelId;
+      if (typeof chId !== 'number' || this.channelId !== chId) return;
       const quality =
         typeof (msg as any).quality === 'string' && (msg as any).quality.trim()
           ? (msg as any).quality.trim()
-          : this.channelConfig?.quality ?? 'standard';
+          : (this.channelConfig?.quality ?? 'standard');
       let bitrate: number | null = this.channelConfig?.bitrate ?? DEFAULT_AUDIO_BITRATE;
       if ((msg as any).bitrate === null) {
         bitrate = null;
       } else if (typeof (msg as any).bitrate === 'number' && Number.isFinite((msg as any).bitrate)) {
         bitrate = Math.max(0, Math.round((msg as any).bitrate));
       }
-      this.channelConfig = { name: channel, quality, bitrate };
+      this.channelConfig = {
+        id: chId,
+        name: this.channelConfig?.name ?? '',
+        quality,
+        bitrate,
+        categoryId: this.channelConfig?.categoryId ?? null
+      };
       this.applyChannelConfigToPeers();
     });
   }
-
 
   private updateTransmissionMode(rawStream?: MediaStream) {
     const streamToUse = rawStream || this.getVadStream();
     if (!streamToUse) return;
 
     const mode = get(voiceMode);
-    
+
     if (mode === 'vad' && this.vad) {
-      // Start VAD monitoring using the raw stream (before gain control)
       this.vad.start(streamToUse, get(vadSensitivity));
     } else if (this.vad) {
-      // Stop VAD monitoring for other modes
       this.vad.stop();
     }
 
@@ -120,7 +122,6 @@ export class VoiceManager {
   }
 
   private getVadStream(): MediaStream | null {
-    // Return the raw stream for VAD monitoring
     return this.rawStream;
   }
 
@@ -151,16 +152,12 @@ export class VoiceManager {
       }
     }
 
-    if (this.shouldTransmit !== shouldTransmit) {
-      this.shouldTransmit = shouldTransmit;
-      this.applyTransmissionState();
-    }
+    this.shouldTransmit = shouldTransmit;
+    this.applyTransmissionState();
   }
 
   private applyTransmissionState() {
     if (!this.gainNode) return;
-
-    // Use gain control instead of disabling tracks to maintain VAD access
     const shouldTransmitAudio = this.shouldTransmit && !get(microphoneMuted);
     this.gainNode.gain.value = shouldTransmitAudio ? 1.0 : 0.0;
   }
@@ -182,7 +179,7 @@ export class VoiceManager {
       }
       sender.setParameters(params).catch(() => {});
     } catch {
-      // Ignore configuration errors - browsers may not support bitrate control
+      // Ignore configuration errors
     }
   }
 
@@ -199,33 +196,19 @@ export class VoiceManager {
 
   private async setupAudioProcessing(inputStream: MediaStream): Promise<MediaStream> {
     try {
-      // Store raw stream reference for VAD
       this.rawStream = inputStream;
-      
-      // Create audio context for processing
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      
-      // Create source from input stream
       this.sourceNode = this.audioContext.createMediaStreamSource(inputStream);
-      
-      // Create gain node for transmission control
       this.gainNode = this.audioContext.createGain();
-      this.gainNode.gain.value = 1.0; // Start with full gain
-      
-      // Create destination for output stream
+      this.gainNode.gain.value = 1.0;
       const destination = this.audioContext.createMediaStreamDestination();
-      
-      // Connect: source -> gain -> destination
       this.sourceNode.connect(this.gainNode);
       this.gainNode.connect(destination);
-      
-      // Store the processed stream
       this.destinationStream = destination.stream;
-      
       return this.destinationStream;
     } catch (error) {
       console.error('Failed to setup audio processing:', error);
-      return inputStream; // Fallback to original stream
+      return inputStream;
     }
   }
 
@@ -234,25 +217,20 @@ export class VoiceManager {
       this.sourceNode.disconnect();
       this.sourceNode = null;
     }
-    
     if (this.gainNode) {
       this.gainNode.disconnect();
       this.gainNode = null;
     }
-    
     if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close();
       this.audioContext = null;
     }
-    
     if (this.rawStream) {
-      // Stop the raw stream tracks
       for (const track of this.rawStream.getTracks()) {
         track.stop();
       }
       this.rawStream = null;
     }
-    
     this.destinationStream = null;
   }
 
@@ -317,7 +295,11 @@ export class VoiceManager {
     }
   }
 
-  private async createPeer(id: string, initiator: boolean, peersList: RemotePeer[]): Promise<RTCPeerConnection> {
+  private async createPeer(
+    id: string,
+    initiator: boolean,
+    peersList: RemotePeer[]
+  ): Promise<RTCPeerConnection> {
     if (this.peers[id]) return this.peers[id];
     const pc = new RTCPeerConnection(this.config);
     this.peers[id] = pc;
@@ -341,13 +323,13 @@ export class VoiceManager {
     };
     pc.onicecandidate = (ev) => {
       if (ev.candidate && this.userName) {
-          chat.sendRaw({
-            type: 'voice-candidate',
-            user: this.userName,
-            target: id,
-            channel: this.channel,
-            candidate: ev.candidate
-          });
+        chat.sendRaw({
+          type: 'voice-candidate',
+          user: this.userName,
+          target: id,
+          channelId: this.channelId,
+          candidate: ev.candidate
+        });
       }
     };
     pc.onconnectionstatechange = () => {
@@ -359,24 +341,39 @@ export class VoiceManager {
     if (initiator && this.userName) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      chat.sendRaw({ type: 'voice-offer', user: this.userName, target: id, channel: this.channel, sdp: offer });
+      chat.sendRaw({
+        type: 'voice-offer',
+        user: this.userName,
+        target: id,
+        channelId: this.channelId,
+        sdp: offer
+      });
     }
     return pc;
   }
 
   /**
    * Join a voice channel and start streaming the local microphone.
-   *
-   * Registers handlers for signaling messages and notifies the server
-   * that this user joined the specified channel.
    */
-  async join(user: string, channel: string, peersList: RemotePeer[], info?: VoiceChannelInfo) {
+  async join(user: string, channelId: number, peersList: RemotePeer[], info?: VoiceChannelInfo) {
     if (this.userName) return;
     this.userName = user;
-    this.channel = channel;
+    this.channelId = channelId;
     this.channelConfig = info
-      ? { name: channel, quality: info.quality, bitrate: info.bitrate }
-      : { name: channel, quality: 'standard', bitrate: DEFAULT_AUDIO_BITRATE };
+      ? {
+          id: channelId,
+          name: info.name,
+          quality: info.quality,
+          bitrate: info.bitrate,
+          categoryId: info.categoryId ?? null
+        }
+      : {
+          id: channelId,
+          name: '',
+          quality: 'standard',
+          bitrate: DEFAULT_AUDIO_BITRATE,
+          categoryId: null
+        };
     resetRemoteSpeaking();
     chat.on('voice-join', (m) => this.handleJoin(m, peersList));
     chat.on('voice-offer', (m) => this.handleOffer(m, peersList));
@@ -384,48 +381,43 @@ export class VoiceManager {
     chat.on('voice-candidate', (m) => this.handleCandidate(m));
     chat.on('voice-leave', (m) => this.handleLeave(m, peersList));
     const device = get(inputDeviceId);
-    const constraints: MediaStreamConstraints =
-      device ? { audio: { deviceId: { exact: device } } } : { audio: true };
+    const constraints: MediaStreamConstraints = device
+      ? { audio: { deviceId: { exact: device } } }
+      : { audio: true };
     const rawStream = await navigator.mediaDevices.getUserMedia(constraints);
-    
-    // Setup audio processing chain (for VAD/PTT control)
+
     this.localStream = await this.setupAudioProcessing(rawStream);
-    
-    // Initialize VAD/PTT using the raw stream (before gain control)
     this.updateTransmissionMode(rawStream);
-    
-    chat.sendRaw({ type: 'voice-join', user, channel });
+
+    chat.sendRaw({ type: 'voice-join', user, channelId });
   }
 
   /**
    * Leave the current voice channel and clean up all peer connections.
    */
-  leave(channel: string, peersList: RemotePeer[]) {
+  leave(channelId: number, peersList: RemotePeer[]) {
     if (!this.userName) return;
-    chat.sendRaw({ type: 'voice-leave', user: this.userName, channel });
+    chat.sendRaw({ type: 'voice-leave', user: this.userName, channelId });
     for (const id of Object.keys(this.peers)) {
       this.cleanupPeer(id, peersList);
     }
-    // Clean up audio processing chain
     this.cleanupAudioProcessing();
     this.localStream = null;
-    
-    // Clean up VAD monitoring
+
     if (this.vad) {
       this.vad.stop();
     }
-    
-    // Reset states
+
     voiceActivity.set(false);
     isPttActive.set(false);
-    
+
     chat.off('voice-join');
     chat.off('voice-offer');
     chat.off('voice-answer');
     chat.off('voice-candidate');
     chat.off('voice-leave');
     this.userName = null;
-    this.channel = null;
+    this.channelId = null;
     this.channelConfig = null;
     peersList.length = 0;
     this.emit([]);
@@ -433,7 +425,12 @@ export class VoiceManager {
   }
 
   private handleJoin(msg: Message, peersList: RemotePeer[]) {
-    if (!this.userName || msg.user === this.userName || msg.channel !== this.channel) return;
+    if (
+      !this.userName ||
+      msg.user === this.userName ||
+      (msg as any).channelId !== this.channelId
+    )
+      return;
     this.createPeer(msg.user as string, true, peersList);
     try {
       this.joinSound.currentTime = 0;
@@ -442,16 +439,32 @@ export class VoiceManager {
   }
 
   private async handleOffer(msg: Message, peersList: RemotePeer[]) {
-    if (!this.userName || msg.target !== this.userName || msg.channel !== this.channel) return;
+    if (
+      !this.userName ||
+      msg.target !== this.userName ||
+      (msg as any).channelId !== this.channelId
+    )
+      return;
     const pc = await this.createPeer(msg.user as string, false, peersList);
     await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp as any));
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-    chat.sendRaw({ type: 'voice-answer', user: this.userName, target: msg.user, channel: this.channel, sdp: answer });
+    chat.sendRaw({
+      type: 'voice-answer',
+      user: this.userName,
+      target: msg.user,
+      channelId: this.channelId,
+      sdp: answer
+    });
   }
 
   private async handleAnswer(msg: Message) {
-    if (!this.userName || msg.target !== this.userName || msg.channel !== this.channel) return;
+    if (
+      !this.userName ||
+      msg.target !== this.userName ||
+      (msg as any).channelId !== this.channelId
+    )
+      return;
     const pc = this.peers[msg.user as string];
     if (pc && !pc.currentRemoteDescription) {
       await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp as any));
@@ -459,7 +472,12 @@ export class VoiceManager {
   }
 
   private async handleCandidate(msg: Message) {
-    if (!this.userName || msg.target !== this.userName || msg.channel !== this.channel) return;
+    if (
+      !this.userName ||
+      msg.target !== this.userName ||
+      (msg as any).channelId !== this.channelId
+    )
+      return;
     const pc = this.peers[msg.user as string];
     if (pc) {
       try {
@@ -469,7 +487,7 @@ export class VoiceManager {
   }
 
   private handleLeave(msg: Message, peersList: RemotePeer[]) {
-    if (!this.userName || msg.channel !== this.channel) return;
+    if (!this.userName || (msg as any).channelId !== this.channelId) return;
     this.cleanupPeer(msg.user as string, peersList);
     try {
       this.leaveSound.currentTime = 0;
@@ -477,9 +495,6 @@ export class VoiceManager {
     } catch {}
   }
 
-  /**
-   * Clean up all resources
-   */
   destroy() {
     if (this.vad) {
       this.vad.destroy();

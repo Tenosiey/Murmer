@@ -8,9 +8,9 @@ manager.subscribe((list) => peers.set(list));
 
 export const voice = {
   subscribe: peers.subscribe,
-  join: (user: string, channel: string, info?: VoiceChannelInfo) =>
-    manager.join(user, channel, get(peers), info),
-  leave: (channel: string) => manager.leave(channel, get(peers))
+  join: (user: string, channelId: number, info?: VoiceChannelInfo) =>
+    manager.join(user, channelId, get(peers), info),
+  leave: (channelId: number) => manager.leave(channelId, get(peers))
 };
 
 export const voiceStats = derived(voice, ($voice) => {

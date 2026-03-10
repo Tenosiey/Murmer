@@ -8,7 +8,7 @@
   import { session } from '$lib/stores/session';
   import { QUALITY_PRESETS, type QualityPreset } from '$lib/screenshare/manager';
   
-  export let currentVoiceChannel: string | null = null;
+  export let currentVoiceChannel: number | null = null;
   export let inVoice: boolean = false;
 
   let showSettings = false;

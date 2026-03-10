@@ -4,7 +4,7 @@ export interface Message {
   text?: string;
   time?: string;
   timestamp?: string;
-  channel?: string;
+  channelId?: number;
   id?: number;
   messages?: Message[];
   reactions?: Record<string, string[]>;
@@ -33,9 +33,23 @@ export interface RoleInfo {
 export type UserStatus = 'online' | 'away' | 'busy' | 'offline';
 
 export interface VoiceChannelInfo {
+  id: number;
   name: string;
   quality: string;
   bitrate: number | null;
+  categoryId: number | null;
+}
+
+export interface CategoryInfo {
+  id: number;
+  name: string;
+  position: number;
+}
+
+export interface ChannelInfo {
+  id: number;
+  name: string;
+  categoryId: number | null;
 }
 
 export interface ScreenShareSettings {
@@ -51,5 +65,5 @@ export interface ScreenSharePeer {
 
 export interface ScreenShareActive {
   userId: string;
-  channelName: string;
+  channelId: number;
 }

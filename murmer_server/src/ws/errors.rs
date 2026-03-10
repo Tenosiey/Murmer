@@ -55,6 +55,9 @@ pub const CANNOT_DELETE_GENERAL: &str = r#"{"type":"error","message":"cannot-del
 /// Message rate limit exceeded.
 pub const MESSAGE_RATE_LIMIT: &str = r#"{"type":"error","message":"message-rate-limit"}"#;
 
+/// Message content exceeds the maximum allowed length.
+pub const MESSAGE_TOO_LONG: &str = r#"{"type":"error","message":"message-too-long"}"#;
+
 /// Voice quality parameter is invalid.
 pub const INVALID_VOICE_QUALITY: &str = r#"{"type":"error","message":"invalid-voice-quality"}"#;
 
@@ -67,3 +70,32 @@ pub const UNKNOWN_VOICE_CHANNEL: &str = r#"{"type":"error","message":"unknown-vo
 /// Failed to update voice channel configuration.
 pub const VOICE_CHANNEL_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"voice-channel-update-failed"}"#;
+
+/// User lacks permission to manage roles.
+pub const ROLE_PERMISSION_DENIED: &str = r#"{"type":"error","message":"role-permission-denied"}"#;
+
+/// Target user for role change is not connected.
+pub const ROLE_TARGET_NOT_FOUND: &str = r#"{"type":"error","message":"role-target-not-found"}"#;
+
+/// Failed to update role in database.
+pub const ROLE_UPDATE_FAILED: &str = r#"{"type":"error","message":"role-update-failed"}"#;
+
+/// Category name validation failed.
+pub const INVALID_CATEGORY_NAME: &str = r#"{"type":"error","message":"invalid-category-name"}"#;
+
+/// Failed to create category in database.
+pub const CATEGORY_CREATION_FAILED: &str =
+    r#"{"type":"error","message":"category-creation-failed"}"#;
+
+/// Failed to rename category in database.
+pub const CATEGORY_RENAME_FAILED: &str = r#"{"type":"error","message":"category-rename-failed"}"#;
+
+/// Failed to delete category from database.
+pub const CATEGORY_DELETION_FAILED: &str =
+    r#"{"type":"error","message":"category-deletion-failed"}"#;
+
+/// The referenced category does not exist.
+pub const UNKNOWN_CATEGORY: &str = r#"{"type":"error","message":"unknown-category"}"#;
+
+/// Failed to move channel to category.
+pub const CHANNEL_MOVE_FAILED: &str = r#"{"type":"error","message":"channel-move-failed"}"#;

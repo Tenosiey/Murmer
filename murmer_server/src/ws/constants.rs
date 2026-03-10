@@ -3,6 +3,9 @@
 /// Roles that are allowed to create or delete channels when administrative controls are enabled.
 pub const CHANNEL_MANAGE_ROLES: &[&str] = &["Admin", "Mod", "Owner"];
 
+/// Roles that are allowed to assign or remove roles from other users.
+pub const ROLE_MANAGE_ROLES: &[&str] = &["Owner"];
+
 /// Default quality label assigned to new voice channels.
 pub const DEFAULT_VOICE_QUALITY: &str = "standard";
 
@@ -20,6 +23,9 @@ pub const MIN_EPHEMERAL_SECONDS: i64 = 5;
 
 /// Maximum duration in seconds for ephemeral messages.
 pub const MAX_EPHEMERAL_SECONDS: i64 = 86_400;
+
+/// Maximum length in bytes for a chat message's text content.
+pub const MAX_MESSAGE_LENGTH: usize = 4000;
 
 /// Maximum number of search results to return.
 pub const MAX_SEARCH_RESULTS: i64 = 200;
