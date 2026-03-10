@@ -216,7 +216,7 @@
   }
 
   function selectNotificationPreference(value: ChannelNotificationPreference) {
-    channelNotifications.setPreference(currentChatChannel, value);
+    channelNotifications.setPreference(currentChatChannelId, value);
     notificationMenuOpen = false;
   }
 
@@ -280,9 +280,10 @@
   $: autoResize();
   let inVoice = false;
   let settingsOpen = false;
-  let currentChatChannel = 'general';
-  let currentVoiceChannel: string | null = null;
+  let currentChatChannelId: number = 0;
+  let currentVoiceChannelId: number | null = null;
   let currentTopic = '';
+  $: currentChatChannelName = $channels.find(c => c.id === currentChatChannelId)?.name ?? '';
 
   $: if (pendingScreenShareView && $screenSharePeers) {
     const peer = $screenSharePeers.find(p => p.userId === pendingScreenShareView);
@@ -298,21 +299,21 @@
     }
   }
 
-  $: channelMessages = $chat.filter((m) => (m.channel ?? 'general') === currentChatChannel);
+  $: channelMessages = $chat.filter((m) => m.channelId === currentChatChannelId);
   $: messageBlocks = buildMessageBlocks(channelMessages);
-  $: pinnedEntries = $pinned[currentChatChannel] ?? [];
-  $: currentNotificationPreference = ($channelNotifications[currentChatChannel] ?? 'all') as ChannelNotificationPreference;
+  $: pinnedEntries = $pinned[currentChatChannelId] ?? [];
+  $: currentNotificationPreference = ($channelNotifications[currentChatChannelId] ?? 'all') as ChannelNotificationPreference;
   $: notificationMenuLabel = (() => {
     const found = NOTIFICATION_OPTIONS.find((option) => option.value === currentNotificationPreference);
     return found ? found.label : 'All messages';
   })();
 
-  $: if ($channels.length && !$channels.some((c) => c.name === currentChatChannel)) {
-    currentChatChannel = $channels[0].name;
-    chat.sendRaw({ type: 'join', channel: currentChatChannel });
+  $: if ($channels.length && !$channels.some((c) => c.id === currentChatChannelId)) {
+    currentChatChannelId = $channels[0].id;
+    chat.sendRaw({ type: 'join', channelId: currentChatChannelId });
   }
 
-  $: currentTopic = $channelTopics[currentChatChannel] ?? '';
+  $: currentTopic = $channelTopics[currentChatChannelId] ?? '';
 
   let collapsedCategories: Set<number> = new Set();
   function toggleCategory(id: number) {
@@ -538,8 +539,8 @@
     chat.off('history', handleHistory);
     chat.off('message-deleted', handleMessageDeleted);
     chat.disconnect();
-    if (currentVoiceChannel) {
-      voice.leave(currentVoiceChannel);
+    if (currentVoiceChannelId !== null) {
+      voice.leave(currentVoiceChannelId);
     }
     ping.stop();
     roles.set({});
@@ -656,7 +657,7 @@
         return true;
       }
       case 'topic': {
-        channelTopics.setTopic(currentChatChannel, rest);
+        channelTopics.setTopic(currentChatChannelId, rest);
         setCommandFeedback(rest ? 'Updated the channel topic.' : 'Cleared the channel topic.');
         return true;
       }
@@ -758,23 +759,23 @@
   }
 
   function doSearch(query: string): Promise<Message[]> {
-    return chat.search(currentChatChannel, query, 50);
+    return chat.search(currentChatChannelId, query, 50);
   }
 
-  function joinChannel(ch: string) {
-    if (ch === currentChatChannel) return;
-    currentChatChannel = ch;
+  function joinChannel(id: number) {
+    if (id === currentChatChannelId) return;
+    currentChatChannelId = id;
     statusMenuOpen = false;
     notificationMenuOpen = false;
     chat.clear();
-    chat.sendRaw({ type: 'join', channel: ch });
+    chat.sendRaw({ type: 'join', channelId: id });
     scrollBottom();
   }
 
 
   function leaveVoice() {
-    if (currentVoiceChannel) {
-      voice.leave(currentVoiceChannel);
+    if (currentVoiceChannelId !== null) {
+      voice.leave(currentVoiceChannelId);
     }
     inVoice = false;
     // Close any active screen share viewer
@@ -786,7 +787,7 @@
 
   async function handleViewScreenShare(userId: string) {
     try {
-      if (!$session.user || !currentVoiceChannel) {
+      if (!$session.user || currentVoiceChannelId === null) {
         alert('You must be in a voice channel to view screen shares');
         return;
       }
@@ -794,7 +795,7 @@
       if (userId === $session.user) return;
       
       pendingScreenShareView = userId;
-      await viewScreenShare(userId, $session.user, currentVoiceChannel);
+      await viewScreenShare(userId, $session.user, currentVoiceChannelId);
 
       // Check if the peer stream is already available (rare but possible)
       const peer = $screenSharePeers.find(p => p.userId === userId);
@@ -815,8 +816,8 @@
 
   function leaveServer() {
     chat.disconnect();
-    if (currentVoiceChannel) {
-      voice.leave(currentVoiceChannel);
+    if (currentVoiceChannelId !== null) {
+      voice.leave(currentVoiceChannelId);
     }
     selectedServer.set(null);
     goto('/servers');
@@ -832,32 +833,23 @@
     if (!name) return;
     const preset = promptVoicePreset();
     voiceChannels.create(name, preset);
+  }
+
+  function joinVoiceChannel(id: number) {
     if ($session.user) {
-      if (inVoice && currentVoiceChannel) {
-        voice.leave(currentVoiceChannel);
+      if (inVoice && currentVoiceChannelId !== null) {
+        voice.leave(currentVoiceChannelId);
       }
-      currentVoiceChannel = name;
-      voice.join($session.user, name, { name, quality: preset.quality, bitrate: preset.bitrate, categoryId: null });
+      currentVoiceChannelId = id;
+      const info = $voiceChannels.find((vc) => vc.id === id);
+      voice.join($session.user, id, info);
       inVoice = true;
       scrollBottom();
     }
   }
 
-  function joinVoiceChannel(ch: string) {
-    if ($session.user) {
-      if (inVoice && currentVoiceChannel) {
-        voice.leave(currentVoiceChannel);
-      }
-      currentVoiceChannel = ch;
-      const info = $voiceChannels.find((vc) => vc.name === ch);
-      voice.join($session.user, ch, info);
-      inVoice = true;
-      scrollBottom();
-    }
-  }
-
-  let menuChannel: string | null = null;
-  let menuVoiceChannel: string | null = null;
+  let menuChannelId: number | null = null;
+  let menuVoiceChannelId: number | null = null;
   let menuCategoryId: number | null = null;
   let volumeMenuOpen = false;
   let volumeMenuX = 0;
@@ -917,17 +909,17 @@
     return items;
   })();
 
-  function openChannelMenu(event: MouseEvent, channel?: string, voice?: boolean) {
+  function openChannelMenu(event: MouseEvent, channelId?: number, voice?: boolean) {
     event.preventDefault();
     event.stopPropagation();
     menuX = event.clientX;
     menuY = event.clientY;
-    menuChannel = null;
-    menuVoiceChannel = null;
+    menuChannelId = null;
+    menuVoiceChannelId = null;
     menuCategoryId = null;
-    if (channel) {
-      if (voice) menuVoiceChannel = channel;
-      else menuChannel = channel;
+    if (channelId != null) {
+      if (voice) menuVoiceChannelId = channelId;
+      else menuChannelId = channelId;
     }
     menuOpen = true;
   }
@@ -937,8 +929,8 @@
     event.stopPropagation();
     menuX = event.clientX;
     menuY = event.clientY;
-    menuChannel = null;
-    menuVoiceChannel = null;
+    menuChannelId = null;
+    menuVoiceChannelId = null;
     menuCategoryId = category.id;
     menuOpen = true;
   }
@@ -970,10 +962,10 @@
   }
 
   function editTopic() {
-    const existing = $channelTopics[currentChatChannel] ?? '';
+    const existing = $channelTopics[currentChatChannelId] ?? '';
     const input = prompt('Set channel topic', existing);
     if (input === null) return;
-    channelTopics.setTopic(currentChatChannel, input);
+    channelTopics.setTopic(currentChatChannelId, input);
   }
 
   function canDeleteMessage(msg: Message): boolean {
@@ -989,15 +981,15 @@
 
   function isMessagePinned(msg: Message): boolean {
     if (typeof msg.id !== 'number') return false;
-    return pinned.isPinned(currentChatChannel, msg.id);
+    return pinned.isPinned(currentChatChannelId, msg.id);
   }
 
   function togglePinMessage(msg: Message) {
     if (typeof msg.id !== 'number') return;
     if (isMessagePinned(msg)) {
-      pinned.unpin(currentChatChannel, msg.id);
+      pinned.unpin(currentChatChannelId, msg.id);
     } else {
-      pinned.pin(currentChatChannel, msg);
+      pinned.pin(currentChatChannelId, msg);
     }
   }
 
@@ -1059,7 +1051,7 @@
     if (!Number.isFinite(messageId)) return;
     if (highlightMessageById(messageId)) return;
     pendingScrollToMessage = messageId;
-    chat.loadHistory(currentChatChannel, messageId + 1, 200);
+    chat.loadHistory(currentChatChannelId, messageId + 1, 200);
   }
 
   function toggleMicrophone() {
@@ -1101,7 +1093,7 @@
         } else {
           const channels = $voiceChannels;
           if (channels.length) {
-            joinVoiceChannel(currentVoiceChannel ?? channels[0].name);
+            joinVoiceChannel(currentVoiceChannelId ?? channels[0].id);
           }
         }
         break;
@@ -1121,17 +1113,17 @@
     if (name) categories.rename(id, name);
   }
 
-  function buildMoveToItems(channelName: string, voice: boolean): Array<{ label: string; action: () => void }> {
+  function buildMoveToItems(channelId: number, voice: boolean): Array<{ label: string; action: () => void }> {
     const items: Array<{ label: string; action: () => void }> = [];
     const currentCh = voice
-      ? $voiceChannels.find((c) => c.name === channelName)
-      : $channels.find((c) => c.name === channelName);
+      ? $voiceChannels.find((c) => c.id === channelId)
+      : $channels.find((c) => c.id === channelId);
     const currentCatId = currentCh?.categoryId ?? null;
 
     if (currentCatId !== null) {
       items.push({
         label: 'Move to: (no category)',
-        action: () => channels.move(channelName, null, voice)
+        action: () => channels.move(channelId, null, voice)
       });
     }
 
@@ -1139,7 +1131,7 @@
       if (cat.id !== currentCatId) {
         items.push({
           label: `Move to: ${cat.name}`,
-          action: () => channels.move(channelName, cat.id, voice)
+          action: () => channels.move(channelId, cat.id, voice)
         });
       }
     }
@@ -1151,13 +1143,13 @@
     { label: 'Create Text Channel', action: createChannelPrompt },
     { label: 'Create Voice Channel', action: createVoiceChannelPrompt },
     { label: 'Create Category', action: createCategoryPrompt },
-    ...(menuChannel
+    ...(menuChannelId != null
       ? [
-          ...buildMoveToItems(menuChannel, false),
-          { label: 'Delete Channel', action: () => channels.remove(menuChannel!), danger: true }
+          ...buildMoveToItems(menuChannelId, false),
+          { label: 'Delete Channel', action: () => channels.remove(menuChannelId!), danger: true }
         ]
       : []),
-    ...(menuVoiceChannel
+    ...(menuVoiceChannelId != null
       ? [
           ...VOICE_QUALITY_PRESETS.map((preset) => ({
             label:
@@ -1165,13 +1157,13 @@
                 ? `Set Voice Quality: ${preset.label} (${Math.round(preset.bitrate / 1000)} kbps)`
                 : `Set Voice Quality: ${preset.label}`,
             action: () =>
-              voiceChannels.configure(menuVoiceChannel!, {
+              voiceChannels.configure(menuVoiceChannelId!, {
                 quality: preset.quality,
                 bitrate: preset.bitrate
               })
           })),
-          ...buildMoveToItems(menuVoiceChannel, true),
-          { label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannel!), danger: true }
+          ...buildMoveToItems(menuVoiceChannelId, true),
+          { label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannelId!), danger: true }
         ]
       : []),
     ...(menuCategoryId != null
@@ -1196,7 +1188,7 @@
   function earliestId(): number | null {
     let min: number | null = null;
     for (const m of $chat) {
-      if ((m.channel ?? 'general') === currentChatChannel && typeof m.id === 'number') {
+      if (m.channelId === currentChatChannelId && typeof m.id === 'number') {
         if (min === null || m.id! < min) min = m.id as number;
       }
     }
@@ -1210,7 +1202,7 @@
       if (id !== null && id > 1) {
         loadingHistory = true;
         prevHeight = messagesContainer.scrollHeight;
-        chat.loadHistory(currentChatChannel, id);
+        chat.loadHistory(currentChatChannelId, id);
       }
     }
   }
@@ -1232,9 +1224,9 @@
 
   const handleMessageDeleted = (event: Message) => {
     const messageId = (event.id as number | undefined) ?? (event.messageId as number | undefined);
-    const channelName = (event.channel as string | undefined) ?? currentChatChannel;
+    const channelId = (event as any).channelId ?? currentChatChannelId;
     if (typeof messageId !== 'number') return;
-    pinned.removeMessage(channelName, messageId);
+    pinned.removeMessage(channelId, messageId);
     if (highlightedMessageId === messageId) {
       highlightedMessageId = null;
     }
@@ -1251,7 +1243,7 @@
       pendingScrollToMessage = null;
     }
     if (messagesContainer) {
-      const filteredLength = $chat.filter((m) => (m.channel ?? 'general') === currentChatChannel).length;
+      const filteredLength = $chat.filter((m) => m.channelId === currentChatChannelId).length;
       if (filteredLength !== lastLength) {
         lastLength = filteredLength;
         if (!loadingHistory && !handledPending) {
@@ -1329,11 +1321,11 @@
           {/if}
         {/if}
         {#if !group.category || !collapsedCategories.has(group.category.id)}
-          {#each group.textChannels as ch (ch.name)}
+          {#each group.textChannels as ch (ch.id)}
             <button
-              class:active={ch.name === currentChatChannel}
-              on:click={() => joinChannel(ch.name)}
-              on:contextmenu={(e) => openChannelMenu(e, ch.name)}
+              class:active={ch.id === currentChatChannelId}
+              on:click={() => joinChannel(ch.id)}
+              on:contextmenu={(e) => openChannelMenu(e, ch.id)}
             >
               <span class="chan-icon">#</span> {ch.name}
             </button>
@@ -1343,16 +1335,16 @@
               <h3 class="section">Voice Channels</h3>
             {/if}
           {/if}
-          {#each group.voiceChannels as ch (ch.name)}
+          {#each group.voiceChannels as ch (ch.id)}
             <div class="voice-group">
-              <button on:click={() => joinVoiceChannel(ch.name)} on:contextmenu={(e) => openChannelMenu(e, ch.name, true)}>
+              <button on:click={() => joinVoiceChannel(ch.id)} on:contextmenu={(e) => openChannelMenu(e, ch.id, true)}>
                 <span class="chan-icon">&#x1f50a;</span>
                 <span class="voice-channel-name">{ch.name}</span>
                 <span class="voice-channel-quality">{formatVoiceQuality(ch)}</span>
               </button>
-              {#if $voiceUsers[ch.name]?.length}
+              {#if $voiceUsers[ch.id]?.length}
                 <ul class="voice-user-list">
-                  {#each $voiceUsers[ch.name] as user}
+                  {#each $voiceUsers[ch.id] as user}
                     <li
                       on:contextmenu={(e) => user !== $session.user && openUserVolumeMenu(e, user)}
                       class:clickable={user !== $session.user}
@@ -1382,7 +1374,7 @@
                           >{$roles[user].role}</span
                         >
                       {/if}
-                      {#if $activeScreenShares[ch.name]?.includes(user) && user !== $session.user}
+                      {#if $activeScreenShares[ch.id]?.includes(user) && user !== $session.user}
                         <button
                           class="screenshare-indicator"
                           on:click={() => handleViewScreenShare(user)}
@@ -1471,7 +1463,7 @@
           </div>
           
           {#if inVoice}
-            <ScreenShareControls {currentVoiceChannel} {inVoice} />
+            <ScreenShareControls currentVoiceChannel={currentVoiceChannelId} {inVoice} />
           {/if}
       </div>
     </div>
@@ -1481,7 +1473,7 @@
     <div class="chat">
       <div class="header">
         <div class="title">
-          <h1>{currentChatChannel}</h1>
+          <h1>{currentChatChannelName}</h1>
           {#if currentTopic}
             <p class="topic" title={currentTopic}>{currentTopic}</p>
           {:else}
@@ -1801,7 +1793,7 @@
                 </button>
                 <button
                   class="pinned-remove"
-                  on:click={() => pinned.unpin(currentChatChannel, entry.id)}
+                  on:click={() => pinned.unpin(currentChatChannelId, entry.id)}
                   aria-label="Unpin message"
                 >
                   ✕

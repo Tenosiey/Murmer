@@ -51,6 +51,7 @@ impl Default for RateLimiter {
 /// Snapshot of connected users within a voice channel.
 #[derive(Clone)]
 pub struct VoiceChannelState {
+    pub name: String,
     pub users: HashSet<String>,
     pub quality: String,
     pub bitrate: Option<i32>,
@@ -60,11 +61,13 @@ pub struct VoiceChannelState {
 /// Shared application state passed to handlers.
 pub struct AppState {
     pub tx: broadcast::Sender<String>,
-    pub channels: Arc<Mutex<HashMap<String, broadcast::Sender<String>>>>,
+    /// Per-text-channel broadcast senders, keyed by channel ID.
+    pub channels: Arc<Mutex<HashMap<i32, broadcast::Sender<String>>>>,
     pub db: Arc<tokio_postgres::Client>,
     pub users: Arc<Mutex<HashSet<String>>>,
     pub known_users: Arc<Mutex<HashSet<String>>>,
-    pub voice_channels: Arc<Mutex<HashMap<String, VoiceChannelState>>>,
+    /// Voice channel state, keyed by voice channel ID.
+    pub voice_channels: Arc<Mutex<HashMap<i32, VoiceChannelState>>>,
     pub roles: Arc<Mutex<HashMap<String, RoleInfo>>>,
     pub statuses: Arc<Mutex<HashMap<String, String>>>,
     pub user_keys: Arc<Mutex<HashMap<String, String>>>,

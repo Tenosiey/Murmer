@@ -11,7 +11,7 @@ export interface PinnedEntry {
   pinnedAt: string;
 }
 
-type PinnedState = Record<string, PinnedEntry[]>;
+type PinnedState = Record<number, PinnedEntry[]>;
 
 const STORAGE_KEY = 'murmer_pinned_messages';
 const MAX_PINS_PER_CHANNEL = 25;
@@ -21,13 +21,18 @@ function loadInitialState(): PinnedState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as PinnedState;
+    const parsed = JSON.parse(raw) as Record<string, PinnedEntry[]>;
     if (!parsed || typeof parsed !== 'object') return {};
     const result: PinnedState = {};
-    for (const [channel, entries] of Object.entries(parsed)) {
+    for (const [key, entries] of Object.entries(parsed)) {
+      const channelId = Number(key);
+      if (Number.isNaN(channelId)) continue;
       if (!Array.isArray(entries)) continue;
       const safeEntries = entries
-        .filter((entry): entry is PinnedEntry => typeof entry === 'object' && entry !== null && typeof entry.id === 'number')
+        .filter(
+          (entry): entry is PinnedEntry =>
+            typeof entry === 'object' && entry !== null && typeof entry.id === 'number'
+        )
         .map((entry) => ({
           id: entry.id,
           user: typeof entry.user === 'string' ? entry.user : undefined,
@@ -37,7 +42,7 @@ function loadInitialState(): PinnedState {
           pinnedAt: typeof entry.pinnedAt === 'string' ? entry.pinnedAt : new Date().toISOString()
         }));
       if (safeEntries.length > 0) {
-        result[channel] = safeEntries.slice(0, MAX_PINS_PER_CHANNEL);
+        result[channelId] = safeEntries.slice(0, MAX_PINS_PER_CHANNEL);
       }
     }
     return result;
@@ -79,53 +84,45 @@ function createPinnedStore() {
 
   return {
     subscribe: store.subscribe,
-    pin(channel: string, message: Message) {
+    pin(channelId: number, message: Message) {
       if (typeof message.id !== 'number') return;
-      const trimmed = channel.trim();
-      if (!trimmed) return;
       const summary = createSummary(message);
       store.update((current) => {
-        const existing = current[trimmed] ?? [];
+        const existing = current[channelId] ?? [];
         const filtered = existing.filter((entry) => entry.id !== summary.id);
         const nextEntries = [summary, ...filtered].slice(0, MAX_PINS_PER_CHANNEL);
-        return { ...current, [trimmed]: nextEntries };
+        return { ...current, [channelId]: nextEntries };
       });
     },
-    unpin(channel: string, messageId: number) {
-      const trimmed = channel.trim();
-      if (!trimmed) return;
+    unpin(channelId: number, messageId: number) {
       store.update((current) => {
-        const existing = current[trimmed];
+        const existing = current[channelId];
         if (!existing) return current;
         const nextEntries = existing.filter((entry) => entry.id !== messageId);
         if (nextEntries.length === 0) {
           const next = { ...current };
-          delete next[trimmed];
+          delete next[channelId];
           return next;
         }
-        return { ...current, [trimmed]: nextEntries };
+        return { ...current, [channelId]: nextEntries };
       });
     },
-    removeMessage(channel: string, messageId: number) {
-      const trimmed = channel.trim();
-      if (!trimmed) return;
+    removeMessage(channelId: number, messageId: number) {
       store.update((current) => {
-        const existing = current[trimmed];
+        const existing = current[channelId];
         if (!existing) return current;
         const nextEntries = existing.filter((entry) => entry.id !== messageId);
         if (nextEntries.length === 0) {
           const next = { ...current };
-          delete next[trimmed];
+          delete next[channelId];
           return next;
         }
-        return { ...current, [trimmed]: nextEntries };
+        return { ...current, [channelId]: nextEntries };
       });
     },
-    isPinned(channel: string, messageId: number): boolean {
-      const trimmed = channel.trim();
-      if (!trimmed) return false;
+    isPinned(channelId: number, messageId: number): boolean {
       const state = get(store);
-      const entries = state[trimmed];
+      const entries = state[channelId];
       if (!entries) return false;
       return entries.some((entry) => entry.id === messageId);
     }

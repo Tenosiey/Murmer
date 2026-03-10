@@ -94,8 +94,9 @@ async fn main() -> Result<()> {
             let mut map = HashMap::new();
             for record in &existing_voice {
                 map.insert(
-                    record.name.clone(),
+                    record.id,
                     VoiceChannelState {
+                        name: record.name.clone(),
                         users: HashSet::new(),
                         quality: record.quality.clone(),
                         bitrate: record.bitrate,

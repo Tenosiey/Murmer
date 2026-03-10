@@ -9,14 +9,14 @@
 //!   - `POST   /api/v1/bots/:bot_id/reset-token` – regenerate token
 //!
 //! Bot endpoints (require bot token via `Authorization: Bearer <token>`):
-//!   - `GET    /api/v1/channels`                                   – list channels
-//!   - `GET    /api/v1/channels/:channel/messages`                 – read messages
-//!   - `POST   /api/v1/channels/:channel/messages`                 – send message
-//!   - `DELETE /api/v1/channels/:channel/messages/:message_id`     – delete message
-//!   - `POST   /api/v1/channels/:channel/messages/:message_id/reactions`          – add reaction
-//!   - `DELETE /api/v1/channels/:channel/messages/:message_id/reactions/:emoji`   – remove reaction
-//!   - `GET    /api/v1/users`                                      – list users
-//!   - `GET    /api/v1/server/info`                                – server metadata
+//!   - `GET    /api/v1/channels`                                      – list channels
+//!   - `GET    /api/v1/channels/:channel_id/messages`                 – read messages
+//!   - `POST   /api/v1/channels/:channel_id/messages`                 – send message
+//!   - `DELETE /api/v1/channels/:channel_id/messages/:message_id`     – delete message
+//!   - `POST   /api/v1/channels/:channel_id/messages/:message_id/reactions`          – add reaction
+//!   - `DELETE /api/v1/channels/:channel_id/messages/:message_id/reactions/:emoji`   – remove reaction
+//!   - `GET    /api/v1/users`                                         – list users
+//!   - `GET    /api/v1/server/info`                                   – server metadata
 
 use crate::{db, security, ws, AppState};
 use axum::{
@@ -74,7 +74,7 @@ async fn verify_bot(state: &AppState, token: &str) -> Option<BotRecord> {
 async fn format_messages(
     db: &tokio_postgres::Client,
     rows: Vec<(i64, String)>,
-    channel: &str,
+    channel_id: i32,
 ) -> Vec<Value> {
     let ids32: Vec<i32> = rows
         .iter()
@@ -93,8 +93,8 @@ async fn format_messages(
         .map(|(id, content)| {
             let mut msg = serde_json::from_str::<Value>(&content).unwrap_or(Value::Null);
             msg["id"] = Value::from(id);
-            if msg.get("channel").and_then(|c| c.as_str()).is_none() {
-                msg["channel"] = Value::String(channel.to_string());
+            if msg.get("channelId").is_none() {
+                msg["channelId"] = Value::from(channel_id);
             }
             if let Ok(id32) = i32::try_from(id) {
                 if let Some(reactions) = reaction_map.get(&id32) {
@@ -317,13 +317,23 @@ async fn list_channels_handler(
     }
 
     let channels = db::get_channels(&state.db).await;
-    Json(serde_json::json!({"data": {"channels": channels}})).into_response()
+    let data: Vec<Value> = channels
+        .iter()
+        .map(|ch| {
+            serde_json::json!({
+                "id": ch.id,
+                "name": ch.name,
+                "categoryId": ch.category_id,
+            })
+        })
+        .collect();
+    Json(serde_json::json!({"data": {"channels": data}})).into_response()
 }
 
 async fn get_messages(
     State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
-    Path(channel): Path<String>,
+    Path(channel_id): Path<i32>,
     Query(params): Query<MessageQuery>,
 ) -> Response {
     let bot = match verify_bot(&state, bearer.token()).await {
@@ -335,12 +345,7 @@ async fn get_messages(
         return json_error(StatusCode::FORBIDDEN, "missing-permission:read_messages");
     }
 
-    if !security::validate_channel_name(&channel) {
-        return json_error(StatusCode::BAD_REQUEST, "invalid-channel-name");
-    }
-
-    let channels = db::get_channels(&state.db).await;
-    if !channels.contains(&channel) {
+    if db::get_channel_by_id(&state.db, channel_id).await.is_none() {
         return json_error(StatusCode::NOT_FOUND, "channel-not-found");
     }
 
@@ -350,22 +355,21 @@ async fn get_messages(
         .clamp(1, MAX_MESSAGE_LIMIT);
 
     let rows = if let Some(after) = params.after {
-        bot_db::fetch_messages_after(&state.db, &channel, after, limit).await
+        bot_db::fetch_messages_after(&state.db, channel_id, after, limit).await
     } else {
-        db::fetch_history(&state.db, &channel, params.before, limit).await
+        db::fetch_history(&state.db, channel_id, params.before, limit).await
     };
 
     match rows {
         Ok(mut rows) => {
-            // fetch_history returns DESC order; normalize to ASC
             if params.after.is_none() {
                 rows.reverse();
             }
             let has_more = rows.len() as i64 == limit;
-            let messages = format_messages(&state.db, rows, &channel).await;
+            let messages = format_messages(&state.db, rows, channel_id).await;
             Json(serde_json::json!({
                 "data": {
-                    "channel": channel,
+                    "channelId": channel_id,
                     "messages": messages,
                     "has_more": has_more,
                 }
@@ -373,7 +377,7 @@ async fn get_messages(
             .into_response()
         }
         Err(e) => {
-            error!("Failed to fetch messages for channel {channel}: {e}");
+            error!("Failed to fetch messages for channel {channel_id}: {e}");
             json_error(StatusCode::INTERNAL_SERVER_ERROR, "fetch-failed")
         }
     }
@@ -382,7 +386,7 @@ async fn get_messages(
 async fn send_message(
     State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
-    Path(channel): Path<String>,
+    Path(channel_id): Path<i32>,
     Json(body): Json<SendMessageRequest>,
 ) -> Response {
     let bot = match verify_bot(&state, bearer.token()).await {
@@ -399,12 +403,7 @@ async fn send_message(
         return json_error(StatusCode::TOO_MANY_REQUESTS, "rate-limit-exceeded");
     }
 
-    if !security::validate_channel_name(&channel) {
-        return json_error(StatusCode::BAD_REQUEST, "invalid-channel-name");
-    }
-
-    let channels = db::get_channels(&state.db).await;
-    if !channels.contains(&channel) {
+    if db::get_channel_by_id(&state.db, channel_id).await.is_none() {
         return json_error(StatusCode::NOT_FOUND, "channel-not-found");
     }
 
@@ -420,7 +419,7 @@ async fn send_message(
         "text": text,
         "timestamp": now.to_rfc3339(),
         "time": now.format("%H:%M:%S").to_string(),
-        "channel": channel,
+        "channelId": channel_id,
         "bot": true,
         "reactions": {},
     });
@@ -441,8 +440,8 @@ async fn send_message(
     let row = match state
         .db
         .query_one(
-            "INSERT INTO messages (channel, content) VALUES ($1, $2) RETURNING id::bigint",
-            &[&channel, &content],
+            "INSERT INTO messages (channel_id, content) VALUES ($1, $2) RETURNING id::bigint",
+            &[&channel_id, &content],
         )
         .await
     {
@@ -456,12 +455,12 @@ async fn send_message(
     let id: i64 = row.get(0);
     msg["id"] = serde_json::json!(id);
 
-    let chan_tx = ws::helpers::get_or_create_channel(&state, &channel).await;
+    let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
     let _ = chan_tx.send(msg.to_string());
 
     if let Some(expiry) = ephemeral_expiry {
         let state_clone = Arc::clone(&state);
-        let channel_clone = channel.clone();
+        let ch_id = channel_id;
         tokio::spawn(async move {
             let mut delay = expiry.signed_duration_since(Utc::now());
             if delay < ChronoDuration::zero() {
@@ -479,10 +478,10 @@ async fn send_message(
                         let payload = serde_json::json!({
                             "type": "message-deleted",
                             "id": id,
-                            "channel": channel_clone,
+                            "channelId": ch_id,
                         });
                         let chan =
-                            ws::helpers::get_or_create_channel(&state_clone, &channel_clone).await;
+                            ws::helpers::get_or_create_channel(&state_clone, ch_id).await;
                         let _ = chan.send(payload.to_string());
                     }
                     Ok(false) => {}
@@ -498,7 +497,7 @@ async fn send_message(
 async fn delete_message_handler(
     State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
-    Path((channel, message_id)): Path<(String, i64)>,
+    Path((channel_id, message_id)): Path<(i32, i64)>,
 ) -> Response {
     let bot = match verify_bot(&state, bearer.token()).await {
         Some(b) => b,
@@ -521,7 +520,7 @@ async fn delete_message_handler(
         }
     };
 
-    if record.channel != channel {
+    if record.channel_id != channel_id {
         return json_error(StatusCode::NOT_FOUND, "message-not-found");
     }
 
@@ -543,9 +542,9 @@ async fn delete_message_handler(
             let payload = serde_json::json!({
                 "type": "message-deleted",
                 "id": message_id,
-                "channel": channel,
+                "channelId": channel_id,
             });
-            let chan_tx = ws::helpers::get_or_create_channel(&state, &channel).await;
+            let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
             let _ = chan_tx.send(payload.to_string());
             StatusCode::NO_CONTENT.into_response()
         }
@@ -560,7 +559,7 @@ async fn delete_message_handler(
 async fn add_reaction_handler(
     State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
-    Path((channel, message_id)): Path<(String, i64)>,
+    Path((channel_id, message_id)): Path<(i32, i64)>,
     Json(body): Json<AddReactionRequest>,
 ) -> Response {
     let bot = match verify_bot(&state, bearer.token()).await {
@@ -585,7 +584,7 @@ async fn add_reaction_handler(
         Err(_) => return json_error(StatusCode::BAD_REQUEST, "invalid-message-id"),
     };
 
-    let target_channel = match db::get_message_channel(&state.db, message_id32).await {
+    let target_channel_id = match db::get_message_channel_id(&state.db, message_id32).await {
         Ok(Some(ch)) => ch,
         Ok(None) => return json_error(StatusCode::NOT_FOUND, "message-not-found"),
         Err(e) => {
@@ -594,7 +593,7 @@ async fn add_reaction_handler(
         }
     };
 
-    if target_channel != channel {
+    if target_channel_id != channel_id {
         return json_error(StatusCode::NOT_FOUND, "message-not-found");
     }
 
@@ -613,11 +612,11 @@ async fn add_reaction_handler(
 
     let payload = serde_json::json!({
         "type": "reaction-update",
-        "channel": channel,
+        "channelId": channel_id,
         "messageId": message_id,
         "reactions": reactions,
     });
-    let chan_tx = ws::helpers::get_or_create_channel(&state, &channel).await;
+    let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
     let _ = chan_tx.send(payload.to_string());
 
     Json(serde_json::json!({"data": {"messageId": message_id, "reactions": reactions}}))
@@ -627,7 +626,7 @@ async fn add_reaction_handler(
 async fn remove_reaction_handler(
     State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
-    Path((channel, message_id, emoji)): Path<(String, i64, String)>,
+    Path((channel_id, message_id, emoji)): Path<(i32, i64, String)>,
 ) -> Response {
     let bot = match verify_bot(&state, bearer.token()).await {
         Some(b) => b,
@@ -643,7 +642,7 @@ async fn remove_reaction_handler(
         Err(_) => return json_error(StatusCode::BAD_REQUEST, "invalid-message-id"),
     };
 
-    let target_channel = match db::get_message_channel(&state.db, message_id32).await {
+    let target_channel_id = match db::get_message_channel_id(&state.db, message_id32).await {
         Ok(Some(ch)) => ch,
         Ok(None) => return json_error(StatusCode::NOT_FOUND, "message-not-found"),
         Err(e) => {
@@ -652,7 +651,7 @@ async fn remove_reaction_handler(
         }
     };
 
-    if target_channel != channel {
+    if target_channel_id != channel_id {
         return json_error(StatusCode::NOT_FOUND, "message-not-found");
     }
 
@@ -671,11 +670,11 @@ async fn remove_reaction_handler(
 
     let payload = serde_json::json!({
         "type": "reaction-update",
-        "channel": channel,
+        "channelId": channel_id,
         "messageId": message_id,
         "reactions": reactions,
     });
-    let chan_tx = ws::helpers::get_or_create_channel(&state, &channel).await;
+    let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
     let _ = chan_tx.send(payload.to_string());
 
     Json(serde_json::json!({"data": {"messageId": message_id, "reactions": reactions}}))
@@ -718,13 +717,23 @@ async fn server_info(
 
     let online_count = state.users.lock().await.len();
     let channels = db::get_channels(&state.db).await;
+    let data: Vec<Value> = channels
+        .iter()
+        .map(|ch| {
+            serde_json::json!({
+                "id": ch.id,
+                "name": ch.name,
+                "categoryId": ch.category_id,
+            })
+        })
+        .collect();
 
     Json(serde_json::json!({
         "data": {
             "version": env!("CARGO_PKG_VERSION"),
             "bot_api_version": "1",
             "online_users": online_count,
-            "channels": channels,
+            "channels": data,
             "has_password": state.password.is_some(),
         }
     }))
@@ -749,19 +758,19 @@ pub fn router() -> Router<Arc<AppState>> {
         // Bot API
         .route("/api/v1/channels", get(list_channels_handler))
         .route(
-            "/api/v1/channels/:channel/messages",
+            "/api/v1/channels/:channel_id/messages",
             get(get_messages).post(send_message),
         )
         .route(
-            "/api/v1/channels/:channel/messages/:message_id",
+            "/api/v1/channels/:channel_id/messages/:message_id",
             delete(delete_message_handler),
         )
         .route(
-            "/api/v1/channels/:channel/messages/:message_id/reactions",
+            "/api/v1/channels/:channel_id/messages/:message_id/reactions",
             post(add_reaction_handler),
         )
         .route(
-            "/api/v1/channels/:channel/messages/:message_id/reactions/:emoji",
+            "/api/v1/channels/:channel_id/messages/:message_id/reactions/:emoji",
             delete(remove_reaction_handler),
         )
         .route("/api/v1/users", get(list_users))

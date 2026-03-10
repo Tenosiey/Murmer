@@ -123,7 +123,7 @@ pub async fn delete_bot(db: &Client, id: &str) -> Result<bool, tokio_postgres::E
 /// Fetch messages newer than a given ID (ascending order).
 pub async fn fetch_messages_after(
     db: &Client,
-    channel: &str,
+    channel_id: i32,
     after: i64,
     limit: i64,
 ) -> Result<Vec<(i64, String)>, tokio_postgres::Error> {
@@ -134,8 +134,8 @@ pub async fn fetch_messages_after(
     let rows = db
         .query(
             "SELECT id::bigint, content FROM messages \
-             WHERE channel = $1 AND id > $2 ORDER BY id ASC LIMIT $3",
-            &[&channel, &after32, &limit],
+             WHERE channel_id = $1 AND id > $2 ORDER BY id ASC LIMIT $3",
+            &[&channel_id, &after32, &limit],
         )
         .await?;
     Ok(rows

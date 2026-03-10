@@ -8,45 +8,44 @@ function createChannelStore() {
   chat.on('channel-list', (msg: Message) => {
     const list = (msg as any).channels;
     if (Array.isArray(list)) {
-      const items: ChannelInfo[] = list.map((item: any) => {
-        if (typeof item === 'string') {
-          return { name: item, categoryId: null };
-        }
-        return {
+      const items: ChannelInfo[] = list
+        .filter((item: any) => typeof item === 'object' && item !== null && typeof item.id === 'number')
+        .map((item: any) => ({
+          id: item.id as number,
           name: typeof item.name === 'string' ? item.name : '',
           categoryId: typeof item.categoryId === 'number' ? item.categoryId : null
-        };
-      });
+        }));
       set(items);
     }
   });
 
   chat.on('channel-add', (msg: Message) => {
     const raw = msg as any;
-    const name = typeof raw.channel === 'string' ? raw.channel : null;
-    if (name) {
+    const id = typeof raw.channelId === 'number' ? raw.channelId : null;
+    const name = typeof raw.name === 'string' ? raw.name : null;
+    if (id !== null && name) {
       const categoryId = typeof raw.categoryId === 'number' ? raw.categoryId : null;
       update((chs) =>
-        chs.some((c) => c.name === name) ? chs : [...chs, { name, categoryId }]
+        chs.some((c) => c.id === id) ? chs : [...chs, { id, name, categoryId }]
       );
     }
   });
 
   chat.on('channel-remove', (msg: Message) => {
-    const name = (msg as any).channel;
-    if (typeof name === 'string') {
-      update((chs) => chs.filter((c) => c.name !== name));
+    const id = (msg as any).channelId;
+    if (typeof id === 'number') {
+      update((chs) => chs.filter((c) => c.id !== id));
     }
   });
 
   chat.on('channel-move', (msg: Message) => {
     const raw = msg as any;
-    const name = typeof raw.channel === 'string' ? raw.channel : null;
-    if (!name) return;
+    const id = typeof raw.channelId === 'number' ? raw.channelId : null;
+    if (id === null) return;
     const categoryId = typeof raw.categoryId === 'number' ? raw.categoryId : null;
     const isVoice = raw.voice === true;
     if (!isVoice) {
-      update((chs) => chs.map((c) => (c.name === name ? { ...c, categoryId } : c)));
+      update((chs) => chs.map((c) => (c.id === id ? { ...c, categoryId } : c)));
     }
   });
 
@@ -56,12 +55,12 @@ function createChannelStore() {
     chat.sendRaw(payload);
   }
 
-  function remove(name: string) {
-    chat.sendRaw({ type: 'delete-channel', name });
+  function remove(channelId: number) {
+    chat.sendRaw({ type: 'delete-channel', channelId });
   }
 
-  function move(channel: string, categoryId: number | null, voice = false) {
-    chat.sendRaw({ type: 'move-channel', channel, categoryId, voice });
+  function move(channelId: number, categoryId: number | null, voice = false) {
+    chat.sendRaw({ type: 'move-channel', channelId, categoryId, voice });
   }
 
   return { subscribe, set, create, remove, move };

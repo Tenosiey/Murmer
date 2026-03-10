@@ -1,17 +1,17 @@
 import { writable } from 'svelte/store';
 
 function createChannelTopicStore() {
-  const { subscribe, update } = writable<Record<string, string>>({});
+  const { subscribe, update } = writable<Record<number, string>>({});
 
-  function setTopic(channel: string, topic: string) {
-    if (!channel) return;
+  function setTopic(channelId: number, topic: string) {
+    if (!channelId) return;
     const trimmed = topic.trim();
     update((topics) => {
       const next = { ...topics };
       if (trimmed) {
-        next[channel] = trimmed;
+        next[channelId] = trimmed;
       } else {
-        delete next[channel];
+        delete next[channelId];
       }
       return next;
     });

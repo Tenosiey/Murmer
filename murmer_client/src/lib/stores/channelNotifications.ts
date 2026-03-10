@@ -3,7 +3,7 @@ import { get, writable } from 'svelte/store';
 
 export type ChannelNotificationPreference = 'all' | 'mentions' | 'mute';
 
-type ChannelNotificationState = Record<string, ChannelNotificationPreference>;
+type ChannelNotificationState = Record<number, ChannelNotificationPreference>;
 
 const STORAGE_KEY = 'murmer_channel_notifications';
 
@@ -12,13 +12,14 @@ function loadInitialState(): ChannelNotificationState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as ChannelNotificationState;
+    const parsed = JSON.parse(raw) as Record<string, string>;
     if (!parsed || typeof parsed !== 'object') return {};
     const result: ChannelNotificationState = {};
-    for (const [channel, value] of Object.entries(parsed)) {
-      if (typeof channel !== 'string') continue;
+    for (const [key, value] of Object.entries(parsed)) {
+      const channelId = Number(key);
+      if (Number.isNaN(channelId)) continue;
       if (value === 'mentions' || value === 'mute') {
-        result[channel] = value;
+        result[channelId] = value;
       }
     }
     return result;
@@ -31,22 +32,16 @@ function loadInitialState(): ChannelNotificationState {
 function persistState(state: ChannelNotificationState) {
   if (!browser) return;
   try {
-    const serializable: ChannelNotificationState = {};
-    for (const [channel, value] of Object.entries(state)) {
+    const serializable: Record<string, ChannelNotificationPreference> = {};
+    for (const [key, value] of Object.entries(state)) {
       if (value !== 'all') {
-        serializable[channel] = value;
+        serializable[key] = value as ChannelNotificationPreference;
       }
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
   } catch (error) {
     console.error('Failed to persist channel notification settings', error);
   }
-}
-
-function normaliseChannel(channel: string): string | null {
-  const trimmed = channel.trim();
-  if (!trimmed) return null;
-  return trimmed;
 }
 
 function createChannelNotificationsStore() {
@@ -58,32 +53,26 @@ function createChannelNotificationsStore() {
 
   return {
     subscribe: store.subscribe,
-    setPreference(channel: string, preference: ChannelNotificationPreference) {
-      const key = normaliseChannel(channel);
-      if (!key) return;
+    setPreference(channelId: number, preference: ChannelNotificationPreference) {
       store.update((current) => {
         const next = { ...current };
         if (preference === 'all') {
-          delete next[key];
+          delete next[channelId];
         } else {
-          next[key] = preference;
+          next[channelId] = preference;
         }
         return next;
       });
     },
-    getPreference(channel: string): ChannelNotificationPreference {
-      const key = normaliseChannel(channel);
-      if (!key) return 'all';
+    getPreference(channelId: number): ChannelNotificationPreference {
       const state = get(store);
-      return state[key] ?? 'all';
+      return state[channelId] ?? 'all';
     },
-    clear(channel: string) {
-      const key = normaliseChannel(channel);
-      if (!key) return;
+    clear(channelId: number) {
       store.update((current) => {
-        if (!(key in current)) return current;
+        if (!(channelId in current)) return current;
         const next = { ...current };
-        delete next[key];
+        delete next[channelId];
         return next;
       });
     }

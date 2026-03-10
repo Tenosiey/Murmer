@@ -44,9 +44,9 @@ function createChatStore() {
 
         // Handle notifications
         if (!current || prepared.user !== current) {
-          const channelName = prepared.channel ?? 'general';
+          const chId = prepared.channelId ?? 0;
           const preferences = get(channelNotifications);
-          const preference = preferences[channelName] ?? 'all';
+          const preference = preferences[chId] ?? 'all';
           const mention = current ? containsMention(prepared.text, current) : false;
           const trimmedText = (prepared.text ?? '').trim();
           const shouldNotify =
@@ -195,12 +195,12 @@ function createChatStore() {
 
   /**
    * Load message history for a channel.
-   * @param channel - Channel name
+   * @param channelId - Channel ID
    * @param before - Optional message ID to load messages before
    * @param limit - Number of messages to load (default: 50)
    */
-  function loadHistory(channel: string, before?: number, limit = 50): void {
-    sendRaw({ type: 'load-history', channel, before, limit });
+  function loadHistory(channelId: number, before?: number, limit = 50): void {
+    sendRaw({ type: 'load-history', channelId, before, limit });
   }
 
   /**
@@ -222,12 +222,12 @@ function createChatStore() {
 
   /**
    * Search chat history.
-   * @param channel - Channel to search
+   * @param channelId - Channel ID to search
    * @param query - Search query
    * @param limit - Maximum results (default: 50, max: 200)
    * @returns Promise resolving to matching messages
    */
-  function search(channel: string, query: string, limit = 50): Promise<Message[]> {
+  function search(channelId: number, query: string, limit = 50): Promise<Message[]> {
     if (!wsManager.isConnected()) {
       return Promise.reject(new Error('Not connected to server'));
     }
@@ -237,7 +237,6 @@ function createChatStore() {
       return Promise.resolve([]);
     }
 
-    const trimmedChannel = channel.trim() || 'general';
     const boundedLimit = Math.min(Math.max(Math.floor(limit), 1), MAX_SEARCH_RESULTS);
     const requestId = requestIdCounter++;
 
@@ -252,7 +251,7 @@ function createChatStore() {
 
       const payload = {
         type: 'search-history',
-        channel: trimmedChannel,
+        channelId,
         query: trimmedQuery,
         limit: boundedLimit,
         requestId

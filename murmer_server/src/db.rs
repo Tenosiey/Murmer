@@ -1,8 +1,8 @@
 //! Database connection helpers and functions for loading chat history.
 //!
-//! The server persists all chat messages in a single `messages` table with a
-//! `channel` column to distinguish between channels. These helpers create the
-//! table on startup and provide utility functions to fetch history for clients.
+//! Channels are identified by an auto-incrementing integer `id`. The `name`
+//! column remains for display purposes. Messages reference channels via
+//! `channel_id`.
 
 use std::collections::HashMap;
 
@@ -23,7 +23,7 @@ fn escape_like_pattern(input: &str) -> String {
     escaped
 }
 
-/// Initialize a PostgreSQL [`Client`] and ensure the `messages` table exists.
+/// Initialize a PostgreSQL [`Client`] and ensure the schema exists.
 /// The connection is retried for a few seconds if the database is not ready.
 #[tracing::instrument(skip(db_url))]
 pub async fn init(db_url: &str) -> Result<Client, tokio_postgres::Error> {
@@ -50,13 +50,8 @@ pub async fn init(db_url: &str) -> Result<Client, tokio_postgres::Error> {
 
     client
         .batch_execute(
-            r#"CREATE TABLE IF NOT EXISTS messages (
-    id SERIAL PRIMARY KEY,
-    channel TEXT NOT NULL,
-    content TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS reactions (
-    message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+            r#"CREATE TABLE IF NOT EXISTS reactions (
+    message_id INTEGER NOT NULL,
     user_name TEXT NOT NULL,
     emoji TEXT NOT NULL,
     PRIMARY KEY (message_id, user_name, emoji)
@@ -71,16 +66,6 @@ CREATE TABLE IF NOT EXISTS categories (
     name TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0
 );
-CREATE TABLE IF NOT EXISTS channels (
-    name TEXT PRIMARY KEY,
-    category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL
-);
-CREATE TABLE IF NOT EXISTS voice_channels (
-    name TEXT PRIMARY KEY,
-    quality TEXT NOT NULL DEFAULT 'standard',
-    bitrate INTEGER,
-    category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL
-);
 CREATE TABLE IF NOT EXISTS bots (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -91,7 +76,6 @@ CREATE TABLE IF NOT EXISTS bots (
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
 "#,
         )
         .await
@@ -100,6 +84,98 @@ INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
             e
         })?;
 
+    // Ensure channels table has id-based schema
+    client
+        .batch_execute(
+            r#"
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'channels') THEN
+        CREATE TABLE channels (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL
+        );
+    ELSIF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'channels' AND column_name = 'id') THEN
+        ALTER TABLE channels ADD COLUMN id SERIAL;
+        ALTER TABLE channels DROP CONSTRAINT IF EXISTS channels_pkey;
+        ALTER TABLE channels ADD PRIMARY KEY (id);
+        ALTER TABLE channels ADD CONSTRAINT channels_name_unique UNIQUE (name);
+    END IF;
+END $$;
+"#,
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to migrate channels table: {}", e);
+            e
+        })?;
+
+    // Ensure voice_channels table has id-based schema
+    client
+        .batch_execute(
+            r#"
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'voice_channels') THEN
+        CREATE TABLE voice_channels (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            quality TEXT NOT NULL DEFAULT 'standard',
+            bitrate INTEGER,
+            category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL
+        );
+    ELSIF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'voice_channels' AND column_name = 'id') THEN
+        ALTER TABLE voice_channels ADD COLUMN id SERIAL;
+        ALTER TABLE voice_channels DROP CONSTRAINT IF EXISTS voice_channels_pkey;
+        ALTER TABLE voice_channels ADD PRIMARY KEY (id);
+        ALTER TABLE voice_channels ADD CONSTRAINT voice_channels_name_unique UNIQUE (name);
+    END IF;
+END $$;
+"#,
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to migrate voice_channels table: {}", e);
+            e
+        })?;
+
+    // Ensure messages table uses channel_id instead of channel
+    client
+        .batch_execute(
+            r#"
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'messages') THEN
+        CREATE TABLE messages (
+            id SERIAL PRIMARY KEY,
+            channel_id INTEGER NOT NULL REFERENCES channels(id),
+            content TEXT NOT NULL
+        );
+    ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'messages' AND column_name = 'channel') THEN
+        ALTER TABLE messages ADD COLUMN IF NOT EXISTS channel_id INTEGER;
+        UPDATE messages SET channel_id = c.id FROM channels c WHERE messages.channel = c.name AND messages.channel_id IS NULL;
+        DELETE FROM messages WHERE channel_id IS NULL;
+        ALTER TABLE messages ALTER COLUMN channel_id SET NOT NULL;
+        ALTER TABLE messages DROP COLUMN channel;
+        ALTER TABLE messages ADD CONSTRAINT messages_channel_id_fk FOREIGN KEY (channel_id) REFERENCES channels(id);
+    END IF;
+END $$;
+"#,
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to migrate messages table: {}", e);
+            e
+        })?;
+
+    // Seed the default channel
+    client
+        .execute(
+            "INSERT INTO channels (name) VALUES ('general') ON CONFLICT (name) DO NOTHING",
+            &[],
+        )
+        .await
+        .ok();
+
+    // Legacy migration columns
     client
         .batch_execute(
             "ALTER TABLE roles ADD COLUMN IF NOT EXISTS color TEXT;\n\
@@ -121,10 +197,12 @@ INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
     }
 
     if let Err(e) = client
-        .batch_execute("CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages (channel);")
+        .batch_execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages (channel_id);",
+        )
         .await
     {
-        warn!("Failed to ensure messages channel index: {e}");
+        warn!("Failed to ensure messages channel_id index: {e}");
     }
 
     if let Err(e) = client
@@ -136,6 +214,12 @@ INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
         warn!("Failed to ensure trigram index for message content: {e}");
     }
 
+    // Drop legacy index if it exists
+    client
+        .batch_execute("DROP INDEX IF EXISTS idx_messages_channel;")
+        .await
+        .ok();
+
     Ok(client)
 }
 
@@ -143,32 +227,30 @@ use axum::extract::ws::{Message, WebSocket};
 use futures::SinkExt;
 use serde_json::Value;
 
-/// Fetch a slice of messages from the database.
+/// Fetch a slice of messages from the database for a channel by ID.
 pub async fn fetch_history(
     db: &Client,
-    channel: &str,
+    channel_id: i32,
     before: Option<i64>,
     limit: i64,
 ) -> Result<Vec<(i64, String)>, tokio_postgres::Error> {
     let rows = if let Some(id) = before {
-        // Safely convert i64 to i32 with bounds checking
         let id32 = match i32::try_from(id) {
             Ok(val) => val,
             Err(_) => {
                 error!("Message ID too large for database query: {}", id);
-                // Use a reasonable fallback - return early with empty results
                 return Ok(Vec::new());
             }
         };
         db.query(
-            "SELECT id::bigint, content FROM messages WHERE channel = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
-            &[&channel, &id32, &limit],
+            "SELECT id::bigint, content FROM messages WHERE channel_id = $1 AND id < $2 ORDER BY id DESC LIMIT $3",
+            &[&channel_id, &id32, &limit],
         )
         .await?
     } else {
         db.query(
-            "SELECT id::bigint, content FROM messages WHERE channel = $1 ORDER BY id DESC LIMIT $2",
-            &[&channel, &limit],
+            "SELECT id::bigint, content FROM messages WHERE channel_id = $1 ORDER BY id DESC LIMIT $2",
+            &[&channel_id, &limit],
         )
         .await?
     };
@@ -182,11 +264,11 @@ pub async fn fetch_history(
 pub async fn send_history(
     db: &Client,
     sender: &mut futures::stream::SplitSink<WebSocket, Message>,
-    channel: &str,
+    channel_id: i32,
     before: Option<i64>,
     limit: i64,
 ) {
-    match fetch_history(db, channel, before, limit).await {
+    match fetch_history(db, channel_id, before, limit).await {
         Ok(rows) => {
             let mut ids32 = Vec::new();
             for (id, _) in &rows {
@@ -235,15 +317,15 @@ pub async fn send_history(
 /// Search for messages containing a query string within a channel.
 pub async fn search_messages(
     db: &Client,
-    channel: &str,
+    channel_id: i32,
     query: &str,
     limit: i64,
 ) -> Result<Vec<(i64, String)>, tokio_postgres::Error> {
     let pattern = format!("%{}%", escape_like_pattern(query));
     let rows = db
         .query(
-            "SELECT id::bigint, content FROM messages WHERE channel = $1 AND content ILIKE $2 ESCAPE '\\\\' ORDER BY id DESC LIMIT $3",
-            &[&channel, &pattern, &limit],
+            "SELECT id::bigint, content FROM messages WHERE channel_id = $1 AND content ILIKE $2 ESCAPE '\\\\' ORDER BY id DESC LIMIT $3",
+            &[&channel_id, &pattern, &limit],
         )
         .await?;
     Ok(rows
@@ -327,37 +409,40 @@ pub async fn remove_reaction(
     .map(|_| ())
 }
 
-/// Return the channel a message belongs to, if it exists.
-pub async fn get_message_channel(
+/// Return the channel ID a message belongs to, if it exists.
+pub async fn get_message_channel_id(
     db: &Client,
     message_id: i32,
-) -> Result<Option<String>, tokio_postgres::Error> {
-    db.query_opt("SELECT channel FROM messages WHERE id = $1", &[&message_id])
-        .await
-        .map(|row| row.map(|r| r.get(0)))
+) -> Result<Option<i32>, tokio_postgres::Error> {
+    db.query_opt(
+        "SELECT channel_id FROM messages WHERE id = $1",
+        &[&message_id],
+    )
+    .await
+    .map(|row| row.map(|r| r.get(0)))
 }
 
 /// Metadata for a stored message.
 #[derive(Debug, Clone)]
 pub struct MessageRecord {
-    pub channel: String,
+    pub channel_id: i32,
     pub content: Value,
 }
 
-/// Fetch a message record including its channel and JSON payload.
+/// Fetch a message record including its channel_id and JSON payload.
 pub async fn get_message_record(
     db: &Client,
     message_id: i32,
 ) -> Result<Option<MessageRecord>, tokio_postgres::Error> {
     match db
         .query_opt(
-            "SELECT channel, content FROM messages WHERE id = $1",
+            "SELECT channel_id, content FROM messages WHERE id = $1",
             &[&message_id],
         )
         .await?
     {
         Some(row) => {
-            let channel: String = row.get(0);
+            let channel_id: i32 = row.get(0);
             let raw_content: String = row.get(1);
             let content = match serde_json::from_str::<Value>(&raw_content) {
                 Ok(value) => value,
@@ -366,7 +451,10 @@ pub async fn get_message_record(
                     Value::Null
                 }
             };
-            Ok(Some(MessageRecord { channel, content }))
+            Ok(Some(MessageRecord {
+                channel_id,
+                content,
+            }))
         }
         None => Ok(None),
     }
@@ -479,9 +567,10 @@ pub async fn remove_category(db: &Client, id: i32) -> Result<bool, tokio_postgre
         .map(|count| count > 0)
 }
 
-/// A text channel with its optional category assignment.
+/// A text channel with its integer ID.
 #[derive(Clone)]
 pub struct ChannelRecord {
+    pub id: i32,
     pub name: String,
     pub category_id: Option<i32>,
 }
@@ -490,7 +579,7 @@ pub struct ChannelRecord {
 pub async fn get_channels(db: &Client) -> Vec<ChannelRecord> {
     match db
         .query(
-            "SELECT name, category_id FROM channels ORDER BY name",
+            "SELECT id, name, category_id FROM channels ORDER BY name",
             &[],
         )
         .await
@@ -498,52 +587,89 @@ pub async fn get_channels(db: &Client) -> Vec<ChannelRecord> {
         Ok(rows) => rows
             .into_iter()
             .map(|row| ChannelRecord {
-                name: row.get(0),
-                category_id: row.get(1),
+                id: row.get(0),
+                name: row.get(1),
+                category_id: row.get(2),
             })
             .collect(),
         Err(_) => Vec::new(),
     }
 }
 
-/// Insert a new channel if it does not already exist.
+/// Look up a channel ID by name. Returns `None` if not found.
+pub async fn get_channel_id_by_name(db: &Client, name: &str) -> Option<i32> {
+    db.query_opt("SELECT id FROM channels WHERE name = $1", &[&name])
+        .await
+        .ok()
+        .flatten()
+        .map(|row| row.get(0))
+}
+
+/// Look up a channel record by ID. Returns `None` if not found.
+pub async fn get_channel_by_id(db: &Client, id: i32) -> Option<ChannelRecord> {
+    db.query_opt(
+        "SELECT id, name, category_id FROM channels WHERE id = $1",
+        &[&id],
+    )
+    .await
+    .ok()
+    .flatten()
+    .map(|row| ChannelRecord {
+        id: row.get(0),
+        name: row.get(1),
+        category_id: row.get(2),
+    })
+}
+
+/// Insert a new channel and return its record. Returns None if name already exists.
 pub async fn add_channel(
     db: &Client,
     name: &str,
     category_id: Option<i32>,
-) -> Result<(), tokio_postgres::Error> {
-    db.execute(
-        "INSERT INTO channels (name, category_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-        &[&name, &category_id],
-    )
-    .await
-    .map(|_| ())
+) -> Result<Option<ChannelRecord>, tokio_postgres::Error> {
+    match db
+        .query_opt(
+            "INSERT INTO channels (name, category_id) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING RETURNING id, name, category_id",
+            &[&name, &category_id],
+        )
+        .await?
+    {
+        Some(row) => Ok(Some(ChannelRecord {
+            id: row.get(0),
+            name: row.get(1),
+            category_id: row.get(2),
+        })),
+        None => Ok(None),
+    }
 }
 
 /// Move a text channel to a different category (or none).
 pub async fn move_channel(
     db: &Client,
-    name: &str,
+    id: i32,
     category_id: Option<i32>,
 ) -> Result<bool, tokio_postgres::Error> {
     db.execute(
-        "UPDATE channels SET category_id = $2 WHERE name = $1",
-        &[&name, &category_id],
+        "UPDATE channels SET category_id = $2 WHERE id = $1",
+        &[&id, &category_id],
     )
     .await
     .map(|count| count > 0)
 }
 
-/// Delete an existing channel.
-pub async fn remove_channel(db: &Client, name: &str) -> Result<(), tokio_postgres::Error> {
-    db.execute("DELETE FROM channels WHERE name = $1", &[&name])
+/// Delete an existing channel by ID.
+pub async fn remove_channel(db: &Client, id: i32) -> Result<(), tokio_postgres::Error> {
+    db.execute("DELETE FROM messages WHERE channel_id = $1", &[&id])
+        .await?;
+    db.execute("DELETE FROM channels WHERE id = $1", &[&id])
         .await
         .map(|_| ())
 }
 
-/// Retrieve the list of voice channels.
+/// A voice channel with its integer ID.
 #[derive(Clone)]
 pub struct VoiceChannelRecord {
+    pub id: i32,
     pub name: String,
     pub quality: String,
     pub bitrate: Option<i32>,
@@ -553,7 +679,7 @@ pub struct VoiceChannelRecord {
 pub async fn get_voice_channels(db: &Client) -> Vec<VoiceChannelRecord> {
     match db
         .query(
-            "SELECT name, quality, bitrate, category_id FROM voice_channels ORDER BY name",
+            "SELECT id, name, quality, bitrate, category_id FROM voice_channels ORDER BY name",
             &[],
         )
         .await
@@ -561,42 +687,71 @@ pub async fn get_voice_channels(db: &Client) -> Vec<VoiceChannelRecord> {
         Ok(rows) => rows
             .into_iter()
             .map(|row| VoiceChannelRecord {
-                name: row.get(0),
-                quality: row.get(1),
-                bitrate: row.get(2),
-                category_id: row.get(3),
+                id: row.get(0),
+                name: row.get(1),
+                quality: row.get(2),
+                bitrate: row.get(3),
+                category_id: row.get(4),
             })
             .collect(),
         Err(_) => Vec::new(),
     }
 }
 
-/// Insert a new voice channel if it does not already exist.
+/// Look up a voice channel record by ID. Returns `None` if not found.
+pub async fn get_voice_channel_by_id(db: &Client, id: i32) -> Option<VoiceChannelRecord> {
+    db.query_opt(
+        "SELECT id, name, quality, bitrate, category_id FROM voice_channels WHERE id = $1",
+        &[&id],
+    )
+    .await
+    .ok()
+    .flatten()
+    .map(|row| VoiceChannelRecord {
+        id: row.get(0),
+        name: row.get(1),
+        quality: row.get(2),
+        bitrate: row.get(3),
+        category_id: row.get(4),
+    })
+}
+
+/// Insert a new voice channel and return its record.
 pub async fn add_voice_channel(
     db: &Client,
     name: &str,
     quality: &str,
     bitrate: Option<i32>,
     category_id: Option<i32>,
-) -> Result<(), tokio_postgres::Error> {
-    db.execute(
-        "INSERT INTO voice_channels (name, quality, bitrate, category_id) VALUES ($1, $2, $3, $4) \
-            ON CONFLICT (name) DO NOTHING",
-        &[&name, &quality, &bitrate, &category_id],
-    )
-    .await
-    .map(|_| ())
+) -> Result<Option<VoiceChannelRecord>, tokio_postgres::Error> {
+    match db
+        .query_opt(
+            "INSERT INTO voice_channels (name, quality, bitrate, category_id) VALUES ($1, $2, $3, $4) \
+                ON CONFLICT (name) DO NOTHING RETURNING id, name, quality, bitrate, category_id",
+            &[&name, &quality, &bitrate, &category_id],
+        )
+        .await?
+    {
+        Some(row) => Ok(Some(VoiceChannelRecord {
+            id: row.get(0),
+            name: row.get(1),
+            quality: row.get(2),
+            bitrate: row.get(3),
+            category_id: row.get(4),
+        })),
+        None => Ok(None),
+    }
 }
 
 /// Move a voice channel to a different category (or none).
 pub async fn move_voice_channel(
     db: &Client,
-    name: &str,
+    id: i32,
     category_id: Option<i32>,
 ) -> Result<bool, tokio_postgres::Error> {
     db.execute(
-        "UPDATE voice_channels SET category_id = $2 WHERE name = $1",
-        &[&name, &category_id],
+        "UPDATE voice_channels SET category_id = $2 WHERE id = $1",
+        &[&id, &category_id],
     )
     .await
     .map(|count| count > 0)
@@ -605,21 +760,21 @@ pub async fn move_voice_channel(
 /// Update an existing voice channel configuration.
 pub async fn update_voice_channel(
     db: &Client,
-    name: &str,
+    id: i32,
     quality: &str,
     bitrate: Option<i32>,
 ) -> Result<bool, tokio_postgres::Error> {
     db.execute(
-        "UPDATE voice_channels SET quality = $2, bitrate = $3 WHERE name = $1",
-        &[&name, &quality, &bitrate],
+        "UPDATE voice_channels SET quality = $2, bitrate = $3 WHERE id = $1",
+        &[&id, &quality, &bitrate],
     )
     .await
     .map(|count| count > 0)
 }
 
-/// Delete an existing voice channel.
-pub async fn remove_voice_channel(db: &Client, name: &str) -> Result<(), tokio_postgres::Error> {
-    db.execute("DELETE FROM voice_channels WHERE name = $1", &[&name])
+/// Delete an existing voice channel by ID.
+pub async fn remove_voice_channel(db: &Client, id: i32) -> Result<(), tokio_postgres::Error> {
+    db.execute("DELETE FROM voice_channels WHERE id = $1", &[&id])
         .await
         .map(|_| ())
 }
