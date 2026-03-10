@@ -20,4 +20,3 @@ fn is_case_insensitive_for_standard_roles() {
     assert_eq!(default_color("ADMIN"), Some("#eab308".to_string()));
     assert_eq!(default_color("Admin"), Some("#eab308".to_string()));
 }
-

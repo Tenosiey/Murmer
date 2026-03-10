@@ -15,14 +15,14 @@
 //! Run with `cargo run` or via Docker Compose (`docker compose up --build`).
 use anyhow::{Context, Result};
 use axum::{
-    Router,
     extract::DefaultBodyLimit,
-    http::{HeaderValue, StatusCode, header},
+    http::{header, HeaderValue, StatusCode},
     routing::{get, post},
+    Router,
 };
 use dotenvy::dotenv;
 use murmer_server::{
-    AppState, RateLimiter, VoiceChannelState, admin, config::Config, db, upload, ws,
+    admin, bot, config::Config, db, upload, ws, AppState, RateLimiter, VoiceChannelState,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -32,7 +32,7 @@ use std::{
 use tokio::{
     net::TcpListener,
     signal,
-    sync::{Mutex, broadcast},
+    sync::{broadcast, Mutex},
 };
 use tower::ServiceBuilder;
 use tower_http::{
@@ -130,6 +130,7 @@ async fn main() -> Result<()> {
             )),
         )
         .route("/role", post(admin::set_role))
+        .merge(bot::routes::router())
         .nest_service(
             "/files",
             ServeDir::new(&config.upload_dir).append_index_html_on_directories(false),

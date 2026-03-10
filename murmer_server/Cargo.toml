@@ -24,6 +24,8 @@ subtle = "2.6"
 anyhow = "1"
 dotenvy = "0.15"
 tower = "0.5"
+rand = "0.10.0"
+sha2 = "0.10.9"
 
 [dev-dependencies]
 serial_test = "3"

@@ -1,18 +1,18 @@
 //! WebSocket message handlers.
 
 use super::{constants::*, errors, helpers::*, validation::*};
-use crate::{AppState, VoiceChannelState, db, roles::RoleInfo, security};
+use crate::{bot, db, roles::RoleInfo, security, AppState, VoiceChannelState};
 use axum::{
     extract::{
-        ConnectInfo, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
+        ConnectInfo, State,
     },
     response::IntoResponse,
 };
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use futures::{SinkExt, StreamExt, stream::SplitSink};
+use futures::{stream::SplitSink, SinkExt, StreamExt};
 use serde_json::{Map, Value};
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -51,7 +51,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                             info!("Received message: {text}");
                         }
 
-                        if !authenticated && t != "presence" {
+                        if !authenticated && t != "presence" && t != "bot-presence" {
                             let _ = sender.send(Message::Text(errors::UNAUTHENTICATED.to_string())).await;
                             break;
                         }
@@ -59,6 +59,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                         match t {
                             "presence" => {
                                 if handle_presence(&mut sender, &state, &mut v, &mut authenticated, &mut user_name, &client_ip).await.is_err() {
+                                    break;
+                                }
+                            }
+                            "bot-presence" => {
+                                if handle_bot_presence(&mut sender, &state, &v, &mut authenticated, &mut user_name).await.is_err() {
                                     break;
                                 }
                             }
@@ -346,6 +351,65 @@ async fn handle_presence(
             .await;
         return Err(());
     }
+
+    Ok(())
+}
+
+/// Handle bot authentication via token.
+async fn handle_bot_presence(
+    sender: &mut SplitSink<WebSocket, Message>,
+    state: &Arc<AppState>,
+    v: &Value,
+    authenticated: &mut bool,
+    user_name: &mut Option<String>,
+) -> Result<(), ()> {
+    let token = match v.get("token").and_then(|t| t.as_str()) {
+        Some(t) => t,
+        None => {
+            let _ = sender
+                .send(Message::Text(
+                    r#"{"type":"error","message":"missing-bot-token"}"#.to_string(),
+                ))
+                .await;
+            return Err(());
+        }
+    };
+
+    let hash = bot::models::hash_token(token);
+    let record = match bot::db::get_bot_by_token_hash(&state.db, &hash).await {
+        Ok(Some(b)) if b.active => b,
+        _ => {
+            let _ = sender
+                .send(Message::Text(
+                    r#"{"type":"error","message":"invalid-bot-token"}"#.to_string(),
+                ))
+                .await;
+            return Err(());
+        }
+    };
+
+    *authenticated = true;
+    let bot_name = record.name.clone();
+
+    state.users.lock().await.insert(bot_name.clone());
+    state.known_users.lock().await.insert(bot_name.clone());
+    state
+        .statuses
+        .lock()
+        .await
+        .insert(bot_name.clone(), "online".to_string());
+
+    broadcast_status(state, &bot_name, "online").await;
+    broadcast_users(state).await;
+    *user_name = Some(bot_name);
+
+    send_all_roles(state, sender).await;
+    send_all_statuses(state, sender).await;
+    send_channels(state, sender).await;
+    send_voice_channels(state, sender).await;
+    send_users(state, sender).await;
+    send_all_voice(state, sender).await;
+    db::send_history(&state.db, sender, "general", None, DEFAULT_HISTORY_LIMIT).await;
 
     Ok(())
 }

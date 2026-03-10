@@ -5,10 +5,10 @@
 //! fetch the image later.
 
 use axum::{
-    Json,
     extract::{Multipart, State},
     http::StatusCode,
     response::{IntoResponse, Response},
+    Json,
 };
 use sanitize_filename::sanitize;
 use std::sync::Arc;

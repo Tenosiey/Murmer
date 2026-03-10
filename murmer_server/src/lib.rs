@@ -4,6 +4,7 @@
 //! them to exercise rate limiting and validation logic.
 
 pub mod admin;
+pub mod bot;
 pub mod config;
 pub mod db;
 pub mod roles;
@@ -17,7 +18,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use tokio::sync::{Mutex, broadcast};
+use tokio::sync::{broadcast, Mutex};
 
 pub use roles::RoleInfo;
 

@@ -81,6 +81,16 @@ CREATE TABLE IF NOT EXISTS voice_channels (
     bitrate INTEGER,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL
 );
+CREATE TABLE IF NOT EXISTS bots (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    owner_key TEXT NOT NULL DEFAULT '',
+    permissions INTEGER NOT NULL DEFAULT 0,
+    description TEXT NOT NULL DEFAULT '',
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 INSERT INTO channels (name) VALUES ('general') ON CONFLICT DO NOTHING;
 "#,
         )
