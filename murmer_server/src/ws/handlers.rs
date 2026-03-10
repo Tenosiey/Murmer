@@ -56,7 +56,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                         if t.starts_with("voice-") {
                             debug!("Received voice message: {t}");
                         } else {
-                            info!("Received message: {text}");
+                            info!("Received message type: {t}");
                         }
 
                         if !authenticated && t != "presence" && t != "bot-presence" {
@@ -129,10 +129,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: Socke
                                 handle_ping(&mut sender, &v).await;
                             }
                             "voice-join" => {
-                                handle_voice_join(&state, &v, &mut voice_channel, &text).await;
+                                handle_voice_join(&state, &v, &mut voice_channel, &user_name).await;
                             }
                             "voice-leave" => {
-                                handle_voice_leave(&state, &v, &mut voice_channel, &text).await;
+                                handle_voice_leave(&state, &v, &mut voice_channel, &user_name).await;
                             }
                             "voice-offer" | "voice-answer" | "voice-candidate" => {
                                 let _ = state.tx.send(text.to_string());
@@ -1181,18 +1181,29 @@ async fn handle_chat(
     channel_id: i32,
     user_name: &Option<String>,
 ) {
-    #[allow(clippy::collapsible_if)]
-    if let Some(user) = user_name {
-        if !security::check_message_rate_limit(&state.rate_limiter, user).await {
+    let user = match user_name {
+        Some(u) => u,
+        None => return,
+    };
+
+    if !security::check_message_rate_limit(&state.rate_limiter, user).await {
+        let _ = sender
+            .send(Message::Text(errors::MESSAGE_RATE_LIMIT.to_string()))
+            .await;
+        return;
+    }
+
+    if let Some(text) = v.get("text").and_then(|t| t.as_str()) {
+        if text.len() > MAX_MESSAGE_LENGTH {
             let _ = sender
-                .send(Message::Text(errors::MESSAGE_RATE_LIMIT.to_string()))
+                .send(Message::Text(errors::MESSAGE_TOO_LONG.to_string()))
                 .await;
             return;
         }
     }
 
+    v["user"] = Value::String(user.clone());
     v["channelId"] = Value::from(channel_id);
-    // Remove legacy field if present
     if let Some(map) = v.as_object_mut() {
         map.remove("channel");
     }
@@ -1576,12 +1587,10 @@ async fn handle_voice_join(
     state: &Arc<AppState>,
     v: &Value,
     voice_channel: &mut Option<i32>,
-    text: &str,
+    user_name: &Option<String>,
 ) {
-    if let (Some(u), Some(ch_id)) = (
-        v.get("user").and_then(|u| u.as_str()),
-        v.get("channelId").and_then(|c| c.as_i64()),
-    ) {
+    let Some(u) = user_name.as_deref() else { return };
+    if let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) {
         let ch_id = ch_id as i32;
         let mut map = state.voice_channels.lock().await;
         for info in map.values_mut() {
@@ -1593,8 +1602,13 @@ async fn handle_voice_join(
         }
         drop(map);
         broadcast_voice(state, ch_id).await;
+        let msg = serde_json::json!({
+            "type": "voice-join",
+            "user": u,
+            "channelId": ch_id,
+        });
+        let _ = state.tx.send(msg.to_string());
     }
-    let _ = state.tx.send(text.to_string());
 }
 
 /// Handle voice leave request.
@@ -1602,12 +1616,10 @@ async fn handle_voice_leave(
     state: &Arc<AppState>,
     v: &Value,
     voice_channel: &mut Option<i32>,
-    text: &str,
+    user_name: &Option<String>,
 ) {
-    if let (Some(u), Some(ch_id)) = (
-        v.get("user").and_then(|u| u.as_str()),
-        v.get("channelId").and_then(|c| c.as_i64()),
-    ) {
+    let Some(u) = user_name.as_deref() else { return };
+    if let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) {
         let ch_id = ch_id as i32;
         let mut map = state.voice_channels.lock().await;
         if let Some(info) = map.get_mut(&ch_id) {
@@ -1618,8 +1630,13 @@ async fn handle_voice_leave(
         if *voice_channel == Some(ch_id) {
             *voice_channel = None;
         }
+        let msg = serde_json::json!({
+            "type": "voice-leave",
+            "user": u,
+            "channelId": ch_id,
+        });
+        let _ = state.tx.send(msg.to_string());
     }
-    let _ = state.tx.send(text.to_string());
 }
 
 /// Handle set-role request from an Owner.
