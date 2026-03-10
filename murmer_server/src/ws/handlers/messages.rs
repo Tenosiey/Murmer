@@ -1,6 +1,7 @@
 //! Handlers for chat messages, message deletion, reactions, history and search.
 
 use crate::ws::{constants::*, errors, helpers::*};
+#[allow(unused_imports)]
 use crate::{db, security, AppState};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -172,16 +173,28 @@ pub(super) async fn handle_chat(
     channel_id: i32,
     user_name: &Option<String>,
 ) {
-    #[allow(clippy::collapsible_if)]
-    if let Some(user) = user_name {
-        if !security::check_message_rate_limit(&state.rate_limiter, user).await {
+    let user = match user_name {
+        Some(u) => u,
+        None => return,
+    };
+
+    if !security::check_message_rate_limit(&state.rate_limiter, user).await {
+        let _ = sender
+            .send(Message::Text(errors::MESSAGE_RATE_LIMIT.to_string()))
+            .await;
+        return;
+    }
+
+    if let Some(text) = v.get("text").and_then(|t| t.as_str()) {
+        if text.len() > MAX_MESSAGE_LENGTH {
             let _ = sender
-                .send(Message::Text(errors::MESSAGE_RATE_LIMIT.to_string()))
+                .send(Message::Text(errors::MESSAGE_TOO_LONG.to_string()))
                 .await;
             return;
         }
     }
 
+    v["user"] = Value::String(user.clone());
     v["channelId"] = Value::from(channel_id);
     if let Some(map) = v.as_object_mut() {
         map.remove("channel");
