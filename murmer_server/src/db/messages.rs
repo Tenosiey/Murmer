@@ -102,10 +102,8 @@ pub async fn send_history(
                     msgs.push(val);
                 }
             }
-            if !msgs.is_empty() {
-                let payload = serde_json::json!({"type": "history", "messages": msgs});
-                let _ = sender.send(Message::Text(payload.to_string())).await;
-            }
+            let payload = serde_json::json!({"type": "history", "messages": msgs});
+            let _ = sender.send(Message::Text(payload.to_string())).await;
         }
         Err(e) => error!("db history error: {e}"),
     }

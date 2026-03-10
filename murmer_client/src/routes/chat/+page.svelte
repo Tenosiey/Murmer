@@ -281,6 +281,7 @@
   let inVoice = false;
   let settingsOpen = false;
   let currentChatChannelId: number = 0;
+  let initialChannelSet = false;
   let currentVoiceChannelId: number | null = null;
   let currentTopic = '';
   $: currentChatChannelName = $channels.find(c => c.id === currentChatChannelId)?.name ?? '';
@@ -310,7 +311,12 @@
 
   $: if ($channels.length && !$channels.some((c) => c.id === currentChatChannelId)) {
     currentChatChannelId = $channels[0].id;
-    chat.sendRaw({ type: 'join', channelId: currentChatChannelId });
+    loadingHistory = false;
+    if (initialChannelSet) {
+      chat.sendRaw({ type: 'join', channelId: currentChatChannelId });
+    } else {
+      initialChannelSet = true;
+    }
   }
 
   $: currentTopic = $channelTopics[currentChatChannelId] ?? '';
@@ -767,6 +773,7 @@
     currentChatChannelId = id;
     statusMenuOpen = false;
     notificationMenuOpen = false;
+    loadingHistory = false;
     chat.clear();
     chat.sendRaw({ type: 'join', channelId: id });
     scrollBottom();
@@ -1178,12 +1185,13 @@
   async function scrollBottom() {
     await tick();
     if (messagesContainer) {
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      setScrollTop(messagesContainer.scrollHeight);
     }
   }
   let lastLength = 0;
   let loadingHistory = false;
   let prevHeight = 0;
+  let programmaticScroll = false;
 
   function earliestId(): number | null {
     let min: number | null = null;
@@ -1195,8 +1203,15 @@
     return min;
   }
 
+  function setScrollTop(value: number) {
+    if (!messagesContainer) return;
+    programmaticScroll = true;
+    messagesContainer.scrollTop = value;
+    requestAnimationFrame(() => { programmaticScroll = false; });
+  }
+
   function onScroll() {
-    if (!messagesContainer || loadingHistory) return;
+    if (!messagesContainer || loadingHistory || programmaticScroll) return;
     if (messagesContainer.scrollTop < 100) {
       const id = earliestId();
       if (id !== null && id > 1) {
@@ -1210,7 +1225,7 @@
   const handleHistory = async () => {
     await tick();
     if (messagesContainer) {
-      messagesContainer.scrollTop = messagesContainer.scrollHeight - prevHeight;
+      setScrollTop(messagesContainer.scrollHeight - prevHeight);
     }
     loadingHistory = false;
     if (pendingScrollToMessage !== null) {
@@ -1247,7 +1262,7 @@
       if (filteredLength !== lastLength) {
         lastLength = filteredLength;
         if (!loadingHistory && !handledPending) {
-          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+          setScrollTop(messagesContainer.scrollHeight);
         }
       }
     }
