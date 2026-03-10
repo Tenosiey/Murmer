@@ -1622,6 +1622,9 @@
               >
                 <span class="timestamp">{block.message.time}</span>
                 <span class="username">{block.message.user}</span>
+                {#if block.message.bot}
+                  <span class="bot-badge">BOT</span>
+                {/if}
                 {#if block.message.user && $roles[block.message.user]}
                   <span
                     class="role"
@@ -2354,6 +2357,23 @@
     font-size: 0.75rem;
     font-weight: 600;
     align-self: center;
+  }
+
+  .bot-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--radius-xs, 4px);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: color-mix(in srgb, #06b6d4 22%, transparent);
+    color: #22d3ee;
+    border: 1px solid color-mix(in srgb, #06b6d4 35%, transparent);
+    align-self: center;
+    line-height: 1.3;
   }
 
   .content-wrapper {

@@ -29,7 +29,7 @@
 mod constants;
 mod errors;
 mod handlers;
-mod helpers;
+pub mod helpers;
 mod validation;
 
 pub use handlers::ws_handler;

@@ -3,7 +3,7 @@
 //! This module handles loading and validating configuration from environment variables.
 
 use anyhow::{Context, Result};
-use axum::http::{HeaderValue, Method, header};
+use axum::http::{header, HeaderValue, Method};
 use std::{env, net::SocketAddr, path::PathBuf};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
@@ -95,7 +95,13 @@ impl Config {
             let allowed = AllowOrigin::list(origins.clone());
             CorsLayer::new()
                 .allow_origin(allowed)
-                .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::PATCH,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                ])
                 .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
         })
     }
