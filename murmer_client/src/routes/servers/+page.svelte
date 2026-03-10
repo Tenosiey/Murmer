@@ -243,7 +243,7 @@
           <article class="server-card surface-card">
             <div class="status">
               <StatusDot online={$serverStatus[server.url]} />
-              <span class="status-label">{$serverStatus[server.url] ? 'Online' : 'Checking...'}</span>
+              <span class="status-label">{$serverStatus[server.url] === null ? 'Checking...' : $serverStatus[server.url] ? 'Online' : 'Offline'}</span>
             </div>
             <h3>{server.name}</h3>
             <p class="meta" title={server.url}>{server.url}</p>

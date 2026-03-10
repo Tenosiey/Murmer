@@ -8,7 +8,6 @@ pub fn run() -> tauri::Result<()> {
         tray::{TrayIconBuilder, TrayIconEvent},
         Manager,
     };
-    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
     use tauri_plugin_window_state::Builder as WindowStateBuilder;
     use tracing_subscriber::EnvFilter;
 
@@ -50,28 +49,6 @@ pub fn run() -> tauri::Result<()> {
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
-            }
-        })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let window_clone = window.clone();
-                api.prevent_close();
-                window
-                    .app_handle()
-                    .dialog()
-                    .message("Do you want to minimize or close the client?")
-                    .title("Quit?")
-                    .buttons(MessageDialogButtons::OkCancelCustom(
-                        "Minimize".into(),
-                        "Close".into(),
-                    ))
-                    .show(move |minimize| {
-                        if minimize {
-                            let _ = window_clone.hide();
-                        } else {
-                            window_clone.app_handle().exit(0);
-                        }
-                    });
             }
         })
         .run(tauri::generate_context!())?;

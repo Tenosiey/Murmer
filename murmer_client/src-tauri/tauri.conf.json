@@ -26,7 +26,7 @@
                         "iconPath": "icons/icon.png"
                 },
                 "security": {
-                        "csp": "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ws://localhost:3001 http://localhost:3001; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self';",
+                        "csp": "default-src 'self'; img-src 'self' http: https: data: blob:; media-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' http: https: ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self';",
                         "dangerousDisableAssetCspModification": false
                 }
         },
