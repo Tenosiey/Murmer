@@ -23,7 +23,7 @@ function createStatusStore() {
 
   async function check(url: string): Promise<boolean> {
     try {
-      const res = await fetch(toHttp(url), { method: 'HEAD' });
+      const res = await fetch(toHttp(url), { method: 'HEAD', mode: 'no-cors' });
       return !!res;
     } catch {
       return false;
