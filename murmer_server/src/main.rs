@@ -204,7 +204,9 @@ async fn cli_set_role(args: &[String]) -> Result<()> {
 
     let db_url = std::env::var("DATABASE_URL")
         .map_err(|_| anyhow::anyhow!("DATABASE_URL environment variable is required"))?;
-    let client = db::init(&db_url).await.context("failed to connect to database")?;
+    let client = db::init(&db_url)
+        .await
+        .context("failed to connect to database")?;
 
     db::set_role(&client, key, role, color.as_deref())
         .await

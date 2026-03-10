@@ -72,12 +72,10 @@ pub const VOICE_CHANNEL_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"voice-channel-update-failed"}"#;
 
 /// User lacks permission to manage roles.
-pub const ROLE_PERMISSION_DENIED: &str =
-    r#"{"type":"error","message":"role-permission-denied"}"#;
+pub const ROLE_PERMISSION_DENIED: &str = r#"{"type":"error","message":"role-permission-denied"}"#;
 
 /// Target user for role change is not connected.
-pub const ROLE_TARGET_NOT_FOUND: &str =
-    r#"{"type":"error","message":"role-target-not-found"}"#;
+pub const ROLE_TARGET_NOT_FOUND: &str = r#"{"type":"error","message":"role-target-not-found"}"#;
 
 /// Failed to update role in database.
 pub const ROLE_UPDATE_FAILED: &str = r#"{"type":"error","message":"role-update-failed"}"#;
@@ -90,8 +88,7 @@ pub const CATEGORY_CREATION_FAILED: &str =
     r#"{"type":"error","message":"category-creation-failed"}"#;
 
 /// Failed to rename category in database.
-pub const CATEGORY_RENAME_FAILED: &str =
-    r#"{"type":"error","message":"category-rename-failed"}"#;
+pub const CATEGORY_RENAME_FAILED: &str = r#"{"type":"error","message":"category-rename-failed"}"#;
 
 /// Failed to delete category from database.
 pub const CATEGORY_DELETION_FAILED: &str =

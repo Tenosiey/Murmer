@@ -170,11 +170,7 @@ pub async fn broadcast_remove_channel(state: &Arc<AppState>, channel_id: i32) {
 }
 
 /// Broadcast to all clients that a new voice channel was created.
-pub async fn broadcast_new_voice_channel(
-    state: &Arc<AppState>,
-    id: i32,
-    info: &VoiceChannelState,
-) {
+pub async fn broadcast_new_voice_channel(state: &Arc<AppState>, id: i32, info: &VoiceChannelState) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "voice-channel-add",
         "channelId": id,
@@ -263,9 +259,7 @@ pub async fn send_voice_channels(
 ) {
     let mut entries: Vec<(i32, VoiceChannelState)> = {
         let map = state.voice_channels.lock().await;
-        map.iter()
-            .map(|(id, info)| (*id, info.clone()))
-            .collect()
+        map.iter().map(|(id, info)| (*id, info.clone())).collect()
     };
     entries.sort_by(|a, b| a.1.name.cmp(&b.1.name));
     let channels: Vec<Value> = entries

@@ -480,8 +480,7 @@ async fn send_message(
                             "id": id,
                             "channelId": ch_id,
                         });
-                        let chan =
-                            ws::helpers::get_or_create_channel(&state_clone, ch_id).await;
+                        let chan = ws::helpers::get_or_create_channel(&state_clone, ch_id).await;
                         let _ = chan.send(payload.to_string());
                     }
                     Ok(false) => {}
