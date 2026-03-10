@@ -418,7 +418,6 @@ async fn send_message(
         "user": bot.name,
         "text": text,
         "timestamp": now.to_rfc3339(),
-        "time": now.format("%H:%M:%S").to_string(),
         "channelId": channel_id,
         "bot": true,
         "reactions": {},
