@@ -1,9 +1,9 @@
 use murmer_server::{
-    RateLimiter,
     security::{
         check_and_store_nonce, check_auth_rate_limit, check_message_rate_limit,
         validate_channel_name, validate_timestamp, validate_user_name,
     },
+    RateLimiter,
 };
 use serial_test::serial;
 use std::time::Duration;
