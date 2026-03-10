@@ -109,6 +109,7 @@ async fn main() -> Result<()> {
         roles: Arc::new(Mutex::new(HashMap::new())),
         statuses: Arc::new(Mutex::new(HashMap::new())),
         user_keys: Arc::new(Mutex::new(HashMap::new())),
+        active_screen_shares: Arc::new(Mutex::new(HashMap::new())),
         upload_dir: config.upload_dir.clone(),
         password: config.password.clone(),
         admin_token: config.admin_token.clone(),

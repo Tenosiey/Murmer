@@ -62,6 +62,19 @@ chat.on('screenshare-start', (msg: Message) => {
   }
 });
 
+chat.on('screenshare-active', (msg: Message) => {
+  const channelId = (msg as any).channelId as number;
+  const users = (msg as any).users as string[];
+
+  if (typeof channelId === 'number' && Array.isArray(users)) {
+    activeScreenShares.update((shares) => {
+      const existing = shares[channelId] || [];
+      const merged = [...new Set([...existing, ...users])];
+      return { ...shares, [channelId]: merged };
+    });
+  }
+});
+
 chat.on('screenshare-stop', (msg: Message) => {
   const user = msg.user as string;
   const channelId = (msg as any).channelId as number;

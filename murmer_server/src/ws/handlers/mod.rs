@@ -134,7 +134,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 handle_ping(&mut sender, &v).await;
                             }
                             "voice-join" => {
-                                handle_voice_join(&state, &v, &mut voice_channel, &user_name).await;
+                                handle_voice_join(&state, &mut sender, &v, &mut voice_channel, &user_name).await;
                             }
                             "voice-leave" => {
                                 handle_voice_leave(&state, &v, &mut voice_channel, &user_name).await;
@@ -142,8 +142,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "voice-offer" | "voice-answer" | "voice-candidate" => {
                                 let _ = state.tx.send(text.to_string());
                             }
-                            "screenshare-start" | "screenshare-stop"
-                            | "screenshare-offer" | "screenshare-answer" | "screenshare-candidate" => {
+                            "screenshare-start" => {
+                                handle_screenshare_start(&state, &v).await;
+                                let _ = state.tx.send(text.to_string());
+                            }
+                            "screenshare-stop" => {
+                                handle_screenshare_stop(&state, &v).await;
+                                let _ = state.tx.send(text.to_string());
+                            }
+                            "screenshare-offer" | "screenshare-answer" | "screenshare-candidate" => {
                                 let _ = state.tx.send(text.to_string());
                             }
                             "set-role" => {
@@ -246,6 +253,7 @@ async fn handle_ping(sender: &mut SplitSink<WebSocket, Message>, v: &Value) {
 /// Handle voice join request.
 async fn handle_voice_join(
     state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
     v: &Value,
     voice_channel: &mut Option<i32>,
     user_name: &Option<String>,
@@ -271,6 +279,8 @@ async fn handle_voice_join(
             "channelId": ch_id,
         });
         let _ = state.tx.send(msg.to_string());
+
+        send_active_screen_shares(state, sender, ch_id).await;
     }
 }
 
@@ -301,6 +311,66 @@ async fn handle_voice_leave(
             "channelId": ch_id,
         });
         let _ = state.tx.send(msg.to_string());
+    }
+}
+
+/// Track a new screen share in application state.
+async fn handle_screenshare_start(state: &Arc<AppState>, v: &Value) {
+    let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
+        return;
+    };
+    let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) else {
+        return;
+    };
+    state
+        .active_screen_shares
+        .lock()
+        .await
+        .entry(ch_id as i32)
+        .or_default()
+        .insert(user.to_string());
+}
+
+/// Remove a screen share from application state.
+async fn handle_screenshare_stop(state: &Arc<AppState>, v: &Value) {
+    let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
+        return;
+    };
+    let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) else {
+        return;
+    };
+    let ch_id = ch_id as i32;
+    let mut shares = state.active_screen_shares.lock().await;
+    if let Some(set) = shares.get_mut(&ch_id) {
+        set.remove(user);
+        if set.is_empty() {
+            shares.remove(&ch_id);
+        }
+    }
+}
+
+/// Send active screen shares for a voice channel to a single client.
+async fn send_active_screen_shares(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    channel_id: i32,
+) {
+    let users: Vec<String> = {
+        let shares = state.active_screen_shares.lock().await;
+        shares
+            .get(&channel_id)
+            .map(|set| set.iter().cloned().collect())
+            .unwrap_or_default()
+    };
+    if users.is_empty() {
+        return;
+    }
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "screenshare-active",
+        "channelId": channel_id,
+        "users": users,
+    })) {
+        let _ = sender.send(Message::Text(msg)).await;
     }
 }
 
@@ -461,6 +531,34 @@ async fn handle_disconnect(state: &Arc<AppState>, user_name: Option<String>) {
 
         if let Some(ch_id) = ch_to_broadcast {
             broadcast_voice(state, ch_id).await;
+        }
+
+        // Clean up any active screen shares owned by the disconnecting user.
+        {
+            let mut shares = state.active_screen_shares.lock().await;
+            let channels_with_share: Vec<i32> = shares
+                .iter()
+                .filter(|(_, users)| users.contains(&name))
+                .map(|(ch_id, _)| *ch_id)
+                .collect();
+            for ch_id in &channels_with_share {
+                if let Some(set) = shares.get_mut(ch_id) {
+                    set.remove(&name);
+                    if set.is_empty() {
+                        shares.remove(ch_id);
+                    }
+                }
+            }
+            drop(shares);
+            for ch_id in channels_with_share {
+                if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+                    "type": "screenshare-stop",
+                    "user": name,
+                    "channelId": ch_id,
+                })) {
+                    let _ = state.tx.send(msg);
+                }
+            }
         }
 
         state
