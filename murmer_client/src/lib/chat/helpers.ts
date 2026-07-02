@@ -1,4 +1,4 @@
-import type { Message, VoiceChannelInfo } from '../types';
+import type { Message, UserStatus, VoiceChannelInfo } from '../types';
 import { extractLinks } from '../link-preview';
 import { VOICE_QUALITY_PRESETS, DEFAULT_VOICE_PRESET } from './constants';
 
@@ -171,6 +171,14 @@ export function reactionEntries(
   return Object.entries(msg.reactions ?? {})
     .map(([emoji, users]) => ({ emoji, users }))
     .filter((entry) => entry.users.length > 0);
+}
+
+export function ensureStatus(
+  map: Record<string, UserStatus>,
+  user: string,
+  fallback: UserStatus = 'offline'
+): UserStatus {
+  return (map[user] ?? fallback) as UserStatus;
 }
 
 export function notificationButtonIcon(value: string): string {

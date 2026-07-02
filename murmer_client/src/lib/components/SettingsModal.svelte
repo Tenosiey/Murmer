@@ -301,7 +301,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1200;
+    z-index: var(--z-modal);
     backdrop-filter: blur(16px);
     animation: fadeIn 0.24s ease-out;
   }
@@ -331,7 +331,7 @@
 
   .modal-header h2 {
     margin: 0;
-    font-size: 1.3rem;
+    font-size: var(--text-xl);
     letter-spacing: -0.01em;
   }
 
@@ -387,16 +387,16 @@
     align-items: center;
     font-weight: 600;
     color: var(--color-on-surface);
-    font-size: 0.92rem;
+    font-size: var(--text-md);
   }
 
   .setting-value {
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     color: var(--color-secondary);
   }
 
   .setting-description {
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     color: var(--color-muted);
     line-height: 1.5;
   }
@@ -417,7 +417,7 @@
     top: 50%;
     transform: translateY(-50%);
     background: color-mix(in srgb, var(--color-surface-raised) 86%, transparent);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     border: 1px solid var(--color-surface-outline);
     pointer-events: none;
   }
@@ -429,7 +429,7 @@
     top: 50%;
     transform: translateY(-50%);
     background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     pointer-events: none;
     z-index: 1;
   }
@@ -500,7 +500,7 @@
     background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
     color: var(--color-muted);
     font-family: 'Courier New', Courier, monospace;
-    font-size: 0.78rem;
+    font-size: var(--text-sm);
     cursor: text;
     user-select: all;
   }
@@ -576,7 +576,7 @@
   }
 
   .update-message {
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     color: var(--color-muted);
   }
 

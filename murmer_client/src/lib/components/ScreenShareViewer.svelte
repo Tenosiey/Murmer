@@ -113,18 +113,19 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 10000;
+    z-index: var(--z-top);
     backdrop-filter: blur(4px);
   }
 
   .screenshare-container {
-    background: var(--bg-primary, #1e1e1e);
-    border-radius: 12px;
+    background: var(--color-surface-elevated);
+    border: 1px solid var(--color-surface-outline);
+    border-radius: var(--radius-lg);
     max-width: 95vw;
     max-height: 95vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
   }
 
@@ -133,15 +134,15 @@
     justify-content: space-between;
     align-items: center;
     padding: 1rem 1.5rem;
-    background: var(--bg-secondary, #2a2a2a);
-    border-bottom: 1px solid var(--border-color, #404040);
+    background: var(--color-surface-raised);
+    border-bottom: 1px solid var(--color-surface-outline);
   }
 
   .screenshare-header h3 {
     margin: 0;
-    font-size: 1.1rem;
+    font-size: var(--text-lg);
     font-weight: 600;
-    color: var(--text-primary, #ffffff);
+    color: var(--color-on-surface);
   }
 
   .screenshare-controls {
@@ -152,19 +153,19 @@
   .screenshare-controls button {
     background: transparent;
     border: none;
-    color: var(--text-secondary, #b0b0b0);
+    color: var(--color-muted);
     cursor: pointer;
     padding: 0.5rem;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: all var(--transition);
   }
 
   .screenshare-controls button:hover {
-    background: var(--bg-hover, #3a3a3a);
-    color: var(--text-primary, #ffffff);
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    color: var(--color-on-surface);
   }
 
   .screenshare-controls button svg {

@@ -8,68 +8,55 @@
   import { chat } from '$lib/stores/chat';
   import { roles } from '$lib/stores/roles';
   import { session } from '$lib/stores/session';
-  import { voice, voiceStats } from '$lib/stores/voice';
+  import { voice } from '$lib/stores/voice';
   import { selectedServer, servers } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
-  import { allUsers, offlineUsers } from '$lib/stores/users';
-  import { voiceUsers } from '$lib/stores/voiceUsers';
-  import { volume, outputDeviceId, outputMuted, microphoneMuted, userVolumes, voiceMode, voiceActivity, isPttActive } from '$lib/stores/settings';
-  import { remoteSpeaking, setRemoteSpeaking } from '$lib/stores/voiceSpeaking';
+  import { offlineUsers } from '$lib/stores/users';
+  import { volume, outputDeviceId, outputMuted, microphoneMuted, userVolumes } from '$lib/stores/settings';
+  import { setRemoteSpeaking } from '$lib/stores/voiceSpeaking';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
-  import ConnectionBars from '$lib/components/ConnectionBars.svelte';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
-  import PingDot from '$lib/components/PingDot.svelte';
   import LinkPreview from '$lib/components/LinkPreview.svelte';
   import ContextMenu from '$lib/components/ContextMenu.svelte';
+  import SearchOverlay from '$lib/components/SearchOverlay.svelte';
+  import HelpOverlay from '$lib/components/HelpOverlay.svelte';
+  import VolumeMenu from '$lib/components/VolumeMenu.svelte';
+  import ChannelSidebar from '$lib/components/chat/ChannelSidebar.svelte';
+  import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
+  import PinnedBar from '$lib/components/chat/PinnedBar.svelte';
+  import UserList from '$lib/components/chat/UserList.svelte';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { categories } from '$lib/stores/categories';
-  import type { ChannelInfo, CategoryInfo } from '$lib/types';
+  import type { CategoryInfo } from '$lib/types';
   import { leftSidebarWidth, rightSidebarWidth, focusMode } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
-  import { theme } from '$lib/stores/theme';
-  import { statuses, STATUS_LABELS, STATUS_EMOJIS, USER_STATUS_VALUES } from '$lib/stores/status';
+  import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
   import { pinned } from '$lib/stores/pins';
   import type { PinnedEntry } from '$lib/stores/pins';
-  import { channelNotifications, type ChannelNotificationPreference } from '$lib/stores/channelNotifications';
-  import { activeScreenShares, screenSharePeers, viewScreenShare, leaveScreenShareAsViewer } from '$lib/stores/screenShare';
-  import ScreenShareControls from '$lib/components/ScreenShareControls.svelte';
+  import { screenSharePeers, viewScreenShare, leaveScreenShareAsViewer } from '$lib/stores/screenShare';
   import ScreenShareViewer from '$lib/components/ScreenShareViewer.svelte';
   import { loadKeyPair, sign } from '$lib/keypair';
   import { renderMarkdown } from '$lib/markdown';
-  import type { Message, UserStatus, VoiceChannelInfo, ScreenSharePeer } from '$lib/types';
+  import type { Message, UserStatus, ScreenSharePeer } from '$lib/types';
   import {
     pingToStrength,
     buildMessageBlocks,
     describeDuration,
     ephemeralInfo,
-    formatVoiceQuality,
     promptVoicePreset,
     reactionEntries,
-    notificationButtonIcon,
     type MessageBlock
   } from '$lib/chat/helpers';
   import {
     MODERATOR_ROLES,
     MESSAGE_INPUT_MAX_HEIGHT,
-    PIN_PREVIEW_LIMIT,
     MIN_EPHEMERAL_SECONDS,
     MAX_EPHEMERAL_SECONDS,
-    VOICE_QUALITY_PRESETS,
-    NOTIFICATION_OPTIONS
+    VOICE_QUALITY_PRESETS
   } from '$lib/chat/constants';
-
-  const statusOptions: Array<{ value: UserStatus; label: string; emoji: string }> =
-    USER_STATUS_VALUES.map((value) => ({
-      value,
-      label: STATUS_LABELS[value],
-      emoji: STATUS_EMOJIS[value]
-    }));
-  import SearchOverlay from '$lib/components/SearchOverlay.svelte';
-  import HelpOverlay from '$lib/components/HelpOverlay.svelte';
-  import VolumeMenu from '$lib/components/VolumeMenu.svelte';
 
   let serverStrength = 0;
   $: serverStrength = pingToStrength($ping);
@@ -82,16 +69,7 @@
   let menuOpen = false;
   let menuX = 0;
   let menuY = 0;
-  let statusMenuOpen = false;
-  let statusMenuButton: HTMLButtonElement | null = null;
-  let statusMenuElement: HTMLDivElement | null = null;
   let statusMap: Record<string, UserStatus> = {};
-
-  let notificationMenuOpen = false;
-  let notificationMenuButton: HTMLButtonElement | null = null;
-  let notificationMenuElement: HTMLDivElement | null = null;
-  let currentNotificationPreference: ChannelNotificationPreference = 'all';
-  let notificationMenuLabel = 'All messages';
 
   let pinnedEntries: PinnedEntry[] = [];
   let highlightedMessageId: number | null = null;
@@ -186,70 +164,6 @@
     chat.react(messageId, emoji, 'add');
   }
 
-  function ensureStatus(
-    map: Record<string, UserStatus>,
-    user: string,
-    fallback: UserStatus = 'offline'
-  ): UserStatus {
-    return (map[user] ?? fallback) as UserStatus;
-  }
-
-  function toggleStatusMenu(event: MouseEvent) {
-    event.stopPropagation();
-    if (notificationMenuOpen) {
-      notificationMenuOpen = false;
-    }
-    statusMenuOpen = !statusMenuOpen;
-  }
-
-  function selectStatus(value: UserStatus) {
-    statuses.setSelf(value);
-    statusMenuOpen = false;
-  }
-
-  function toggleNotificationMenu(event: MouseEvent) {
-    event.stopPropagation();
-    if (statusMenuOpen) {
-      statusMenuOpen = false;
-    }
-    notificationMenuOpen = !notificationMenuOpen;
-  }
-
-  function selectNotificationPreference(value: ChannelNotificationPreference) {
-    channelNotifications.setPreference(currentChatChannelId, value);
-    notificationMenuOpen = false;
-  }
-
-  function handleMenuOutside(event: MouseEvent) {
-    const target = event.target as Node | null;
-    if (statusMenuOpen) {
-      if (statusMenuElement && target && statusMenuElement.contains(target)) return;
-      if (statusMenuButton && target && statusMenuButton.contains(target)) return;
-      statusMenuOpen = false;
-    }
-    if (notificationMenuOpen) {
-      if (notificationMenuElement && target && notificationMenuElement.contains(target)) return;
-      if (notificationMenuButton && target && notificationMenuButton.contains(target)) return;
-      notificationMenuOpen = false;
-    }
-  }
-
-  function handleStatusMenuKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      statusMenuOpen = false;
-      event.stopPropagation();
-      event.preventDefault();
-    }
-  }
-
-  function handleNotificationMenuKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      notificationMenuOpen = false;
-      event.stopPropagation();
-      event.preventDefault();
-    }
-  }
-
   $: statusMap = (() => {
     const map: Record<string, UserStatus> = { ...$statuses };
     for (const user of $onlineUsers) {
@@ -265,10 +179,6 @@
     return map;
   })();
 
-  $: currentUserStatus = $session.user
-    ? ensureStatus(statusMap, $session.user, 'online')
-    : 'offline';
-  $: currentUserStatusLabel = STATUS_LABELS[currentUserStatus];
   $: currentUserCanModerate = (() => {
     const user = $session.user;
     if (!user) return false;
@@ -303,11 +213,6 @@
   $: channelMessages = $chat.filter((m) => m.channelId === currentChatChannelId);
   $: messageBlocks = buildMessageBlocks(channelMessages);
   $: pinnedEntries = $pinned[currentChatChannelId] ?? [];
-  $: currentNotificationPreference = ($channelNotifications[currentChatChannelId] ?? 'all') as ChannelNotificationPreference;
-  $: notificationMenuLabel = (() => {
-    const found = NOTIFICATION_OPTIONS.find((option) => option.value === currentNotificationPreference);
-    return found ? found.label : 'All messages';
-  })();
 
   $: if ($channels.length && !$channels.some((c) => c.id === currentChatChannelId)) {
     currentChatChannelId = $channels[0].id;
@@ -320,58 +225,6 @@
   }
 
   $: currentTopic = $channelTopics[currentChatChannelId] ?? '';
-
-  let collapsedCategories: Set<number> = new Set();
-  function toggleCategory(id: number) {
-    if (collapsedCategories.has(id)) {
-      collapsedCategories.delete(id);
-    } else {
-      collapsedCategories.add(id);
-    }
-    collapsedCategories = collapsedCategories;
-  }
-
-  interface CategoryGroup {
-    category: CategoryInfo | null;
-    textChannels: ChannelInfo[];
-    voiceChannels: VoiceChannelInfo[];
-  }
-
-  $: categoryGroups = (() => {
-    const groups: CategoryGroup[] = [];
-    const catMap = new Map<number, CategoryGroup>();
-
-    for (const cat of $categories) {
-      const group: CategoryGroup = { category: cat, textChannels: [], voiceChannels: [] };
-      catMap.set(cat.id, group);
-      groups.push(group);
-    }
-
-    const uncategorized: CategoryGroup = { category: null, textChannels: [], voiceChannels: [] };
-
-    for (const ch of $channels) {
-      if (ch.categoryId != null && catMap.has(ch.categoryId)) {
-        catMap.get(ch.categoryId)!.textChannels.push(ch);
-      } else {
-        uncategorized.textChannels.push(ch);
-      }
-    }
-
-    for (const vc of $voiceChannels) {
-      if (vc.categoryId != null && catMap.has(vc.categoryId)) {
-        catMap.get(vc.categoryId)!.voiceChannels.push(vc);
-      } else {
-        uncategorized.voiceChannels.push(vc);
-      }
-    }
-
-    if (uncategorized.textChannels.length || uncategorized.voiceChannels.length) {
-      groups.unshift(uncategorized);
-    }
-
-    return groups;
-  })();
-
 
   function stream(node: HTMLAudioElement, data: { stream: MediaStream, userId: string }) {
     node.srcObject = data.stream;
@@ -771,8 +624,6 @@
   function joinChannel(id: number) {
     if (id === currentChatChannelId) return;
     currentChatChannelId = id;
-    statusMenuOpen = false;
-    notificationMenuOpen = false;
     loadingHistory = false;
     chat.clear();
     chat.sendRaw({ type: 'join', channelId: id });
@@ -1005,36 +856,6 @@
     const confirmation = await Promise.resolve(confirm('Delete this message?') as boolean | Promise<boolean>);
     if (!confirmation) return;
     chat.delete(msg.id);
-  }
-
-  function resolvePinnedMessage(entry: PinnedEntry): Message | undefined {
-    return channelMessages.find((message) => message.id === entry.id);
-  }
-
-  function formatPinnedPreview(entry: PinnedEntry): string {
-    const message = resolvePinnedMessage(entry);
-    const base = message?.text ?? entry.text ?? '';
-    const trimmed = base.trim();
-    if (trimmed.length > 0) {
-      return trimmed.length > PIN_PREVIEW_LIMIT ? `${trimmed.slice(0, PIN_PREVIEW_LIMIT)}…` : trimmed;
-    }
-    if (message?.image || entry.image) {
-      return 'Image attachment';
-    }
-    return 'Message';
-  }
-
-  function pinnedAuthor(entry: PinnedEntry): string {
-    const message = resolvePinnedMessage(entry);
-    return message?.user ?? entry.user ?? 'Unknown';
-  }
-
-  function pinnedTimestamp(entry: PinnedEntry): string {
-    const source = resolvePinnedMessage(entry)?.timestamp ?? entry.timestamp ?? entry.pinnedAt;
-    if (!source) return '';
-    const parsed = Date.parse(source);
-    if (Number.isNaN(parsed)) return '';
-    return new Date(parsed).toLocaleString();
   }
 
   function highlightMessageById(messageId: number): boolean {
@@ -1303,483 +1124,46 @@
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', stopResize);
     window.addEventListener('keydown', handleGlobalShortcut);
-    window.addEventListener('click', handleMenuOutside);
   });
 
   onDestroy(() => {
     window.removeEventListener('mousemove', handleMouseMove);
     window.removeEventListener('mouseup', stopResize);
     window.removeEventListener('keydown', handleGlobalShortcut);
-    window.removeEventListener('click', handleMenuOutside);
   });
 </script>
 
   <div class="page" class:focus={$focusMode}>
-    <div class="channels" role="navigation" on:contextmenu={openChannelMenu} style="width: {$leftSidebarWidth}px">
-      {#each categoryGroups as group (group.category?.id ?? '__uncategorized')}
-        {#if group.category}
-          <!-- svelte-ignore a11y-click-events-have-key-events -->
-          <!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
-          <h3
-            class="section category-header"
-            role="button"
-            tabindex="0"
-            on:click={() => toggleCategory(group.category?.id ?? 0)}
-            on:contextmenu={(e) => { if (group.category) openCategoryMenu(e, group.category); }}
-          >
-            <span class="category-chevron" class:collapsed={collapsedCategories.has(group.category?.id ?? 0)}>&#9662;</span>
-            {group.category?.name ?? ''}
-          </h3>
-        {:else}
-          {#if group.textChannels.length}
-            <h3 class="section">Channels</h3>
-          {/if}
-        {/if}
-        {#if !group.category || !collapsedCategories.has(group.category.id)}
-          {#each group.textChannels as ch (ch.id)}
-            <button
-              class:active={ch.id === currentChatChannelId}
-              on:click={() => joinChannel(ch.id)}
-              on:contextmenu={(e) => openChannelMenu(e, ch.id)}
-            >
-              <span class="chan-icon">#</span> {ch.name}
-            </button>
-          {/each}
-          {#if group.voiceChannels.length}
-            {#if !group.category && !group.textChannels.length}
-              <h3 class="section">Voice Channels</h3>
-            {/if}
-          {/if}
-          {#each group.voiceChannels as ch (ch.id)}
-            <div class="voice-group">
-              <button on:click={() => joinVoiceChannel(ch.id)} on:contextmenu={(e) => openChannelMenu(e, ch.id, true)}>
-                <span class="chan-icon">&#x1f50a;</span>
-                <span class="voice-channel-name">{ch.name}</span>
-                <span class="voice-channel-quality">{formatVoiceQuality(ch)}</span>
-              </button>
-              {#if $voiceUsers[ch.id]?.length}
-                <ul class="voice-user-list">
-                  {#each $voiceUsers[ch.id] as user}
-                    <li
-                      on:contextmenu={(e) => user !== $session.user && openUserVolumeMenu(e, user)}
-                      class:clickable={user !== $session.user}
-                      class:talking={
-                        user === $session.user
-                          ? !$microphoneMuted && $voiceActivity
-                          : Boolean($remoteSpeaking[user])
-                      }
-                    >
-                      <span
-                        class="status voice"
-                        class:talking={
-                          user === $session.user
-                            ? !$microphoneMuted && $voiceActivity
-                            : Boolean($remoteSpeaking[user])
-                        }
-                      ></span>
-                      <span
-                        class="username"
-                        style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
-                        >{user}</span
-                      >
-                      {#if $roles[user]}
-                        <span
-                          class="role"
-                          style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
-                          >{$roles[user].role}</span
-                        >
-                      {/if}
-                      {#if $activeScreenShares[ch.id]?.includes(user) && user !== $session.user}
-                        <button
-                          class="screenshare-indicator"
-                          on:click={() => handleViewScreenShare(user)}
-                          title="View {user}'s screen"
-                          aria-label="View {user}'s screen share"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
-                          </svg>
-                        </button>
-                      {/if}
-                      <ConnectionBars
-                        strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)}
-                      />
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
-            </div>
-          {/each}
-        {/if}
-      {/each}
-
-      <div class="voice-controls-container">
-        <div class="voice-controls-panel">
-          {#if inVoice}
-            <div class="voice-controls-header">Voice Controls</div>
-          {/if}
-          <div class="voice-controls-buttons">
-            {#if inVoice}
-              <button class="voice-control-btn leave" on:click={leaveVoice}>
-                <span class="btn-icon">⬅️</span>
-                <span class="btn-text">Leave Voice</span>
-              </button>
-            {/if}
-            <button
-              class="voice-control-btn mute"
-              class:muted={inVoice && $microphoneMuted}
-              class:active={inVoice && $voiceMode === 'vad' && $voiceActivity}
-              class:ptt-active={inVoice && $voiceMode === 'ptt' && $isPttActive}
-              class:disabled={!inVoice}
-              on:click={toggleMicrophone}
-              disabled={!inVoice}
-              title={!inVoice ? 'Join a voice channel first' : $microphoneMuted ? 'Unmute Microphone' : 'Mute Microphone'}
-            >
-              <span class="btn-icon">
-                {#if !inVoice}
-                  🎤
-                {:else if $microphoneMuted}
-                  🎤🚫
-                {:else if $voiceMode === 'vad' && $voiceActivity}
-                  🎤✨
-                {:else if $voiceMode === 'ptt' && $isPttActive}
-                  🎤🔥
-                {:else}
-                  🎤
-                {/if}
-              </span>
-              <span class="btn-text">
-                {#if !inVoice}
-                  Microphone
-                {:else if $microphoneMuted}
-                  Unmute Mic
-                {:else if $voiceMode === 'continuous'}
-                  Always On
-                {:else if $voiceMode === 'vad'}
-                  Voice Detection
-                {:else if $voiceMode === 'ptt'}
-                  Push to Talk
-                {:else}
-                  Mute Mic
-                {/if}
-              </span>
-            </button>
-            <button
-              class="voice-control-btn mute"
-              class:muted={inVoice && $outputMuted}
-              class:disabled={!inVoice}
-              on:click={toggleOutput}
-              disabled={!inVoice}
-              title={!inVoice ? 'Join a voice channel first' : $outputMuted ? 'Unmute Output' : 'Mute Output'}
-            >
-              <span class="btn-icon">{inVoice && $outputMuted ? '🔇' : '🔊'}</span>
-              <span class="btn-text">{!inVoice ? 'Speaker' : $outputMuted ? 'Unmute Out' : 'Mute Out'}</span>
-            </button>
-          </div>
-          
-          {#if inVoice}
-            <ScreenShareControls currentVoiceChannel={currentVoiceChannelId} {inVoice} />
-          {/if}
-      </div>
-    </div>
-    </div>
+    <ChannelSidebar
+      {currentChatChannelId}
+      {currentVoiceChannelId}
+      {inVoice}
+      {serverStrength}
+      onJoinChannel={joinChannel}
+      onJoinVoiceChannel={joinVoiceChannel}
+      onOpenChannelMenu={openChannelMenu}
+      onOpenCategoryMenu={openCategoryMenu}
+      onOpenUserVolumeMenu={openUserVolumeMenu}
+      onViewScreenShare={handleViewScreenShare}
+      onLeaveVoice={leaveVoice}
+      onToggleMicrophone={toggleMicrophone}
+      onToggleOutput={toggleOutput}
+    />
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="resizer" role="separator" aria-label="Resize channel list" on:mousedown={startLeftResize}></div>
     <div class="chat">
-      <div class="header">
-        <div class="title">
-          <h1>{currentChatChannelName}</h1>
-          {#if currentTopic}
-            <p class="topic" title={currentTopic}>{currentTopic}</p>
-          {:else}
-            <p class="topic empty">No topic set</p>
-          {/if}
-        </div>
-        <div class="actions">
-          <div class="action-group">
-            <div class="user">{$session.user}</div>
-            <div class="status-control">
-            <button
-              class="action-button status-button"
-              bind:this={statusMenuButton}
-              aria-haspopup="true"
-              aria-expanded={statusMenuOpen}
-              on:click={toggleStatusMenu}
-              title={`Set status (${currentUserStatusLabel})`}
-            >
-              <span class={`status ${currentUserStatus}`}></span>
-              <span class="status-button-label">{currentUserStatusLabel}</span>
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </button>
-            {#if statusMenuOpen}
-              <div
-                class="status-menu"
-                bind:this={statusMenuElement}
-                role="menu"
-                tabindex="-1"
-                on:click|stopPropagation
-                on:keydown={handleStatusMenuKeydown}
-              >
-                {#each statusOptions as option}
-                  <button
-                    class:active={option.value === currentUserStatus}
-                    on:click={() => selectStatus(option.value)}
-                    role="menuitemradio"
-                    aria-checked={option.value === currentUserStatus}
-                  >
-                    <span class={`status ${option.value}`}></span>
-                    <span class="status-option-label">{option.label}</span>
-                    <span class="status-option-emoji" aria-hidden="true">{option.emoji}</span>
-                  </button>
-                {/each}
-              </div>
-            {/if}
-          </div>
-            <div class="connection-info">
-              <PingDot ping={$ping} />
-              <ConnectionBars strength={serverStrength} />
-            </div>
-          </div>
-          <div class="action-group">
-          <button
-            class="action-button"
-            on:click={() => theme.toggle()}
-            title={$theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-            aria-pressed={$theme === 'light'}
-          >
-            {#if $theme === 'dark'}
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <circle cx="12" cy="12" r="4" />
-                <path d="M12 2v2" />
-                <path d="M12 20v2" />
-                <path d="m4.93 4.93 1.41 1.41" />
-                <path d="m17.66 17.66 1.41 1.41" />
-                <path d="M2 12h2" />
-                <path d="M20 12h2" />
-                <path d="m6.34 17.66-1.41 1.41" />
-                <path d="m19.07 4.93-1.41 1.41" />
-              </svg>
-              <span class="sr-only">Switch to light theme</span>
-            {:else}
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
-              </svg>
-              <span class="sr-only">Switch to dark theme</span>
-            {/if}
-          </button>
-          <button class="action-button" on:click={editTopic} title="Edit channel topic">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path
-                d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"
-              />
-              <path d="m15 5 4 4" />
-            </svg>
-            <span class="sr-only">Edit channel topic</span>
-          </button>
-          <button
-            class="action-button focus-toggle"
-            class:focusActive={$focusMode}
-            aria-pressed={$focusMode}
-            on:click={toggleFocusMode}
-            title={$focusMode ? 'Exit focus mode' : 'Enter focus mode'}
-          >
-            {#if $focusMode}
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M15 3h6v6" />
-                <path d="m21 3-7 7" />
-                <path d="m3 21 7-7" />
-                <path d="M9 21H3v-6" />
-              </svg>
-              <span>Restore</span>
-            {:else}
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <circle cx="12" cy="12" r="3" />
-                <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-                <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-                <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-                <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-              </svg>
-              <span>Focus</span>
-            {/if}
-          </button>
-          <div class="notification-control">
-            <button
-              class="action-button"
-              bind:this={notificationMenuButton}
-              aria-haspopup="true"
-              aria-expanded={notificationMenuOpen}
-              on:click={toggleNotificationMenu}
-              title={`Channel notifications: ${notificationMenuLabel}`}
-            >
-              <span class="notification-icon">{notificationButtonIcon(currentNotificationPreference)}</span>
-              <span class="sr-only">Configure channel notifications</span>
-            </button>
-            {#if notificationMenuOpen}
-              <div
-                class="notification-menu"
-                bind:this={notificationMenuElement}
-                role="menu"
-                tabindex="-1"
-                on:click|stopPropagation
-                on:keydown={handleNotificationMenuKeydown}
-              >
-                {#each NOTIFICATION_OPTIONS as option}
-                  <button
-                    class:active={option.value === currentNotificationPreference}
-                    on:click={() => selectNotificationPreference(option.value)}
-                    role="menuitemradio"
-                    aria-checked={option.value === currentNotificationPreference}
-                  >
-                    <span class="notification-option-icon" aria-hidden="true">{option.icon}</span>
-                    <span class="notification-option-text">
-                      <span class="label">{option.label}</span>
-                      <span class="description">{option.description}</span>
-                    </span>
-                  </button>
-                {/each}
-              </div>
-            {/if}
-          </div>
-          </div>
-          <div class="action-group">
-          <button class="action-button" on:click={() => openSearch()} title="Search messages">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="11" cy="11" r="7" />
-              <line x1="20" y1="20" x2="16.65" y2="16.65" />
-            </svg>
-            <span class="sr-only">Search messages</span>
-          </button>
-          <button class="action-button" on:click={openSettings} title="Settings">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path
-                d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"
-              />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-            <span class="sr-only">Open settings</span>
-          </button>
-          <button class="action-button" on:click={leaveServer} title="Leave Server">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="m16 17 5-5-5-5" />
-              <path d="M21 12H9" />
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            </svg>
-            <span class="sr-only">Leave server</span>
-          </button>
-          </div>
-          <div class="action-group">
-          <button class="action-button danger" on:click={logout} title="Logout">
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M12 2v10" />
-              <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
-            </svg>
-            <span class="sr-only">Sign out</span>
-          </button>
-          </div>
-        </div>
-      </div>
+      <ChatHeader
+        channelId={currentChatChannelId}
+        channelName={currentChatChannelName}
+        topic={currentTopic}
+        {serverStrength}
+        {statusMap}
+        onEditTopic={editTopic}
+        onOpenSearch={() => openSearch()}
+        onOpenSettings={openSettings}
+        onLeaveServer={leaveServer}
+        onLogout={logout}
+      />
       <SettingsModal open={settingsOpen} close={closeSettings} />
       <HelpOverlay bind:this={helpOverlay} open={helpOpen} onClose={closeHelp} />
       <SearchOverlay
@@ -1790,34 +1174,12 @@
         onFocusResult={handleSearchResult}
         {now}
       />
-      {#if pinnedEntries.length > 0}
-        <div class="pinned-bar" role="region" aria-label="Pinned messages">
-          <div class="pinned-header">
-            <span class="pinned-title">Pinned</span>
-            <span class="pinned-count">{pinnedEntries.length}</span>
-          </div>
-          <ul class="pinned-list">
-            {#each pinnedEntries as entry (entry.id)}
-              <li class="pinned-item">
-                <button class="pinned-preview" on:click={() => focusMessage(entry.id)}>
-                  <span class="pinned-author">{pinnedAuthor(entry)}</span>
-                  <span class="pinned-text">{formatPinnedPreview(entry)}</span>
-                  {#if pinnedTimestamp(entry)}
-                    <span class="pinned-timestamp">{pinnedTimestamp(entry)}</span>
-                  {/if}
-                </button>
-                <button
-                  class="pinned-remove"
-                  on:click={() => pinned.unpin(currentChatChannelId, entry.id)}
-                  aria-label="Unpin message"
-                >
-                  ✕
-                </button>
-              </li>
-            {/each}
-          </ul>
-        </div>
-      {/if}
+      <PinnedBar
+        channelId={currentChatChannelId}
+        entries={pinnedEntries}
+        messages={channelMessages}
+        onFocusMessage={focusMessage}
+      />
       <div class="messages-shell">
         <div class="messages" bind:this={messagesContainer} on:scroll={onScroll}>
           {#each messageBlocks as block (block.key)}
@@ -2002,59 +1364,11 @@
     </div>
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="resizer" role="separator" aria-label="Resize user list" on:mousedown={startRightResize}></div>
-    <div class="sidebar" style="width: {$rightSidebarWidth}px">
-      <h2>Users</h2>
-      <h3>Online</h3>
-      <ul>
-        {#each $onlineUsers as user}
-          <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-          <li
-            class:clickable={currentUserIsOwner && user !== $session.user}
-            on:contextmenu={(e) => openUserRoleMenu(e, user)}
-          >
-            <span class={`status ${ensureStatus(statusMap, user, 'online')}`}></span>
-            <span class="status-label">{STATUS_LABELS[ensureStatus(statusMap, user, 'online')]}</span>
-            <span
-              class="username"
-              style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
-              >{user}</span
-            >
-            {#if $roles[user]}
-              <span
-                class="role"
-                style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
-                >{$roles[user].role}</span
-              >
-            {/if}
-          </li>
-        {/each}
-      </ul>
-      <h3>Offline</h3>
-      <ul>
-        {#each $offlineUsers as user}
-          <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-          <li
-            class:clickable={currentUserIsOwner && user !== $session.user}
-            on:contextmenu={(e) => openUserRoleMenu(e, user)}
-          >
-            <span class={`status ${ensureStatus(statusMap, user)}`}></span>
-            <span class="status-label">{STATUS_LABELS[ensureStatus(statusMap, user)]}</span>
-            <span
-              class="username"
-              style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
-              >{user}</span
-            >
-            {#if $roles[user]}
-              <span
-                class="role"
-                style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
-                >{$roles[user].role}</span
-              >
-            {/if}
-          </li>
-        {/each}
-      </ul>
-  </div>
+    <UserList
+      {statusMap}
+      {currentUserIsOwner}
+      onUserContextMenu={openUserRoleMenu}
+    />
 </div>
 
 <ContextMenu bind:open={menuOpen} x={menuX} y={menuY} items={channelMenuItems} />
@@ -2085,8 +1399,10 @@
     padding-inline: clamp(1.5rem, 4vw, 3rem);
   }
 
-  .page.focus .channels,
-  .page.focus .sidebar,
+  /* .channels/.sidebar are the root elements of ChannelSidebar/UserList;
+     :global escapes Svelte's per-component style scoping. */
+  .page.focus :global(.channels),
+  .page.focus :global(.sidebar),
   .page.focus .resizer {
     display: none;
   }
@@ -2094,166 +1410,6 @@
   .page.focus .chat {
     max-width: 1080px;
     margin: 0 auto;
-  }
-
-  .channels {
-    width: clamp(220px, 18vw, 260px);
-    background: color-mix(in srgb, var(--color-surface-elevated) 86%, transparent);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--color-surface-outline);
-    box-shadow: var(--shadow-xs);
-    padding: clamp(1rem, 2vw, 1.25rem);
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    overflow-y: auto;
-  }
-
-  .channels .section {
-    margin: 0.6rem 0 0.15rem 0;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.14em;
-    color: var(--color-muted);
-  }
-
-  .category-header {
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    user-select: none;
-    border-radius: var(--radius-sm, 4px);
-    padding: 0.15rem 0.25rem;
-    transition: background 0.15s;
-  }
-
-  .category-header:hover {
-    background: color-mix(in srgb, var(--color-surface-elevated) 60%, transparent);
-  }
-
-  .category-chevron {
-    display: inline-block;
-    font-size: 0.6rem;
-    transition: transform 0.15s ease;
-    flex-shrink: 0;
-  }
-
-  .category-chevron.collapsed {
-    transform: rotate(-90deg);
-  }
-
-  .channels button {
-    width: 100%;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--color-muted);
-    text-align: left;
-    border-radius: var(--radius-sm);
-    font-weight: 600;
-    font-size: 0.9rem;
-    letter-spacing: 0.01em;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    position: relative;
-  }
-
-  .chan-icon {
-    font-size: 1rem;
-    opacity: 0.65;
-    width: 1.2rem;
-    text-align: center;
-    flex-shrink: 0;
-  }
-
-  .voice-group {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .voice-user-list {
-    list-style: none;
-    margin: 0;
-    padding: 0.2rem 0 0 1.6rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-
-  .voice-user-list li {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.3rem 0.55rem;
-    border-radius: var(--radius-xs);
-    font-size: 0.88rem;
-    transition: background var(--transition);
-  }
-
-  .voice-user-list li.clickable {
-    cursor: context-menu;
-  }
-
-  .voice-user-list li:hover {
-    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
-  }
-
-  .voice-user-list li.talking {
-    background: color-mix(in srgb, var(--color-success) 10%, transparent);
-  }
-
-  .voice-user-list .status.voice {
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 50%;
-    background: var(--color-success);
-    opacity: 0.5;
-    flex-shrink: 0;
-    transition: opacity 0.15s ease-in, box-shadow 0.15s ease-in;
-  }
-
-  .voice-user-list .status.voice.talking {
-    opacity: 1;
-    box-shadow: 0 0 6px color-mix(in srgb, var(--color-success) 50%, transparent);
-    transition: opacity 0.05s ease-out, box-shadow 0.05s ease-out;
-  }
-
-  .voice-user-list .username {
-    font-weight: 600;
-    font-size: 0.85rem;
-    color: var(--color-on-surface);
-  }
-
-  .voice-user-list .role {
-    font-size: 0.7rem;
-    font-weight: 600;
-    opacity: 0.75;
-  }
-
-  .voice-channel-name {
-    flex: 1;
-  }
-
-  .voice-channel-quality {
-    margin-left: auto;
-    font-size: 0.68rem;
-    font-weight: 600;
-    color: color-mix(in srgb, var(--color-muted) 85%, transparent);
-  }
-
-  .channels button:hover {
-    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-    color: var(--color-on-surface);
-  }
-
-  .channels button.active {
-    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
-    color: var(--color-on-surface);
-    border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 24%, transparent);
   }
 
   .resizer {
@@ -2270,7 +1426,7 @@
     left: 50%;
     width: 2px;
     height: 36px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: color-mix(in srgb, var(--color-on-surface) 12%, transparent);
     transform: translateX(-50%);
   }
@@ -2281,241 +1437,6 @@
     flex-direction: column;
     gap: 0.9rem;
     min-width: 0;
-  }
-
-  .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: clamp(1rem, 2vw, 1.35rem) clamp(1rem, 3vw, 1.5rem);
-    border-radius: var(--radius-lg);
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--color-primary) 18%, var(--color-surface-raised)),
-      color-mix(in srgb, var(--color-tertiary) 12%, var(--color-surface-raised))
-    );
-    border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
-    box-shadow: var(--shadow-sm);
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .title {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    min-width: 0;
-  }
-
-  .title h1 {
-    margin: 0;
-    font-size: clamp(1.25rem, 2.5vw, 1.7rem);
-    letter-spacing: -0.01em;
-  }
-
-  .topic {
-    margin: 0;
-    font-size: 0.92rem;
-    color: color-mix(in srgb, var(--color-on-primary) 82%, transparent);
-    max-width: min(40rem, 60vw);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .topic.empty {
-    font-style: italic;
-    opacity: 0.7;
-  }
-
-  .actions {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    flex-wrap: wrap;
-  }
-
-  .action-group {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding-inline: 0.2rem;
-    position: relative;
-  }
-
-  .action-group + .action-group::before {
-    content: '';
-    position: absolute;
-    left: -0.1rem;
-    top: 20%;
-    bottom: 20%;
-    width: 1px;
-    background: color-mix(in srgb, var(--color-on-surface) 12%, transparent);
-    border-radius: 999px;
-  }
-
-  .user {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.45rem 0.9rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--color-on-primary) 15%, transparent);
-    color: var(--color-on-primary);
-    font-weight: 600;
-    letter-spacing: 0.01em;
-  }
-
-  .user::before {
-    content: '🧑‍🚀';
-  }
-
-  .status-control {
-    position: relative;
-  }
-
-  .status-button {
-    width: auto;
-    height: auto;
-    min-width: 0;
-    padding: 0.4rem 0.85rem;
-    gap: 0.45rem;
-    font-weight: 600;
-    font-size: 0.85rem;
-    justify-content: flex-start;
-    white-space: nowrap;
-  }
-
-  .status-button svg {
-    margin-left: 0.35rem;
-  }
-
-  .status-button-label {
-    text-transform: capitalize;
-  }
-
-  .status-menu {
-    position: absolute;
-    top: calc(100% + 0.4rem);
-    right: 0;
-    min-width: 12rem;
-    background: color-mix(in srgb, var(--color-surface-elevated) 95%, transparent);
-    border: 1px solid var(--color-surface-outline);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
-    padding: 0.35rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    z-index: 60;
-  }
-
-  .status-menu button {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    border: none;
-    background: transparent;
-    color: inherit;
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0.6rem;
-    text-align: left;
-    font-size: 0.9rem;
-    cursor: pointer;
-  }
-
-  .status-menu button:hover,
-  .status-menu button:focus-visible,
-  .status-menu button.active {
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    outline: none;
-  }
-
-  .status-menu .status {
-    width: 0.6rem;
-    height: 0.6rem;
-  }
-
-  .status-menu button.active {
-    font-weight: 600;
-  }
-
-  .status-option-label {
-    flex: 1;
-    text-transform: capitalize;
-  }
-
-  .status-option-emoji {
-    font-size: 1rem;
-  }
-
-  .connection-info {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.8rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--color-on-primary) 12%, transparent);
-  }
-
-  .action-button {
-    min-width: 2.5rem;
-    width: auto;
-    min-height: 2.5rem;
-    height: auto;
-    border-radius: 0.85rem;
-    border: 1px solid color-mix(in srgb, var(--color-outline-strong) 70%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
-    color: color-mix(in srgb, var(--color-on-surface) 92%, var(--color-muted) 8%);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.35rem;
-    padding: 0.55rem;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  }
-
-  .action-button svg {
-    width: 1.1rem;
-    height: 1.1rem;
-  }
-
-  .action-button:hover {
-    border-color: color-mix(in srgb, var(--color-outline-strong) 90%, transparent);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-xs);
-  }
-
-  .action-button.danger {
-    color: var(--color-error);
-    border-color: color-mix(in srgb, var(--color-error) 40%, transparent);
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
-  }
-
-  .action-button.danger:hover {
-    border-color: color-mix(in srgb, var(--color-error) 55%, transparent);
-    background: color-mix(in srgb, var(--color-error) 18%, transparent);
-  }
-
-  .action-button.focus-toggle {
-    padding-inline: 0.9rem;
-    width: auto;
-    font-size: 0.9rem;
-  }
-
-  .action-button.focus-toggle svg {
-    width: 1.05rem;
-    height: 1.05rem;
-  }
-
-  .action-button.focus-toggle span {
-    font-weight: 600;
-    font-size: 0.85rem;
-  }
-
-  .action-button.focus-toggle.focusActive {
-    background: color-mix(in srgb, var(--color-secondary) 20%, var(--color-surface-elevated) 80%);
-    color: var(--color-on-surface);
   }
 
   .messages-shell {
@@ -2544,7 +1465,7 @@
     align-items: center;
     gap: 0.75rem;
     color: var(--color-muted);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
@@ -2559,7 +1480,7 @@
 
   .day-separator span {
     padding: 0.2rem 0.75rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: color-mix(in srgb, var(--color-surface-elevated) 78%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
     color: var(--color-muted);
@@ -2590,7 +1511,7 @@
   }
 
   .message .timestamp {
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
     color: var(--color-muted);
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     opacity: 0.7;
@@ -2602,7 +1523,7 @@
   }
 
   .message .role {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     align-self: center;
   }
@@ -2613,13 +1534,13 @@
     justify-self: start;
     padding: 0.1rem 0.4rem;
     border-radius: var(--radius-xs, 4px);
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    background: color-mix(in srgb, #06b6d4 22%, transparent);
-    color: #22d3ee;
-    border: 1px solid color-mix(in srgb, #06b6d4 35%, transparent);
+    background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+    color: var(--color-primary);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
     align-self: center;
     line-height: 1.3;
   }
@@ -2643,8 +1564,8 @@
     gap: 0.35rem;
     margin-top: 0.5rem;
     padding: 0.2rem 0.6rem;
-    border-radius: 999px;
-    font-size: 0.72rem;
+    border-radius: var(--radius-pill);
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -2669,7 +1590,7 @@
     background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
     color: var(--color-on-surface);
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     transition: background var(--transition), border-color var(--transition), transform var(--transition);
   }
 
@@ -2681,12 +1602,12 @@
   }
 
   .message-action.danger {
-    color: color-mix(in srgb, #ef4444 80%, var(--color-on-surface));
+    color: color-mix(in srgb, var(--color-error) 80%, var(--color-on-surface));
   }
 
   .message-action.danger:hover {
-    background: color-mix(in srgb, #ef4444 18%, transparent);
-    border-color: color-mix(in srgb, #ef4444 32%, transparent);
+    background: color-mix(in srgb, var(--color-error) 18%, transparent);
+    border-color: color-mix(in srgb, var(--color-error) 32%, transparent);
   }
 
   .link-previews {
@@ -2776,178 +1697,6 @@
     box-shadow: var(--shadow-xs);
   }
 
-  .notification-control {
-    position: relative;
-  }
-
-  .notification-icon {
-    font-size: 1.1rem;
-    line-height: 1;
-  }
-
-  .notification-menu {
-    position: absolute;
-    top: calc(100% + 0.4rem);
-    right: 0;
-    min-width: 16rem;
-    padding: 0.5rem;
-    border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 95%, transparent);
-    box-shadow: var(--shadow-lg);
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-    z-index: 80;
-  }
-
-  .notification-menu button {
-    display: flex;
-    gap: 0.65rem;
-    align-items: center;
-    padding: 0.5rem 0.65rem;
-    border-radius: var(--radius-sm);
-    border: none;
-    background: transparent;
-    color: var(--color-on-surface);
-    cursor: pointer;
-    text-align: left;
-    transition: background var(--transition), transform var(--transition);
-  }
-
-  .notification-menu button:hover,
-  .notification-menu button.active {
-    background: color-mix(in srgb, var(--color-primary) 15%, transparent);
-    transform: translateY(-1px);
-  }
-
-  .notification-option-icon {
-    font-size: 1rem;
-  }
-
-  .notification-option-text {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-  }
-
-  .notification-option-text .label {
-    font-weight: 600;
-  }
-
-  .notification-option-text .description {
-    font-size: 0.82rem;
-    color: color-mix(in srgb, var(--color-on-surface) 70%, transparent);
-  }
-
-  .pinned-bar {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    border-radius: var(--radius-lg);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 90%, transparent);
-  }
-
-  .pinned-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-weight: 600;
-    color: var(--color-on-surface);
-  }
-
-  .pinned-title {
-    font-size: 0.95rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-
-  .pinned-count {
-    font-size: 0.75rem;
-    padding: 0.1rem 0.6rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
-    color: var(--color-on-surface);
-  }
-
-  .pinned-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .pinned-item {
-    display: flex;
-    gap: 0.5rem;
-    align-items: stretch;
-  }
-
-  .pinned-preview {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    text-align: left;
-    border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
-    padding: 0.6rem 0.75rem;
-    color: var(--color-on-surface);
-    cursor: pointer;
-    transition: background var(--transition), border-color var(--transition), transform var(--transition);
-  }
-
-  .pinned-preview:hover {
-    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
-    border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
-    transform: translateY(-1px);
-  }
-
-  .pinned-author {
-    font-weight: 600;
-    font-size: 0.9rem;
-  }
-
-  .pinned-text {
-    font-size: 0.88rem;
-    color: color-mix(in srgb, var(--color-on-surface) 88%, transparent);
-    word-break: break-word;
-  }
-
-  .pinned-timestamp {
-    font-size: 0.75rem;
-    color: var(--color-muted);
-  }
-
-  .pinned-remove {
-    border: none;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    color: var(--color-on-surface);
-    width: 30px;
-    height: 30px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background var(--transition), transform var(--transition);
-  }
-
-  .pinned-remove:hover {
-    background: color-mix(in srgb, #ef4444 22%, transparent);
-    transform: translateY(-1px);
-  }
-
-  .pinned-remove:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
-    outline-offset: 2px;
-  }
-
   .reactions {
     grid-column: 1 / -1;
     display: flex;
@@ -2960,9 +1709,9 @@
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     padding: 0.3rem 0.65rem;
-    font-size: 0.82rem;
+    font-size: var(--text-sm);
     border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
     background: color-mix(in srgb, var(--color-primary) 12%, transparent);
     color: var(--color-on-surface);
@@ -2993,7 +1742,7 @@
     grid-column: 1 / -1;
     padding: 0.45rem 0.75rem;
     border-radius: var(--radius-md);
-    font-size: 0.9rem;
+    font-size: var(--text-md);
     font-weight: 600;
     display: inline-flex;
     align-items: center;
@@ -3061,7 +1810,7 @@
     background: transparent;
     color: var(--color-secondary);
     border: none;
-    font-size: 0.78rem;
+    font-size: var(--text-sm);
   }
 
   .file-input {
@@ -3108,220 +1857,6 @@
     border-color: transparent;
   }
 
-  .voice-controls-container {
-    margin-top: auto;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--color-surface-outline);
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .voice-controls-panel {
-    border-radius: var(--radius-md);
-    padding: 0.75rem;
-    background: color-mix(in srgb, var(--color-surface-raised) 86%, transparent);
-    border: 1px solid var(--color-surface-outline);
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-  }
-
-  .voice-controls-header {
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: var(--color-muted);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  .voice-controls-buttons {
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-  }
-
-  .voice-control-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.5rem 0.7rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
-    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-    color: var(--color-on-surface);
-    font-weight: 600;
-    font-size: 0.85rem;
-    width: 100%;
-  }
-
-  .btn-icon {
-    font-size: 0.95rem;
-    line-height: 1;
-  }
-
-  .btn-text {
-    font-size: 0.82rem;
-  }
-
-  .voice-control-btn:hover {
-    border-color: color-mix(in srgb, var(--color-primary) 32%, transparent);
-  }
-
-  .voice-control-btn.leave {
-    border-color: color-mix(in srgb, var(--color-error) 45%, transparent);
-    color: var(--color-error);
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
-  }
-
-  .voice-control-btn.leave:hover {
-    border-color: color-mix(in srgb, var(--color-error) 60%, transparent);
-  }
-
-  .voice-control-btn.disabled {
-    opacity: 0.4;
-    cursor: default;
-    pointer-events: none;
-  }
-
-  .voice-control-btn.mute.muted {
-    background: color-mix(in srgb, var(--color-error) 15%, transparent);
-    border-color: color-mix(in srgb, var(--color-error) 45%, transparent);
-    color: var(--color-error);
-  }
-
-  .voice-control-btn.mute.active,
-  .voice-control-btn.mute.ptt-active {
-    background: color-mix(in srgb, var(--color-success) 18%, transparent);
-    border-color: color-mix(in srgb, var(--color-success) 40%, transparent);
-    color: var(--color-success);
-  }
-
-  .sidebar {
-    width: clamp(240px, 18vw, 280px);
-    background: color-mix(in srgb, var(--color-surface-elevated) 84%, transparent);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--color-surface-outline);
-    box-shadow: var(--shadow-xs);
-    padding: clamp(1rem, 2vw, 1.3rem);
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    min-width: 0;
-    overflow-y: auto;
-  }
-
-  .sidebar h2 {
-    margin: 0;
-    font-size: 1.15rem;
-  }
-
-  .sidebar h3 {
-    margin: 0;
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: var(--color-muted);
-    font-weight: 700;
-  }
-
-  .sidebar ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-  }
-
-  .sidebar li {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.35rem 0.5rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.9rem;
-  }
-
-  .sidebar li:hover {
-    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-  }
-
-  .sidebar li.clickable {
-    cursor: context-menu;
-  }
-
-  .status {
-    width: 0.75rem;
-    height: 0.75rem;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .status.online {
-    background: var(--color-success);
-  }
-
-  .status.away {
-    background: #fbbf24;
-  }
-
-  .status.busy {
-    background: #ef4444;
-  }
-
-  .status.offline {
-    background: color-mix(in srgb, var(--color-muted) 40%, transparent);
-  }
-
-  .status-label {
-    font-size: 0.75rem;
-    color: var(--color-muted);
-    text-transform: capitalize;
-    min-width: 3.5rem;
-  }
-
-  .sidebar .status-label {
-    text-transform: capitalize;
-  }
-
-  .screenshare-indicator {
-    background: transparent;
-    border: none;
-    padding: 0.25rem;
-    cursor: pointer;
-    color: var(--color-primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-sm);
-    transition: all 0.2s;
-  }
-
-  .screenshare-indicator:hover {
-    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
-    color: var(--color-on-primary);
-  }
-
-  .screenshare-indicator svg {
-    width: 1rem;
-    height: 1rem;
-  }
-
-
-  /* Styles for extracted overlay components are in their respective .svelte files */
-
-  .sr-only {
-    border: 0;
-    clip: rect(0 0 0 0);
-    height: 1px;
-    margin: -1px;
-    overflow: hidden;
-    padding: 0;
-    position: absolute;
-    width: 1px;
-  }
-
   @media (max-width: 1280px) {
     .page {
       flex-direction: column;
@@ -3329,8 +1864,8 @@
       min-height: 100vh;
     }
 
-    .channels,
-    .sidebar {
+    .page :global(.channels),
+    .page :global(.sidebar) {
       width: 100%;
       order: 0;
     }
@@ -3343,7 +1878,7 @@
       order: 1;
     }
 
-    .sidebar {
+    .page :global(.sidebar) {
       order: 2;
     }
   }
@@ -3351,15 +1886,6 @@
   @media (max-width: 768px) {
     .page {
       padding: clamp(1rem, 4vw, 1.5rem);
-    }
-
-    .header {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    .actions {
-      justify-content: flex-start;
     }
 
     .input-row {

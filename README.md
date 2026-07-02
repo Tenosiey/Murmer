@@ -19,6 +19,7 @@ small team can deploy a private chat space quickly.
   `/ephemeral`, `/search`)
 - Ephemeral messaging, message search and pinned messages
 - Screen sharing in voice channels
+- REST API for bots (see [`murmer_server/BOT_API.md`](murmer_server/BOT_API.md))
 
 ## Repository layout
 
@@ -33,6 +34,7 @@ Key documentation for contributors:
 - `AGENTS.md` – repository overview and shared conventions
 - `murmer_client/AGENTS.md` – client-specific tips
 - `murmer_server/AGENTS.md` – server-specific tips
+- `murmer_server/BOT_API.md` – REST API reference for bots
 - `CONTRIBUTING.md` – code style and PR guidelines
 
 ## Requirements

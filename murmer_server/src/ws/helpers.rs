@@ -42,7 +42,7 @@ pub async fn send_users(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket,
         "users": online,
         "all": all,
     })) {
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
     }
 }
 
@@ -110,7 +110,7 @@ pub async fn send_all_roles(state: &Arc<AppState>, sender: &mut SplitSink<WebSoc
             "role": info.role,
             "color": info.color,
         })) {
-            if sender.send(Message::Text(msg)).await.is_err() {
+            if sender.send(Message::Text(msg.into())).await.is_err() {
                 break;
             }
         }
@@ -127,7 +127,7 @@ pub async fn send_all_statuses(state: &Arc<AppState>, sender: &mut SplitSink<Web
         "type": "status-snapshot",
         "statuses": statuses,
     })) {
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
     }
 }
 
@@ -227,7 +227,7 @@ pub async fn send_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSock
         "type": "channel-list",
         "channels": channels,
     })) {
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
     }
 }
 
@@ -248,7 +248,7 @@ pub async fn send_categories(state: &Arc<AppState>, sender: &mut SplitSink<WebSo
         "type": "category-list",
         "categories": categories,
     })) {
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
     }
 }
 
@@ -270,7 +270,7 @@ pub async fn send_voice_channels(
         "type": "voice-channel-list",
         "channels": channels,
     })) {
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
     }
 }
 
@@ -284,7 +284,7 @@ pub async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSoc
             "channelId": id,
             "users": info.users.into_iter().collect::<Vec<_>>(),
         })) {
-            if sender.send(Message::Text(msg)).await.is_err() {
+            if sender.send(Message::Text(msg.into())).await.is_err() {
                 break;
             }
         }

@@ -47,30 +47,30 @@
   }
 
   .ping-unknown {
-    background: var(--md-sys-color-on-surface-variant);
+    background: var(--color-on-surface-variant);
     opacity: 0.5;
   }
 
   .ping-excellent {
-    background: var(--md-sys-color-success);
-    box-shadow: 0 0 4px color-mix(in srgb, var(--md-sys-color-success) 60%, transparent);
+    background: var(--color-success);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--color-success) 60%, transparent);
   }
 
   .ping-good {
-    background: color-mix(in srgb, var(--md-sys-color-success) 70%, var(--md-sys-color-warning) 30%);
+    background: color-mix(in srgb, var(--color-success) 70%, var(--color-warning) 30%);
   }
 
   .ping-fair {
-    background: var(--md-sys-color-warning);
+    background: var(--color-warning);
   }
 
   .ping-poor {
-    background: color-mix(in srgb, var(--md-sys-color-warning) 40%, var(--md-sys-color-error) 60%);
+    background: color-mix(in srgb, var(--color-warning) 40%, var(--color-error) 60%);
   }
 
   .ping-critical {
-    background: var(--md-sys-color-error);
-    box-shadow: 0 0 6px color-mix(in srgb, var(--md-sys-color-error) 70%, transparent);
+    background: var(--color-error);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--color-error) 70%, transparent);
   }
 
   .ping-pulse::after {

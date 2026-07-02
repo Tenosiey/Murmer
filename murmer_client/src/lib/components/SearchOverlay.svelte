@@ -146,7 +146,7 @@
     align-items: center;
     justify-content: center;
     padding: clamp(1.5rem, 4vw, 3rem);
-    z-index: 60;
+    z-index: var(--z-overlay);
   }
 
   .search-panel {
@@ -213,7 +213,7 @@
 
   .search-status {
     color: var(--color-muted);
-    font-size: 0.9rem;
+    font-size: var(--text-md);
   }
 
   .search-results {
@@ -254,12 +254,12 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.6rem;
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
     color: var(--color-muted);
   }
 
   .search-result-ephemeral {
-    font-size: 0.7rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;

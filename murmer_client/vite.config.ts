@@ -1,6 +1,5 @@
 import { defineConfig } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
-import devtoolsJson from 'vite-plugin-devtools-json';
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
@@ -9,7 +8,7 @@ const rootDir = dirname(fileURLToPath(import.meta.url));
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
-  plugins: [sveltekit(), devtoolsJson()],
+  plugins: [sveltekit()],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

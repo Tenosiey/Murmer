@@ -204,26 +204,26 @@
 
 <style>
   .link-preview {
-    border: 1px solid var(--md-sys-color-outline);
+    border: 1px solid var(--color-surface-outline);
     border-radius: var(--radius-md);
-    background: var(--md-sys-color-surface-container-high);
+    background: var(--color-surface-raised);
     backdrop-filter: var(--blur-elevated);
     overflow: hidden;
     max-width: 460px;
-    box-shadow: var(--shadow-01);
+    box-shadow: var(--shadow-xs);
     transition: all var(--motion-duration-short) var(--motion-easing-standard);
   }
 
   .link-preview:hover {
-    border-color: var(--md-sys-color-outline-variant);
-    box-shadow: var(--shadow-02);
+    border-color: var(--color-outline-strong);
+    box-shadow: var(--shadow-sm);
   }
 
   .link-preview iframe {
     width: 100%;
     height: 220px;
     border: none;
-    background: color-mix(in srgb, var(--md-sys-color-surface) 95%, transparent);
+    background: color-mix(in srgb, var(--color-surface) 95%, transparent);
   }
 
   .preview-header {
@@ -231,20 +231,20 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.7rem 1rem;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     font-weight: 600;
-    background: color-mix(in srgb, var(--md-sys-color-surface-container) 90%, transparent);
-    border-bottom: 1px solid var(--md-sys-color-outline);
+    background: color-mix(in srgb, var(--color-surface-elevated) 90%, transparent);
+    border-bottom: 1px solid var(--color-surface-outline);
   }
 
   .preview-header .host {
-    color: var(--md-sys-color-on-surface-variant);
+    color: var(--color-on-surface-variant);
     font-family: var(--font-mono);
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
   }
 
   .preview-header a {
-    color: var(--md-sys-color-secondary);
+    color: var(--color-secondary);
     text-decoration: none;
     font-weight: 600;
     transition: color var(--motion-duration-short) var(--motion-easing-standard);
@@ -252,26 +252,26 @@
 
   .preview-header a:hover,
   .preview-header a:focus-visible {
-    color: var(--md-sys-color-primary);
+    color: var(--color-primary);
     text-decoration: underline;
   }
 
   .preview-fallback {
     padding: 1.2rem;
-    font-size: 0.9rem;
-    color: var(--md-sys-color-muted);
+    font-size: var(--text-md);
+    color: var(--color-muted);
     text-align: center;
   }
 
   .preview-fallback a {
-    color: var(--md-sys-color-secondary);
+    color: var(--color-secondary);
     text-decoration: none;
     font-weight: 600;
   }
 
   .preview-fallback a:hover,
   .preview-fallback a:focus-visible {
-    color: var(--md-sys-color-primary);
+    color: var(--color-primary);
     text-decoration: underline;
   }
 
@@ -320,7 +320,7 @@
     align-items: center;
     justify-content: center;
     color: white;
-    font-size: 1.3rem;
+    font-size: var(--text-xl);
     transition: all var(--motion-duration-short) var(--motion-easing-standard);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
@@ -329,36 +329,36 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     gap: 0.4rem;
   }
 
   .youtube-label {
     font-weight: 700;
-    color: var(--md-sys-color-error);
+    color: var(--color-error);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    font-size: 0.7rem;
+    font-size: var(--text-xs);
   }
 
   .youtube-title {
     margin: 0;
     font-weight: 600;
     line-height: 1.3;
-    color: var(--md-sys-color-on-surface);
-    font-size: 0.95rem;
+    color: var(--color-on-surface);
+    font-size: var(--text-md);
   }
 
   .youtube-author {
     margin: 0;
-    color: var(--md-sys-color-muted);
-    font-size: 0.85rem;
+    color: var(--color-muted);
+    font-size: var(--text-sm);
   }
 
   .youtube-error {
     margin: 0;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
     font-style: italic;
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
   }
 </style>

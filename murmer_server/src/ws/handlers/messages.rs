@@ -1,7 +1,6 @@
 //! Handlers for chat messages, message deletion, reactions, history and search.
 
 use crate::ws::{constants::*, errors, helpers::*};
-#[allow(unused_imports)]
 use crate::{db, security, AppState};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -68,7 +67,7 @@ pub(super) async fn handle_search_history(
             "message": "missing-query",
             "requestId": request_id_for_error,
         });
-        let _ = sender.send(Message::Text(payload.to_string())).await;
+        let _ = sender.send(Message::Text(payload.to_string().into())).await;
         return;
     };
 
@@ -80,7 +79,7 @@ pub(super) async fn handle_search_history(
             "channelId": channel_id,
             "messages": [],
         });
-        let _ = sender.send(Message::Text(payload.to_string())).await;
+        let _ = sender.send(Message::Text(payload.to_string().into())).await;
         return;
     }
 
@@ -147,7 +146,7 @@ pub(super) async fn handle_search_history(
                 "channelId": channel_to_search,
                 "messages": messages,
             });
-            let _ = sender.send(Message::Text(payload.to_string())).await;
+            let _ = sender.send(Message::Text(payload.to_string().into())).await;
         }
         Err(error) => {
             error!(
@@ -159,7 +158,7 @@ pub(super) async fn handle_search_history(
                 "message": "Search failed",
                 "requestId": request_id_for_error,
             });
-            let _ = sender.send(Message::Text(payload.to_string())).await;
+            let _ = sender.send(Message::Text(payload.to_string().into())).await;
         }
     }
 }
@@ -180,7 +179,7 @@ pub(super) async fn handle_chat(
 
     if !security::check_message_rate_limit(&state.rate_limiter, user).await {
         let _ = sender
-            .send(Message::Text(errors::MESSAGE_RATE_LIMIT.to_string()))
+            .send(Message::Text(errors::MESSAGE_RATE_LIMIT.to_string().into()))
             .await;
         return;
     }
@@ -188,7 +187,7 @@ pub(super) async fn handle_chat(
     if let Some(text) = v.get("text").and_then(|t| t.as_str()) {
         if text.len() > MAX_MESSAGE_LENGTH {
             let _ = sender
-                .send(Message::Text(errors::MESSAGE_TOO_LONG.to_string()))
+                .send(Message::Text(errors::MESSAGE_TOO_LONG.to_string().into()))
                 .await;
             return;
         }
@@ -297,7 +296,7 @@ pub(super) async fn handle_delete_message(
                 "message": "not-authenticated",
             })
             .to_string();
-            let _ = sender.send(Message::Text(msg)).await;
+            let _ = sender.send(Message::Text(msg.into())).await;
             return;
         }
     };
@@ -308,7 +307,7 @@ pub(super) async fn handle_delete_message(
             "message": "invalid-message-id",
         })
         .to_string();
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
         return;
     };
 
@@ -320,7 +319,7 @@ pub(super) async fn handle_delete_message(
                 "message": "invalid-message-id",
             })
             .to_string();
-            let _ = sender.send(Message::Text(msg)).await;
+            let _ = sender.send(Message::Text(msg.into())).await;
             return;
         }
     };
@@ -333,7 +332,7 @@ pub(super) async fn handle_delete_message(
                 "message": "message-not-found",
             })
             .to_string();
-            let _ = sender.send(Message::Text(msg)).await;
+            let _ = sender.send(Message::Text(msg.into())).await;
             return;
         }
         Err(error) => {
@@ -343,7 +342,7 @@ pub(super) async fn handle_delete_message(
                 "message": "message-delete-failed",
             })
             .to_string();
-            let _ = sender.send(Message::Text(msg)).await;
+            let _ = sender.send(Message::Text(msg.into())).await;
             return;
         }
     };
@@ -354,7 +353,7 @@ pub(super) async fn handle_delete_message(
             "message": "message-wrong-channel",
         })
         .to_string();
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
         return;
     }
 
@@ -375,7 +374,7 @@ pub(super) async fn handle_delete_message(
             "message": "message-permission-denied",
         })
         .to_string();
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
         return;
     }
 
@@ -395,7 +394,7 @@ pub(super) async fn handle_delete_message(
                 "message": "message-not-found",
             })
             .to_string();
-            let _ = sender.send(Message::Text(msg)).await;
+            let _ = sender.send(Message::Text(msg.into())).await;
         }
         Err(error) => {
             error!("failed to delete message {raw_id}: {error}");
@@ -404,7 +403,7 @@ pub(super) async fn handle_delete_message(
                 "message": "message-delete-failed",
             })
             .to_string();
-            let _ = sender.send(Message::Text(msg)).await;
+            let _ = sender.send(Message::Text(msg.into())).await;
         }
     }
 }
@@ -421,27 +420,27 @@ pub(super) async fn handle_react(
         None => {
             let msg =
                 serde_json::json!({"type": "error", "message": "not-authenticated"}).to_string();
-            let _ = sender.send(Message::Text(msg)).await;
+            let _ = sender.send(Message::Text(msg.into())).await;
             return;
         }
     };
 
     let Some(message_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
         let msg = serde_json::json!({"type": "error", "message": "invalid-message-id"}).to_string();
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
         return;
     };
 
     let Some(action) = v.get("action").and_then(|a| a.as_str()) else {
         let msg =
             serde_json::json!({"type": "error", "message": "invalid-reaction-action"}).to_string();
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
         return;
     };
 
     let Some(raw_emoji) = v.get("emoji").and_then(|e| e.as_str()) else {
         let msg = serde_json::json!({"type": "error", "message": "invalid-emoji"}).to_string();
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
         return;
     };
 
@@ -451,7 +450,7 @@ pub(super) async fn handle_react(
         || emoji.chars().any(|c| c.is_control() || c.is_whitespace())
     {
         let msg = serde_json::json!({"type": "error", "message": "invalid-emoji"}).to_string();
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
         return;
     }
 
@@ -460,7 +459,7 @@ pub(super) async fn handle_react(
         Err(_) => {
             let msg =
                 serde_json::json!({"type": "error", "message": "invalid-message-id"}).to_string();
-            let _ = sender.send(Message::Text(msg)).await;
+            let _ = sender.send(Message::Text(msg.into())).await;
             return;
         }
     };
@@ -470,14 +469,14 @@ pub(super) async fn handle_react(
         Ok(None) => {
             let msg =
                 serde_json::json!({"type": "error", "message": "message-not-found"}).to_string();
-            let _ = sender.send(Message::Text(msg)).await;
+            let _ = sender.send(Message::Text(msg.into())).await;
             return;
         }
         Err(e) => {
             error!("failed to lookup message channel for reaction: {e}");
             let msg =
                 serde_json::json!({"type": "error", "message": "reaction-failed"}).to_string();
-            let _ = sender.send(Message::Text(msg)).await;
+            let _ = sender.send(Message::Text(msg.into())).await;
             return;
         }
     };
@@ -488,7 +487,7 @@ pub(super) async fn handle_react(
         _ => {
             let msg = serde_json::json!({"type": "error", "message": "invalid-reaction-action"})
                 .to_string();
-            let _ = sender.send(Message::Text(msg)).await;
+            let _ = sender.send(Message::Text(msg.into())).await;
             return;
         }
     };
@@ -496,7 +495,7 @@ pub(super) async fn handle_react(
     if let Err(e) = result {
         error!("db reaction error: {e}");
         let msg = serde_json::json!({"type": "error", "message": "reaction-failed"}).to_string();
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
         return;
     }
 

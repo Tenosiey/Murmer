@@ -34,8 +34,8 @@
 
   .bar {
     width: 4px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--md-sys-color-on-surface-variant) 20%, transparent);
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-on-surface-variant) 20%, transparent);
     opacity: 0.35;
     transition: all var(--motion-duration-medium) var(--motion-easing-standard);
     transform-origin: bottom;
@@ -51,15 +51,15 @@
   }
 
   .bar-excellent.active {
-    background: linear-gradient(180deg, var(--md-sys-color-success), color-mix(in srgb, var(--md-sys-color-success) 85%, #000));
-    box-shadow: 0 0 4px color-mix(in srgb, var(--md-sys-color-success) 40%, transparent);
+    background: linear-gradient(180deg, var(--color-success), color-mix(in srgb, var(--color-success) 85%, #000));
+    box-shadow: 0 0 4px color-mix(in srgb, var(--color-success) 40%, transparent);
   }
 
   .bar-good.active {
-    background: linear-gradient(180deg, var(--md-sys-color-warning), color-mix(in srgb, var(--md-sys-color-warning) 85%, #000));
+    background: linear-gradient(180deg, var(--color-warning), color-mix(in srgb, var(--color-warning) 85%, #000));
   }
 
   .bar-poor.active {
-    background: linear-gradient(180deg, var(--md-sys-color-error), color-mix(in srgb, var(--md-sys-color-error) 85%, #000));
+    background: linear-gradient(180deg, var(--color-error), color-mix(in srgb, var(--color-error) 85%, #000));
   }
 </style>

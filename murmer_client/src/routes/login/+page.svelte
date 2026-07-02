@@ -84,7 +84,7 @@
     width: clamp(160px, 18vw, 220px);
     height: clamp(160px, 18vw, 220px);
     border-radius: 40%;
-    background: radial-gradient(circle, rgba(137, 112, 255, 0.28) 0%, transparent 70%);
+    background: radial-gradient(circle, color-mix(in srgb, var(--color-primary) 28%, transparent) 0%, transparent 70%);
     filter: blur(0.5px);
     pointer-events: none;
   }
@@ -123,13 +123,13 @@
 
   .feature-card h3 {
     margin: 0 0 0.35rem;
-    font-size: 1.05rem;
+    font-size: var(--text-lg);
     letter-spacing: -0.01em;
   }
 
   .feature-card p {
     margin: 0;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
     line-height: 1.5;
   }
 
@@ -147,7 +147,7 @@
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 24%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 24%, transparent);
     opacity: 0.45;
     pointer-events: none;
   }
@@ -160,13 +160,13 @@
 
   .card-header h2 {
     margin: 0;
-    font-size: 1.35rem;
+    font-size: var(--text-xl);
     letter-spacing: -0.01em;
   }
 
   .card-header p {
     margin: 0;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
   }
 
   .field {
@@ -174,11 +174,11 @@
     flex-direction: column;
     gap: 0.5rem;
     font-weight: 600;
-    color: var(--md-sys-color-on-surface-variant);
+    color: var(--color-on-surface-variant);
   }
 
   .field span {
-    font-size: 0.9rem;
+    font-size: var(--text-md);
     text-transform: none;
   }
 
@@ -188,8 +188,8 @@
 
   .hint {
     margin: 0;
-    color: var(--md-sys-color-muted);
-    font-size: 0.9rem;
+    color: var(--color-muted);
+    font-size: var(--text-md);
   }
 
   @media (max-width: 720px) {

@@ -15,8 +15,11 @@ launches the server in one step: `docker compose up --build`.
 
 ## Key modules
 - `main.rs` – sets up the Axum router, middleware and shared state
-- `ws.rs` – WebSocket handshake and message handling
-- `db.rs` – database connection + schema helpers
+- `config.rs` – environment variable parsing and CORS setup
+- `ws/` – WebSocket handshake and message handling (`handlers/` for auth,
+  messages and channels)
+- `db/` – database connection, schema and queries
+- `bot/` – REST API for bots (see `BOT_API.md`)
 - `upload.rs` – multipart image upload endpoint with MIME validation
 - `admin.rs` – `/role` endpoint guarded by a bearer token
 - `security.rs` – rate limiting, replay protection and validation utilities
@@ -32,7 +35,8 @@ Optional environment variables:
 - `UPLOAD_DIR` – directory for uploaded images (`uploads/` by default)
 - `SERVER_PASSWORD` – shared secret required during presence/auth flows
 - `ADMIN_TOKEN` – enables the `/role` endpoint and channel management controls
-- `ENABLE_CORS` – set only during development to enable permissive CORS headers
+- `CORS_ALLOW_ORIGINS` – comma-separated origins allowed to call HTTP
+  endpoints; set only during development
 - `MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
   `NONCE_EXPIRY_SECONDS` – override rate limiting defaults
 
