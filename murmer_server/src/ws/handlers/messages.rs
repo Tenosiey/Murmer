@@ -1,7 +1,6 @@
 //! Handlers for chat messages, message deletion, reactions, history and search.
 
 use crate::ws::{constants::*, errors, helpers::*};
-#[allow(unused_imports)]
 use crate::{db, security, AppState};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
