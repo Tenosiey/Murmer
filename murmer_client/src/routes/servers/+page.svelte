@@ -372,7 +372,7 @@
     content: '';
     position: absolute;
     inset: -40% -20% 40% auto;
-    background: radial-gradient(circle at top right, rgba(137, 112, 255, 0.4), transparent 60%);
+    background: radial-gradient(circle at top right, color-mix(in srgb, var(--md-sys-color-primary) 40%, transparent), transparent 60%);
     pointer-events: none;
   }
 
@@ -487,7 +487,7 @@
     inset: auto auto -40% -30%;
     width: 360px;
     height: 360px;
-    background: radial-gradient(circle, rgba(255, 163, 215, 0.22) 0%, transparent 70%);
+    background: radial-gradient(circle, color-mix(in srgb, var(--md-sys-color-tertiary) 22%, transparent) 0%, transparent 70%);
     pointer-events: none;
   }
 
