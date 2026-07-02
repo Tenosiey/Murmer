@@ -13,54 +13,59 @@
 </script>
 
 <svelte:head>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
   <link
     rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
   />
 </svelte:head>
 
 <style>
   :global(:root) {
     color-scheme: dark;
-    --font-sans: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', sans-serif;
-    --font-mono: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
-    --md-sys-color-primary: #c4b5ff;
-    --md-sys-color-on-primary: #20104d;
-    --md-sys-color-primary-container: #3a2c70;
-    --md-sys-color-on-primary-container: #ede8ff;
-    --md-sys-color-secondary: #8bd3ff;
-    --md-sys-color-on-secondary: #002639;
-    --md-sys-color-tertiary: #ffb3c8;
-    --md-sys-color-on-tertiary: #3c001d;
-    --md-sys-color-error: #ffb4ab;
-    --md-sys-color-on-error: #370001;
-    --md-sys-color-surface: #0f1118;
-    --md-sys-color-surface-dim: #0a0c12;
-    --md-sys-color-surface-bright: #1f2230;
-    --md-sys-color-surface-container-lowest: #07080d;
-    --md-sys-color-surface-container-low: #14171f;
-    --md-sys-color-surface-container: #1b1e28;
-    --md-sys-color-surface-container-high: #232633;
-    --md-sys-color-surface-container-highest: #2b2f3d;
-    --md-sys-color-outline: rgba(218, 225, 255, 0.12);
-    --md-sys-color-outline-variant: rgba(218, 225, 255, 0.2);
-    --md-sys-color-shadow: rgba(7, 9, 18, 0.65);
-    --md-sys-color-on-surface: #e8ecff;
-    --md-sys-color-on-surface-variant: #bbc4d8;
-    --md-sys-color-muted: rgba(227, 233, 255, 0.72);
-    --md-sys-color-success: #4ade80;
-    --md-sys-color-warning: #facc15;
-    --motion-duration-short: 140ms;
-    --motion-duration-medium: 220ms;
+    --font-sans: 'IBM Plex Mono', 'JetBrains Mono', 'Menlo', ui-monospace, monospace;
+    --font-mono: 'JetBrains Mono', 'IBM Plex Mono', 'Fira Code', 'Menlo', monospace;
+    /* Murmer design system: dual-tone cyberpunk on dark blue-gray.
+       Primary = electric cyan, tertiary = hot magenta. */
+    --md-sys-color-primary: #00d9ff;
+    --md-sys-color-on-primary: #001a20;
+    --md-sys-color-primary-container: #003848;
+    --md-sys-color-on-primary-container: #c5f6ff;
+    --md-sys-color-secondary: #00d9ff;
+    --md-sys-color-on-secondary: #001a20;
+    --md-sys-color-tertiary: #ff3d7f;
+    --md-sys-color-on-tertiary: #360015;
+    --md-sys-color-error: #ff3d7f;
+    --md-sys-color-on-error: #360015;
+    --md-sys-color-surface: #0f1419;
+    --md-sys-color-surface-dim: #0a0e12;
+    --md-sys-color-surface-bright: #2d3548;
+    --md-sys-color-surface-container-lowest: #080b0f;
+    --md-sys-color-surface-container-low: #1a1f2e;
+    --md-sys-color-surface-container: #1e2433;
+    --md-sys-color-surface-container-high: #252c3d;
+    --md-sys-color-surface-container-highest: #2d3548;
+    --md-sys-color-outline: rgba(61, 68, 88, 0.9);
+    --md-sys-color-outline-variant: rgba(61, 68, 88, 0.6);
+    --md-sys-color-shadow: rgba(0, 0, 0, 0.75);
+    --md-sys-color-on-surface: #f0f3f7;
+    --md-sys-color-on-surface-variant: #b8c1d3;
+    --md-sys-color-muted: #7a8499;
+    --md-sys-color-success: #00ff88;
+    --md-sys-color-warning: #ffaa00;
+    --motion-duration-short: 100ms;
+    --motion-duration-medium: 160ms;
     --motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
-    --radius-xs: 8px;
-    --radius-sm: 12px;
-    --radius-md: 16px;
-    --radius-lg: 22px;
-    --shadow-01: 0 1px 2px rgba(10, 13, 24, 0.25);
-    --shadow-02: 0 12px 32px rgba(11, 15, 30, 0.28);
-    --shadow-03: 0 28px 48px rgba(7, 11, 28, 0.32);
-    --blur-elevated: saturate(140%) blur(26px);
+    /* Brutalist: zero radius on panels, 3px on controls. */
+    --radius-xs: 0px;
+    --radius-sm: 3px;
+    --radius-md: 3px;
+    --radius-lg: 0px;
+    --shadow-01: 0 1px 0 rgba(0, 217, 255, 0.08);
+    --shadow-02: 0 8px 24px rgba(0, 0, 0, 0.45);
+    --shadow-03: 0 20px 60px rgba(0, 0, 0, 0.9);
+    --blur-elevated: saturate(120%) blur(4px);
 
     /* Legacy aliases for existing components */
     --color-surface: var(--md-sys-color-surface);
@@ -88,33 +93,33 @@
 
   :global(html[data-theme='light']) {
     color-scheme: light;
-    --md-sys-color-primary: #6550db;
+    --md-sys-color-primary: #007a99;
     --md-sys-color-on-primary: #ffffff;
-    --md-sys-color-primary-container: #e6deff;
-    --md-sys-color-on-primary-container: #21005d;
-    --md-sys-color-secondary: #3864ff;
+    --md-sys-color-primary-container: #c5f6ff;
+    --md-sys-color-on-primary-container: #001a20;
+    --md-sys-color-secondary: #007a99;
     --md-sys-color-on-secondary: #ffffff;
-    --md-sys-color-tertiary: #b32672;
+    --md-sys-color-tertiary: #c2185b;
     --md-sys-color-on-tertiary: #ffffff;
-    --md-sys-color-error: #ba1a1a;
+    --md-sys-color-error: #c2185b;
     --md-sys-color-on-error: #ffffff;
-    --md-sys-color-surface: #f6f6ff;
-    --md-sys-color-surface-dim: #ecebfa;
+    --md-sys-color-surface: #f4f6fa;
+    --md-sys-color-surface-dim: #e6ebf1;
     --md-sys-color-surface-bright: #ffffff;
     --md-sys-color-surface-container-lowest: #ffffff;
-    --md-sys-color-surface-container-low: #f0efff;
-    --md-sys-color-surface-container: #f7f5ff;
-    --md-sys-color-surface-container-high: #ffffff;
-    --md-sys-color-surface-container-highest: #ffffff;
-    --md-sys-color-outline: rgba(37, 51, 92, 0.12);
-    --md-sys-color-outline-variant: rgba(37, 51, 92, 0.18);
-    --md-sys-color-shadow: rgba(21, 30, 59, 0.12);
-    --md-sys-color-on-surface: #0f172a;
-    --md-sys-color-on-surface-variant: #4c566d;
-    --md-sys-color-muted: rgba(15, 23, 42, 0.65);
-    --md-sys-color-success: #16a34a;
-    --md-sys-color-warning: #f59e0b;
-    --blur-elevated: saturate(120%) blur(18px);
+    --md-sys-color-surface-container-low: #eef1f6;
+    --md-sys-color-surface-container: #e6ebf1;
+    --md-sys-color-surface-container-high: #dde3ec;
+    --md-sys-color-surface-container-highest: #d3dae5;
+    --md-sys-color-outline: rgba(15, 20, 25, 0.16);
+    --md-sys-color-outline-variant: rgba(15, 20, 25, 0.24);
+    --md-sys-color-shadow: rgba(15, 20, 25, 0.12);
+    --md-sys-color-on-surface: #0f1419;
+    --md-sys-color-on-surface-variant: #3d4458;
+    --md-sys-color-muted: #5a647a;
+    --md-sys-color-success: #0a8f47;
+    --md-sys-color-warning: #b76e00;
+    --blur-elevated: saturate(110%) blur(4px);
   }
 
   :global(html),
@@ -122,12 +127,11 @@
     margin: 0;
     padding: 0;
     min-height: 100%;
-    background: radial-gradient(circle at 20% -10%, rgba(137, 112, 255, 0.32), transparent 55%),
-      radial-gradient(circle at 90% -10%, rgba(71, 203, 255, 0.28), transparent 60%),
-      var(--md-sys-color-surface);
+    background: var(--md-sys-color-surface);
     color: var(--md-sys-color-on-surface);
     font-family: var(--font-sans);
-    font-feature-settings: 'ss01' 1, 'ss03' 1;
+    font-size: 13px;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
   }
 
@@ -136,9 +140,9 @@
     position: fixed;
     inset: 0;
     pointer-events: none;
-    background: linear-gradient(130deg, rgba(151, 125, 255, 0.18), rgba(255, 161, 209, 0.12));
-    mix-blend-mode: screen;
-    opacity: 0.7;
+    background:
+      radial-gradient(circle at 15% 0%, rgba(0, 217, 255, 0.06), transparent 45%),
+      radial-gradient(circle at 90% 100%, rgba(255, 61, 127, 0.05), transparent 50%);
     z-index: -1;
   }
 
@@ -179,8 +183,9 @@
 
   :global(input:focus),
   :global(textarea:focus) {
-    border-color: color-mix(in srgb, var(--md-sys-color-primary) 55%, transparent);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent);
+    border-color: var(--md-sys-color-primary);
+    box-shadow: 0 0 0 1px var(--md-sys-color-primary),
+      0 0 12px color-mix(in srgb, var(--md-sys-color-primary) 30%, transparent);
   }
 
   :global(textarea) {
@@ -358,40 +363,40 @@
 
   :global(.button-primary) {
     border-radius: var(--radius-sm);
-    background: linear-gradient(135deg, var(--md-sys-color-primary), var(--md-sys-color-secondary));
+    background: var(--md-sys-color-primary);
     color: var(--md-sys-color-on-primary);
-    box-shadow: 0 20px 40px color-mix(in srgb, var(--md-sys-color-primary) 35%, transparent);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--md-sys-color-primary) 35%, transparent);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    padding: 0.95rem 1.4rem;
-    font-size: 1rem;
+    padding: 0.85rem 1.25rem;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
   }
 
   :global(.button-primary:hover) {
-    transform: translateY(-1px);
-    box-shadow: 0 24px 44px color-mix(in srgb, var(--md-sys-color-primary) 42%, transparent);
+    box-shadow: 0 0 20px color-mix(in srgb, var(--md-sys-color-primary) 55%, transparent);
   }
 
   :global(.button-primary:active) {
-    transform: translateY(0);
-    box-shadow: 0 12px 30px color-mix(in srgb, var(--md-sys-color-primary) 28%, transparent);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--md-sys-color-primary) 25%, transparent);
   }
 
   .version {
     position: fixed;
-    bottom: 1rem;
-    right: 1rem;
+    bottom: 0.75rem;
+    right: 0.75rem;
     color: var(--md-sys-color-muted);
-    font-size: 0.72rem;
-    letter-spacing: 0.08em;
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    backdrop-filter: var(--blur-elevated);
-    background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 80%, transparent);
-    padding: 0.35rem 0.85rem;
-    border-radius: 999px;
-    box-shadow: var(--shadow-xs);
+    font-family: var(--font-mono);
+    background: var(--md-sys-color-surface-container);
+    padding: 0.3rem 0.6rem;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--md-sys-color-outline);
   }
 </style>

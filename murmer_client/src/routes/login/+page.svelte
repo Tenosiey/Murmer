@@ -84,7 +84,7 @@
     width: clamp(160px, 18vw, 220px);
     height: clamp(160px, 18vw, 220px);
     border-radius: 40%;
-    background: radial-gradient(circle, rgba(137, 112, 255, 0.28) 0%, transparent 70%);
+    background: radial-gradient(circle, color-mix(in srgb, var(--md-sys-color-primary) 28%, transparent) 0%, transparent 70%);
     filter: blur(0.5px);
     pointer-events: none;
   }
