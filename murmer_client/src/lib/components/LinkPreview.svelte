@@ -210,13 +210,13 @@
     backdrop-filter: var(--blur-elevated);
     overflow: hidden;
     max-width: 460px;
-    box-shadow: var(--shadow-01);
+    box-shadow: var(--shadow-xs);
     transition: all var(--motion-duration-short) var(--motion-easing-standard);
   }
 
   .link-preview:hover {
     border-color: var(--md-sys-color-outline-variant);
-    box-shadow: var(--shadow-02);
+    box-shadow: var(--shadow-sm);
   }
 
   .link-preview iframe {

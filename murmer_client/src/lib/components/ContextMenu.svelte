@@ -103,7 +103,7 @@
     list-style: none;
     margin: 0;
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-03);
+    box-shadow: var(--shadow-md);
     backdrop-filter: var(--blur-elevated);
     min-width: 220px;
   }

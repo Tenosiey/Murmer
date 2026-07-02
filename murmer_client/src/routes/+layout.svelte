@@ -51,23 +51,39 @@
     --md-sys-color-shadow: rgba(0, 0, 0, 0.75);
     --md-sys-color-on-surface: #f0f3f7;
     --md-sys-color-on-surface-variant: #b8c1d3;
-    --md-sys-color-muted: #7a8499;
+    /* Muted is kept at >= 5:1 contrast on the darkest surfaces (a11y). */
+    --md-sys-color-muted: #8a94a9;
     --md-sys-color-success: #00ff88;
     --md-sys-color-warning: #ffaa00;
     --motion-duration-short: 100ms;
     --motion-duration-medium: 160ms;
     --motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
-    /* Brutalist: zero radius on panels, 3px on controls. */
+    /* Brutalist: zero radius on panels, 3px on controls, pills for chips. */
     --radius-xs: 0px;
     --radius-sm: 3px;
     --radius-md: 3px;
     --radius-lg: 0px;
-    --shadow-01: 0 1px 0 rgba(0, 217, 255, 0.08);
-    --shadow-02: 0 8px 24px rgba(0, 0, 0, 0.45);
-    --shadow-03: 0 20px 60px rgba(0, 0, 0, 0.9);
+    --radius-pill: 999px;
+    /* Elevation scale */
+    --shadow-xs: 0 1px 0 rgba(0, 217, 255, 0.08);
+    --shadow-sm: 0 8px 24px rgba(0, 0, 0, 0.45);
+    --shadow-md: 0 20px 60px rgba(0, 0, 0, 0.9);
+    --shadow-lg: 0 24px 72px rgba(0, 0, 0, 0.92);
     --blur-elevated: saturate(120%) blur(4px);
+    /* Type scale (root font-size is 13px) */
+    --text-xs: 0.7rem;
+    --text-sm: 0.8rem;
+    --text-md: 0.9rem;
+    --text-lg: 1.1rem;
+    --text-xl: 1.35rem;
+    --text-2xl: 1.7rem;
+    /* Stacking order */
+    --z-dropdown: 60;
+    --z-overlay: 100;
+    --z-modal: 1200;
+    --z-top: 10000;
 
-    /* Legacy aliases for existing components */
+    /* Component-facing aliases — components use these, never --md-sys-* directly */
     --color-surface: var(--md-sys-color-surface);
     --color-surface-elevated: var(--md-sys-color-surface-container);
     --color-surface-raised: var(--md-sys-color-surface-container-high);
@@ -85,9 +101,6 @@
     --color-warning: var(--md-sys-color-warning);
     --color-error: var(--md-sys-color-error);
     --color-overlay: rgba(12, 17, 30, 0.58);
-    --shadow-xs: var(--shadow-01);
-    --shadow-sm: var(--shadow-02);
-    --shadow-md: var(--shadow-03);
     --transition: var(--motion-duration-short) var(--motion-easing-standard);
   }
 
@@ -320,7 +333,7 @@
     background: var(--md-sys-color-surface-container-high);
     border-radius: var(--radius-lg);
     border: 1px solid var(--md-sys-color-outline);
-    box-shadow: var(--shadow-02);
+    box-shadow: var(--shadow-sm);
     backdrop-filter: var(--blur-elevated);
   }
 
@@ -359,6 +372,18 @@
   :global(.body-muted) {
     color: var(--md-sys-color-muted);
     line-height: 1.6;
+  }
+
+  /* Visually hidden but readable by screen readers */
+  :global(.sr-only) {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    width: 1px;
   }
 
   :global(.button-primary) {
