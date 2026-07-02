@@ -25,7 +25,7 @@ pub(super) async fn handle_presence(
             let provided = v.get("password").and_then(|p| p.as_str());
             if provided != Some(required) {
                 let _ = sender
-                    .send(Message::Text(errors::INVALID_PASSWORD.to_string()))
+                    .send(Message::Text(errors::INVALID_PASSWORD.to_string().into()))
                     .await;
                 return Err(());
             }
@@ -38,7 +38,7 @@ pub(super) async fn handle_presence(
         ) {
             if !security::check_auth_rate_limit(&state.rate_limiter, client_ip).await {
                 let _ = sender
-                    .send(Message::Text(errors::AUTH_RATE_LIMIT.to_string()))
+                    .send(Message::Text(errors::AUTH_RATE_LIMIT.to_string().into()))
                     .await;
                 return Err(());
             }
@@ -48,7 +48,7 @@ pub(super) async fn handle_presence(
                 Err(err) => {
                     error!("Authentication failed - {}: {}", err, ts);
                     let _ = sender
-                        .send(Message::Text(errors::INVALID_TIMESTAMP.to_string()))
+                        .send(Message::Text(errors::INVALID_TIMESTAMP.to_string().into()))
                         .await;
                     return Err(());
                 }
@@ -57,7 +57,7 @@ pub(super) async fn handle_presence(
             let nonce = format!("{}:{}", pk, timestamp);
             if !security::check_and_store_nonce(&state.rate_limiter, &nonce).await {
                 let _ = sender
-                    .send(Message::Text(errors::REPLAY_ATTACK.to_string()))
+                    .send(Message::Text(errors::REPLAY_ATTACK.to_string().into()))
                     .await;
                 return Err(());
             }
@@ -78,7 +78,9 @@ pub(super) async fn handle_presence(
                                         pk
                                     );
                                     let _ = sender
-                                        .send(Message::Text(errors::INVALID_SIGNATURE.to_string()))
+                                        .send(Message::Text(
+                                            errors::INVALID_SIGNATURE.to_string().into(),
+                                        ))
                                         .await;
                                     return Err(());
                                 }
@@ -87,7 +89,7 @@ pub(super) async fn handle_presence(
                                 error!("Authentication failed - invalid signature format: {}", e);
                                 let _ = sender
                                     .send(Message::Text(
-                                        errors::INVALID_SIGNATURE_FORMAT.to_string(),
+                                        errors::INVALID_SIGNATURE_FORMAT.to_string().into(),
                                     ))
                                     .await;
                                 return Err(());
@@ -96,7 +98,7 @@ pub(super) async fn handle_presence(
                         Err(e) => {
                             error!("Authentication failed - invalid public key: {}", e);
                             let _ = sender
-                                .send(Message::Text(errors::INVALID_PUBLIC_KEY.to_string()))
+                                .send(Message::Text(errors::INVALID_PUBLIC_KEY.to_string().into()))
                                 .await;
                             return Err(());
                         }
@@ -107,14 +109,14 @@ pub(super) async fn handle_presence(
                         pk_bytes.len()
                     );
                     let _ = sender
-                        .send(Message::Text(errors::INVALID_KEY_LENGTH.to_string()))
+                        .send(Message::Text(errors::INVALID_KEY_LENGTH.to_string().into()))
                         .await;
                     return Err(());
                 }
             } else {
                 error!("Authentication failed - invalid base64 encoding");
                 let _ = sender
-                    .send(Message::Text(errors::INVALID_ENCODING.to_string()))
+                    .send(Message::Text(errors::INVALID_ENCODING.to_string().into()))
                     .await;
                 return Err(());
             }
@@ -126,7 +128,7 @@ pub(super) async fn handle_presence(
             if !security::validate_user_name(u) {
                 error!("Invalid user name: {}", u);
                 let _ = sender
-                    .send(Message::Text(errors::INVALID_USERNAME.to_string()))
+                    .send(Message::Text(errors::INVALID_USERNAME.to_string().into()))
                     .await;
                 return Err(());
             }
@@ -178,7 +180,7 @@ pub(super) async fn handle_presence(
         }
     } else {
         let _ = sender
-            .send(Message::Text(errors::INVALID_SIGNATURE.to_string()))
+            .send(Message::Text(errors::INVALID_SIGNATURE.to_string().into()))
             .await;
         return Err(());
     }
@@ -200,7 +202,7 @@ pub(super) async fn handle_bot_presence(
         None => {
             let _ = sender
                 .send(Message::Text(
-                    r#"{"type":"error","message":"missing-bot-token"}"#.to_string(),
+                    r#"{"type":"error","message":"missing-bot-token"}"#.to_string().into(),
                 ))
                 .await;
             return Err(());
@@ -213,7 +215,7 @@ pub(super) async fn handle_bot_presence(
         _ => {
             let _ = sender
                 .send(Message::Text(
-                    r#"{"type":"error","message":"invalid-bot-token"}"#.to_string(),
+                    r#"{"type":"error","message":"invalid-bot-token"}"#.to_string().into(),
                 ))
                 .await;
             return Err(());

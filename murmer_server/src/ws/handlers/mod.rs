@@ -65,7 +65,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                         }
 
                         if !authenticated && t != "presence" && t != "bot-presence" {
-                            let _ = sender.send(Message::Text(errors::UNAUTHENTICATED.to_string())).await;
+                            let _ = sender.send(Message::Text(errors::UNAUTHENTICATED.to_string().into())).await;
                             break;
                         }
 
@@ -171,7 +171,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
             result = chan_rx.recv() => {
                 match result {
                     Ok(msg) => {
-                        if sender.send(Message::Text(msg)).await.is_err() { break; }
+                        if sender.send(Message::Text(msg.into())).await.is_err() { break; }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(_) => break,
@@ -180,7 +180,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
             result = global_rx.recv() => {
                 match result {
                     Ok(msg) => {
-                        if sender.send(Message::Text(msg)).await.is_err() { break; }
+                        if sender.send(Message::Text(msg.into())).await.is_err() { break; }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(_) => break,
@@ -210,7 +210,7 @@ async fn handle_status_update(
                 "message": "not-authenticated",
             })
             .to_string();
-            let _ = sender.send(Message::Text(msg)).await;
+            let _ = sender.send(Message::Text(msg.into())).await;
             return;
         }
     };
@@ -221,7 +221,7 @@ async fn handle_status_update(
             "message": "invalid-status",
         })
         .to_string();
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
         return;
     };
 
@@ -231,7 +231,7 @@ async fn handle_status_update(
             "message": "invalid-status",
         })
         .to_string();
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
         return;
     };
 
@@ -247,7 +247,7 @@ async fn handle_status_update(
 async fn handle_ping(sender: &mut SplitSink<WebSocket, Message>, v: &Value) {
     let id = v.get("id").cloned().unwrap_or(Value::Null);
     let msg = serde_json::json!({ "type": "pong", "id": id });
-    let _ = sender.send(Message::Text(msg.to_string())).await;
+    let _ = sender.send(Message::Text(msg.to_string().into())).await;
 }
 
 /// Handle voice join request.
@@ -370,7 +370,7 @@ async fn send_active_screen_shares(
         "channelId": channel_id,
         "users": users,
     })) {
-        let _ = sender.send(Message::Text(msg)).await;
+        let _ = sender.send(Message::Text(msg.into())).await;
     }
 }
 
@@ -385,7 +385,9 @@ async fn handle_set_role(
         Some(name) => name,
         None => {
             let _ = sender
-                .send(Message::Text(errors::ROLE_PERMISSION_DENIED.to_string()))
+                .send(Message::Text(
+                    errors::ROLE_PERMISSION_DENIED.to_string().into(),
+                ))
                 .await;
             return;
         }
@@ -393,21 +395,25 @@ async fn handle_set_role(
 
     if !can_manage_roles(state, requester).await {
         let _ = sender
-            .send(Message::Text(errors::ROLE_PERMISSION_DENIED.to_string()))
+            .send(Message::Text(
+                errors::ROLE_PERMISSION_DENIED.to_string().into(),
+            ))
             .await;
         return;
     }
 
     let Some(target_user) = v.get("user").and_then(|u| u.as_str()) else {
         let _ = sender
-            .send(Message::Text(errors::ROLE_TARGET_NOT_FOUND.to_string()))
+            .send(Message::Text(
+                errors::ROLE_TARGET_NOT_FOUND.to_string().into(),
+            ))
             .await;
         return;
     };
 
     let Some(role) = v.get("role").and_then(|r| r.as_str()) else {
         let _ = sender
-            .send(Message::Text(errors::ROLE_UPDATE_FAILED.to_string()))
+            .send(Message::Text(errors::ROLE_UPDATE_FAILED.to_string().into()))
             .await;
         return;
     };
@@ -419,7 +425,9 @@ async fn handle_set_role(
 
     let Some(key) = target_key else {
         let _ = sender
-            .send(Message::Text(errors::ROLE_TARGET_NOT_FOUND.to_string()))
+            .send(Message::Text(
+                errors::ROLE_TARGET_NOT_FOUND.to_string().into(),
+            ))
             .await;
         return;
     };
@@ -433,7 +441,7 @@ async fn handle_set_role(
     if let Err(e) = db::set_role(&state.db, &key, role, color.as_deref()).await {
         error!("Failed to set role for {target_user} (key {key}): {e}");
         let _ = sender
-            .send(Message::Text(errors::ROLE_UPDATE_FAILED.to_string()))
+            .send(Message::Text(errors::ROLE_UPDATE_FAILED.to_string().into()))
             .await;
         return;
     }
@@ -462,7 +470,9 @@ async fn handle_remove_role(
         Some(name) => name,
         None => {
             let _ = sender
-                .send(Message::Text(errors::ROLE_PERMISSION_DENIED.to_string()))
+                .send(Message::Text(
+                    errors::ROLE_PERMISSION_DENIED.to_string().into(),
+                ))
                 .await;
             return;
         }
@@ -470,14 +480,18 @@ async fn handle_remove_role(
 
     if !can_manage_roles(state, requester).await {
         let _ = sender
-            .send(Message::Text(errors::ROLE_PERMISSION_DENIED.to_string()))
+            .send(Message::Text(
+                errors::ROLE_PERMISSION_DENIED.to_string().into(),
+            ))
             .await;
         return;
     }
 
     let Some(target_user) = v.get("user").and_then(|u| u.as_str()) else {
         let _ = sender
-            .send(Message::Text(errors::ROLE_TARGET_NOT_FOUND.to_string()))
+            .send(Message::Text(
+                errors::ROLE_TARGET_NOT_FOUND.to_string().into(),
+            ))
             .await;
         return;
     };
@@ -489,7 +503,9 @@ async fn handle_remove_role(
 
     let Some(key) = target_key else {
         let _ = sender
-            .send(Message::Text(errors::ROLE_TARGET_NOT_FOUND.to_string()))
+            .send(Message::Text(
+                errors::ROLE_TARGET_NOT_FOUND.to_string().into(),
+            ))
             .await;
         return;
     };
@@ -497,7 +513,7 @@ async fn handle_remove_role(
     if let Err(e) = db::remove_role(&state.db, &key).await {
         error!("Failed to remove role for {target_user} (key {key}): {e}");
         let _ = sender
-            .send(Message::Text(errors::ROLE_UPDATE_FAILED.to_string()))
+            .send(Message::Text(errors::ROLE_UPDATE_FAILED.to_string().into()))
             .await;
         return;
     }

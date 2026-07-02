@@ -57,9 +57,10 @@ fn json_error(status: StatusCode, message: &str) -> Response {
 }
 
 fn verify_admin(state: &AppState, token: &str) -> bool {
-    state.admin_token.as_ref().is_some_and(|expected| {
-        expected.as_bytes().ct_eq(token.as_bytes()).into()
-    })
+    state
+        .admin_token
+        .as_ref()
+        .is_some_and(|expected| expected.as_bytes().ct_eq(token.as_bytes()).into())
 }
 
 async fn verify_bot(state: &AppState, token: &str) -> Option<BotRecord> {
@@ -747,28 +748,28 @@ pub fn router() -> Router<Arc<AppState>> {
         // Admin bot management
         .route("/api/v1/bots", post(create_bot).get(list_bots))
         .route(
-            "/api/v1/bots/:bot_id",
+            "/api/v1/bots/{bot_id}",
             get(get_bot)
                 .patch(update_bot_handler)
                 .delete(delete_bot_handler),
         )
-        .route("/api/v1/bots/:bot_id/reset-token", post(reset_bot_token))
+        .route("/api/v1/bots/{bot_id}/reset-token", post(reset_bot_token))
         // Bot API
         .route("/api/v1/channels", get(list_channels_handler))
         .route(
-            "/api/v1/channels/:channel_id/messages",
+            "/api/v1/channels/{channel_id}/messages",
             get(get_messages).post(send_message),
         )
         .route(
-            "/api/v1/channels/:channel_id/messages/:message_id",
+            "/api/v1/channels/{channel_id}/messages/{message_id}",
             delete(delete_message_handler),
         )
         .route(
-            "/api/v1/channels/:channel_id/messages/:message_id/reactions",
+            "/api/v1/channels/{channel_id}/messages/{message_id}/reactions",
             post(add_reaction_handler),
         )
         .route(
-            "/api/v1/channels/:channel_id/messages/:message_id/reactions/:emoji",
+            "/api/v1/channels/{channel_id}/messages/{message_id}/reactions/{emoji}",
             delete(remove_reaction_handler),
         )
         .route("/api/v1/users", get(list_users))
