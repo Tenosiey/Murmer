@@ -13,16 +13,18 @@ shell.
 
 ## Code organisation
 - `src/routes/` – SvelteKit pages (login, server selection, chat)
-- `src/lib/components/` – reusable UI primitives (buttons, overlays, etc.)
+- `src/lib/components/` – reusable UI components (overlays, menus, indicators)
 - `src/lib/components/chat/` – sections of the chat page (sidebar, header, …)
-- `src/lib/components/ui/` – generic design-system components
 - `src/lib/stores/` – Svelte stores holding client state
 - `src/lib/chat/` – constants and helper functions for the chat page
 - `src/lib/voice/` – WebRTC helpers and push-to-talk tooling
 - `src/lib/screenshare/` – WebRTC screen sharing manager
 - `src-tauri/` – Rust-side glue for native integrations
 
-Prefer small, composable Svelte components.
+Prefer small, composable Svelte components. Styling rules: components use
+the `--color-*`/`--text-*`/`--radius-*`/`--shadow-*`/`--z-*` tokens defined
+in `src/routes/+layout.svelte` — never `--md-sys-*` directly and no hardcoded
+colors or font sizes.
 
 ## Security considerations
 - Key pairs are stored in `localStorage`; treat this as acceptable for the
