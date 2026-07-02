@@ -14,6 +14,7 @@ shell.
 ## Code organisation
 - `src/routes/` – SvelteKit pages (login, server selection, chat)
 - `src/lib/components/` – reusable UI primitives (buttons, overlays, etc.)
+- `src/lib/components/chat/` – sections of the chat page (sidebar, header, …)
 - `src/lib/components/ui/` – generic design-system components
 - `src/lib/stores/` – Svelte stores holding client state
 - `src/lib/chat/` – constants and helper functions for the chat page
@@ -21,8 +22,7 @@ shell.
 - `src/lib/screenshare/` – WebRTC screen sharing manager
 - `src-tauri/` – Rust-side glue for native integrations
 
-Prefer small, composable Svelte components. Re-export shared utilities from
-`src/lib/index.ts` if they need to be consumed in multiple places.
+Prefer small, composable Svelte components.
 
 ## Security considerations
 - Key pairs are stored in `localStorage`; treat this as acceptable for the
