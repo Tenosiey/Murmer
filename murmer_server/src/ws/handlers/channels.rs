@@ -68,6 +68,9 @@ pub(super) async fn handle_create_channel(
 }
 
 /// Handle delete channel request.
+// The per-connection channel state (id, tx, rx) is deliberately passed as
+// individual &mut bindings from the ws dispatch loop.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn handle_delete_channel(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -167,7 +170,7 @@ pub(super) async fn handle_move_channel(
         return;
     }
 
-    let category_id = if v.get("categoryId").map_or(false, |c| c.is_null()) {
+    let category_id = if v.get("categoryId").is_some_and(|c| c.is_null()) {
         None
     } else {
         v.get("categoryId")

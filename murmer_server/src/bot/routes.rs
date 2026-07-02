@@ -57,7 +57,7 @@ fn json_error(status: StatusCode, message: &str) -> Response {
 }
 
 fn verify_admin(state: &AppState, token: &str) -> bool {
-    state.admin_token.as_ref().map_or(false, |expected| {
+    state.admin_token.as_ref().is_some_and(|expected| {
         expected.as_bytes().ct_eq(token.as_bytes()).into()
     })
 }
@@ -526,7 +526,7 @@ async fn delete_message_handler(
         .content
         .get("user")
         .and_then(|u| u.as_str())
-        .map_or(false, |u| u == bot.name);
+        .is_some_and(|u| u == bot.name);
 
     if is_own && !perms.has(BotPermissions::SEND_MESSAGES) {
         return json_error(StatusCode::FORBIDDEN, "missing-permission:send_messages");
