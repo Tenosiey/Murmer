@@ -96,8 +96,8 @@
 <style>
   .menu {
     position: fixed;
-    background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 96%, transparent);
-    border: 1px solid var(--md-sys-color-outline);
+    background: color-mix(in srgb, var(--color-surface-raised) 96%, transparent);
+    border: 1px solid var(--color-surface-outline);
     padding: 0.45rem;
     z-index: 1200;
     list-style: none;
@@ -115,7 +115,7 @@
     background: none;
     border: none;
     border-radius: var(--radius-sm);
-    color: var(--md-sys-color-on-surface);
+    color: var(--color-on-surface);
     width: 100%;
     text-align: left;
     display: flex;
@@ -136,7 +136,7 @@
     transform: translateY(-50%);
     width: 3px;
     height: 0;
-    background: linear-gradient(180deg, var(--md-sys-color-primary), var(--md-sys-color-secondary));
+    background: linear-gradient(180deg, var(--color-primary), var(--color-secondary));
     border-radius: 0 999px 999px 0;
     transition: height var(--motion-duration-short) var(--motion-easing-standard);
   }
@@ -148,8 +148,8 @@
 
   .entry:hover,
   .entry:focus-visible {
-    background: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
-    color: var(--md-sys-color-on-surface);
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    color: var(--color-on-surface);
     padding-left: 1.2rem;
   }
 
@@ -158,17 +158,17 @@
   }
 
   .entry-danger {
-    color: var(--md-sys-color-error);
+    color: var(--color-error);
   }
 
   .entry-danger::before {
-    background: var(--md-sys-color-error);
+    background: var(--color-error);
   }
 
   .entry-danger:hover,
   .entry-danger:focus-visible {
-    background: color-mix(in srgb, var(--md-sys-color-error) 12%, transparent);
-    color: var(--md-sys-color-error);
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
+    color: var(--color-error);
   }
 
   .entry-icon {
@@ -181,7 +181,7 @@
   }
 
   .entry:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--md-sys-color-secondary) 45%, transparent);
+    outline: 2px solid color-mix(in srgb, var(--color-secondary) 45%, transparent);
     outline-offset: -2px;
   }
 </style>

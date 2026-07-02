@@ -204,9 +204,9 @@
 
 <style>
   .link-preview {
-    border: 1px solid var(--md-sys-color-outline);
+    border: 1px solid var(--color-surface-outline);
     border-radius: var(--radius-md);
-    background: var(--md-sys-color-surface-container-high);
+    background: var(--color-surface-raised);
     backdrop-filter: var(--blur-elevated);
     overflow: hidden;
     max-width: 460px;
@@ -215,7 +215,7 @@
   }
 
   .link-preview:hover {
-    border-color: var(--md-sys-color-outline-variant);
+    border-color: var(--color-outline-strong);
     box-shadow: var(--shadow-sm);
   }
 
@@ -223,7 +223,7 @@
     width: 100%;
     height: 220px;
     border: none;
-    background: color-mix(in srgb, var(--md-sys-color-surface) 95%, transparent);
+    background: color-mix(in srgb, var(--color-surface) 95%, transparent);
   }
 
   .preview-header {
@@ -233,18 +233,18 @@
     padding: 0.7rem 1rem;
     font-size: 0.85rem;
     font-weight: 600;
-    background: color-mix(in srgb, var(--md-sys-color-surface-container) 90%, transparent);
-    border-bottom: 1px solid var(--md-sys-color-outline);
+    background: color-mix(in srgb, var(--color-surface-elevated) 90%, transparent);
+    border-bottom: 1px solid var(--color-surface-outline);
   }
 
   .preview-header .host {
-    color: var(--md-sys-color-on-surface-variant);
+    color: var(--color-on-surface-variant);
     font-family: var(--font-mono);
     font-size: 0.8rem;
   }
 
   .preview-header a {
-    color: var(--md-sys-color-secondary);
+    color: var(--color-secondary);
     text-decoration: none;
     font-weight: 600;
     transition: color var(--motion-duration-short) var(--motion-easing-standard);
@@ -252,26 +252,26 @@
 
   .preview-header a:hover,
   .preview-header a:focus-visible {
-    color: var(--md-sys-color-primary);
+    color: var(--color-primary);
     text-decoration: underline;
   }
 
   .preview-fallback {
     padding: 1.2rem;
     font-size: 0.9rem;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
     text-align: center;
   }
 
   .preview-fallback a {
-    color: var(--md-sys-color-secondary);
+    color: var(--color-secondary);
     text-decoration: none;
     font-weight: 600;
   }
 
   .preview-fallback a:hover,
   .preview-fallback a:focus-visible {
-    color: var(--md-sys-color-primary);
+    color: var(--color-primary);
     text-decoration: underline;
   }
 
@@ -335,7 +335,7 @@
 
   .youtube-label {
     font-weight: 700;
-    color: var(--md-sys-color-error);
+    color: var(--color-error);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-size: 0.7rem;
@@ -345,19 +345,19 @@
     margin: 0;
     font-weight: 600;
     line-height: 1.3;
-    color: var(--md-sys-color-on-surface);
+    color: var(--color-on-surface);
     font-size: 0.95rem;
   }
 
   .youtube-author {
     margin: 0;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
     font-size: 0.85rem;
   }
 
   .youtube-error {
     margin: 0;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
     font-style: italic;
     font-size: 0.8rem;
   }

@@ -319,8 +319,8 @@
     gap: 0.5rem;
     padding: 0.4rem;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--md-sys-color-surface-container) 75%, transparent);
-    border: 1px solid var(--md-sys-color-outline);
+    background: color-mix(in srgb, var(--color-surface-elevated) 75%, transparent);
+    border: 1px solid var(--color-surface-outline);
     width: fit-content;
   }
 
@@ -331,7 +331,7 @@
     justify-content: center;
     padding: 0.45rem 1.1rem;
     border-radius: 999px;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
     text-decoration: none;
     font-weight: 600;
     transition: all var(--transition);
@@ -342,7 +342,7 @@
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: linear-gradient(135deg, color-mix(in srgb, var(--md-sys-color-primary) 20%, transparent), transparent);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 20%, transparent), transparent);
     opacity: 0;
     transition: opacity var(--transition);
   }
@@ -352,8 +352,8 @@
   }
 
   .page-tabs .tab.active {
-    color: var(--md-sys-color-on-surface);
-    background: var(--md-sys-color-surface-container-high);
+    color: var(--color-on-surface);
+    background: var(--color-surface-raised);
     box-shadow: var(--shadow-xs);
   }
 
@@ -372,7 +372,7 @@
     content: '';
     position: absolute;
     inset: -40% -20% 40% auto;
-    background: radial-gradient(circle at top right, color-mix(in srgb, var(--md-sys-color-primary) 40%, transparent), transparent 60%);
+    background: radial-gradient(circle at top right, color-mix(in srgb, var(--color-primary) 40%, transparent), transparent 60%);
     pointer-events: none;
   }
 
@@ -384,8 +384,8 @@
     place-items: center;
     font-weight: 700;
     font-size: 1.1rem;
-    background: linear-gradient(135deg, var(--md-sys-color-primary), var(--md-sys-color-secondary));
-    color: var(--md-sys-color-on-primary);
+    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+    color: var(--color-on-primary);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
 
@@ -401,7 +401,7 @@
     font-size: 0.72rem;
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
   }
 
   .account-meta strong {
@@ -411,7 +411,7 @@
 
   .meta-sub {
     font-size: 0.85rem;
-    color: color-mix(in srgb, var(--md-sys-color-muted) 90%, transparent);
+    color: color-mix(in srgb, var(--color-muted) 90%, transparent);
   }
 
   .quick-actions {
@@ -432,15 +432,15 @@
     gap: 0.4rem;
     padding: 0.7rem 1.15rem;
     transition: all var(--transition);
-    border: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 80%, transparent);
-    background: color-mix(in srgb, var(--md-sys-color-surface-container-high) 88%, transparent);
-    color: color-mix(in srgb, var(--md-sys-color-on-surface) 90%, var(--md-sys-color-muted) 10%);
+    border: 1px solid color-mix(in srgb, var(--color-outline-strong) 80%, transparent);
+    background: color-mix(in srgb, var(--color-surface-raised) 88%, transparent);
+    color: color-mix(in srgb, var(--color-on-surface) 90%, var(--color-muted) 10%);
   }
 
   .secondary {
-    background: color-mix(in srgb, var(--md-sys-color-primary) 18%, var(--md-sys-color-surface-container) 82%);
-    color: var(--md-sys-color-on-surface);
-    border-color: color-mix(in srgb, var(--md-sys-color-primary) 28%, transparent);
+    background: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface-elevated) 82%);
+    color: var(--color-on-surface);
+    border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
   }
 
   .ghost svg {
@@ -456,13 +456,13 @@
   }
 
   .ghost.danger {
-    color: var(--md-sys-color-error);
-    border-color: color-mix(in srgb, var(--md-sys-color-error) 45%, transparent);
-    background: color-mix(in srgb, var(--md-sys-color-error) 16%, transparent);
+    color: var(--color-error);
+    border-color: color-mix(in srgb, var(--color-error) 45%, transparent);
+    background: color-mix(in srgb, var(--color-error) 16%, transparent);
   }
 
   .ghost.danger:hover {
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--md-sys-color-error) 55%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-error) 55%, transparent);
   }
 
   .quick-actions .ghost {
@@ -487,7 +487,7 @@
     inset: auto auto -40% -30%;
     width: 360px;
     height: 360px;
-    background: radial-gradient(circle, color-mix(in srgb, var(--md-sys-color-tertiary) 22%, transparent) 0%, transparent 70%);
+    background: radial-gradient(circle, color-mix(in srgb, var(--color-tertiary) 22%, transparent) 0%, transparent 70%);
     pointer-events: none;
   }
 
@@ -507,7 +507,7 @@
 
   .card-copy p {
     margin: 0;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
     line-height: 1.5;
   }
 
@@ -523,7 +523,7 @@
     flex-direction: column;
     gap: 0.5rem;
     font-weight: 600;
-    color: var(--md-sys-color-on-surface-variant);
+    color: var(--color-on-surface-variant);
   }
 
   .field span {
@@ -554,7 +554,7 @@
 
   .count {
     font-size: 0.9rem;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
   }
 
   .empty-state {
@@ -572,7 +572,7 @@
 
   .empty-state p {
     margin: 0;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
   }
 
   .grid {
@@ -595,14 +595,14 @@
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 65%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-surface-outline) 65%, transparent);
     opacity: 0.4;
     pointer-events: none;
   }
 
   .server-card:focus-visible {
-    border-color: color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent);
+    border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary) 22%, transparent);
   }
 
   .server-card h3 {
@@ -615,7 +615,7 @@
 
   .meta {
     margin: 0;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
     font-family: var(--font-mono);
     font-size: 0.82rem;
     white-space: nowrap;
@@ -629,7 +629,7 @@
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
     font-size: 0.82rem;
     position: relative;
     z-index: 1;
@@ -664,9 +664,9 @@
     border-radius: var(--radius-md);
     font-size: 0.9rem;
     font-weight: 600;
-    border: 1px solid color-mix(in srgb, var(--md-sys-color-error) 35%, transparent);
-    background: color-mix(in srgb, var(--md-sys-color-error) 12%, transparent);
-    color: var(--md-sys-color-error);
+    border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent);
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
+    color: var(--color-error);
   }
 
   .sr-only {

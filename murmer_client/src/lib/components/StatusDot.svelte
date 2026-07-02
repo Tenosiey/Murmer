@@ -35,17 +35,17 @@
   }
 
   .status-online {
-    background: var(--md-sys-color-success);
-    box-shadow: 0 0 4px color-mix(in srgb, var(--md-sys-color-success) 60%, transparent);
+    background: var(--color-success);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--color-success) 60%, transparent);
   }
 
   .status-offline {
-    background: var(--md-sys-color-error);
+    background: var(--color-error);
     opacity: 0.7;
   }
 
   .status-checking {
-    background: var(--md-sys-color-on-surface-variant);
+    background: var(--color-on-surface-variant);
     opacity: 0.5;
     animation: status-checking 1.5s ease-in-out infinite;
   }
@@ -55,7 +55,7 @@
     position: absolute;
     inset: -2px;
     border-radius: 50%;
-    background: var(--md-sys-color-success);
+    background: var(--color-success);
     opacity: 0.6;
     animation: status-pulse 2.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }

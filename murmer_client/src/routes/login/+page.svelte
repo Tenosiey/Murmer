@@ -84,7 +84,7 @@
     width: clamp(160px, 18vw, 220px);
     height: clamp(160px, 18vw, 220px);
     border-radius: 40%;
-    background: radial-gradient(circle, color-mix(in srgb, var(--md-sys-color-primary) 28%, transparent) 0%, transparent 70%);
+    background: radial-gradient(circle, color-mix(in srgb, var(--color-primary) 28%, transparent) 0%, transparent 70%);
     filter: blur(0.5px);
     pointer-events: none;
   }
@@ -129,7 +129,7 @@
 
   .feature-card p {
     margin: 0;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
     line-height: 1.5;
   }
 
@@ -147,7 +147,7 @@
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    border: 1px solid color-mix(in srgb, var(--md-sys-color-primary) 24%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 24%, transparent);
     opacity: 0.45;
     pointer-events: none;
   }
@@ -166,7 +166,7 @@
 
   .card-header p {
     margin: 0;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
   }
 
   .field {
@@ -174,7 +174,7 @@
     flex-direction: column;
     gap: 0.5rem;
     font-weight: 600;
-    color: var(--md-sys-color-on-surface-variant);
+    color: var(--color-on-surface-variant);
   }
 
   .field span {
@@ -188,7 +188,7 @@
 
   .hint {
     margin: 0;
-    color: var(--md-sys-color-muted);
+    color: var(--color-muted);
     font-size: 0.9rem;
   }
 
