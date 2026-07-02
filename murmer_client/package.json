@@ -28,10 +28,10 @@
     "@sveltejs/kit": "^2.69.0",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tauri-apps/cli": "^2.11.4",
-    "@types/node": "^25.9.4",
+    "@types/node": "^26.1.0",
     "svelte": "^5.56.4",
     "svelte-check": "^4.7.1",
-    "typescript": "~5.9.3",
+    "typescript": "~6.0.3",
     "vite": "^8.1.3"
   }
 }
