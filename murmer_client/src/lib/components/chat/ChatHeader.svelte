@@ -451,7 +451,7 @@
 
   .topic {
     margin: 0;
-    font-size: 0.92rem;
+    font-size: var(--text-md);
     color: color-mix(in srgb, var(--color-on-primary) 82%, transparent);
     max-width: min(40rem, 60vw);
     white-space: nowrap;
@@ -487,7 +487,7 @@
     bottom: 20%;
     width: 1px;
     background: color-mix(in srgb, var(--color-on-surface) 12%, transparent);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
   }
 
   .user {
@@ -495,7 +495,7 @@
     align-items: center;
     gap: 0.5rem;
     padding: 0.45rem 0.9rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: color-mix(in srgb, var(--color-on-primary) 15%, transparent);
     color: var(--color-on-primary);
     font-weight: 600;
@@ -517,7 +517,7 @@
     padding: 0.4rem 0.85rem;
     gap: 0.45rem;
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     justify-content: flex-start;
     white-space: nowrap;
   }
@@ -543,7 +543,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    z-index: 60;
+    z-index: var(--z-dropdown);
   }
 
   .status-menu button {
@@ -556,7 +556,7 @@
     border-radius: var(--radius-sm);
     padding: 0.45rem 0.6rem;
     text-align: left;
-    font-size: 0.9rem;
+    font-size: var(--text-md);
     cursor: pointer;
   }
 
@@ -590,7 +590,7 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.4rem 0.8rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: color-mix(in srgb, var(--color-on-primary) 12%, transparent);
   }
 
@@ -636,7 +636,7 @@
   .action-button.focus-toggle {
     padding-inline: 0.9rem;
     width: auto;
-    font-size: 0.9rem;
+    font-size: var(--text-md);
   }
 
   .action-button.focus-toggle svg {
@@ -646,7 +646,7 @@
 
   .action-button.focus-toggle span {
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
   }
 
   .action-button.focus-toggle.focusActive {
@@ -659,7 +659,7 @@
   }
 
   .notification-icon {
-    font-size: 1.1rem;
+    font-size: var(--text-lg);
     line-height: 1;
   }
 
@@ -676,7 +676,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
-    z-index: 80;
+    z-index: var(--z-dropdown);
   }
 
   .notification-menu button {
@@ -714,7 +714,7 @@
   }
 
   .notification-option-text .description {
-    font-size: 0.82rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-on-surface) 70%, transparent);
   }
 
@@ -730,26 +730,15 @@
   }
 
   .status.away {
-    background: #fbbf24;
+    background: var(--color-warning);
   }
 
   .status.busy {
-    background: #ef4444;
+    background: var(--color-error);
   }
 
   .status.offline {
     background: color-mix(in srgb, var(--color-muted) 40%, transparent);
-  }
-
-  .sr-only {
-    border: 0;
-    clip: rect(0 0 0 0);
-    height: 1px;
-    margin: -1px;
-    overflow: hidden;
-    padding: 0;
-    position: absolute;
-    width: 1px;
   }
 
   @media (max-width: 768px) {

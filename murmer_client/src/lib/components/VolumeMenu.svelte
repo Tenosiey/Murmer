@@ -56,7 +56,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 40;
+    z-index: var(--z-dropdown);
   }
 
   .volume-menu {
@@ -84,7 +84,7 @@
   }
 
   .volume-menu-title {
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     color: var(--color-muted);
   }
 
@@ -108,7 +108,7 @@
     -webkit-appearance: none;
     appearance: none;
     height: 0.45rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: color-mix(in srgb, var(--color-surface-raised) 88%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
     outline: none;
@@ -141,7 +141,7 @@
   }
 
   .volume-percentage {
-    font-size: 0.82rem;
+    font-size: var(--text-sm);
     color: var(--color-muted);
   }
 

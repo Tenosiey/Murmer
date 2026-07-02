@@ -318,7 +318,7 @@
     display: inline-flex;
     gap: 0.5rem;
     padding: 0.4rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: color-mix(in srgb, var(--color-surface-elevated) 75%, transparent);
     border: 1px solid var(--color-surface-outline);
     width: fit-content;
@@ -330,7 +330,7 @@
     align-items: center;
     justify-content: center;
     padding: 0.45rem 1.1rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     color: var(--color-muted);
     text-decoration: none;
     font-weight: 600;
@@ -383,7 +383,7 @@
     display: grid;
     place-items: center;
     font-weight: 700;
-    font-size: 1.1rem;
+    font-size: var(--text-lg);
     background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
     color: var(--color-on-primary);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
@@ -398,19 +398,19 @@
   }
 
   .account-meta .label {
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.12em;
     color: var(--color-muted);
   }
 
   .account-meta strong {
-    font-size: 1.05rem;
+    font-size: var(--text-lg);
     letter-spacing: -0.01em;
   }
 
   .meta-sub {
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     color: color-mix(in srgb, var(--color-muted) 90%, transparent);
   }
 
@@ -501,7 +501,7 @@
 
   .card-copy h2 {
     margin: 0;
-    font-size: 1.45rem;
+    font-size: var(--text-xl);
     letter-spacing: -0.01em;
   }
 
@@ -527,7 +527,7 @@
   }
 
   .field span {
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
   }
 
   .primary-action {
@@ -549,11 +549,11 @@
 
   .section-header h2 {
     margin: 0;
-    font-size: 1.5rem;
+    font-size: var(--text-xl);
   }
 
   .count {
-    font-size: 0.9rem;
+    font-size: var(--text-md);
     color: var(--color-muted);
   }
 
@@ -567,7 +567,7 @@
 
   .empty-state h3 {
     margin: 0;
-    font-size: 1.32rem;
+    font-size: var(--text-lg);
   }
 
   .empty-state p {
@@ -607,7 +607,7 @@
 
   .server-card h3 {
     margin: 0;
-    font-size: 1.22rem;
+    font-size: var(--text-lg);
     letter-spacing: -0.01em;
     position: relative;
     z-index: 1;
@@ -617,7 +617,7 @@
     margin: 0;
     color: var(--color-muted);
     font-family: var(--font-mono);
-    font-size: 0.82rem;
+    font-size: var(--text-sm);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -630,7 +630,7 @@
     align-items: center;
     gap: 0.5rem;
     color: var(--color-muted);
-    font-size: 0.82rem;
+    font-size: var(--text-sm);
     position: relative;
     z-index: 1;
   }
@@ -656,28 +656,17 @@
   }
 
   .card-actions .secondary span:first-child {
-    font-size: 1.1rem;
+    font-size: var(--text-lg);
   }
 
   .error-banner {
     padding: 0.75rem 1.1rem;
     border-radius: var(--radius-md);
-    font-size: 0.9rem;
+    font-size: var(--text-md);
     font-weight: 600;
     border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent);
     background: color-mix(in srgb, var(--color-error) 12%, transparent);
     color: var(--color-error);
-  }
-
-  .sr-only {
-    border: 0;
-    clip: rect(0 0 0 0);
-    height: 1px;
-    margin: -1px;
-    overflow: hidden;
-    padding: 0;
-    position: absolute;
-    width: 1px;
   }
 
   @media (max-width: 640px) {

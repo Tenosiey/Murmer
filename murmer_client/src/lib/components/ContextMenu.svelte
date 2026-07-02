@@ -99,7 +99,7 @@
     background: color-mix(in srgb, var(--color-surface-raised) 96%, transparent);
     border: 1px solid var(--color-surface-outline);
     padding: 0.45rem;
-    z-index: 1200;
+    z-index: var(--z-modal);
     list-style: none;
     margin: 0;
     border-radius: var(--radius-md);
@@ -172,7 +172,7 @@
   }
 
   .entry-icon {
-    font-size: 1.1rem;
+    font-size: var(--text-lg);
     flex-shrink: 0;
   }
 

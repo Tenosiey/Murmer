@@ -231,7 +231,7 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.7rem 1rem;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     background: color-mix(in srgb, var(--color-surface-elevated) 90%, transparent);
     border-bottom: 1px solid var(--color-surface-outline);
@@ -240,7 +240,7 @@
   .preview-header .host {
     color: var(--color-on-surface-variant);
     font-family: var(--font-mono);
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
   }
 
   .preview-header a {
@@ -258,7 +258,7 @@
 
   .preview-fallback {
     padding: 1.2rem;
-    font-size: 0.9rem;
+    font-size: var(--text-md);
     color: var(--color-muted);
     text-align: center;
   }
@@ -320,7 +320,7 @@
     align-items: center;
     justify-content: center;
     color: white;
-    font-size: 1.3rem;
+    font-size: var(--text-xl);
     transition: all var(--motion-duration-short) var(--motion-easing-standard);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
@@ -329,7 +329,7 @@
     display: flex;
     flex-direction: column;
     justify-content: center;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     gap: 0.4rem;
   }
 
@@ -338,7 +338,7 @@
     color: var(--color-error);
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    font-size: 0.7rem;
+    font-size: var(--text-xs);
   }
 
   .youtube-title {
@@ -346,19 +346,19 @@
     font-weight: 600;
     line-height: 1.3;
     color: var(--color-on-surface);
-    font-size: 0.95rem;
+    font-size: var(--text-md);
   }
 
   .youtube-author {
     margin: 0;
     color: var(--color-muted);
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
   }
 
   .youtube-error {
     margin: 0;
     color: var(--color-muted);
     font-style: italic;
-    font-size: 0.8rem;
+    font-size: var(--text-sm);
   }
 </style>

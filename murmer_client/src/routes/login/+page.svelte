@@ -123,7 +123,7 @@
 
   .feature-card h3 {
     margin: 0 0 0.35rem;
-    font-size: 1.05rem;
+    font-size: var(--text-lg);
     letter-spacing: -0.01em;
   }
 
@@ -160,7 +160,7 @@
 
   .card-header h2 {
     margin: 0;
-    font-size: 1.35rem;
+    font-size: var(--text-xl);
     letter-spacing: -0.01em;
   }
 
@@ -178,7 +178,7 @@
   }
 
   .field span {
-    font-size: 0.9rem;
+    font-size: var(--text-md);
     text-transform: none;
   }
 
@@ -189,7 +189,7 @@
   .hint {
     margin: 0;
     color: var(--color-muted);
-    font-size: 0.9rem;
+    font-size: var(--text-md);
   }
 
   @media (max-width: 720px) {

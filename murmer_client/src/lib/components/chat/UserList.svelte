@@ -85,12 +85,12 @@
 
   .sidebar h2 {
     margin: 0;
-    font-size: 1.15rem;
+    font-size: var(--text-lg);
   }
 
   .sidebar h3 {
     margin: 0;
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.12em;
     color: var(--color-muted);
@@ -112,7 +112,7 @@
     gap: 0.5rem;
     padding: 0.35rem 0.5rem;
     border-radius: var(--radius-sm);
-    font-size: 0.9rem;
+    font-size: var(--text-md);
   }
 
   .sidebar li:hover {
@@ -135,11 +135,11 @@
   }
 
   .status.away {
-    background: #fbbf24;
+    background: var(--color-warning);
   }
 
   .status.busy {
-    background: #ef4444;
+    background: var(--color-error);
   }
 
   .status.offline {
@@ -147,7 +147,7 @@
   }
 
   .status-label {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-muted);
     text-transform: capitalize;
     min-width: 3.5rem;

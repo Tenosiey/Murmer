@@ -1426,7 +1426,7 @@
     left: 50%;
     width: 2px;
     height: 36px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: color-mix(in srgb, var(--color-on-surface) 12%, transparent);
     transform: translateX(-50%);
   }
@@ -1465,7 +1465,7 @@
     align-items: center;
     gap: 0.75rem;
     color: var(--color-muted);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
@@ -1480,7 +1480,7 @@
 
   .day-separator span {
     padding: 0.2rem 0.75rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: color-mix(in srgb, var(--color-surface-elevated) 78%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
     color: var(--color-muted);
@@ -1511,7 +1511,7 @@
   }
 
   .message .timestamp {
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
     color: var(--color-muted);
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     opacity: 0.7;
@@ -1523,7 +1523,7 @@
   }
 
   .message .role {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 600;
     align-self: center;
   }
@@ -1534,13 +1534,13 @@
     justify-self: start;
     padding: 0.1rem 0.4rem;
     border-radius: var(--radius-xs, 4px);
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    background: color-mix(in srgb, #06b6d4 22%, transparent);
-    color: #22d3ee;
-    border: 1px solid color-mix(in srgb, #06b6d4 35%, transparent);
+    background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+    color: var(--color-primary);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
     align-self: center;
     line-height: 1.3;
   }
@@ -1564,8 +1564,8 @@
     gap: 0.35rem;
     margin-top: 0.5rem;
     padding: 0.2rem 0.6rem;
-    border-radius: 999px;
-    font-size: 0.72rem;
+    border-radius: var(--radius-pill);
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1590,7 +1590,7 @@
     background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
     color: var(--color-on-surface);
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     transition: background var(--transition), border-color var(--transition), transform var(--transition);
   }
 
@@ -1602,12 +1602,12 @@
   }
 
   .message-action.danger {
-    color: color-mix(in srgb, #ef4444 80%, var(--color-on-surface));
+    color: color-mix(in srgb, var(--color-error) 80%, var(--color-on-surface));
   }
 
   .message-action.danger:hover {
-    background: color-mix(in srgb, #ef4444 18%, transparent);
-    border-color: color-mix(in srgb, #ef4444 32%, transparent);
+    background: color-mix(in srgb, var(--color-error) 18%, transparent);
+    border-color: color-mix(in srgb, var(--color-error) 32%, transparent);
   }
 
   .link-previews {
@@ -1709,9 +1709,9 @@
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     padding: 0.3rem 0.65rem;
-    font-size: 0.82rem;
+    font-size: var(--text-sm);
     border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
     background: color-mix(in srgb, var(--color-primary) 12%, transparent);
     color: var(--color-on-surface);
@@ -1742,7 +1742,7 @@
     grid-column: 1 / -1;
     padding: 0.45rem 0.75rem;
     border-radius: var(--radius-md);
-    font-size: 0.9rem;
+    font-size: var(--text-md);
     font-weight: 600;
     display: inline-flex;
     align-items: center;
@@ -1810,7 +1810,7 @@
     background: transparent;
     color: var(--color-secondary);
     border: none;
-    font-size: 0.78rem;
+    font-size: var(--text-sm);
   }
 
   .file-input {

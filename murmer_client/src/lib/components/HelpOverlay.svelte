@@ -82,7 +82,7 @@
     align-items: center;
     justify-content: center;
     padding: clamp(1.5rem, 4vw, 3rem);
-    z-index: 60;
+    z-index: var(--z-overlay);
   }
 
   .help-panel {
@@ -107,7 +107,7 @@
 
   .help-description {
     color: var(--color-muted);
-    font-size: 0.95rem;
+    font-size: var(--text-md);
   }
 
   .help-command-list {
@@ -146,13 +146,13 @@
 
   .help-command-aliases {
     color: var(--color-muted);
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
   }
 
   .help-command-description {
     margin: 0;
     color: var(--color-muted);
-    font-size: 0.95rem;
+    font-size: var(--text-md);
   }
 
   .help-close {

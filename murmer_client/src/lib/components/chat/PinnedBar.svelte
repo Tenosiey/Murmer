@@ -91,15 +91,15 @@
   }
 
   .pinned-title {
-    font-size: 0.95rem;
+    font-size: var(--text-md);
     text-transform: uppercase;
     letter-spacing: 0.08em;
   }
 
   .pinned-count {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     padding: 0.1rem 0.6rem;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: color-mix(in srgb, var(--color-primary) 16%, transparent);
     color: var(--color-on-surface);
   }
@@ -142,23 +142,23 @@
 
   .pinned-author {
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: var(--text-md);
   }
 
   .pinned-text {
-    font-size: 0.88rem;
+    font-size: var(--text-md);
     color: color-mix(in srgb, var(--color-on-surface) 88%, transparent);
     word-break: break-word;
   }
 
   .pinned-timestamp {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-muted);
   }
 
   .pinned-remove {
     border: none;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: color-mix(in srgb, var(--color-primary) 12%, transparent);
     color: var(--color-on-surface);
     width: 30px;
@@ -171,7 +171,7 @@
   }
 
   .pinned-remove:hover {
-    background: color-mix(in srgb, #ef4444 22%, transparent);
+    background: color-mix(in srgb, var(--color-error) 22%, transparent);
     transform: translateY(-1px);
   }
 

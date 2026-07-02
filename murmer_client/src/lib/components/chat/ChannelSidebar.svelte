@@ -270,7 +270,7 @@
 
   .channels .section {
     margin: 0.6rem 0 0.15rem 0;
-    font-size: 0.7rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.14em;
@@ -312,7 +312,7 @@
     text-align: left;
     border-radius: var(--radius-sm);
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: var(--text-md);
     letter-spacing: 0.01em;
     display: flex;
     align-items: center;
@@ -348,7 +348,7 @@
     gap: 0.45rem;
     padding: 0.3rem 0.55rem;
     border-radius: var(--radius-xs);
-    font-size: 0.88rem;
+    font-size: var(--text-md);
     transition: background var(--transition);
   }
 
@@ -382,12 +382,12 @@
 
   .voice-user-list .username {
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     color: var(--color-on-surface);
   }
 
   .voice-user-list .role {
-    font-size: 0.7rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     opacity: 0.75;
   }
@@ -398,7 +398,7 @@
 
   .voice-channel-quality {
     margin-left: auto;
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: color-mix(in srgb, var(--color-muted) 85%, transparent);
   }
@@ -435,7 +435,7 @@
   }
 
   .voice-controls-header {
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     color: var(--color-muted);
     letter-spacing: 0.1em;
@@ -458,17 +458,17 @@
     background: color-mix(in srgb, var(--color-primary) 8%, transparent);
     color: var(--color-on-surface);
     font-weight: 600;
-    font-size: 0.85rem;
+    font-size: var(--text-sm);
     width: 100%;
   }
 
   .btn-icon {
-    font-size: 0.95rem;
+    font-size: var(--text-md);
     line-height: 1;
   }
 
   .btn-text {
-    font-size: 0.82rem;
+    font-size: var(--text-sm);
   }
 
   .voice-control-btn:hover {

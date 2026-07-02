@@ -34,7 +34,7 @@
 
   .bar {
     width: 4px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: color-mix(in srgb, var(--color-on-surface-variant) 20%, transparent);
     opacity: 0.35;
     transition: all var(--motion-duration-medium) var(--motion-easing-standard);

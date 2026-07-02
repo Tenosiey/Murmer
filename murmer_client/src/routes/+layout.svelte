@@ -242,7 +242,7 @@
 
   :global(*::-webkit-scrollbar-thumb) {
     background: color-mix(in srgb, var(--md-sys-color-primary) 60%, transparent);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
   }
 
   :global(*::-webkit-scrollbar-thumb:hover) {
@@ -358,7 +358,7 @@
   :global(.eyebrow) {
     text-transform: uppercase;
     letter-spacing: 0.14em;
-    font-size: 0.72rem;
+    font-size: var(--text-xs);
     color: color-mix(in srgb, var(--md-sys-color-primary) 65%, var(--md-sys-color-muted) 35%);
     font-weight: 700;
   }
@@ -396,7 +396,7 @@
     justify-content: center;
     gap: 0.5rem;
     padding: 0.85rem 1.25rem;
-    font-size: 0.9rem;
+    font-size: var(--text-md);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-weight: 700;
@@ -415,7 +415,7 @@
     bottom: 0.75rem;
     right: 0.75rem;
     color: var(--md-sys-color-muted);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     letter-spacing: 0.12em;
     text-transform: uppercase;
     font-family: var(--font-mono);
