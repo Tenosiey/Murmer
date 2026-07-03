@@ -46,6 +46,7 @@
     buildMessageBlocks,
     describeDuration,
     ephemeralInfo,
+    formatFileSize,
     promptVoicePreset,
     reactionEntries,
     type MessageBlock
@@ -67,7 +68,7 @@
   let messageInput: HTMLTextAreaElement;
   let inputScrollable = false;
   let previewUrl: string | null = null;
-  let pendingImage: File | null = null;
+  let pendingFile: File | null = null;
   let dragDepth = 0;
   $: dragActive = dragDepth > 0;
   let menuOpen = false;
@@ -131,35 +132,35 @@
     helpOpen = false;
   }
 
-  function setPendingImage(file: File | null) {
+  function setPendingFile(file: File | null) {
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
       previewUrl = null;
     }
-    pendingImage = file && file.type.startsWith('image/') ? file : null;
-    if (pendingImage) {
-      previewUrl = URL.createObjectURL(pendingImage);
+    pendingFile = file;
+    if (pendingFile && pendingFile.type.startsWith('image/')) {
+      previewUrl = URL.createObjectURL(pendingFile);
     }
   }
 
   function handleFileChange() {
-    setPendingImage(fileInput?.files?.[0] ?? null);
+    setPendingFile(fileInput?.files?.[0] ?? null);
   }
 
-  function clearPendingImage() {
+  function clearPendingFile() {
     if (fileInput) fileInput.value = '';
-    setPendingImage(null);
+    setPendingFile(null);
   }
 
   function handlePaste(event: ClipboardEvent) {
     const items = event.clipboardData?.items;
     if (!items) return;
     for (const item of items) {
-      if (item.kind === 'file' && item.type.startsWith('image/')) {
+      if (item.kind === 'file') {
         const file = item.getAsFile();
         if (file) {
           event.preventDefault();
-          setPendingImage(file);
+          setPendingFile(file);
           return;
         }
       }
@@ -191,10 +192,8 @@
     if (!dragHasFiles(event)) return;
     event.preventDefault();
     dragDepth = 0;
-    const file = Array.from(event.dataTransfer?.files ?? []).find((f) =>
-      f.type.startsWith('image/')
-    );
-    if (file) setPendingImage(file);
+    const file = Array.from(event.dataTransfer?.files ?? [])[0] ?? null;
+    if (file) setPendingFile(file);
   }
 
   function autoResize() {
@@ -491,10 +490,10 @@
     autoResize();
   }
 
-  async function sendImage() {
-    const file = pendingImage;
+  async function sendFile() {
+    const file = pendingFile;
     if (!file) {
-      if (import.meta.env.DEV) console.log('sendImage: no file selected');
+      if (import.meta.env.DEV) console.log('sendFile: no file selected');
       return;
     }
     const selected = get(selectedServer) ?? 'ws://localhost:3001/ws';
@@ -506,36 +505,59 @@
     const base = u.toString().replace(/\/$/, '');
     const form = new FormData();
     form.append('file', file);
-    if (import.meta.env.DEV) console.log('Uploading image to', base + '/upload', file);
+    if (import.meta.env.DEV) console.log('Uploading file to', base + '/upload', file);
     try {
       const res = await fetch(base + '/upload', { method: 'POST', body: form });
       if (import.meta.env.DEV) console.log('Upload response status:', res.status);
+      if (res.status === 415) {
+        setCommandFeedback('This file type is not allowed on the server.', 'error');
+        return;
+      }
+      if (res.status === 413) {
+        setCommandFeedback('File is too large to upload.', 'error');
+        return;
+      }
       if (!res.ok) {
         throw new Error(`upload failed with status ${res.status}`);
       }
       const data = await res.json();
       if (import.meta.env.DEV) console.log('Upload response data:', data);
       const url = data.url as string;
-      const img = url.startsWith('http') ? url : base + url;
+      const absolute = url.startsWith('http') ? url : base + url;
       const now = new Date();
-      chat.sendRaw({
-        type: 'chat',
-        user: $session.user ?? 'anon',
-        image: img,
-        time: now.toLocaleTimeString(),
-        timestamp: now.toISOString()
-      });
+      if (data.kind === 'image' || file.type.startsWith('image/')) {
+        chat.sendRaw({
+          type: 'chat',
+          user: $session.user ?? 'anon',
+          image: absolute,
+          time: now.toLocaleTimeString(),
+          timestamp: now.toISOString()
+        });
+      } else {
+        chat.sendRaw({
+          type: 'chat',
+          user: $session.user ?? 'anon',
+          attachment: {
+            url: absolute,
+            name: typeof data.name === 'string' ? data.name : file.name,
+            size: typeof data.size === 'number' ? data.size : file.size
+          },
+          time: now.toLocaleTimeString(),
+          timestamp: now.toISOString()
+        });
+      }
     } catch (e) {
       console.error('upload failed', e);
+      setCommandFeedback('File upload failed.', 'error');
     } finally {
-      clearPendingImage();
+      clearPendingFile();
     }
   }
 
   async function send() {
     const hasMessage = message.trim() !== '';
-    if (!pendingImage && !hasMessage) return;
-    if (pendingImage) await sendImage();
+    if (!pendingFile && !hasMessage) return;
+    if (pendingFile) await sendFile();
     if (hasMessage) sendText();
   }
 
@@ -1241,7 +1263,7 @@
     >
       {#if dragActive}
         <div class="drop-overlay" aria-hidden="true">
-          <span>Drop image to upload</span>
+          <span>Drop file to upload</span>
         </div>
       {/if}
       <ChatHeader
@@ -1320,6 +1342,23 @@
                   {/if}
                   {#if block.message.image}
                     <img src={block.message.image as string} alt="" />
+                  {/if}
+                  {#if block.message.attachment}
+                    <a
+                      class="attachment-card"
+                      href={block.message.attachment.url}
+                      download={block.message.attachment.name}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <span class="attachment-icon" aria-hidden="true">📎</span>
+                      <span class="attachment-details">
+                        <span class="attachment-name">{block.message.attachment.name}</span>
+                        {#if block.message.attachment.size > 0}
+                          <span class="attachment-size">{formatFileSize(block.message.attachment.size)}</span>
+                        {/if}
+                      </span>
+                    </a>
                   {/if}
                   {#if block.message.ephemeral}
                     {@const eInfo = ephemeralInfo(block.message, now)}
@@ -1417,14 +1456,23 @@
           type="file"
           class="file-input"
           bind:this={fileInput}
-          accept="image/*"
           on:change={handleFileChange}
         />
         <div class="controls">
-          {#if previewUrl}
+          {#if pendingFile}
             <div class="preview-container">
-              <img src={previewUrl} alt="preview" class="preview" />
-              <button class="preview-remove" on:click={clearPendingImage} aria-label="Remove image">
+              {#if previewUrl}
+                <img src={previewUrl} alt="preview" class="preview" />
+              {:else}
+                <span class="file-chip" title={pendingFile.name}>
+                  <span aria-hidden="true">📎</span>
+                  <span class="file-chip-name">{pendingFile.name}</span>
+                  {#if pendingFile.size > 0}
+                    <span class="file-chip-size">{formatFileSize(pendingFile.size)}</span>
+                  {/if}
+                </span>
+              {/if}
+              <button class="preview-remove" on:click={clearPendingFile} aria-label="Remove file">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"></line>
                   <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -1436,8 +1484,8 @@
             <button
               type="button"
               class="file-button"
-              title="Upload image"
-              aria-label="Upload image"
+              title="Upload file"
+              aria-label="Upload file"
               on:click={() => fileInput.click()}
             >
               <svg
@@ -1840,6 +1888,73 @@
     margin-top: 0.65rem;
     border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
     box-shadow: var(--shadow-xs);
+  }
+
+  .attachment-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.65rem;
+    padding: 0.55rem 0.85rem;
+    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
+    color: var(--color-on-surface);
+    text-decoration: none;
+    max-width: min(420px, 100%);
+    transition: background var(--transition), border-color var(--transition), transform var(--transition);
+  }
+
+  .attachment-card:hover {
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    border-color: color-mix(in srgb, var(--color-primary) 32%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .attachment-icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+  }
+
+  .attachment-details {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .attachment-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .attachment-size {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+  }
+
+  .file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    max-width: 220px;
+    padding: 0.35rem 0.6rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--color-surface-raised) 84%, transparent);
+    font-size: var(--text-sm);
+  }
+
+  .file-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-chip-size {
+    color: var(--color-muted);
+    font-size: var(--text-xs);
+    flex-shrink: 0;
   }
 
   .reactions {
