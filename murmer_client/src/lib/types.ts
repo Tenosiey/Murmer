@@ -10,6 +10,8 @@ export interface Message {
   reactions?: Record<string, string[]>;
   ephemeral?: boolean;
   expiresAt?: string;
+  edited?: boolean;
+  editedAt?: string;
   [key: string]: unknown;
 }
 

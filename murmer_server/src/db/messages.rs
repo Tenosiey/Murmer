@@ -180,6 +180,20 @@ pub async fn get_message_record(
     }
 }
 
+/// Replace the JSON content of a message. Returns `true` if a row was updated.
+pub async fn update_message_content(
+    db: &Client,
+    message_id: i32,
+    content: &str,
+) -> Result<bool, tokio_postgres::Error> {
+    db.execute(
+        "UPDATE messages SET content = $2 WHERE id = $1",
+        &[&message_id, &content],
+    )
+    .await
+    .map(|affected| affected > 0)
+}
+
 /// Delete a message by ID. Returns `true` if a row was removed.
 pub async fn delete_message(db: &Client, message_id: i32) -> Result<bool, tokio_postgres::Error> {
     db.execute("DELETE FROM messages WHERE id = $1", &[&message_id])

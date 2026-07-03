@@ -895,6 +895,22 @@
     return currentUserCanModerate;
   }
 
+  function canEditMessage(msg: Message): boolean {
+    const current = $session.user;
+    if (!current || typeof msg.id !== 'number') return false;
+    if (typeof msg.text !== 'string' || msg.text.trim() === '') return false;
+    return msg.user === current;
+  }
+
+  function editChatMessage(msg: Message) {
+    if (typeof msg.id !== 'number' || typeof msg.text !== 'string') return;
+    const input = prompt('Edit message', msg.text);
+    if (input === null) return;
+    const trimmed = input.trim();
+    if (trimmed === '' || input === msg.text) return;
+    chat.edit(msg.id, input);
+  }
+
   function canPinMessage(msg: Message): boolean {
     return typeof msg.id === 'number';
   }
@@ -1287,6 +1303,14 @@
                   {#if block.message.text}
                     {@html renderMarkdown(block.message.text)}
                   {/if}
+                  {#if block.message.edited}
+                    <span
+                      class="edited-badge"
+                      title={block.message.editedAt ? `Edited ${new Date(block.message.editedAt).toLocaleString()}` : 'Edited'}
+                    >
+                      (edited)
+                    </span>
+                  {/if}
                   {#if block.links.length > 0}
                     <div class="link-previews">
                       {#each block.links as link (link)}
@@ -1311,6 +1335,16 @@
                 </span>
                   {#if typeof block.message.id === 'number' && (canPinMessage(block.message) || canDeleteMessage(block.message))}
                     <div class="message-actions">
+                      {#if canEditMessage(block.message)}
+                        <button
+                          type="button"
+                          class="message-action"
+                          on:click={() => editChatMessage(block.message)}
+                          title="Edit message"
+                        >
+                          ✏️
+                        </button>
+                      {/if}
                       {#if canPinMessage(block.message)}
                         <button
                           type="button"
@@ -1660,6 +1694,13 @@
     flex: 1;
     color: var(--color-on-surface);
     line-height: 1.65;
+  }
+
+  .edited-badge {
+    margin-left: 0.35rem;
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+    font-style: italic;
   }
 
   .ephemeral-badge {

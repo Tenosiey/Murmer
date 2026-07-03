@@ -15,7 +15,7 @@ Use the checkboxes to track progress.
 - [ ] Channel permissions and moderation (basic role-gating exists, no ban/kick/mute)
 - [ ] Custom server emojis
 - [ ] Direct messages between users
-- [ ] Edit sent messages
+- [x] Edit sent messages
 - [ ] File sharing beyond images
 - [ ] Link previews (OpenGraph embeds)
 - [ ] Message threading/replies

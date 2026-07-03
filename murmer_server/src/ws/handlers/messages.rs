@@ -1,4 +1,4 @@
-//! Handlers for chat messages, message deletion, reactions, history and search.
+//! Handlers for chat messages, message deletion, editing, reactions, history and search.
 
 use crate::ws::{constants::*, errors, helpers::*};
 use crate::{db, security, AppState};
@@ -401,6 +401,170 @@ pub(super) async fn handle_delete_message(
             let msg = serde_json::json!({
                 "type": "error",
                 "message": "message-delete-failed",
+            })
+            .to_string();
+            let _ = sender.send(Message::Text(msg.into())).await;
+        }
+    }
+}
+
+/// Handle edit message request. Only the original author may edit a message.
+pub(super) async fn handle_edit_message(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    channel_id: i32,
+    user_name: &Option<String>,
+) {
+    let requester = match user_name.clone() {
+        Some(name) => name,
+        None => {
+            let msg = serde_json::json!({
+                "type": "error",
+                "message": "not-authenticated",
+            })
+            .to_string();
+            let _ = sender.send(Message::Text(msg.into())).await;
+            return;
+        }
+    };
+
+    let Some(raw_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
+        let msg = serde_json::json!({
+            "type": "error",
+            "message": "invalid-message-id",
+        })
+        .to_string();
+        let _ = sender.send(Message::Text(msg.into())).await;
+        return;
+    };
+
+    let message_id32 = match i32::try_from(raw_id) {
+        Ok(id) => id,
+        Err(_) => {
+            let msg = serde_json::json!({
+                "type": "error",
+                "message": "invalid-message-id",
+            })
+            .to_string();
+            let _ = sender.send(Message::Text(msg.into())).await;
+            return;
+        }
+    };
+
+    let Some(new_text) = v.get("text").and_then(|t| t.as_str()) else {
+        let msg = serde_json::json!({
+            "type": "error",
+            "message": "invalid-message-text",
+        })
+        .to_string();
+        let _ = sender.send(Message::Text(msg.into())).await;
+        return;
+    };
+
+    if new_text.trim().is_empty() || new_text.len() > MAX_MESSAGE_LENGTH {
+        let _ = sender
+            .send(Message::Text(errors::MESSAGE_TOO_LONG.to_string().into()))
+            .await;
+        return;
+    }
+
+    let record = match db::get_message_record(&state.db, message_id32).await {
+        Ok(Some(record)) => record,
+        Ok(None) => {
+            let msg = serde_json::json!({
+                "type": "error",
+                "message": "message-not-found",
+            })
+            .to_string();
+            let _ = sender.send(Message::Text(msg.into())).await;
+            return;
+        }
+        Err(error) => {
+            error!("failed to load message {raw_id} for edit: {error}");
+            let msg = serde_json::json!({
+                "type": "error",
+                "message": "message-edit-failed",
+            })
+            .to_string();
+            let _ = sender.send(Message::Text(msg.into())).await;
+            return;
+        }
+    };
+
+    if record.channel_id != channel_id {
+        let msg = serde_json::json!({
+            "type": "error",
+            "message": "message-wrong-channel",
+        })
+        .to_string();
+        let _ = sender.send(Message::Text(msg.into())).await;
+        return;
+    }
+
+    let owner = record
+        .content
+        .get("user")
+        .and_then(|user| user.as_str())
+        .map(|value| value.to_string());
+
+    // Editing rewrites someone's words, so unlike deletion it is never
+    // extended to moderators - only the author may do it.
+    if owner.as_deref() != Some(requester.as_str()) {
+        let msg = serde_json::json!({
+            "type": "error",
+            "message": "message-permission-denied",
+        })
+        .to_string();
+        let _ = sender.send(Message::Text(msg.into())).await;
+        return;
+    }
+
+    let mut content = record.content.clone();
+    let edited_at = Utc::now().to_rfc3339();
+    content["text"] = Value::String(new_text.to_string());
+    content["edited"] = Value::Bool(true);
+    content["editedAt"] = Value::String(edited_at.clone());
+
+    let serialized = match serde_json::to_string(&content) {
+        Ok(out) => out,
+        Err(error) => {
+            error!("failed to serialize edited message {raw_id}: {error}");
+            let msg = serde_json::json!({
+                "type": "error",
+                "message": "message-edit-failed",
+            })
+            .to_string();
+            let _ = sender.send(Message::Text(msg.into())).await;
+            return;
+        }
+    };
+
+    match db::update_message_content(&state.db, message_id32, &serialized).await {
+        Ok(true) => {
+            let payload = serde_json::json!({
+                "type": "message-edited",
+                "id": raw_id,
+                "channelId": record.channel_id,
+                "text": new_text,
+                "editedAt": edited_at,
+            });
+            let chan_sender = get_or_create_channel(state, record.channel_id).await;
+            let _ = chan_sender.send(payload.to_string());
+        }
+        Ok(false) => {
+            let msg = serde_json::json!({
+                "type": "error",
+                "message": "message-not-found",
+            })
+            .to_string();
+            let _ = sender.send(Message::Text(msg.into())).await;
+        }
+        Err(error) => {
+            error!("failed to edit message {raw_id}: {error}");
+            let msg = serde_json::json!({
+                "type": "error",
+                "message": "message-edit-failed",
             })
             .to_string();
             let _ = sender.send(Message::Text(msg.into())).await;
