@@ -3,6 +3,7 @@
   each voice channel and the voice control panel (mute, leave, screen share).
 -->
 <script lang="ts">
+  import { browser } from '$app/environment';
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
   import ScreenShareControls from '$lib/components/ScreenShareControls.svelte';
   import { channels } from '$lib/stores/channels';
@@ -39,7 +40,19 @@
     voiceChannels: VoiceChannelInfo[];
   }
 
-  let collapsedCategories: Set<number> = new Set();
+  const COLLAPSED_KEY = 'murmer_collapsed_categories';
+
+  function loadCollapsed(): Set<number> {
+    if (!browser) return new Set();
+    try {
+      const parsed = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]');
+      return new Set(Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'number') : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  let collapsedCategories: Set<number> = loadCollapsed();
   function toggleCategory(id: number) {
     if (collapsedCategories.has(id)) {
       collapsedCategories.delete(id);
@@ -47,6 +60,9 @@
       collapsedCategories.add(id);
     }
     collapsedCategories = collapsedCategories;
+    if (browser) {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsedCategories]));
+    }
   }
 
   $: categoryGroups = (() => {

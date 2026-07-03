@@ -686,16 +686,16 @@
     goto('/servers');
   }
 
-  function createChannelPrompt() {
+  function createChannelPrompt(categoryId: number | null = null) {
     const name = prompt('New channel name');
-    if (name) channels.create(name);
+    if (name) channels.create(name, categoryId);
   }
 
-  function createVoiceChannelPrompt() {
+  function createVoiceChannelPrompt(categoryId: number | null = null) {
     const name = prompt('New voice channel name');
     if (!name) return;
     const preset = promptVoicePreset();
-    voiceChannels.create(name, preset);
+    voiceChannels.create(name, preset, categoryId);
   }
 
   function joinVoiceChannel(id: number) {
@@ -977,8 +977,8 @@
   }
 
   $: channelMenuItems = [
-    { label: 'Create Text Channel', action: createChannelPrompt },
-    { label: 'Create Voice Channel', action: createVoiceChannelPrompt },
+    { label: 'Create Text Channel', action: () => createChannelPrompt() },
+    { label: 'Create Voice Channel', action: () => createVoiceChannelPrompt() },
     { label: 'Create Category', action: createCategoryPrompt },
     ...(menuChannelId != null
       ? [
@@ -1005,6 +1005,8 @@
       : []),
     ...(menuCategoryId != null
       ? [
+          { label: 'Create Text Channel Here', action: () => createChannelPrompt(menuCategoryId) },
+          { label: 'Create Voice Channel Here', action: () => createVoiceChannelPrompt(menuCategoryId) },
           { label: 'Rename Category', action: () => renameCategoryPrompt(menuCategoryId!) },
           { label: 'Delete Category', action: () => categories.remove(menuCategoryId!), danger: true }
         ]
