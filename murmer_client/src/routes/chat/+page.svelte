@@ -67,6 +67,9 @@
   let messageInput: HTMLTextAreaElement;
   let inputScrollable = false;
   let previewUrl: string | null = null;
+  let pendingImage: File | null = null;
+  let dragDepth = 0;
+  $: dragActive = dragDepth > 0;
   let menuOpen = false;
   let menuX = 0;
   let menuY = 0;
@@ -128,15 +131,70 @@
     helpOpen = false;
   }
 
-  function handleFileChange() {
-    const file = fileInput?.files?.[0];
+  function setPendingImage(file: File | null) {
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
       previewUrl = null;
     }
-    if (file) {
-      previewUrl = URL.createObjectURL(file);
+    pendingImage = file && file.type.startsWith('image/') ? file : null;
+    if (pendingImage) {
+      previewUrl = URL.createObjectURL(pendingImage);
     }
+  }
+
+  function handleFileChange() {
+    setPendingImage(fileInput?.files?.[0] ?? null);
+  }
+
+  function clearPendingImage() {
+    if (fileInput) fileInput.value = '';
+    setPendingImage(null);
+  }
+
+  function handlePaste(event: ClipboardEvent) {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          event.preventDefault();
+          setPendingImage(file);
+          return;
+        }
+      }
+    }
+  }
+
+  function dragHasFiles(event: DragEvent): boolean {
+    return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+  }
+
+  function handleDragEnter(event: DragEvent) {
+    if (!dragHasFiles(event)) return;
+    event.preventDefault();
+    dragDepth += 1;
+  }
+
+  function handleDragOver(event: DragEvent) {
+    if (!dragHasFiles(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  }
+
+  function handleDragLeave(event: DragEvent) {
+    if (!dragHasFiles(event)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+  }
+
+  function handleDrop(event: DragEvent) {
+    if (!dragHasFiles(event)) return;
+    event.preventDefault();
+    dragDepth = 0;
+    const file = Array.from(event.dataTransfer?.files ?? []).find((f) =>
+      f.type.startsWith('image/')
+    );
+    if (file) setPendingImage(file);
   }
 
   function autoResize() {
@@ -434,7 +492,7 @@
   }
 
   async function sendImage() {
-    const file = fileInput?.files?.[0];
+    const file = pendingImage;
     if (!file) {
       if (import.meta.env.DEV) console.log('sendImage: no file selected');
       return;
@@ -470,19 +528,14 @@
     } catch (e) {
       console.error('upload failed', e);
     } finally {
-      if (fileInput) fileInput.value = '';
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-        previewUrl = null;
-      }
+      clearPendingImage();
     }
   }
 
   async function send() {
-    const file = fileInput?.files?.[0];
     const hasMessage = message.trim() !== '';
-    if (!file && !hasMessage) return;
-    if (file) await sendImage();
+    if (!pendingImage && !hasMessage) return;
+    if (pendingImage) await sendImage();
     if (hasMessage) sendText();
   }
 
@@ -1162,7 +1215,19 @@
     />
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="resizer" role="separator" aria-label="Resize channel list" on:mousedown={startLeftResize}></div>
-    <div class="chat">
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <div
+      class="chat"
+      on:dragenter={handleDragEnter}
+      on:dragover={handleDragOver}
+      on:dragleave={handleDragLeave}
+      on:drop={handleDrop}
+    >
+      {#if dragActive}
+        <div class="drop-overlay" aria-hidden="true">
+          <span>Drop image to upload</span>
+        </div>
+      {/if}
       <ChatHeader
         channelId={currentChatChannelId}
         channelName={currentChatChannelName}
@@ -1305,6 +1370,7 @@
           rows="1"
           placeholder="Message"
           on:input={autoResize}
+          on:paste={handlePaste}
           on:keydown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
@@ -1324,7 +1390,7 @@
           {#if previewUrl}
             <div class="preview-container">
               <img src={previewUrl} alt="preview" class="preview" />
-              <button class="preview-remove" on:click={() => { fileInput.value = ''; if (previewUrl) URL.revokeObjectURL(previewUrl); previewUrl = null; }} aria-label="Remove image">
+              <button class="preview-remove" on:click={clearPendingImage} aria-label="Remove image">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"></line>
                   <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -1448,6 +1514,32 @@
     flex-direction: column;
     gap: 0.9rem;
     min-width: 0;
+    position: relative;
+  }
+
+  /* pointer-events: none keeps drag events flowing to .chat underneath. */
+  .drop-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-lg);
+    border: 2px dashed color-mix(in srgb, var(--color-primary) 55%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 72%, transparent);
+    pointer-events: none;
+  }
+
+  .drop-overlay span {
+    padding: 0.6rem 1.2rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+    color: var(--color-on-surface);
+    font-weight: 700;
+    font-size: var(--text-md);
+    letter-spacing: 0.02em;
   }
 
   .messages-shell {
