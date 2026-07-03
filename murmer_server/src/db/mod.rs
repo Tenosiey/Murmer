@@ -179,7 +179,8 @@ END $$;
              UPDATE voice_channels SET quality = 'standard' WHERE quality IS NULL OR trim(quality) = '';\n\
              UPDATE voice_channels SET bitrate = 64000 WHERE bitrate IS NULL;\n\
              ALTER TABLE channels ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL;\n\
-             ALTER TABLE voice_channels ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL;",
+             ALTER TABLE voice_channels ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL;\n\
+             ALTER TABLE channels ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';",
         )
         .await
         .ok();

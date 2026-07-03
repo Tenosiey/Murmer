@@ -53,6 +53,7 @@
   import {
     MODERATOR_ROLES,
     MESSAGE_INPUT_MAX_HEIGHT,
+    MAX_TOPIC_LENGTH,
     MIN_EPHEMERAL_SECONDS,
     MAX_EPHEMERAL_SECONDS,
     VOICE_QUALITY_PRESETS
@@ -516,6 +517,10 @@
         return true;
       }
       case 'topic': {
+        if (rest.length > MAX_TOPIC_LENGTH) {
+          setCommandFeedback(`Topics are limited to ${MAX_TOPIC_LENGTH} characters.`, 'error');
+          return true;
+        }
         channelTopics.setTopic(currentChatChannelId, rest);
         setCommandFeedback(rest ? 'Updated the channel topic.' : 'Cleared the channel topic.');
         return true;
@@ -823,6 +828,10 @@
     const existing = $channelTopics[currentChatChannelId] ?? '';
     const input = prompt('Set channel topic', existing);
     if (input === null) return;
+    if (input.length > MAX_TOPIC_LENGTH) {
+      setCommandFeedback(`Topics are limited to ${MAX_TOPIC_LENGTH} characters.`, 'error');
+      return;
+    }
     channelTopics.setTopic(currentChatChannelId, input);
   }
 
