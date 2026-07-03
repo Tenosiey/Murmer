@@ -16,7 +16,7 @@ Use the checkboxes to track progress.
 - [ ] Custom server emojis
 - [ ] Direct messages between users
 - [x] Edit sent messages
-- [ ] File sharing beyond images
+- [x] File sharing beyond images
 - [ ] Link previews (OpenGraph embeds)
 - [ ] Message threading/replies
 - [x] Paste images from clipboard / drag & drop

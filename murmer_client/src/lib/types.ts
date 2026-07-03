@@ -1,7 +1,14 @@
+export interface AttachmentInfo {
+  url: string;
+  name: string;
+  size: number;
+}
+
 export interface Message {
   type: string;
   user?: string;
   text?: string;
+  attachment?: AttachmentInfo;
   time?: string;
   timestamp?: string;
   channelId?: number;
