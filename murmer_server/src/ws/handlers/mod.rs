@@ -100,6 +100,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "move-channel" => {
                                 channels::handle_move_channel(&state, &mut sender, &v, &user_name).await;
                             }
+                            "set-channel-topic" => {
+                                channels::handle_set_channel_topic(&state, &mut sender, &v, &user_name).await;
+                            }
                             "create-category" => {
                                 channels::handle_create_category(&state, &mut sender, &v, &user_name).await;
                             }

@@ -99,3 +99,12 @@ pub const UNKNOWN_CATEGORY: &str = r#"{"type":"error","message":"unknown-categor
 
 /// Failed to move channel to category.
 pub const CHANNEL_MOVE_FAILED: &str = r#"{"type":"error","message":"channel-move-failed"}"#;
+
+/// Channel topic validation failed.
+pub const INVALID_CHANNEL_TOPIC: &str = r#"{"type":"error","message":"invalid-channel-topic"}"#;
+
+/// The referenced channel does not exist.
+pub const UNKNOWN_CHANNEL: &str = r#"{"type":"error","message":"unknown-channel"}"#;
+
+/// Failed to update the channel topic in the database.
+pub const TOPIC_UPDATE_FAILED: &str = r#"{"type":"error","message":"topic-update-failed"}"#;

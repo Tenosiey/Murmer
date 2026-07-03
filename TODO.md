@@ -11,7 +11,7 @@ Use the checkboxes to track progress.
 
 - [ ] Bot integration/webhooks (basic REST bot API exists, no webhooks)
 - [ ] Channel categories in the client UI (server-side already done)
-- [ ] Channel description/topics (client-only, no server persistence)
+- [x] Channel description/topics (persisted on the server, synced to all clients)
 - [ ] Channel permissions and moderation (basic role-gating exists, no ban/kick/mute)
 - [ ] Custom server emojis
 - [ ] Direct messages between users

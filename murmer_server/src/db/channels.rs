@@ -82,13 +82,14 @@ pub struct ChannelRecord {
     pub id: i32,
     pub name: String,
     pub category_id: Option<i32>,
+    pub description: String,
 }
 
 /// Retrieve the list of text channels with their category assignments.
 pub async fn get_channels(db: &Client) -> Vec<ChannelRecord> {
     match db
         .query(
-            "SELECT id, name, category_id FROM channels ORDER BY name",
+            "SELECT id, name, category_id, description FROM channels ORDER BY name",
             &[],
         )
         .await
@@ -99,6 +100,7 @@ pub async fn get_channels(db: &Client) -> Vec<ChannelRecord> {
                 id: row.get(0),
                 name: row.get(1),
                 category_id: row.get(2),
+                description: row.get(3),
             })
             .collect(),
         Err(_) => Vec::new(),
@@ -117,7 +119,7 @@ pub async fn get_channel_id_by_name(db: &Client, name: &str) -> Option<i32> {
 /// Look up a channel record by ID. Returns `None` if not found.
 pub async fn get_channel_by_id(db: &Client, id: i32) -> Option<ChannelRecord> {
     db.query_opt(
-        "SELECT id, name, category_id FROM channels WHERE id = $1",
+        "SELECT id, name, category_id, description FROM channels WHERE id = $1",
         &[&id],
     )
     .await
@@ -127,6 +129,7 @@ pub async fn get_channel_by_id(db: &Client, id: i32) -> Option<ChannelRecord> {
         id: row.get(0),
         name: row.get(1),
         category_id: row.get(2),
+        description: row.get(3),
     })
 }
 
@@ -138,7 +141,7 @@ pub async fn add_channel(
 ) -> Result<Option<ChannelRecord>, tokio_postgres::Error> {
     match db
         .query_opt(
-            "INSERT INTO channels (name, category_id) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING RETURNING id, name, category_id",
+            "INSERT INTO channels (name, category_id) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING RETURNING id, name, category_id, description",
             &[&name, &category_id],
         )
         .await?
@@ -147,9 +150,24 @@ pub async fn add_channel(
             id: row.get(0),
             name: row.get(1),
             category_id: row.get(2),
+            description: row.get(3),
         })),
         None => Ok(None),
     }
+}
+
+/// Update a text channel's description/topic. Returns true if a row was updated.
+pub async fn set_channel_description(
+    db: &Client,
+    id: i32,
+    description: &str,
+) -> Result<bool, tokio_postgres::Error> {
+    db.execute(
+        "UPDATE channels SET description = $2 WHERE id = $1",
+        &[&id, &description],
+    )
+    .await
+    .map(|count| count > 0)
 }
 
 /// Move a text channel to a different category (or remove from category).

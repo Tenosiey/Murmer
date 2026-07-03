@@ -27,6 +27,9 @@ pub const MAX_EPHEMERAL_SECONDS: i64 = 86_400;
 /// Maximum length in bytes for a chat message's text content.
 pub const MAX_MESSAGE_LENGTH: usize = 4000;
 
+/// Maximum length in bytes for a channel topic/description.
+pub const MAX_TOPIC_LENGTH: usize = 256;
+
 /// Maximum number of search results to return.
 pub const MAX_SEARCH_RESULTS: i64 = 200;
 

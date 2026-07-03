@@ -143,17 +143,24 @@ pub async fn broadcast_status(state: &Arc<AppState>, user: &str, status: &str) {
 }
 
 /// Broadcast to all clients that a new channel was created.
-pub async fn broadcast_new_channel(
-    state: &Arc<AppState>,
-    id: i32,
-    name: &str,
-    category_id: Option<i32>,
-) {
+pub async fn broadcast_new_channel(state: &Arc<AppState>, record: &crate::db::ChannelRecord) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "channel-add",
-        "channelId": id,
-        "name": name,
-        "categoryId": category_id,
+        "channelId": record.id,
+        "name": record.name,
+        "categoryId": record.category_id,
+        "topic": record.description,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast a channel's updated topic/description to all clients.
+pub async fn broadcast_channel_topic(state: &Arc<AppState>, channel_id: i32, topic: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "channel-topic",
+        "channelId": channel_id,
+        "topic": topic,
     })) {
         let _ = state.tx.send(msg);
     }
@@ -220,6 +227,7 @@ pub async fn send_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSock
                 "id": ch.id,
                 "name": ch.name,
                 "categoryId": ch.category_id,
+                "topic": ch.description,
             })
         })
         .collect();
