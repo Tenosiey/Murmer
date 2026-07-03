@@ -32,6 +32,20 @@ function formatDayHeading(date: Date): string {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
+/* buildMessageBlocks runs on every chat-store update, so link extraction is
+   cached per message object to avoid re-running the URL regex over the whole
+   history each time. */
+const linkCache = new WeakMap<Message, string[]>();
+
+function linksFor(message: Message): string[] {
+  let links = linkCache.get(message);
+  if (!links) {
+    links = extractLinks(message.text);
+    linkCache.set(message, links);
+  }
+  return links;
+}
+
 export function buildMessageBlocks(messages: Message[]): MessageBlock[] {
   const blocks: MessageBlock[] = [];
   let lastDateKey: string | null = null;
@@ -51,7 +65,7 @@ export function buildMessageBlocks(messages: Message[]): MessageBlock[] {
       }
     }
 
-    const links = extractLinks(message.text);
+    const links = linksFor(message);
     blocks.push({
       kind: 'message',
       message,

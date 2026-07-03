@@ -114,7 +114,6 @@
     align-items: center;
     justify-content: center;
     z-index: var(--z-top);
-    backdrop-filter: blur(4px);
   }
 
   .screenshare-container {
