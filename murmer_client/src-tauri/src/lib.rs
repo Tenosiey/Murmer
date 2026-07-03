@@ -11,6 +11,18 @@ fn apply_webkitgtk_workarounds() {
     if nvidia && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
+
+    // The tray icon goes through libayatana-appindicator, which logs a
+    // "deprecated, use libayatana-appindicator-glib" warning on every start.
+    // Switching backends is up to tauri/tao upstream, so drop that domain's
+    // warnings instead of spamming stderr.
+    glib::log_set_handler(
+        Some("libayatana-appindicator"),
+        glib::LogLevels::LEVEL_WARNING,
+        false,
+        false,
+        |_, _, _| {},
+    );
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
