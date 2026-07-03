@@ -10,7 +10,7 @@ Use the checkboxes to track progress.
 ### 🗨️ Chat Features
 
 - [ ] Bot integration/webhooks (basic REST bot API exists, no webhooks)
-- [ ] Channel categories in the client UI (server-side already done)
+- [x] Channel categories in the client UI (grouping, collapse, context-menu management)
 - [x] Channel description/topics (persisted on the server, synced to all clients)
 - [ ] Channel permissions and moderation (basic role-gating exists, no ban/kick/mute)
 - [ ] Custom server emojis
