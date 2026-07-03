@@ -84,6 +84,18 @@ function createChatStore() {
         break;
       }
 
+      case 'message-edited': {
+        const messageId = msg.id as number | undefined;
+        if (typeof messageId === 'number' && typeof msg.text === 'string') {
+          const text = msg.text;
+          const editedAt = typeof msg.editedAt === 'string' ? msg.editedAt : undefined;
+          update((messages) =>
+            messages.map((m) => (m.id === messageId ? { ...m, text, edited: true, editedAt } : m))
+          );
+        }
+        break;
+      }
+
       case 'message-deleted': {
         const messageId = (msg.id as number | undefined) ?? (msg.messageId as number | undefined);
         if (typeof messageId === 'number') {
@@ -261,6 +273,22 @@ function createChatStore() {
   }
 
   /**
+   * Edit a previously sent message.
+   * @param messageId - Message ID to edit
+   * @param text - Replacement message text
+   */
+  function edit(messageId: number, text: string): void {
+    if (!wsManager.isConnected()) return;
+    if (typeof messageId !== 'number' || Number.isNaN(messageId)) return;
+
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    const payload = { type: 'edit-message', messageId, text };
+    wsManager.send(payload);
+  }
+
+  /**
    * Delete a message.
    * @param messageId - Message ID to delete
    */
@@ -308,6 +336,7 @@ function createChatStore() {
     loadHistory,
     react,
     search,
+    edit,
     delete: deleteMessage,
     on,
     off,

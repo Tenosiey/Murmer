@@ -127,6 +127,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "delete-message" => {
                                 messages::handle_delete_message(&state, &mut sender, &v, channel_id, &user_name).await;
                             }
+                            "edit-message" => {
+                                messages::handle_edit_message(&state, &mut sender, &v, channel_id, &user_name).await;
+                            }
                             "react" => {
                                 messages::handle_react(&state, &mut sender, &v, &user_name).await;
                             }
