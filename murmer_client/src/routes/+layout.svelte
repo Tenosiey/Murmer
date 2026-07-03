@@ -7,19 +7,21 @@
   import { APP_VERSION } from '$lib/version';
   import { theme } from '$lib/stores/theme';
 
+  // Fonts are bundled locally so startup never blocks on a network fetch
+  // and the desktop client works fully offline.
+  import '@fontsource/ibm-plex-mono/400.css';
+  import '@fontsource/ibm-plex-mono/500.css';
+  import '@fontsource/ibm-plex-mono/600.css';
+  import '@fontsource/ibm-plex-mono/700.css';
+  import '@fontsource/jetbrains-mono/400.css';
+  import '@fontsource/jetbrains-mono/500.css';
+  import '@fontsource/jetbrains-mono/600.css';
+  import '@fontsource/jetbrains-mono/700.css';
+
   onMount(() => {
     theme.init();
   });
 </script>
-
-<svelte:head>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-  <link
-    rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
-  />
-</svelte:head>
 
 <style>
   :global(:root) {
@@ -165,7 +167,15 @@
   :global(select) {
     font-family: inherit;
     border-radius: var(--radius-sm);
-    transition: all var(--transition);
+    /* Only transition cheap paint/composite properties; `transition: all`
+       also animates layout properties, which is expensive in WebKitGTK. */
+    transition:
+      background-color var(--transition),
+      border-color var(--transition),
+      color var(--transition),
+      box-shadow var(--transition),
+      opacity var(--transition),
+      transform var(--transition);
   }
 
   :global(button) {
@@ -334,7 +344,8 @@
     border-radius: var(--radius-lg);
     border: 1px solid var(--md-sys-color-outline);
     box-shadow: var(--shadow-sm);
-    backdrop-filter: var(--blur-elevated);
+    /* No backdrop-filter here: the background is opaque, so a blur is
+       invisible but still costs a full repaint pass in WebKitGTK. */
   }
 
   :global(.surface-tonal) {

@@ -207,11 +207,12 @@
     border: 1px solid var(--color-surface-outline);
     border-radius: var(--radius-md);
     background: var(--color-surface-raised);
-    backdrop-filter: var(--blur-elevated);
     overflow: hidden;
     max-width: 460px;
     box-shadow: var(--shadow-xs);
-    transition: all var(--motion-duration-short) var(--motion-easing-standard);
+    transition:
+      border-color var(--motion-duration-short) var(--motion-easing-standard),
+      box-shadow var(--motion-duration-short) var(--motion-easing-standard);
   }
 
   .link-preview:hover {

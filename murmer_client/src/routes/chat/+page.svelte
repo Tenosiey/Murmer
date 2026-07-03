@@ -1469,7 +1469,6 @@
     height: 100vh;
     padding: clamp(1.25rem, 2.5vw, 1.75rem);
     gap: clamp(0.75rem, 2vw, 1rem);
-    backdrop-filter: blur(0.5px);
   }
 
   .page.focus {
@@ -1601,6 +1600,8 @@
     background: color-mix(in srgb, var(--color-primary) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
     transition: transform var(--transition), box-shadow var(--transition);
+    /* Isolate layout/style recalculation per message so long histories stay cheap. */
+    contain: layout style;
   }
 
   .message:hover {

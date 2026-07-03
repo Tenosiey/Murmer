@@ -297,17 +297,18 @@
   .modal-overlay {
     position: fixed;
     inset: 0;
-    background: color-mix(in srgb, var(--color-overlay) 92%, rgba(5, 10, 26, 0.75));
+    /* A stronger dim instead of a full-screen backdrop blur — blur here is
+       very expensive in WebKitGTK (Linux) while the modal is open. */
+    background: color-mix(in srgb, var(--color-overlay) 55%, rgba(5, 10, 26, 0.88));
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: var(--z-modal);
-    backdrop-filter: blur(16px);
     animation: fadeIn 0.24s ease-out;
   }
 
   .modal-content {
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
+    background: var(--color-surface-elevated);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-md);
     border: 1px solid var(--color-surface-outline);
@@ -317,7 +318,6 @@
     display: flex;
     flex-direction: column;
     animation: slideIn 0.28s cubic-bezier(0.25, 0.9, 0.3, 1.2);
-    backdrop-filter: var(--blur-elevated);
   }
 
   .modal-header {

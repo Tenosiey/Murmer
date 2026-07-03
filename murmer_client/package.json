@@ -17,6 +17,8 @@
   },
   "overrides": {},
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "@tauri-apps/plugin-notification": "^2.3.1",
     "dompurify": "^3.2.7",
     "highlight.js": "^11.11.1",
