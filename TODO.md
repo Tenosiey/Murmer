@@ -19,7 +19,7 @@ Use the checkboxes to track progress.
 - [ ] File sharing beyond images
 - [ ] Link previews (OpenGraph embeds)
 - [ ] Message threading/replies
-- [ ] Paste images from clipboard / drag & drop
+- [x] Paste images from clipboard / drag & drop
 - [ ] Quote/reply to single messages (lightweight alternative to full threading)
 - [ ] Pin important messages in a channel (client-local only, no server persistence)
 - [ ] Text-to-speech
