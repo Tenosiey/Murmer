@@ -1,11 +1,10 @@
 <!-- Bar above the message list showing pinned messages for the current channel. -->
 <script lang="ts">
-  import { pinned } from '$lib/stores/pins';
+  import { chat } from '$lib/stores/chat';
   import type { PinnedEntry } from '$lib/stores/pins';
   import type { Message } from '$lib/types';
   import { PIN_PREVIEW_LIMIT } from '$lib/chat/constants';
 
-  export let channelId: number;
   export let entries: PinnedEntry[];
   /** Messages of the current channel, used to resolve fresh content for a pin. */
   export let messages: Message[];
@@ -60,7 +59,7 @@
           </button>
           <button
             class="pinned-remove"
-            on:click={() => pinned.unpin(channelId, entry.id)}
+            on:click={() => chat.sendRaw({ type: 'unpin-message', messageId: entry.id })}
             aria-label="Unpin message"
           >
             ✕

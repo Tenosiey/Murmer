@@ -36,9 +36,15 @@
   import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
   import { pinned } from '$lib/stores/pins';
   import type { PinnedEntry } from '$lib/stores/pins';
+  import { typing } from '$lib/stores/typing';
+  import { unread } from '$lib/stores/unread';
+  import { threadData } from '$lib/stores/thread';
+  import { dm } from '$lib/stores/dm';
   import { screenSharePeers, viewScreenShare, leaveScreenShareAsViewer } from '$lib/stores/screenShare';
   import ScreenShareViewer from '$lib/components/ScreenShareViewer.svelte';
   import { loadKeyPair, sign } from '$lib/keypair';
+  import { connection, connectionError } from '$lib/stores/connection';
+  import { describeServerError, isFatalConnectionError } from '$lib/errors';
   import { renderMarkdown } from '$lib/markdown';
   import type { Message, UserStatus, ScreenSharePeer } from '$lib/types';
   import {
@@ -49,6 +55,7 @@
     formatFileSize,
     promptVoicePreset,
     reactionEntries,
+    searchResultPreview,
     type MessageBlock
   } from '$lib/chat/helpers';
   import {
@@ -100,6 +107,19 @@
 
   let channelMessages: Message[] = [];
   let messageBlocks: MessageBlock[] = [];
+
+  let replyingTo: Message | null = null;
+  let threadRootId: number | null = null;
+  let threadReplyText = '';
+  let dmText = '';
+  const dmConversations = dm.conversations;
+  const dmActivePeer = dm.activePeer;
+  let threadMessages: Message[] = [];
+  let threadReplyCounts = new Map<number, number>();
+  /* Last-read message id captured when entering the channel; the "New"
+     divider stays anchored there until the user switches channels. */
+  let unreadMarkerAfterId = 0;
+  let typingLabel: string | null = null;
 
   function setCommandFeedback(message: string, type: 'info' | 'error' = 'info') {
     commandFeedback = message;
@@ -269,11 +289,16 @@
   }
 
   $: channelMessages = $chat.filter((m) => m.channelId === currentChatChannelId);
-  $: messageBlocks = buildMessageBlocks(channelMessages);
+  $: messageBlocks = buildMessageBlocks(channelMessages, {
+    unreadAfterId: unreadMarkerAfterId,
+    currentUser: $session.user
+  });
   $: pinnedEntries = $pinned[currentChatChannelId] ?? [];
 
   $: if ($channels.length && !$channels.some((c) => c.id === currentChatChannelId)) {
     currentChatChannelId = $channels[0].id;
+    unreadMarkerAfterId = unread.getLastRead(currentChatChannelId);
+    unread.setActive(currentChatChannelId);
     loadingHistory = false;
     if (initialChannelSet) {
       chat.sendRaw({ type: 'join', channelId: currentChatChannelId });
@@ -281,6 +306,58 @@
       initialChannelSet = true;
     }
   }
+
+  function latestMessageId(messages: Message[]): number | null {
+    let max: number | null = null;
+    for (const m of messages) {
+      if (typeof m.id === 'number' && (max === null || m.id > max)) max = m.id;
+    }
+    return max;
+  }
+
+  // Everything rendered in the active channel counts as read.
+  $: {
+    const latest = latestMessageId(channelMessages);
+    if (latest !== null) unread.markRead(currentChatChannelId, latest);
+  }
+
+  $: typingLabel = (() => {
+    const users = Object.entries($typing[currentChatChannelId] ?? {})
+      .filter(([user, expiry]) => user !== $session.user && expiry > now)
+      .map(([user]) => user);
+    if (users.length === 0) return null;
+    if (users.length === 1) return `${users[0]} is typing…`;
+    if (users.length === 2) return `${users[0]} and ${users[1]} are typing…`;
+    return 'Several people are typing…';
+  })();
+
+  $: threadReplyCounts = (() => {
+    const map = new Map<number, number>();
+    for (const m of channelMessages) {
+      if (typeof m.threadId === 'number') {
+        map.set(m.threadId, (map.get(m.threadId) ?? 0) + 1);
+      }
+    }
+    return map;
+  })();
+
+  /* The panel merges the server's thread snapshot with live messages from the
+     store, so replies arriving while the thread is open show up immediately. */
+  $: threadMessages = (() => {
+    if (threadRootId === null) return [];
+    const byId = new Map<number, Message>();
+    const data = $threadData;
+    if (data && data.rootId === threadRootId) {
+      for (const m of data.messages) {
+        if (typeof m.id === 'number') byId.set(m.id, m);
+      }
+    }
+    for (const m of channelMessages) {
+      if (typeof m.id !== 'number') continue;
+      if (m.id === threadRootId || m.threadId === threadRootId) byId.set(m.id, m);
+    }
+    return [...byId.values()].sort((a, b) => (a.id as number) - (b.id as number));
+  })();
 
   $: currentTopic = $channelTopics[currentChatChannelId] ?? '';
 
@@ -418,15 +495,7 @@
     };
   }
 
-  onMount(() => {
-    if (!get(session).user) {
-      goto('/login');
-      return;
-    }
-    roles.set({});
-    expiryTicker = window.setInterval(() => {
-      now = Date.now();
-    }, 1000);
+  function connectToServer() {
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
     const entry = servers.get(url);
     chat.connect(url, async () => {
@@ -447,14 +516,96 @@
       // so avoid sending an extra join message which would duplicate chat
       // history on initial connect. Joining is still handled when the
       // user switches channels.
+      if (currentChatChannelId > 0) {
+        // Reconnecting: the server placed us back in the default channel,
+        // so rejoin the channel the user was viewing.
+        chat.sendRaw({ type: 'join', channelId: currentChatChannelId });
+      }
       ping.start();
       await scrollBottom();
     });
+  }
+
+  function retryConnect() {
+    ping.stop();
+    connectToServer();
+  }
+
+  function leaveToServers(message: string | null = null) {
+    connectionError.set(message);
+    ping.stop();
+    chat.disconnect();
+    goto('/servers');
+  }
+
+  const handleServerError = (msg: Message) => {
+    const code = typeof msg.message === 'string' ? msg.message : '';
+    const description = describeServerError(code);
+    if (isFatalConnectionError(code)) {
+      // The server closes the connection after these errors; return to the
+      // server list and explain why there.
+      leaveToServers(description);
+      return;
+    }
+    setCommandFeedback(description, 'error');
+  };
+  chat.on('error', handleServerError);
+
+  const handleForceDisconnect = (msg: Message) => {
+    if (!msg.user || msg.user !== get(session).user) return;
+    const action = msg.action === 'banned' ? 'banned from' : 'kicked from';
+    const by = typeof msg.by === 'string' && msg.by ? ` by ${msg.by}` : '';
+    leaveToServers(`You were ${action} this server${by}.`);
+  };
+  chat.on('force-disconnect', handleForceDisconnect);
+
+  const handleUserMuted = (msg: Message) => {
+    if (typeof msg.user !== 'string') return;
+    if (msg.user === get(session).user) {
+      const until = typeof msg.until === 'string' ? ` until ${new Date(msg.until).toLocaleString()}` : '';
+      setCommandFeedback(`You have been muted${until}.`, 'error');
+      return;
+    }
+    setCommandFeedback(`${msg.user} has been muted.`);
+  };
+  chat.on('user-muted', handleUserMuted);
+
+  const handleUserUnmuted = (msg: Message) => {
+    if (typeof msg.user !== 'string') return;
+    if (msg.user === get(session).user) {
+      setCommandFeedback('You are no longer muted.');
+      return;
+    }
+    setCommandFeedback(`${msg.user} has been unmuted.`);
+  };
+  chat.on('user-unmuted', handleUserUnmuted);
+
+  const handleUserUnbanned = (msg: Message) => {
+    if (typeof msg.user !== 'string') return;
+    setCommandFeedback(`${msg.user} has been unbanned.`);
+  };
+  chat.on('user-unbanned', handleUserUnbanned);
+
+  onMount(() => {
+    if (!get(session).user) {
+      goto('/login');
+      return;
+    }
+    roles.set({});
+    expiryTicker = window.setInterval(() => {
+      now = Date.now();
+    }, 1000);
+    connectToServer();
   });
 
   onDestroy(() => {
     chat.off('history', handleHistory);
     chat.off('message-deleted', handleMessageDeleted);
+    chat.off('error', handleServerError);
+    chat.off('force-disconnect', handleForceDisconnect);
+    chat.off('user-muted', handleUserMuted);
+    chat.off('user-unmuted', handleUserUnmuted);
+    chat.off('user-unbanned', handleUserUnbanned);
     chat.disconnect();
     if (currentVoiceChannelId !== null) {
       voice.leave(currentVoiceChannelId);
@@ -485,7 +636,9 @@
         return;
       }
     }
-    chat.send($session.user ?? 'anon', message);
+    const replyTarget = typeof replyingTo?.id === 'number' ? replyingTo.id : undefined;
+    chat.send($session.user ?? 'anon', message, replyTarget);
+    replyingTo = null;
     message = '';
     autoResize();
   }
@@ -704,10 +857,72 @@
   function joinChannel(id: number) {
     if (id === currentChatChannelId) return;
     currentChatChannelId = id;
+    unreadMarkerAfterId = unread.getLastRead(id);
+    unread.setActive(id);
+    replyingTo = null;
+    closeThread();
     loadingHistory = false;
     chat.clear();
     chat.sendRaw({ type: 'join', channelId: id });
     scrollBottom();
+  }
+
+  function startReply(msg: Message) {
+    if (typeof msg.id !== 'number') return;
+    replyingTo = msg;
+    messageInput?.focus();
+  }
+
+  function cancelReply() {
+    replyingTo = null;
+  }
+
+  function openThread(rootId: number) {
+    threadRootId = rootId;
+    threadReplyText = '';
+    chat.loadThread(rootId);
+  }
+
+  function closeThread() {
+    threadRootId = null;
+    threadReplyText = '';
+  }
+
+  function sendThreadReply() {
+    const trimmed = threadReplyText.trim();
+    if (trimmed === '' || threadRootId === null) return;
+    chat.send($session.user ?? 'anon', trimmed, threadRootId);
+    threadReplyText = '';
+  }
+
+  function openDm(user: string) {
+    if (user === $session.user) return;
+    closeThread();
+    dmText = '';
+    dm.open(user);
+    chat.loadDmHistory(user);
+  }
+
+  function closeDm() {
+    dm.close();
+    dmText = '';
+  }
+
+  function sendDmMessage() {
+    const peer = $dmActivePeer;
+    const trimmed = dmText.trim();
+    if (!peer || trimmed === '') return;
+    chat.sendDm(peer, trimmed);
+    dmText = '';
+  }
+
+  $: dmMessages = $dmActivePeer ? ($dmConversations[$dmActivePeer] ?? []) : [];
+
+  function handleComposerInput() {
+    autoResize();
+    if (message.trim().length > 0) {
+      chat.sendTyping();
+    }
   }
 
 
@@ -806,6 +1021,21 @@
 
   const ASSIGNABLE_ROLES = ['Owner', 'Admin', 'Mod'] as const;
 
+  /** Mirror of the server's moderation ranking: requesters must strictly
+   *  outrank their target for kick/ban/mute to be allowed. */
+  function moderationRank(role: string | undefined): number {
+    switch (role?.toLowerCase()) {
+      case 'owner':
+        return 3;
+      case 'admin':
+        return 2;
+      case 'mod':
+        return 1;
+      default:
+        return 0;
+    }
+  }
+
   $: currentUserIsOwner = (() => {
     const user = $session.user;
     if (!user) return false;
@@ -813,8 +1043,16 @@
     return info?.role?.toLowerCase() === 'owner';
   })();
 
+  $: currentUserModerationRank = moderationRank(
+    $session.user ? $roles[$session.user]?.role : undefined
+  );
+
+  function canModerate(target: string): boolean {
+    if (target === $session.user) return false;
+    return currentUserModerationRank > moderationRank($roles[target]?.role);
+  }
+
   function openUserRoleMenu(event: MouseEvent, user: string) {
-    if (!currentUserIsOwner) return;
     if (user === $session.user) return;
     event.preventDefault();
     event.stopPropagation();
@@ -832,17 +1070,54 @@
     chat.sendRaw({ type: 'remove-role', user });
   }
 
+  function kickUser(user: string) {
+    chat.sendRaw({ type: 'kick-user', user });
+  }
+
+  function banUser(user: string) {
+    if (!confirm(`Ban ${user} from this server?`)) return;
+    chat.sendRaw({ type: 'ban-user', user });
+  }
+
+  function unbanUser(user: string) {
+    chat.sendRaw({ type: 'unban-user', user });
+  }
+
+  function muteUser(user: string, durationSeconds?: number) {
+    const payload: Record<string, unknown> = { type: 'mute-user', user };
+    if (typeof durationSeconds === 'number') payload.durationSeconds = durationSeconds;
+    chat.sendRaw(payload);
+  }
+
+  function unmuteUser(user: string) {
+    chat.sendRaw({ type: 'unmute-user', user });
+  }
+
   $: userRoleMenuItems = (() => {
     if (!userRoleMenuTarget) return [];
     const target = userRoleMenuTarget;
     const currentRole = $roles[target]?.role;
     const items: { label: string; action: () => void; danger?: boolean; icon?: string }[] = [];
-    for (const role of ASSIGNABLE_ROLES) {
-      if (currentRole?.toLowerCase() === role.toLowerCase()) continue;
-      items.push({ label: `Set as ${role}`, action: () => assignRole(target, role) });
+    items.push({ label: 'Send Message', icon: '✉️', action: () => openDm(target) });
+    if (currentUserIsOwner) {
+      for (const role of ASSIGNABLE_ROLES) {
+        if (currentRole?.toLowerCase() === role.toLowerCase()) continue;
+        items.push({ label: `Set as ${role}`, action: () => assignRole(target, role) });
+      }
+      if (currentRole) {
+        items.push({ label: 'Remove Role', action: () => removeRole(target), danger: true });
+      }
     }
-    if (currentRole) {
-      items.push({ label: 'Remove Role', action: () => removeRole(target), danger: true });
+    if (canModerate(target)) {
+      items.push({ label: 'Mute (10 min)', icon: '🔇', action: () => muteUser(target, 600) });
+      items.push({ label: 'Mute (1 hour)', icon: '🔇', action: () => muteUser(target, 3600) });
+      items.push({ label: 'Mute (until lifted)', icon: '🔇', action: () => muteUser(target) });
+      items.push({ label: 'Unmute', icon: '🔊', action: () => unmuteUser(target) });
+      if ($onlineUsers.includes(target)) {
+        items.push({ label: 'Kick User', icon: '👢', danger: true, action: () => kickUser(target) });
+      }
+      items.push({ label: 'Ban User', icon: '🔨', danger: true, action: () => banUser(target) });
+      items.push({ label: 'Unban User', action: () => unbanUser(target) });
     }
     return items;
   })();
@@ -944,10 +1219,11 @@
 
   function togglePinMessage(msg: Message) {
     if (typeof msg.id !== 'number') return;
+    // Pins live on the server; the resulting `pins` broadcast updates the store.
     if (isMessagePinned(msg)) {
-      pinned.unpin(currentChatChannelId, msg.id);
+      chat.sendRaw({ type: 'unpin-message', messageId: msg.id });
     } else {
-      pinned.pin(currentChatChannelId, msg);
+      chat.sendRaw({ type: 'pin-message', messageId: msg.id });
     }
   }
 
@@ -1289,7 +1565,6 @@
         {now}
       />
       <PinnedBar
-        channelId={currentChatChannelId}
         entries={pinnedEntries}
         messages={channelMessages}
         onFocusMessage={focusMessage}
@@ -1301,12 +1576,29 @@
               <div class="day-separator" role="separator" aria-label={`Messages from ${block.label}`}>
                 <span>{block.label}</span>
               </div>
+            {:else if block.kind === 'unread'}
+              <div class="unread-divider" role="separator" aria-label="New messages">
+                <span>New</span>
+              </div>
             {:else if block.kind === 'message'}
               <div
                 class="message"
                 data-message-id={typeof block.message.id === 'number' ? block.message.id : undefined}
                 class:highlighted={highlightedMessageId === block.message.id}
               >
+                {#if block.message.replyTo}
+                  {@const reply = block.message.replyTo}
+                  <button
+                    type="button"
+                    class="reply-quote"
+                    on:click={() => focusMessage(reply.id)}
+                    title={`Jump to ${reply.user}'s message`}
+                  >
+                    <span class="reply-quote-arrow" aria-hidden="true">↪</span>
+                    <span class="reply-quote-user">{reply.user}</span>
+                    <span class="reply-quote-text">{reply.text || 'Original message'}</span>
+                  </button>
+                {/if}
                 <span class="timestamp">{block.message.time}</span>
                 <span class="username">{block.message.user}</span>
                 {#if block.message.bot}
@@ -1374,6 +1666,14 @@
                 </span>
                   {#if typeof block.message.id === 'number' && (canPinMessage(block.message) || canDeleteMessage(block.message))}
                     <div class="message-actions">
+                      <button
+                        type="button"
+                        class="message-action"
+                        on:click={() => startReply(block.message)}
+                        title="Reply"
+                      >
+                        ↩️
+                      </button>
                       {#if canEditMessage(block.message)}
                         <button
                           type="button"
@@ -1426,6 +1726,17 @@
                       +
                     </button>
                   </div>
+                  {#if threadReplyCounts.get(block.message.id)}
+                    {@const replyCount = threadReplyCounts.get(block.message.id) ?? 0}
+                    <button
+                      type="button"
+                      class="thread-indicator"
+                      on:click={() => openThread(block.message.id as number)}
+                      title="Open thread"
+                    >
+                      💬 {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
+                    </button>
+                  {/if}
                 {/if}
               </div>
             {/if}
@@ -1436,18 +1747,42 @@
         {#if commandFeedback}
           <div class={`command-feedback ${commandFeedbackType}`}>{commandFeedback}</div>
         {/if}
+        {#if replyingTo}
+          <div class="reply-bar">
+            <span class="reply-bar-label">
+              Replying to <strong>{replyingTo.user}</strong>
+              <span class="reply-bar-preview">{searchResultPreview(replyingTo)}</span>
+            </span>
+            <button
+              type="button"
+              class="reply-bar-cancel"
+              on:click={cancelReply}
+              aria-label="Cancel reply"
+            >
+              ✕
+            </button>
+          </div>
+        {/if}
+        {#if typingLabel}
+          <div class="typing-indicator" aria-live="polite">
+            <span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            {typingLabel}
+          </div>
+        {/if}
         <textarea
           class:scrollable={inputScrollable}
           bind:value={message}
           bind:this={messageInput}
           rows="1"
           placeholder="Message"
-          on:input={autoResize}
+          on:input={handleComposerInput}
           on:paste={handlePaste}
           on:keydown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               send();
+            } else if (e.key === 'Escape' && replyingTo) {
+              cancelReply();
             }
           }}
         ></textarea>
@@ -1517,6 +1852,94 @@
         </div>
       </div>
 
+      {#if threadRootId !== null}
+        <aside class="thread-panel" aria-label="Thread">
+          <header class="thread-header">
+            <span>Thread</span>
+            <button
+              type="button"
+              class="thread-close"
+              on:click={closeThread}
+              aria-label="Close thread"
+            >
+              ✕
+            </button>
+          </header>
+          <div class="thread-messages">
+            {#each threadMessages as tm (tm.id)}
+              <div class="thread-message" class:root={tm.id === threadRootId}>
+                <div class="thread-message-meta">
+                  <span class="username">{tm.user}</span>
+                  <span class="timestamp">{tm.time}</span>
+                </div>
+                <div class="thread-message-text">
+                  {#if tm.text}
+                    {@html renderMarkdown(tm.text)}
+                  {:else if tm.image}
+                    <img src={tm.image as string} alt="" />
+                  {:else if tm.attachment}
+                    <a href={tm.attachment.url} target="_blank" rel="noopener noreferrer">
+                      📎 {tm.attachment.name}
+                    </a>
+                  {/if}
+                </div>
+              </div>
+            {:else}
+              <p class="thread-empty">Loading thread…</p>
+            {/each}
+          </div>
+          <form class="thread-input" on:submit|preventDefault={sendThreadReply}>
+            <input
+              type="text"
+              bind:value={threadReplyText}
+              placeholder="Reply in thread…"
+              aria-label="Reply in thread"
+            />
+          </form>
+        </aside>
+      {/if}
+
+      {#if $dmActivePeer}
+        <aside class="thread-panel" aria-label="Direct messages">
+          <header class="thread-header">
+            <span>✉️ {$dmActivePeer}</span>
+            <button
+              type="button"
+              class="thread-close"
+              on:click={closeDm}
+              aria-label="Close direct messages"
+            >
+              ✕
+            </button>
+          </header>
+          <div class="thread-messages">
+            {#each dmMessages as dmsg (dmsg.id)}
+              <div class="thread-message" class:root={dmsg.from === $session.user}>
+                <div class="thread-message-meta">
+                  <span class="username">{dmsg.from}</span>
+                  <span class="timestamp">{dmsg.time}</span>
+                </div>
+                <div class="thread-message-text">
+                  {#if dmsg.text}
+                    {@html renderMarkdown(dmsg.text)}
+                  {/if}
+                </div>
+              </div>
+            {:else}
+              <p class="thread-empty">No messages yet. Say hi!</p>
+            {/each}
+          </div>
+          <form class="thread-input" on:submit|preventDefault={sendDmMessage}>
+            <input
+              type="text"
+              bind:value={dmText}
+              placeholder={`Message ${$dmActivePeer}…`}
+              aria-label="Direct message"
+            />
+          </form>
+        </aside>
+      {/if}
+
       {#each $voice as peer (peer.id)}
         <audio autoplay use:stream={{ stream: peer.stream, userId: peer.id }}></audio>
       {/each}
@@ -1525,8 +1948,8 @@
     <div class="resizer" role="separator" aria-label="Resize user list" on:mousedown={startRightResize}></div>
     <UserList
       {statusMap}
-      {currentUserIsOwner}
       onUserContextMenu={openUserRoleMenu}
+      onOpenDm={openDm}
     />
 </div>
 
@@ -1543,6 +1966,32 @@
 
 {#if viewingScreenShare}
   <ScreenShareViewer peer={viewingScreenShare} onClose={closeScreenShareViewer} />
+{/if}
+
+{#if $connection === 'connecting' || $connection === 'disconnected' || $connection === 'failed'}
+  <div class="connection-overlay" class:connecting={$connection === 'connecting'} role="alert">
+    <div class="connection-card">
+      {#if $connection === 'connecting'}
+        <div class="connection-spinner" aria-hidden="true"></div>
+        <h2>Connecting…</h2>
+        <p class="connection-detail">{$selectedServer ?? 'Unknown server'}</p>
+      {:else}
+        <h2>{$connection === 'failed' ? 'Could not connect' : 'Connection lost'}</h2>
+        <p>
+          {$connection === 'failed'
+            ? 'The server is offline or unreachable. Check the address or try again later.'
+            : 'The connection to the server was lost. It may have gone offline.'}
+        </p>
+        <p class="connection-detail">{$selectedServer ?? 'Unknown server'}</p>
+        <div class="connection-actions">
+          <button type="button" class="connection-retry" on:click={retryConnect}>Try again</button>
+          <button type="button" class="connection-back" on:click={() => leaveToServers()}>
+            Back to servers
+          </button>
+        </div>
+      {/if}
+    </div>
+  </div>
 {/if}
 
 <style>
@@ -1671,6 +2120,31 @@
     font-weight: 600;
   }
 
+  .unread-divider {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--color-error);
+    font-size: var(--text-xs);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+
+  .unread-divider::before,
+  .unread-divider::after {
+    content: '';
+    flex: 1;
+    border-top: 1px solid color-mix(in srgb, var(--color-error) 55%, transparent);
+  }
+
+  .unread-divider span {
+    padding: 0.1rem 0.6rem;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-error) 16%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-error) 40%, transparent);
+  }
+
   .message {
     display: grid;
     grid-template-columns: auto auto 1fr;
@@ -1701,6 +2175,46 @@
     color: var(--color-muted);
     font-family: 'JetBrains Mono', 'Fira Code', monospace;
     opacity: 0.7;
+  }
+
+  .reply-quote {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    max-width: 100%;
+    padding: 0.2rem 0.5rem;
+    border: none;
+    border-left: 2px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+    border-radius: var(--radius-xs, 4px);
+    background: color-mix(in srgb, var(--color-surface-elevated) 55%, transparent);
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .reply-quote:hover {
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    color: var(--color-on-surface);
+  }
+
+  .reply-quote-arrow {
+    flex-shrink: 0;
+    opacity: 0.7;
+  }
+
+  .reply-quote-user {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--color-on-surface);
+  }
+
+  .reply-quote-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .message .username {
@@ -1986,6 +2500,27 @@
     font-weight: 700;
   }
 
+  .thread-indicator {
+    grid-column: 1 / -1;
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: var(--radius-pill);
+    border: 1px solid color-mix(in srgb, var(--color-secondary) 28%, transparent);
+    background: color-mix(in srgb, var(--color-secondary) 10%, transparent);
+    color: var(--color-on-surface);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .thread-indicator:hover {
+    background: color-mix(in srgb, var(--color-secondary) 20%, transparent);
+    border-color: color-mix(in srgb, var(--color-secondary) 45%, transparent);
+  }
+
   .input-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -2016,6 +2551,213 @@
     border-color: color-mix(in srgb, var(--color-error) 32%, transparent);
     background: color-mix(in srgb, var(--color-error) 12%, transparent);
     color: color-mix(in srgb, var(--color-error) 85%, var(--color-on-surface) 15%);
+  }
+
+  .reply-bar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+  }
+
+  .reply-bar-label {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    overflow: hidden;
+  }
+
+  .reply-bar-label strong {
+    color: var(--color-on-surface);
+  }
+
+  .reply-bar-preview {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .reply-bar-cancel {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-muted);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    padding: 0.15rem 0.35rem;
+    border-radius: var(--radius-sm);
+  }
+
+  .reply-bar-cancel:hover {
+    color: var(--color-on-surface);
+    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  }
+
+  .typing-indicator {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+    font-style: italic;
+  }
+
+  .typing-dots {
+    display: inline-flex;
+    gap: 0.2rem;
+  }
+
+  .typing-dots span {
+    width: 0.3rem;
+    height: 0.3rem;
+    border-radius: 50%;
+    background: var(--color-muted);
+    animation: typing-bounce 1.2s infinite ease-in-out;
+  }
+
+  .typing-dots span:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .typing-dots span:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  @keyframes typing-bounce {
+    0%,
+    60%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.5;
+    }
+    30% {
+      transform: translateY(-3px);
+      opacity: 1;
+    }
+  }
+
+  .thread-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 25;
+    width: min(380px, 90%);
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-raised);
+    border: 1px solid var(--color-surface-outline);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+
+  .thread-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-surface-outline);
+    font-weight: 700;
+    font-size: var(--text-md);
+  }
+
+  .thread-close {
+    border: none;
+    background: transparent;
+    color: var(--color-muted);
+    cursor: pointer;
+    padding: 0.2rem 0.45rem;
+    border-radius: var(--radius-sm);
+  }
+
+  .thread-close:hover {
+    color: var(--color-on-surface);
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  }
+
+  .thread-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding: 0.9rem;
+  }
+
+  .thread-message {
+    padding: 0.5rem 0.7rem;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 10%, transparent);
+  }
+
+  .thread-message.root {
+    border-color: color-mix(in srgb, var(--color-secondary) 35%, transparent);
+    background: color-mix(in srgb, var(--color-secondary) 10%, transparent);
+  }
+
+  .thread-message-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+
+  .thread-message-meta .username {
+    font-weight: 600;
+    color: var(--color-on-surface);
+    font-size: var(--text-sm);
+  }
+
+  .thread-message-meta .timestamp {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    opacity: 0.7;
+  }
+
+  .thread-message-text {
+    color: var(--color-on-surface);
+    font-size: var(--text-sm);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+
+  .thread-message-text img {
+    max-width: 100%;
+    border-radius: var(--radius-sm);
+    margin-top: 0.35rem;
+  }
+
+  .thread-empty {
+    margin: 0;
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+    text-align: center;
+  }
+
+  .thread-input {
+    padding: 0.75rem;
+    border-top: 1px solid var(--color-surface-outline);
+  }
+
+  .thread-input input {
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
+    background: color-mix(in srgb, var(--color-surface-elevated) 84%, transparent);
+    color: var(--color-on-surface);
   }
 
   textarea {
@@ -2115,6 +2857,112 @@
     background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
     color: var(--color-on-primary);
     border-color: transparent;
+  }
+
+  .connection-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+    backdrop-filter: blur(6px);
+  }
+
+  /* Delay the connecting state so fast connects never flash the overlay. */
+  .connection-overlay.connecting {
+    animation: connection-fade-in 0.2s ease 0.4s both;
+  }
+
+  @keyframes connection-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .connection-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    max-width: 420px;
+    padding: clamp(1.75rem, 4vw, 2.5rem);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-raised);
+    border: 1px solid var(--color-surface-outline);
+    box-shadow: var(--shadow-sm);
+    text-align: center;
+  }
+
+  .connection-card h2 {
+    margin: 0;
+    font-size: var(--text-xl);
+  }
+
+  .connection-card p {
+    margin: 0;
+    color: var(--color-muted);
+    line-height: 1.5;
+  }
+
+  .connection-detail {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    word-break: break-all;
+  }
+
+  .connection-spinner {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+    border: 3px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+    border-top-color: var(--color-primary);
+    animation: connection-spin 0.8s linear infinite;
+  }
+
+  @keyframes connection-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .connection-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .connection-retry,
+  .connection-back {
+    padding: 0.65rem 1.3rem;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    transition: all var(--transition);
+  }
+
+  .connection-retry {
+    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+    color: var(--color-on-primary);
+    border: none;
+  }
+
+  .connection-back {
+    background: color-mix(in srgb, var(--color-surface-raised) 88%, transparent);
+    color: var(--color-on-surface);
+    border: 1px solid color-mix(in srgb, var(--color-outline-strong) 80%, transparent);
+  }
+
+  .connection-retry:hover,
+  .connection-back:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-xs);
   }
 
   @media (max-width: 1280px) {

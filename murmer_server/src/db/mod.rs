@@ -6,17 +6,26 @@
 //!
 //! Submodules group queries by domain:
 //! - [`channels`] – text channels, voice channels and categories
+//! - [`direct_messages`] – private messages between two users
 //! - [`messages`] – message CRUD and history retrieval
+//! - [`moderation`] – ban and mute persistence
+//! - [`pins`] – persisted message pins per channel
 //! - [`reactions`] – emoji reaction operations
 //! - [`roles`] – user role persistence
 
 mod channels;
+mod direct_messages;
 mod messages;
+mod moderation;
+mod pins;
 mod reactions;
 mod roles;
 
 pub use channels::*;
+pub use direct_messages::*;
 pub use messages::*;
+pub use moderation::*;
+pub use pins::*;
 pub use reactions::*;
 pub use roles::*;
 
@@ -66,6 +75,35 @@ CREATE TABLE IF NOT EXISTS categories (
     name TEXT NOT NULL,
     position INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS bans (
+    public_key TEXT PRIMARY KEY,
+    user_name TEXT NOT NULL,
+    banned_by TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS mutes (
+    public_key TEXT PRIMARY KEY,
+    user_name TEXT NOT NULL,
+    muted_by TEXT NOT NULL DEFAULT '',
+    muted_until TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS direct_messages (
+    id SERIAL PRIMARY KEY,
+    sender TEXT NOT NULL,
+    recipient TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_direct_messages_participants
+    ON direct_messages (sender, recipient, id);
+CREATE TABLE IF NOT EXISTS pins (
+    message_id INTEGER PRIMARY KEY,
+    channel_id INTEGER NOT NULL,
+    pinned_by TEXT NOT NULL DEFAULT '',
+    pinned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pins_channel_id ON pins (channel_id);
 CREATE TABLE IF NOT EXISTS bots (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,

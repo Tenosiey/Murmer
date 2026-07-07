@@ -75,6 +75,8 @@ async fn main() -> Result<()> {
 
     let existing_voice = db::get_voice_channels(&db_client).await;
 
+    let existing_mutes = db::get_all_mutes(&db_client).await.unwrap_or_default();
+
     tokio::fs::create_dir_all(&config.upload_dir)
         .await
         .with_context(|| {
@@ -109,6 +111,7 @@ async fn main() -> Result<()> {
         roles: Arc::new(Mutex::new(HashMap::new())),
         statuses: Arc::new(Mutex::new(HashMap::new())),
         user_keys: Arc::new(Mutex::new(HashMap::new())),
+        mutes: Arc::new(Mutex::new(existing_mutes.into_iter().collect())),
         active_screen_shares: Arc::new(Mutex::new(HashMap::new())),
         upload_dir: config.upload_dir.clone(),
         password: config.password.clone(),

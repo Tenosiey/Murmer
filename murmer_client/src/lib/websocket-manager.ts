@@ -10,6 +10,17 @@ type MessageHandler = (msg: Message) => void;
 /** Callback type for connection open event */
 type OpenCallback = () => void;
 
+/** Details about why and how a connection closed. */
+export interface CloseInfo {
+  /** Whether the connection had been successfully opened before closing. */
+  opened: boolean;
+  /** Whether the close was requested locally via disconnect(). */
+  intentional: boolean;
+}
+
+/** Abort connection attempts that have not opened within this window. */
+const CONNECT_TIMEOUT_MS = 10_000;
+
 /**
  * Manages a WebSocket connection with event handlers and lifecycle management.
  */
@@ -17,6 +28,8 @@ export class WebSocketManager {
   private socket: WebSocket | null = null;
   private currentUrl: string | null = null;
   private handlers: Record<string, MessageHandler[]> = {};
+  /** Sockets closed locally via disconnect(), so their close events can be told apart. */
+  private intentionallyClosed = new WeakSet<WebSocket>();
 
   /**
    * Connect to a WebSocket URL.
@@ -30,7 +43,7 @@ export class WebSocketManager {
     url: string,
     onMessage: (msg: Message) => void,
     onOpen?: OpenCallback,
-    onClose?: () => void,
+    onClose?: (info: CloseInfo) => void,
     onError?: (error: Event) => void
   ): void {
     // Close existing connection if URL changed
@@ -44,9 +57,22 @@ export class WebSocketManager {
     if (import.meta.env.DEV) console.log('Connecting to WebSocket', url);
 
     this.socket = new WebSocket(url);
+    const socket = this.socket;
+    let opened = false;
+
+    // Browsers can take a long time to give up on unreachable hosts;
+    // enforce our own deadline so the user gets timely feedback.
+    const connectTimer = setTimeout(() => {
+      if (!opened) {
+        if (import.meta.env.DEV) console.warn('WebSocket connect timed out');
+        socket.close();
+      }
+    }, CONNECT_TIMEOUT_MS);
 
     this.socket.addEventListener('open', () => {
       if (import.meta.env.DEV) console.log('WebSocket connection opened');
+      opened = true;
+      clearTimeout(connectTimer);
       onOpen?.();
     });
 
@@ -69,9 +95,14 @@ export class WebSocketManager {
 
     this.socket.addEventListener('close', () => {
       if (import.meta.env.DEV) console.log('WebSocket connection closed');
-      this.socket = null;
-      this.currentUrl = null;
-      onClose?.();
+      clearTimeout(connectTimer);
+      const intentional = this.intentionallyClosed.has(socket);
+      // Only clear state if a newer connection hasn't replaced this socket.
+      if (this.socket === socket) {
+        this.socket = null;
+        this.currentUrl = null;
+      }
+      onClose?.({ opened, intentional });
     });
 
     this.socket.addEventListener('error', (e) => {
@@ -135,6 +166,7 @@ export class WebSocketManager {
    */
   disconnect(): void {
     if (this.socket) {
+      this.intentionallyClosed.add(this.socket);
       this.socket.close();
       this.socket = null;
       this.currentUrl = null;

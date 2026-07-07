@@ -17,6 +17,7 @@
   import { microphoneMuted, outputMuted, voiceMode, voiceActivity, isPttActive } from '$lib/stores/settings';
   import { remoteSpeaking } from '$lib/stores/voiceSpeaking';
   import { activeScreenShares } from '$lib/stores/screenShare';
+  import { unread } from '$lib/stores/unread';
   import { formatVoiceQuality } from '$lib/chat/helpers';
   import type { CategoryInfo, ChannelInfo, VoiceChannelInfo } from '$lib/types';
 
@@ -125,10 +126,21 @@
       {#each group.textChannels as ch (ch.id)}
         <button
           class:active={ch.id === currentChatChannelId}
+          class:unread={ch.id !== currentChatChannelId && ($unread[ch.id]?.count ?? 0) > 0}
           on:click={() => onJoinChannel(ch.id)}
           on:contextmenu={(e) => onOpenChannelMenu(e, ch.id)}
         >
-          <span class="chan-icon">#</span> {ch.name}
+          <span class="chan-icon">#</span>
+          <span class="chan-name">{ch.name}</span>
+          {#if ch.id !== currentChatChannelId && ($unread[ch.id]?.count ?? 0) > 0}
+            <span
+              class="unread-badge"
+              class:mention={($unread[ch.id]?.mentions ?? 0) > 0}
+              title={`${$unread[ch.id].count} unread message${$unread[ch.id].count === 1 ? '' : 's'}`}
+            >
+              {$unread[ch.id].count > 99 ? '99+' : $unread[ch.id].count}
+            </span>
+          {/if}
         </button>
       {/each}
       {#if group.voiceChannels.length}
@@ -342,6 +354,36 @@
     width: 1.2rem;
     text-align: center;
     flex-shrink: 0;
+  }
+
+  .chan-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .channels button.unread {
+    color: var(--color-on-surface);
+    font-weight: 700;
+  }
+
+  .unread-badge {
+    flex-shrink: 0;
+    min-width: 1.35rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: var(--radius-pill);
+    text-align: center;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    background: color-mix(in srgb, var(--color-primary) 30%, transparent);
+    color: var(--color-on-surface);
+  }
+
+  .unread-badge.mention {
+    background: color-mix(in srgb, var(--color-error) 70%, transparent);
+    color: var(--color-on-primary, #fff);
   }
 
   .voice-group {

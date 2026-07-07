@@ -71,6 +71,8 @@ pub struct AppState {
     pub roles: Arc<Mutex<HashMap<String, RoleInfo>>>,
     pub statuses: Arc<Mutex<HashMap<String, String>>>,
     pub user_keys: Arc<Mutex<HashMap<String, String>>>,
+    /// Active mutes keyed by public key; `None` means muted indefinitely.
+    pub mutes: Arc<Mutex<HashMap<String, Option<chrono::DateTime<chrono::Utc>>>>>,
     /// Active screen shares per voice channel: channel_id -> set of usernames sharing.
     pub active_screen_shares: Arc<Mutex<HashMap<i32, HashSet<String>>>>,
     pub upload_dir: PathBuf,
