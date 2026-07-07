@@ -4,11 +4,17 @@
 //! submodules to keep each file focused:
 //! - [`auth`] – user and bot authentication
 //! - [`channels`] – text/voice channel and category management
-//! - [`messages`] – chat, history, search and reactions
+//! - [`dms`] – direct messages between two users
+//! - [`messages`] – chat, history, threads, typing, search and reactions
+//! - [`moderation`] – kick, ban and mute actions
+//! - [`pins`] – shared, persisted message pins
 
 mod auth;
 mod channels;
+mod dms;
 mod messages;
+mod moderation;
+mod pins;
 
 use super::{errors, helpers::*, validation::*};
 use crate::{db, roles::RoleInfo, AppState};
@@ -47,6 +53,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
     let mut user_name: Option<String> = None;
     let mut voice_channel: Option<i32> = None;
     let mut authenticated = state.password.is_none();
+    let mut last_typing_broadcast: Option<std::time::Instant> = None;
 
     loop {
         tokio::select! {
@@ -86,6 +93,24 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "load-history" => {
                                 messages::handle_load_history(&state, &mut sender, &v, channel_id).await;
                             }
+                            "load-thread" => {
+                                messages::handle_load_thread(&state, &mut sender, &v, channel_id).await;
+                            }
+                            "pin-message" => {
+                                pins::handle_pin_message(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "unpin-message" => {
+                                pins::handle_unpin_message(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "dm" => {
+                                dms::handle_dm(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "load-dm-history" => {
+                                dms::handle_load_dm_history(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "typing" => {
+                                messages::handle_typing(&state, channel_id, &user_name, &mut last_typing_broadcast).await;
+                            }
                             "search-history" => {
                                 messages::handle_search_history(&state, &mut sender, &v, channel_id, &user_name).await;
                             }
@@ -99,6 +124,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "move-channel" => {
                                 channels::handle_move_channel(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "set-channel-topic" => {
+                                channels::handle_set_channel_topic(&state, &mut sender, &v, &user_name).await;
                             }
                             "create-category" => {
                                 channels::handle_create_category(&state, &mut sender, &v, &user_name).await;
@@ -123,6 +151,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "delete-message" => {
                                 messages::handle_delete_message(&state, &mut sender, &v, channel_id, &user_name).await;
+                            }
+                            "edit-message" => {
+                                messages::handle_edit_message(&state, &mut sender, &v, channel_id, &user_name).await;
                             }
                             "react" => {
                                 messages::handle_react(&state, &mut sender, &v, &user_name).await;
@@ -153,6 +184,21 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "screenshare-offer" | "screenshare-answer" | "screenshare-candidate" => {
                                 let _ = state.tx.send(text.to_string());
                             }
+                            "kick-user" => {
+                                moderation::handle_kick_user(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "ban-user" => {
+                                moderation::handle_ban_user(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "unban-user" => {
+                                moderation::handle_unban_user(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "mute-user" => {
+                                moderation::handle_mute_user(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "unmute-user" => {
+                                moderation::handle_unmute_user(&state, &mut sender, &v, &user_name).await;
+                            }
                             "set-role" => {
                                 handle_set_role(&state, &mut sender, &v, &user_name).await;
                             }
@@ -180,7 +226,30 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
             result = global_rx.recv() => {
                 match result {
                     Ok(msg) => {
+                        // Direct messages travel over the shared broadcast but
+                        // must only reach their two participants. The cheap
+                        // substring check avoids parsing every frame; escaped
+                        // quotes inside message text cannot produce it.
+                        if msg.contains("\"type\":\"dm\"") {
+                            let private = serde_json::from_str::<Value>(&msg).ok().is_some_and(|v| {
+                                v.get("type").and_then(|t| t.as_str()) == Some("dm")
+                                    && !dm_involves(&v, user_name.as_deref())
+                            });
+                            if private { continue; }
+                        }
+                        // A force-disconnect broadcast targeting this user
+                        // (kick/ban) is forwarded so the client learns why,
+                        // then the connection is closed.
+                        let targets_this_user = msg.contains("force-disconnect")
+                            && serde_json::from_str::<Value>(&msg).ok().is_some_and(|v| {
+                                v.get("type").and_then(|t| t.as_str()) == Some("force-disconnect")
+                                    && v.get("user").and_then(|u| u.as_str()) == user_name.as_deref()
+                            });
                         if sender.send(Message::Text(msg.into())).await.is_err() { break; }
+                        if targets_this_user {
+                            info!("Closing connection after force-disconnect");
+                            break;
+                        }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(_) => break,

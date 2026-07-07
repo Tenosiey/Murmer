@@ -61,7 +61,7 @@ pub(super) async fn handle_create_channel(
     match db::add_channel(&state.db, ch, category_id).await {
         Ok(Some(record)) => {
             get_or_create_channel(state, record.id).await;
-            broadcast_new_channel(state, record.id, &record.name, record.category_id).await;
+            broadcast_new_channel(state, &record).await;
         }
         Ok(None) => {}
         Err(e) => {
@@ -233,6 +233,76 @@ pub(super) async fn handle_move_channel(
             let _ = sender
                 .send(Message::Text(
                     errors::CHANNEL_MOVE_FAILED.to_string().into(),
+                ))
+                .await;
+        }
+    }
+}
+
+/// Handle set channel topic request.
+pub(super) async fn handle_set_channel_topic(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(ch_id) = v
+        .get("channelId")
+        .and_then(|c| c.as_i64())
+        .map(|c| c as i32)
+    else {
+        return;
+    };
+    let Some(raw_topic) = v.get("topic").and_then(|t| t.as_str()) else {
+        return;
+    };
+
+    let topic = raw_topic.trim();
+    if !validate_channel_topic(topic) {
+        let _ = sender
+            .send(Message::Text(
+                errors::INVALID_CHANNEL_TOPIC.to_string().into(),
+            ))
+            .await;
+        return;
+    }
+
+    let requester = match user_name.as_deref() {
+        Some(n) => n,
+        None => {
+            let _ = sender
+                .send(Message::Text(
+                    errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
+                ))
+                .await;
+            return;
+        }
+    };
+
+    if !can_manage_channels(state, requester).await {
+        error!("User {requester} attempted to set channel topic without permission");
+        let _ = sender
+            .send(Message::Text(
+                errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
+            ))
+            .await;
+        return;
+    }
+
+    match db::set_channel_description(&state.db, ch_id, topic).await {
+        Ok(true) => {
+            broadcast_channel_topic(state, ch_id, topic).await;
+        }
+        Ok(false) => {
+            let _ = sender
+                .send(Message::Text(errors::UNKNOWN_CHANNEL.to_string().into()))
+                .await;
+        }
+        Err(e) => {
+            error!("db set channel topic error: {e}");
+            let _ = sender
+                .send(Message::Text(
+                    errors::TOPIC_UPDATE_FAILED.to_string().into(),
                 ))
                 .await;
         }

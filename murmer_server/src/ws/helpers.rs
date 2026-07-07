@@ -143,17 +143,24 @@ pub async fn broadcast_status(state: &Arc<AppState>, user: &str, status: &str) {
 }
 
 /// Broadcast to all clients that a new channel was created.
-pub async fn broadcast_new_channel(
-    state: &Arc<AppState>,
-    id: i32,
-    name: &str,
-    category_id: Option<i32>,
-) {
+pub async fn broadcast_new_channel(state: &Arc<AppState>, record: &crate::db::ChannelRecord) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "channel-add",
-        "channelId": id,
-        "name": name,
-        "categoryId": category_id,
+        "channelId": record.id,
+        "name": record.name,
+        "categoryId": record.category_id,
+        "topic": record.description,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast a channel's updated topic/description to all clients.
+pub async fn broadcast_channel_topic(state: &Arc<AppState>, channel_id: i32, topic: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "channel-topic",
+        "channelId": channel_id,
+        "topic": topic,
     })) {
         let _ = state.tx.send(msg);
     }
@@ -220,6 +227,7 @@ pub async fn send_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSock
                 "id": ch.id,
                 "name": ch.name,
                 "categoryId": ch.category_id,
+                "topic": ch.description,
             })
         })
         .collect();
@@ -362,6 +370,24 @@ pub async fn can_manage_channels(state: &Arc<AppState>, user: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Rank of a role for moderation purposes. Moderation actions require the
+/// requester to strictly outrank the target, so Mods cannot act against
+/// Admins/Owners and equally ranked users cannot act against each other.
+pub fn moderation_rank(role: Option<&str>) -> u8 {
+    match role {
+        Some(role) if role.eq_ignore_ascii_case("Owner") => 3,
+        Some(role) if role.eq_ignore_ascii_case("Admin") => 2,
+        Some(role) if role.eq_ignore_ascii_case("Mod") => 1,
+        _ => 0,
+    }
+}
+
+/// Fetch the moderation rank of a user from the in-memory role map.
+pub async fn user_moderation_rank(state: &Arc<AppState>, user: &str) -> u8 {
+    let roles = state.roles.lock().await;
+    moderation_rank(roles.get(user).map(|info| info.role.as_str()))
+}
+
 /// Determine whether a user is authorised to manage roles.
 pub async fn can_manage_roles(state: &Arc<AppState>, user: &str) -> bool {
     let roles = state.roles.lock().await;
@@ -385,6 +411,22 @@ pub async fn get_or_create_channel(
         .entry(channel_id)
         .or_insert_with(|| tokio::sync::broadcast::channel::<String>(100).0)
         .clone()
+}
+
+/// Truncate quoted text for a reply snippet, respecting UTF-8 character
+/// boundaries so multi-byte characters are never split.
+pub fn reply_preview(text: &str, max_chars: usize) -> String {
+    text.chars().take(max_chars).collect()
+}
+
+/// Whether `user` is the sender or recipient of a direct-message frame.
+/// The socket loop uses this to keep DMs private on the shared broadcast.
+pub fn dm_involves(v: &Value, user: Option<&str>) -> bool {
+    let Some(user) = user else {
+        return false;
+    };
+    v.get("from").and_then(|f| f.as_str()) == Some(user)
+        || v.get("to").and_then(|t| t.as_str()) == Some(user)
 }
 
 /// Ensure reactions field exists and is a valid empty object if missing.

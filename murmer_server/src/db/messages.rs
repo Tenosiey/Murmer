@@ -129,6 +129,43 @@ pub async fn search_messages(
         .collect())
 }
 
+/// Fetch a thread: the root message plus every reply that carries the root's
+/// id as its `threadId`, ordered oldest first.
+///
+/// Message content is stored as opaque JSON text, so candidate rows are
+/// prefiltered with LIKE and then verified by parsing the JSON. This avoids a
+/// `content::jsonb` cast that would abort the whole query on a single
+/// malformed legacy row.
+pub async fn fetch_thread(
+    db: &Client,
+    channel_id: i32,
+    root_id: i32,
+    limit: i64,
+) -> Result<Vec<(i64, String)>, tokio_postgres::Error> {
+    let pattern = format!("%\"threadId\":{root_id}%");
+    let rows = db
+        .query(
+            "SELECT id::bigint, content FROM messages WHERE id = $1 OR (channel_id = $2 AND content LIKE $3) ORDER BY id ASC LIMIT $4",
+            &[&root_id, &channel_id, &pattern, &limit],
+        )
+        .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let id: i64 = row.get(0);
+            let content: String = row.get(1);
+            if id == i64::from(root_id) {
+                return Some((id, content));
+            }
+            // The LIKE prefilter also matches ids with more digits
+            // (e.g. threadId 12 matches 123), so verify the parsed value.
+            let parsed = serde_json::from_str::<Value>(&content).ok()?;
+            let thread_id = parsed.get("threadId").and_then(|t| t.as_i64())?;
+            (thread_id == i64::from(root_id)).then_some((id, content))
+        })
+        .collect())
+}
+
 /// Return the channel ID a message belongs to, if it exists.
 pub async fn get_message_channel_id(
     db: &Client,
@@ -180,8 +217,25 @@ pub async fn get_message_record(
     }
 }
 
-/// Delete a message by ID. Returns `true` if a row was removed.
+/// Replace the JSON content of a message. Returns `true` if a row was updated.
+pub async fn update_message_content(
+    db: &Client,
+    message_id: i32,
+    content: &str,
+) -> Result<bool, tokio_postgres::Error> {
+    db.execute(
+        "UPDATE messages SET content = $2 WHERE id = $1",
+        &[&message_id, &content],
+    )
+    .await
+    .map(|affected| affected > 0)
+}
+
+/// Delete a message by ID, along with any pin referencing it.
+/// Returns `true` if a message row was removed.
 pub async fn delete_message(db: &Client, message_id: i32) -> Result<bool, tokio_postgres::Error> {
+    db.execute("DELETE FROM pins WHERE message_id = $1", &[&message_id])
+        .await?;
     db.execute("DELETE FROM messages WHERE id = $1", &[&message_id])
         .await
         .map(|affected| affected > 0)

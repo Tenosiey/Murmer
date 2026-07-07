@@ -135,8 +135,7 @@
 <style>
   .screenshare-controls {
     display: flex;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
+    gap: var(--space-1);
   }
 
   /* Styled to match the voice-control buttons that sit right above
@@ -145,76 +144,81 @@
     flex: 1;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.7rem;
-    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
+    gap: var(--space-2);
+    min-height: var(--control-height);
+    padding: var(--space-1) var(--space-2);
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: var(--radius-sm);
-    color: var(--color-on-surface);
+    color: var(--color-on-surface-variant);
     font-size: var(--text-sm);
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
-    transition: all var(--transition);
   }
 
   .screenshare-button:not(:disabled):hover {
-    border-color: color-mix(in srgb, var(--color-primary) 32%, transparent);
+    background: var(--color-surface-raised);
+    color: var(--color-on-surface);
   }
 
   .screenshare-button.active {
-    background: var(--color-primary);
-    border-color: var(--color-primary);
-    color: var(--color-on-primary);
+    background: var(--color-primary-container);
+    color: var(--color-primary);
   }
 
   .screenshare-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+    opacity: 0.45;
+    cursor: default;
   }
 
   .screenshare-button svg {
-    width: 1.25rem;
-    height: 1.25rem;
+    width: 1.125rem;
+    height: 1.125rem;
+    flex-shrink: 0;
   }
 
   .settings-button {
-    padding: 0.5rem;
-    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
+    width: var(--control-height);
+    min-height: var(--control-height);
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
     border-radius: var(--radius-sm);
     color: var(--color-muted);
     cursor: pointer;
-    transition: all var(--transition);
   }
 
   .settings-button:not(:disabled):hover {
-    border-color: color-mix(in srgb, var(--color-primary) 32%, transparent);
+    background: var(--color-surface-raised);
     color: var(--color-on-surface);
   }
 
   .settings-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+    opacity: 0.45;
+    cursor: default;
   }
 
   .settings-button svg {
-    width: 1.25rem;
-    height: 1.25rem;
+    width: 1.125rem;
+    height: 1.125rem;
     display: block;
   }
 
   .settings-panel {
-    margin-top: 1rem;
-    padding: 1rem;
-    background: color-mix(in srgb, var(--color-surface-raised) 86%, transparent);
+    margin-top: var(--space-2);
+    padding: var(--space-3);
+    background: var(--color-surface-raised);
     border: 1px solid var(--color-surface-outline);
     border-radius: var(--radius-md);
   }
 
   .settings-panel h4 {
-    margin: 0 0 1rem 0;
-    font-size: var(--text-md);
+    margin: 0 0 var(--space-3) 0;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--color-on-surface);
   }
@@ -222,23 +226,22 @@
   .preset-buttons {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
+    gap: var(--space-1);
+    margin-bottom: var(--space-3);
   }
 
   .preset-button {
-    padding: 0.5rem 1rem;
-    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
+    padding: var(--space-1) var(--space-3);
+    background: var(--color-surface-elevated);
+    border: 1px solid var(--color-surface-outline);
     border-radius: var(--radius-sm);
     color: var(--color-muted);
     font-size: var(--text-sm);
     cursor: pointer;
-    transition: all var(--transition);
   }
 
   .preset-button:hover {
-    border-color: color-mix(in srgb, var(--color-primary) 32%, transparent);
+    border-color: var(--color-outline-strong);
     color: var(--color-on-surface);
   }
 
@@ -249,52 +252,45 @@
   }
 
   .custom-settings {
-    margin-top: 1rem;
-    padding-top: 1rem;
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
     border-top: 1px solid var(--color-surface-outline);
   }
 
   .custom-settings > label {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
     color: var(--color-on-surface);
-    font-size: var(--text-md);
+    font-size: var(--text-sm);
     cursor: pointer;
   }
 
   .custom-inputs {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    margin-top: 0.75rem;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
   }
 
   .custom-inputs label {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--space-1);
     color: var(--color-muted);
     font-size: var(--text-sm);
-  }
-
-  .custom-inputs input[type="number"] {
-    padding: 0.5rem;
-    font-size: var(--text-md);
   }
 
   .settings-note {
-    margin: 1rem 0 0 0;
-    padding: 0.75rem;
-    background: color-mix(in srgb, var(--color-surface) 70%, transparent);
-    border-radius: var(--radius-sm);
+    margin: var(--space-3) 0 0 0;
     color: var(--color-muted);
-    font-size: var(--text-sm);
-    line-height: 1.4;
+    font-size: var(--text-xs);
+    line-height: 1.5;
   }
 
   input[type="checkbox"] {
     cursor: pointer;
+    min-height: 0;
   }
 </style>

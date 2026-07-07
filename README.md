@@ -13,11 +13,15 @@ small team can deploy a private chat space quickly.
 - Rate limiting on authentication and chat events
 - Markdown rendering with DOMPurify sanitisation and syntax highlighting
 - Configurable user roles with optional colour accents
-- Secure image uploads (content-type checks, size limits and path sanitisation)
+- Secure file and image sharing (extension safe-list, content-type checks, size limits and path sanitisation)
 - Desktop client with auto-reconnect and connection quality indicators
 - Slash commands (`/help`, `/me`, `/shrug`, `/topic`, `/status`, `/focus`,
   `/ephemeral`, `/search`)
-- Ephemeral messaging, message search and pinned messages
+- Ephemeral messaging, message search, server-synced pinned messages and message editing
+- Message replies with quoted previews and lightweight threads
+- Typing indicators and per-channel unread badges with new-message markers
+- Moderation tools: role-gated kick, ban and timed mutes
+- Direct messages between users with persistent history and unread badges
 - Screen sharing in voice channels
 - REST API for bots (see [`murmer_server/BOT_API.md`](murmer_server/BOT_API.md))
 
@@ -182,7 +186,7 @@ cargo build --release
 - Authentication uses Ed25519 signatures; timestamps are validated and bound to
   per-user nonces.
 - IP-based rate limiting protects authentication and chat message throughput.
-- Filenames are sanitised and image contents inspected before saving.
+- Filenames are sanitised, uploads are limited to a safe-list of extensions and image contents are inspected before saving.
 - Admin operations use constant-time comparisons to mitigate timing attacks.
 - Channel management honours server-side role assignments when admin mode is on.
 

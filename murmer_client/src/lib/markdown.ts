@@ -43,14 +43,35 @@ renderer.code = ({ text, lang, escaped }: Tokens.Code) => {
 
 marked.use({ renderer });
 
+/* Rendering is memoised because the chat view re-evaluates message bodies
+   whenever the message list updates; parsing + sanitising + highlighting the
+   same text repeatedly is by far the most expensive part of a chat update. */
+const MAX_RENDER_CACHE_ENTRIES = 500;
+const renderCache = new Map<string, string>();
+
 export function renderMarkdown(text: string): string {
+  const cached = renderCache.get(text);
+  if (cached !== undefined) {
+    // Refresh recency so frequently visible messages stay cached.
+    renderCache.delete(text);
+    renderCache.set(text, cached);
+    return cached;
+  }
+
   // Use parseInline for simple text to avoid wrapping in <p> tags
   // Only use full parse if the text contains markdown syntax
   const hasMarkdown = /[*_`~\[\]#>|\\]/.test(text) || text.includes('\n\n');
-  
-  const html = hasMarkdown 
+
+  const html = hasMarkdown
     ? marked.parse(text) as string
     : marked.parseInline(text) as string;
-    
-  return DOMPurify.sanitize(html);
+
+  const sanitized = DOMPurify.sanitize(html);
+
+  if (renderCache.size >= MAX_RENDER_CACHE_ENTRIES) {
+    const oldest = renderCache.keys().next().value;
+    if (oldest !== undefined) renderCache.delete(oldest);
+  }
+  renderCache.set(text, sanitized);
+  return sanitized;
 }

@@ -10,21 +10,21 @@ Use the checkboxes to track progress.
 ### 🗨️ Chat Features
 
 - [ ] Bot integration/webhooks (basic REST bot API exists, no webhooks)
-- [ ] Channel categories in the client UI (server-side already done)
-- [ ] Channel description/topics (client-only, no server persistence)
-- [ ] Channel permissions and moderation (basic role-gating exists, no ban/kick/mute)
+- [x] Channel categories in the client UI (grouping, collapse, context-menu management)
+- [x] Channel description/topics (persisted on the server, synced to all clients)
+- [x] Channel permissions and moderation (role-gated kick/ban/mute with persistence)
 - [ ] Custom server emojis
-- [ ] Direct messages between users
-- [ ] Edit sent messages
-- [ ] File sharing beyond images
+- [x] Direct messages between users
+- [x] Edit sent messages
+- [x] File sharing beyond images
 - [ ] Link previews (OpenGraph embeds)
-- [ ] Message threading/replies
-- [ ] Paste images from clipboard / drag & drop
-- [ ] Quote/reply to single messages (lightweight alternative to full threading)
-- [ ] Pin important messages in a channel (client-local only, no server persistence)
+- [x] Message threading/replies
+- [x] Paste images from clipboard / drag & drop
+- [x] Quote/reply to single messages (lightweight alternative to full threading)
+- [x] Pin important messages in a channel (server-persisted, synced to all clients)
 - [ ] Text-to-speech
-- [ ] Typing indicators
-- [ ] Unread markers and per-channel unread badges
+- [x] Typing indicators
+- [x] Unread markers and per-channel unread badges
 - [ ] User nicknames per server
 - [ ] User profiles/avatars
 

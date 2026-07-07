@@ -36,9 +36,15 @@
   import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
   import { pinned } from '$lib/stores/pins';
   import type { PinnedEntry } from '$lib/stores/pins';
+  import { typing } from '$lib/stores/typing';
+  import { unread } from '$lib/stores/unread';
+  import { threadData } from '$lib/stores/thread';
+  import { dm } from '$lib/stores/dm';
   import { screenSharePeers, viewScreenShare, leaveScreenShareAsViewer } from '$lib/stores/screenShare';
   import ScreenShareViewer from '$lib/components/ScreenShareViewer.svelte';
   import { loadKeyPair, sign } from '$lib/keypair';
+  import { connection, connectionError } from '$lib/stores/connection';
+  import { describeServerError, isFatalConnectionError } from '$lib/errors';
   import { renderMarkdown } from '$lib/markdown';
   import type { Message, UserStatus, ScreenSharePeer } from '$lib/types';
   import {
@@ -46,13 +52,16 @@
     buildMessageBlocks,
     describeDuration,
     ephemeralInfo,
+    formatFileSize,
     promptVoicePreset,
     reactionEntries,
+    searchResultPreview,
     type MessageBlock
   } from '$lib/chat/helpers';
   import {
     MODERATOR_ROLES,
     MESSAGE_INPUT_MAX_HEIGHT,
+    MAX_TOPIC_LENGTH,
     MIN_EPHEMERAL_SECONDS,
     MAX_EPHEMERAL_SECONDS,
     VOICE_QUALITY_PRESETS
@@ -66,6 +75,9 @@
   let messageInput: HTMLTextAreaElement;
   let inputScrollable = false;
   let previewUrl: string | null = null;
+  let pendingFile: File | null = null;
+  let dragDepth = 0;
+  $: dragActive = dragDepth > 0;
   let menuOpen = false;
   let menuX = 0;
   let menuY = 0;
@@ -95,6 +107,19 @@
 
   let channelMessages: Message[] = [];
   let messageBlocks: MessageBlock[] = [];
+
+  let replyingTo: Message | null = null;
+  let threadRootId: number | null = null;
+  let threadReplyText = '';
+  let dmText = '';
+  const dmConversations = dm.conversations;
+  const dmActivePeer = dm.activePeer;
+  let threadMessages: Message[] = [];
+  let threadReplyCounts = new Map<number, number>();
+  /* Last-read message id captured when entering the channel; the "New"
+     divider stays anchored there until the user switches channels. */
+  let unreadMarkerAfterId = 0;
+  let typingLabel: string | null = null;
 
   function setCommandFeedback(message: string, type: 'info' | 'error' = 'info') {
     commandFeedback = message;
@@ -127,15 +152,68 @@
     helpOpen = false;
   }
 
-  function handleFileChange() {
-    const file = fileInput?.files?.[0];
+  function setPendingFile(file: File | null) {
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
       previewUrl = null;
     }
-    if (file) {
-      previewUrl = URL.createObjectURL(file);
+    pendingFile = file;
+    if (pendingFile && pendingFile.type.startsWith('image/')) {
+      previewUrl = URL.createObjectURL(pendingFile);
     }
+  }
+
+  function handleFileChange() {
+    setPendingFile(fileInput?.files?.[0] ?? null);
+  }
+
+  function clearPendingFile() {
+    if (fileInput) fileInput.value = '';
+    setPendingFile(null);
+  }
+
+  function handlePaste(event: ClipboardEvent) {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file) {
+          event.preventDefault();
+          setPendingFile(file);
+          return;
+        }
+      }
+    }
+  }
+
+  function dragHasFiles(event: DragEvent): boolean {
+    return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+  }
+
+  function handleDragEnter(event: DragEvent) {
+    if (!dragHasFiles(event)) return;
+    event.preventDefault();
+    dragDepth += 1;
+  }
+
+  function handleDragOver(event: DragEvent) {
+    if (!dragHasFiles(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  }
+
+  function handleDragLeave(event: DragEvent) {
+    if (!dragHasFiles(event)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+  }
+
+  function handleDrop(event: DragEvent) {
+    if (!dragHasFiles(event)) return;
+    event.preventDefault();
+    dragDepth = 0;
+    const file = Array.from(event.dataTransfer?.files ?? [])[0] ?? null;
+    if (file) setPendingFile(file);
   }
 
   function autoResize() {
@@ -211,11 +289,16 @@
   }
 
   $: channelMessages = $chat.filter((m) => m.channelId === currentChatChannelId);
-  $: messageBlocks = buildMessageBlocks(channelMessages);
+  $: messageBlocks = buildMessageBlocks(channelMessages, {
+    unreadAfterId: unreadMarkerAfterId,
+    currentUser: $session.user
+  });
   $: pinnedEntries = $pinned[currentChatChannelId] ?? [];
 
   $: if ($channels.length && !$channels.some((c) => c.id === currentChatChannelId)) {
     currentChatChannelId = $channels[0].id;
+    unreadMarkerAfterId = unread.getLastRead(currentChatChannelId);
+    unread.setActive(currentChatChannelId);
     loadingHistory = false;
     if (initialChannelSet) {
       chat.sendRaw({ type: 'join', channelId: currentChatChannelId });
@@ -223,6 +306,58 @@
       initialChannelSet = true;
     }
   }
+
+  function latestMessageId(messages: Message[]): number | null {
+    let max: number | null = null;
+    for (const m of messages) {
+      if (typeof m.id === 'number' && (max === null || m.id > max)) max = m.id;
+    }
+    return max;
+  }
+
+  // Everything rendered in the active channel counts as read.
+  $: {
+    const latest = latestMessageId(channelMessages);
+    if (latest !== null) unread.markRead(currentChatChannelId, latest);
+  }
+
+  $: typingLabel = (() => {
+    const users = Object.entries($typing[currentChatChannelId] ?? {})
+      .filter(([user, expiry]) => user !== $session.user && expiry > now)
+      .map(([user]) => user);
+    if (users.length === 0) return null;
+    if (users.length === 1) return `${users[0]} is typing…`;
+    if (users.length === 2) return `${users[0]} and ${users[1]} are typing…`;
+    return 'Several people are typing…';
+  })();
+
+  $: threadReplyCounts = (() => {
+    const map = new Map<number, number>();
+    for (const m of channelMessages) {
+      if (typeof m.threadId === 'number') {
+        map.set(m.threadId, (map.get(m.threadId) ?? 0) + 1);
+      }
+    }
+    return map;
+  })();
+
+  /* The panel merges the server's thread snapshot with live messages from the
+     store, so replies arriving while the thread is open show up immediately. */
+  $: threadMessages = (() => {
+    if (threadRootId === null) return [];
+    const byId = new Map<number, Message>();
+    const data = $threadData;
+    if (data && data.rootId === threadRootId) {
+      for (const m of data.messages) {
+        if (typeof m.id === 'number') byId.set(m.id, m);
+      }
+    }
+    for (const m of channelMessages) {
+      if (typeof m.id !== 'number') continue;
+      if (m.id === threadRootId || m.threadId === threadRootId) byId.set(m.id, m);
+    }
+    return [...byId.values()].sort((a, b) => (a.id as number) - (b.id as number));
+  })();
 
   $: currentTopic = $channelTopics[currentChatChannelId] ?? '';
 
@@ -360,15 +495,7 @@
     };
   }
 
-  onMount(() => {
-    if (!get(session).user) {
-      goto('/login');
-      return;
-    }
-    roles.set({});
-    expiryTicker = window.setInterval(() => {
-      now = Date.now();
-    }, 1000);
+  function connectToServer() {
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
     const entry = servers.get(url);
     chat.connect(url, async () => {
@@ -389,14 +516,96 @@
       // so avoid sending an extra join message which would duplicate chat
       // history on initial connect. Joining is still handled when the
       // user switches channels.
+      if (currentChatChannelId > 0) {
+        // Reconnecting: the server placed us back in the default channel,
+        // so rejoin the channel the user was viewing.
+        chat.sendRaw({ type: 'join', channelId: currentChatChannelId });
+      }
       ping.start();
       await scrollBottom();
     });
+  }
+
+  function retryConnect() {
+    ping.stop();
+    connectToServer();
+  }
+
+  function leaveToServers(message: string | null = null) {
+    connectionError.set(message);
+    ping.stop();
+    chat.disconnect();
+    goto('/servers');
+  }
+
+  const handleServerError = (msg: Message) => {
+    const code = typeof msg.message === 'string' ? msg.message : '';
+    const description = describeServerError(code);
+    if (isFatalConnectionError(code)) {
+      // The server closes the connection after these errors; return to the
+      // server list and explain why there.
+      leaveToServers(description);
+      return;
+    }
+    setCommandFeedback(description, 'error');
+  };
+  chat.on('error', handleServerError);
+
+  const handleForceDisconnect = (msg: Message) => {
+    if (!msg.user || msg.user !== get(session).user) return;
+    const action = msg.action === 'banned' ? 'banned from' : 'kicked from';
+    const by = typeof msg.by === 'string' && msg.by ? ` by ${msg.by}` : '';
+    leaveToServers(`You were ${action} this server${by}.`);
+  };
+  chat.on('force-disconnect', handleForceDisconnect);
+
+  const handleUserMuted = (msg: Message) => {
+    if (typeof msg.user !== 'string') return;
+    if (msg.user === get(session).user) {
+      const until = typeof msg.until === 'string' ? ` until ${new Date(msg.until).toLocaleString()}` : '';
+      setCommandFeedback(`You have been muted${until}.`, 'error');
+      return;
+    }
+    setCommandFeedback(`${msg.user} has been muted.`);
+  };
+  chat.on('user-muted', handleUserMuted);
+
+  const handleUserUnmuted = (msg: Message) => {
+    if (typeof msg.user !== 'string') return;
+    if (msg.user === get(session).user) {
+      setCommandFeedback('You are no longer muted.');
+      return;
+    }
+    setCommandFeedback(`${msg.user} has been unmuted.`);
+  };
+  chat.on('user-unmuted', handleUserUnmuted);
+
+  const handleUserUnbanned = (msg: Message) => {
+    if (typeof msg.user !== 'string') return;
+    setCommandFeedback(`${msg.user} has been unbanned.`);
+  };
+  chat.on('user-unbanned', handleUserUnbanned);
+
+  onMount(() => {
+    if (!get(session).user) {
+      goto('/login');
+      return;
+    }
+    roles.set({});
+    expiryTicker = window.setInterval(() => {
+      now = Date.now();
+    }, 1000);
+    connectToServer();
   });
 
   onDestroy(() => {
     chat.off('history', handleHistory);
     chat.off('message-deleted', handleMessageDeleted);
+    chat.off('error', handleServerError);
+    chat.off('force-disconnect', handleForceDisconnect);
+    chat.off('user-muted', handleUserMuted);
+    chat.off('user-unmuted', handleUserUnmuted);
+    chat.off('user-unbanned', handleUserUnbanned);
     chat.disconnect();
     if (currentVoiceChannelId !== null) {
       voice.leave(currentVoiceChannelId);
@@ -427,15 +636,17 @@
         return;
       }
     }
-    chat.send($session.user ?? 'anon', message);
+    const replyTarget = typeof replyingTo?.id === 'number' ? replyingTo.id : undefined;
+    chat.send($session.user ?? 'anon', message, replyTarget);
+    replyingTo = null;
     message = '';
     autoResize();
   }
 
-  async function sendImage() {
-    const file = fileInput?.files?.[0];
+  async function sendFile() {
+    const file = pendingFile;
     if (!file) {
-      if (import.meta.env.DEV) console.log('sendImage: no file selected');
+      if (import.meta.env.DEV) console.log('sendFile: no file selected');
       return;
     }
     const selected = get(selectedServer) ?? 'ws://localhost:3001/ws';
@@ -447,41 +658,59 @@
     const base = u.toString().replace(/\/$/, '');
     const form = new FormData();
     form.append('file', file);
-    if (import.meta.env.DEV) console.log('Uploading image to', base + '/upload', file);
+    if (import.meta.env.DEV) console.log('Uploading file to', base + '/upload', file);
     try {
       const res = await fetch(base + '/upload', { method: 'POST', body: form });
       if (import.meta.env.DEV) console.log('Upload response status:', res.status);
+      if (res.status === 415) {
+        setCommandFeedback('This file type is not allowed on the server.', 'error');
+        return;
+      }
+      if (res.status === 413) {
+        setCommandFeedback('File is too large to upload.', 'error');
+        return;
+      }
       if (!res.ok) {
         throw new Error(`upload failed with status ${res.status}`);
       }
       const data = await res.json();
       if (import.meta.env.DEV) console.log('Upload response data:', data);
       const url = data.url as string;
-      const img = url.startsWith('http') ? url : base + url;
+      const absolute = url.startsWith('http') ? url : base + url;
       const now = new Date();
-      chat.sendRaw({
-        type: 'chat',
-        user: $session.user ?? 'anon',
-        image: img,
-        time: now.toLocaleTimeString(),
-        timestamp: now.toISOString()
-      });
+      if (data.kind === 'image' || file.type.startsWith('image/')) {
+        chat.sendRaw({
+          type: 'chat',
+          user: $session.user ?? 'anon',
+          image: absolute,
+          time: now.toLocaleTimeString(),
+          timestamp: now.toISOString()
+        });
+      } else {
+        chat.sendRaw({
+          type: 'chat',
+          user: $session.user ?? 'anon',
+          attachment: {
+            url: absolute,
+            name: typeof data.name === 'string' ? data.name : file.name,
+            size: typeof data.size === 'number' ? data.size : file.size
+          },
+          time: now.toLocaleTimeString(),
+          timestamp: now.toISOString()
+        });
+      }
     } catch (e) {
       console.error('upload failed', e);
+      setCommandFeedback('File upload failed.', 'error');
     } finally {
-      if (fileInput) fileInput.value = '';
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-        previewUrl = null;
-      }
+      clearPendingFile();
     }
   }
 
   async function send() {
-    const file = fileInput?.files?.[0];
     const hasMessage = message.trim() !== '';
-    if (!file && !hasMessage) return;
-    if (file) await sendImage();
+    if (!pendingFile && !hasMessage) return;
+    if (pendingFile) await sendFile();
     if (hasMessage) sendText();
   }
 
@@ -516,6 +745,10 @@
         return true;
       }
       case 'topic': {
+        if (rest.length > MAX_TOPIC_LENGTH) {
+          setCommandFeedback(`Topics are limited to ${MAX_TOPIC_LENGTH} characters.`, 'error');
+          return true;
+        }
         channelTopics.setTopic(currentChatChannelId, rest);
         setCommandFeedback(rest ? 'Updated the channel topic.' : 'Cleared the channel topic.');
         return true;
@@ -624,10 +857,72 @@
   function joinChannel(id: number) {
     if (id === currentChatChannelId) return;
     currentChatChannelId = id;
+    unreadMarkerAfterId = unread.getLastRead(id);
+    unread.setActive(id);
+    replyingTo = null;
+    closeThread();
     loadingHistory = false;
     chat.clear();
     chat.sendRaw({ type: 'join', channelId: id });
     scrollBottom();
+  }
+
+  function startReply(msg: Message) {
+    if (typeof msg.id !== 'number') return;
+    replyingTo = msg;
+    messageInput?.focus();
+  }
+
+  function cancelReply() {
+    replyingTo = null;
+  }
+
+  function openThread(rootId: number) {
+    threadRootId = rootId;
+    threadReplyText = '';
+    chat.loadThread(rootId);
+  }
+
+  function closeThread() {
+    threadRootId = null;
+    threadReplyText = '';
+  }
+
+  function sendThreadReply() {
+    const trimmed = threadReplyText.trim();
+    if (trimmed === '' || threadRootId === null) return;
+    chat.send($session.user ?? 'anon', trimmed, threadRootId);
+    threadReplyText = '';
+  }
+
+  function openDm(user: string) {
+    if (user === $session.user) return;
+    closeThread();
+    dmText = '';
+    dm.open(user);
+    chat.loadDmHistory(user);
+  }
+
+  function closeDm() {
+    dm.close();
+    dmText = '';
+  }
+
+  function sendDmMessage() {
+    const peer = $dmActivePeer;
+    const trimmed = dmText.trim();
+    if (!peer || trimmed === '') return;
+    chat.sendDm(peer, trimmed);
+    dmText = '';
+  }
+
+  $: dmMessages = $dmActivePeer ? ($dmConversations[$dmActivePeer] ?? []) : [];
+
+  function handleComposerInput() {
+    autoResize();
+    if (message.trim().length > 0) {
+      chat.sendTyping();
+    }
   }
 
 
@@ -681,16 +976,16 @@
     goto('/servers');
   }
 
-  function createChannelPrompt() {
+  function createChannelPrompt(categoryId: number | null = null) {
     const name = prompt('New channel name');
-    if (name) channels.create(name);
+    if (name) channels.create(name, categoryId);
   }
 
-  function createVoiceChannelPrompt() {
+  function createVoiceChannelPrompt(categoryId: number | null = null) {
     const name = prompt('New voice channel name');
     if (!name) return;
     const preset = promptVoicePreset();
-    voiceChannels.create(name, preset);
+    voiceChannels.create(name, preset, categoryId);
   }
 
   function joinVoiceChannel(id: number) {
@@ -726,6 +1021,21 @@
 
   const ASSIGNABLE_ROLES = ['Owner', 'Admin', 'Mod'] as const;
 
+  /** Mirror of the server's moderation ranking: requesters must strictly
+   *  outrank their target for kick/ban/mute to be allowed. */
+  function moderationRank(role: string | undefined): number {
+    switch (role?.toLowerCase()) {
+      case 'owner':
+        return 3;
+      case 'admin':
+        return 2;
+      case 'mod':
+        return 1;
+      default:
+        return 0;
+    }
+  }
+
   $: currentUserIsOwner = (() => {
     const user = $session.user;
     if (!user) return false;
@@ -733,8 +1043,16 @@
     return info?.role?.toLowerCase() === 'owner';
   })();
 
+  $: currentUserModerationRank = moderationRank(
+    $session.user ? $roles[$session.user]?.role : undefined
+  );
+
+  function canModerate(target: string): boolean {
+    if (target === $session.user) return false;
+    return currentUserModerationRank > moderationRank($roles[target]?.role);
+  }
+
   function openUserRoleMenu(event: MouseEvent, user: string) {
-    if (!currentUserIsOwner) return;
     if (user === $session.user) return;
     event.preventDefault();
     event.stopPropagation();
@@ -752,17 +1070,54 @@
     chat.sendRaw({ type: 'remove-role', user });
   }
 
+  function kickUser(user: string) {
+    chat.sendRaw({ type: 'kick-user', user });
+  }
+
+  function banUser(user: string) {
+    if (!confirm(`Ban ${user} from this server?`)) return;
+    chat.sendRaw({ type: 'ban-user', user });
+  }
+
+  function unbanUser(user: string) {
+    chat.sendRaw({ type: 'unban-user', user });
+  }
+
+  function muteUser(user: string, durationSeconds?: number) {
+    const payload: Record<string, unknown> = { type: 'mute-user', user };
+    if (typeof durationSeconds === 'number') payload.durationSeconds = durationSeconds;
+    chat.sendRaw(payload);
+  }
+
+  function unmuteUser(user: string) {
+    chat.sendRaw({ type: 'unmute-user', user });
+  }
+
   $: userRoleMenuItems = (() => {
     if (!userRoleMenuTarget) return [];
     const target = userRoleMenuTarget;
     const currentRole = $roles[target]?.role;
     const items: { label: string; action: () => void; danger?: boolean; icon?: string }[] = [];
-    for (const role of ASSIGNABLE_ROLES) {
-      if (currentRole?.toLowerCase() === role.toLowerCase()) continue;
-      items.push({ label: `Set as ${role}`, action: () => assignRole(target, role) });
+    items.push({ label: 'Send Message', action: () => openDm(target) });
+    if (currentUserIsOwner) {
+      for (const role of ASSIGNABLE_ROLES) {
+        if (currentRole?.toLowerCase() === role.toLowerCase()) continue;
+        items.push({ label: `Set as ${role}`, action: () => assignRole(target, role) });
+      }
+      if (currentRole) {
+        items.push({ label: 'Remove Role', action: () => removeRole(target), danger: true });
+      }
     }
-    if (currentRole) {
-      items.push({ label: 'Remove Role', action: () => removeRole(target), danger: true });
+    if (canModerate(target)) {
+      items.push({ label: 'Mute (10 min)', action: () => muteUser(target, 600) });
+      items.push({ label: 'Mute (1 hour)', action: () => muteUser(target, 3600) });
+      items.push({ label: 'Mute (until lifted)', action: () => muteUser(target) });
+      items.push({ label: 'Unmute', action: () => unmuteUser(target) });
+      if ($onlineUsers.includes(target)) {
+        items.push({ label: 'Kick User', danger: true, action: () => kickUser(target) });
+      }
+      items.push({ label: 'Ban User', danger: true, action: () => banUser(target) });
+      items.push({ label: 'Unban User', action: () => unbanUser(target) });
     }
     return items;
   })();
@@ -823,6 +1178,10 @@
     const existing = $channelTopics[currentChatChannelId] ?? '';
     const input = prompt('Set channel topic', existing);
     if (input === null) return;
+    if (input.length > MAX_TOPIC_LENGTH) {
+      setCommandFeedback(`Topics are limited to ${MAX_TOPIC_LENGTH} characters.`, 'error');
+      return;
+    }
     channelTopics.setTopic(currentChatChannelId, input);
   }
 
@@ -831,6 +1190,22 @@
     if (!current || typeof msg.id !== 'number') return false;
     if (msg.user === current) return true;
     return currentUserCanModerate;
+  }
+
+  function canEditMessage(msg: Message): boolean {
+    const current = $session.user;
+    if (!current || typeof msg.id !== 'number') return false;
+    if (typeof msg.text !== 'string' || msg.text.trim() === '') return false;
+    return msg.user === current;
+  }
+
+  function editChatMessage(msg: Message) {
+    if (typeof msg.id !== 'number' || typeof msg.text !== 'string') return;
+    const input = prompt('Edit message', msg.text);
+    if (input === null) return;
+    const trimmed = input.trim();
+    if (trimmed === '' || input === msg.text) return;
+    chat.edit(msg.id, input);
   }
 
   function canPinMessage(msg: Message): boolean {
@@ -844,10 +1219,11 @@
 
   function togglePinMessage(msg: Message) {
     if (typeof msg.id !== 'number') return;
+    // Pins live on the server; the resulting `pins` broadcast updates the store.
     if (isMessagePinned(msg)) {
-      pinned.unpin(currentChatChannelId, msg.id);
+      chat.sendRaw({ type: 'unpin-message', messageId: msg.id });
     } else {
-      pinned.pin(currentChatChannelId, msg);
+      chat.sendRaw({ type: 'pin-message', messageId: msg.id });
     }
   }
 
@@ -968,8 +1344,8 @@
   }
 
   $: channelMenuItems = [
-    { label: 'Create Text Channel', action: createChannelPrompt },
-    { label: 'Create Voice Channel', action: createVoiceChannelPrompt },
+    { label: 'Create Text Channel', action: () => createChannelPrompt() },
+    { label: 'Create Voice Channel', action: () => createVoiceChannelPrompt() },
     { label: 'Create Category', action: createCategoryPrompt },
     ...(menuChannelId != null
       ? [
@@ -996,6 +1372,8 @@
       : []),
     ...(menuCategoryId != null
       ? [
+          { label: 'Create Text Channel Here', action: () => createChannelPrompt(menuCategoryId) },
+          { label: 'Create Voice Channel Here', action: () => createVoiceChannelPrompt(menuCategoryId) },
           { label: 'Rename Category', action: () => renameCategoryPrompt(menuCategoryId!) },
           { label: 'Delete Category', action: () => categories.remove(menuCategoryId!), danger: true }
         ]
@@ -1151,7 +1529,19 @@
     />
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="resizer" role="separator" aria-label="Resize channel list" on:mousedown={startLeftResize}></div>
-    <div class="chat">
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <div
+      class="chat"
+      on:dragenter={handleDragEnter}
+      on:dragover={handleDragOver}
+      on:dragleave={handleDragLeave}
+      on:drop={handleDrop}
+    >
+      {#if dragActive}
+        <div class="drop-overlay" aria-hidden="true">
+          <span>Drop file to upload</span>
+        </div>
+      {/if}
       <ChatHeader
         channelId={currentChatChannelId}
         channelName={currentChatChannelName}
@@ -1175,7 +1565,6 @@
         {now}
       />
       <PinnedBar
-        channelId={currentChatChannelId}
         entries={pinnedEntries}
         messages={channelMessages}
         onFocusMessage={focusMessage}
@@ -1187,14 +1576,31 @@
               <div class="day-separator" role="separator" aria-label={`Messages from ${block.label}`}>
                 <span>{block.label}</span>
               </div>
+            {:else if block.kind === 'unread'}
+              <div class="unread-divider" role="separator" aria-label="New messages">
+                <span>New</span>
+              </div>
             {:else if block.kind === 'message'}
               <div
                 class="message"
                 data-message-id={typeof block.message.id === 'number' ? block.message.id : undefined}
                 class:highlighted={highlightedMessageId === block.message.id}
               >
-                <span class="timestamp">{block.message.time}</span>
+                {#if block.message.replyTo}
+                  {@const reply = block.message.replyTo}
+                  <button
+                    type="button"
+                    class="reply-quote"
+                    on:click={() => focusMessage(reply.id)}
+                    title={`Jump to ${reply.user}'s message`}
+                  >
+                    <span class="reply-quote-arrow" aria-hidden="true">↪</span>
+                    <span class="reply-quote-user">{reply.user}</span>
+                    <span class="reply-quote-text">{reply.text || 'Original message'}</span>
+                  </button>
+                {/if}
                 <span class="username">{block.message.user}</span>
+                <span class="timestamp">{block.message.time}</span>
                 {#if block.message.bot}
                   <span class="bot-badge">BOT</span>
                 {/if}
@@ -1211,6 +1617,14 @@
                   {#if block.message.text}
                     {@html renderMarkdown(block.message.text)}
                   {/if}
+                  {#if block.message.edited}
+                    <span
+                      class="edited-badge"
+                      title={block.message.editedAt ? `Edited ${new Date(block.message.editedAt).toLocaleString()}` : 'Edited'}
+                    >
+                      (edited)
+                    </span>
+                  {/if}
                   {#if block.links.length > 0}
                     <div class="link-previews">
                       {#each block.links as link (link)}
@@ -1220,6 +1634,25 @@
                   {/if}
                   {#if block.message.image}
                     <img src={block.message.image as string} alt="" />
+                  {/if}
+                  {#if block.message.attachment}
+                    <a
+                      class="attachment-card"
+                      href={block.message.attachment.url}
+                      download={block.message.attachment.name}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <span class="attachment-icon" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                      </span>
+                      <span class="attachment-details">
+                        <span class="attachment-name">{block.message.attachment.name}</span>
+                        {#if block.message.attachment.size > 0}
+                          <span class="attachment-size">{formatFileSize(block.message.attachment.size)}</span>
+                        {/if}
+                      </span>
+                    </a>
                   {/if}
                   {#if block.message.ephemeral}
                     {@const eInfo = ephemeralInfo(block.message, now)}
@@ -1235,6 +1668,35 @@
                 </span>
                   {#if typeof block.message.id === 'number' && (canPinMessage(block.message) || canDeleteMessage(block.message))}
                     <div class="message-actions">
+                      <button
+                        type="button"
+                        class="message-action"
+                        on:click={() => addReactionPrompt(block.message.id as number)}
+                        title="Add reaction"
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                        <span class="sr-only">Add reaction</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="message-action"
+                        on:click={() => startReply(block.message)}
+                        title="Reply"
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                        <span class="sr-only">Reply</span>
+                      </button>
+                      {#if canEditMessage(block.message)}
+                        <button
+                          type="button"
+                          class="message-action"
+                          on:click={() => editChatMessage(block.message)}
+                          title="Edit message"
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
+                          <span class="sr-only">Edit message</span>
+                        </button>
+                      {/if}
                       {#if canPinMessage(block.message)}
                         <button
                           type="button"
@@ -1243,7 +1705,8 @@
                           on:click={() => togglePinMessage(block.message)}
                           title={isMessagePinned(block.message) ? 'Unpin message' : 'Pin message'}
                         >
-                          📌
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+                          <span class="sr-only">{isMessagePinned(block.message) ? 'Unpin message' : 'Pin message'}</span>
                         </button>
                       {/if}
                       {#if canDeleteMessage(block.message)}
@@ -1253,30 +1716,50 @@
                           on:click={() => deleteChatMessage(block.message)}
                           title="Delete message"
                         >
-                          🗑️
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          <span class="sr-only">Delete message</span>
                         </button>
                       {/if}
                     </div>
                   {/if}
                 </div>
                 {#if typeof block.message.id === 'number'}
-                  <div class="reactions">
-                    {#each reactionEntries(block.message) as reaction (reaction.emoji)}
+                  {@const reactions = reactionEntries(block.message)}
+                  {#if reactions.length > 0}
+                    <div class="reactions">
+                      {#each reactions as reaction (reaction.emoji)}
+                        <button
+                          class="reaction-chip"
+                          class:active={reaction.users.includes($session.user ?? '')}
+                          on:click={() =>
+                            toggleReaction(block.message.id as number, reaction.emoji, reaction.users)}
+                          title={reaction.users.join(', ')}
+                        >
+                          <span class="emoji">{reaction.emoji}</span>
+                          <span class="count">{reaction.users.length}</span>
+                        </button>
+                      {/each}
                       <button
-                        class="reaction-chip"
-                        class:active={reaction.users.includes($session.user ?? '')}
-                        on:click={() =>
-                          toggleReaction(block.message.id as number, reaction.emoji, reaction.users)}
-                        title={reaction.users.join(', ')}
+                        class="reaction-chip add"
+                        on:click={() => addReactionPrompt(block.message.id as number)}
+                        title="Add reaction"
                       >
-                        <span class="emoji">{reaction.emoji}</span>
-                        <span class="count">{reaction.users.length}</span>
+                        +
                       </button>
-                    {/each}
-                    <button class="reaction-chip add" on:click={() => addReactionPrompt(block.message.id as number)}>
-                      +
+                    </div>
+                  {/if}
+                  {#if threadReplyCounts.get(block.message.id)}
+                    {@const replyCount = threadReplyCounts.get(block.message.id) ?? 0}
+                    <button
+                      type="button"
+                      class="thread-indicator"
+                      on:click={() => openThread(block.message.id as number)}
+                      title="Open thread"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                      {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
                     </button>
-                  </div>
+                  {/if}
                 {/if}
               </div>
             {/if}
@@ -1287,17 +1770,42 @@
         {#if commandFeedback}
           <div class={`command-feedback ${commandFeedbackType}`}>{commandFeedback}</div>
         {/if}
+        {#if replyingTo}
+          <div class="reply-bar">
+            <span class="reply-bar-label">
+              Replying to <strong>{replyingTo.user}</strong>
+              <span class="reply-bar-preview">{searchResultPreview(replyingTo)}</span>
+            </span>
+            <button
+              type="button"
+              class="reply-bar-cancel"
+              on:click={cancelReply}
+              aria-label="Cancel reply"
+            >
+              ✕
+            </button>
+          </div>
+        {/if}
+        {#if typingLabel}
+          <div class="typing-indicator" aria-live="polite">
+            <span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            {typingLabel}
+          </div>
+        {/if}
         <textarea
           class:scrollable={inputScrollable}
           bind:value={message}
           bind:this={messageInput}
           rows="1"
           placeholder="Message"
-          on:input={autoResize}
+          on:input={handleComposerInput}
+          on:paste={handlePaste}
           on:keydown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               send();
+            } else if (e.key === 'Escape' && replyingTo) {
+              cancelReply();
             }
           }}
         ></textarea>
@@ -1306,14 +1814,23 @@
           type="file"
           class="file-input"
           bind:this={fileInput}
-          accept="image/*"
           on:change={handleFileChange}
         />
         <div class="controls">
-          {#if previewUrl}
+          {#if pendingFile}
             <div class="preview-container">
-              <img src={previewUrl} alt="preview" class="preview" />
-              <button class="preview-remove" on:click={() => { fileInput.value = ''; if (previewUrl) URL.revokeObjectURL(previewUrl); previewUrl = null; }} aria-label="Remove image">
+              {#if previewUrl}
+                <img src={previewUrl} alt="preview" class="preview" />
+              {:else}
+                <span class="file-chip" title={pendingFile.name}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                  <span class="file-chip-name">{pendingFile.name}</span>
+                  {#if pendingFile.size > 0}
+                    <span class="file-chip-size">{formatFileSize(pendingFile.size)}</span>
+                  {/if}
+                </span>
+              {/if}
+              <button class="preview-remove" on:click={clearPendingFile} aria-label="Remove file">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"></line>
                   <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -1325,8 +1842,8 @@
             <button
               type="button"
               class="file-button"
-              title="Upload image"
-              aria-label="Upload image"
+              title="Upload file"
+              aria-label="Upload file"
               on:click={() => fileInput.click()}
             >
               <svg
@@ -1358,6 +1875,97 @@
         </div>
       </div>
 
+      {#if threadRootId !== null}
+        <aside class="thread-panel" aria-label="Thread">
+          <header class="thread-header">
+            <span>Thread</span>
+            <button
+              type="button"
+              class="thread-close"
+              on:click={closeThread}
+              aria-label="Close thread"
+            >
+              ✕
+            </button>
+          </header>
+          <div class="thread-messages">
+            {#each threadMessages as tm (tm.id)}
+              <div class="thread-message" class:root={tm.id === threadRootId}>
+                <div class="thread-message-meta">
+                  <span class="username">{tm.user}</span>
+                  <span class="timestamp">{tm.time}</span>
+                </div>
+                <div class="thread-message-text">
+                  {#if tm.text}
+                    {@html renderMarkdown(tm.text)}
+                  {:else if tm.image}
+                    <img src={tm.image as string} alt="" />
+                  {:else if tm.attachment}
+                    <a href={tm.attachment.url} target="_blank" rel="noopener noreferrer">
+                      {tm.attachment.name}
+                    </a>
+                  {/if}
+                </div>
+              </div>
+            {:else}
+              <p class="thread-empty">Loading thread…</p>
+            {/each}
+          </div>
+          <form class="thread-input" on:submit|preventDefault={sendThreadReply}>
+            <input
+              type="text"
+              bind:value={threadReplyText}
+              placeholder="Reply in thread…"
+              aria-label="Reply in thread"
+            />
+          </form>
+        </aside>
+      {/if}
+
+      {#if $dmActivePeer}
+        <aside class="thread-panel" aria-label="Direct messages">
+          <header class="thread-header">
+            <span class="thread-header-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+              {$dmActivePeer}
+            </span>
+            <button
+              type="button"
+              class="thread-close"
+              on:click={closeDm}
+              aria-label="Close direct messages"
+            >
+              ✕
+            </button>
+          </header>
+          <div class="thread-messages">
+            {#each dmMessages as dmsg (dmsg.id)}
+              <div class="thread-message" class:root={dmsg.from === $session.user}>
+                <div class="thread-message-meta">
+                  <span class="username">{dmsg.from}</span>
+                  <span class="timestamp">{dmsg.time}</span>
+                </div>
+                <div class="thread-message-text">
+                  {#if dmsg.text}
+                    {@html renderMarkdown(dmsg.text)}
+                  {/if}
+                </div>
+              </div>
+            {:else}
+              <p class="thread-empty">No messages yet. Say hi!</p>
+            {/each}
+          </div>
+          <form class="thread-input" on:submit|preventDefault={sendDmMessage}>
+            <input
+              type="text"
+              bind:value={dmText}
+              placeholder={`Message ${$dmActivePeer}…`}
+              aria-label="Direct message"
+            />
+          </form>
+        </aside>
+      {/if}
+
       {#each $voice as peer (peer.id)}
         <audio autoplay use:stream={{ stream: peer.stream, userId: peer.id }}></audio>
       {/each}
@@ -1366,8 +1974,8 @@
     <div class="resizer" role="separator" aria-label="Resize user list" on:mousedown={startRightResize}></div>
     <UserList
       {statusMap}
-      {currentUserIsOwner}
       onUserContextMenu={openUserRoleMenu}
+      onOpenDm={openDm}
     />
 </div>
 
@@ -1386,17 +1994,40 @@
   <ScreenShareViewer peer={viewingScreenShare} onClose={closeScreenShareViewer} />
 {/if}
 
+{#if $connection === 'connecting' || $connection === 'disconnected' || $connection === 'failed'}
+  <div class="connection-overlay" class:connecting={$connection === 'connecting'} role="alert">
+    <div class="connection-card">
+      {#if $connection === 'connecting'}
+        <div class="connection-spinner" aria-hidden="true"></div>
+        <h2>Connecting…</h2>
+        <p class="connection-detail">{$selectedServer ?? 'Unknown server'}</p>
+      {:else}
+        <h2>{$connection === 'failed' ? 'Could not connect' : 'Connection lost'}</h2>
+        <p>
+          {$connection === 'failed'
+            ? 'The server is offline or unreachable. Check the address or try again later.'
+            : 'The connection to the server was lost. It may have gone offline.'}
+        </p>
+        <p class="connection-detail">{$selectedServer ?? 'Unknown server'}</p>
+        <div class="connection-actions">
+          <button type="button" class="btn btn-primary" on:click={retryConnect}>Try again</button>
+          <button type="button" class="btn" on:click={() => leaveToServers()}>
+            Back to servers
+          </button>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
+
 <style>
+  /* App shell: three full-height panes separated by 1px borders. The
+     sidebars sit on --color-bg, the chat pane on --color-surface. */
   .page {
     display: flex;
     height: 100vh;
-    padding: clamp(1.25rem, 2.5vw, 1.75rem);
-    gap: clamp(0.75rem, 2vw, 1rem);
-    backdrop-filter: blur(0.5px);
-  }
-
-  .page.focus {
-    padding-inline: clamp(1.5rem, 4vw, 3rem);
+    background: var(--color-bg);
+    overflow: hidden;
   }
 
   /* .channels/.sidebar are the root elements of ChannelSidebar/UserList;
@@ -1408,45 +2039,62 @@
   }
 
   .page.focus .chat {
-    max-width: 1080px;
+    max-width: 60rem;
     margin: 0 auto;
+    border-left: 1px solid var(--color-surface-outline);
+    border-right: 1px solid var(--color-surface-outline);
   }
 
   .resizer {
-    width: 6px;
+    width: 5px;
+    margin: 0 -2px;
     cursor: col-resize;
     position: relative;
     flex-shrink: 0;
+    z-index: 5;
   }
 
-  .resizer::after {
-    content: '';
-    position: absolute;
-    inset: calc(50% - 18px) auto;
-    left: 50%;
-    width: 2px;
-    height: 36px;
-    border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-on-surface) 12%, transparent);
-    transform: translateX(-50%);
+  .resizer:hover {
+    background: color-mix(in srgb, var(--color-primary) 35%, transparent);
   }
 
   .chat {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 0.9rem;
     min-width: 0;
+    position: relative;
+    background: var(--color-surface);
+    border-left: 1px solid var(--color-surface-outline);
+    border-right: 1px solid var(--color-surface-outline);
+  }
+
+  /* pointer-events: none keeps drag events flowing to .chat underneath. */
+  .drop-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed var(--color-primary);
+    background: color-mix(in srgb, var(--color-surface) 80%, transparent);
+    pointer-events: none;
+  }
+
+  .drop-overlay span {
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-elevated);
+    border: 1px solid var(--color-surface-outline);
+    color: var(--color-on-surface);
+    font-weight: 600;
+    font-size: var(--text-md);
   }
 
   .messages-shell {
     flex: 1;
     min-height: 0;
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-raised) 90%, transparent);
-    border: 1px solid var(--color-surface-outline);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    overflow: hidden;
     display: flex;
   }
 
@@ -1456,180 +2104,252 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 0.8rem;
-    padding: clamp(0.9rem, 2vw, 1.25rem);
+    padding: var(--space-4) 0;
   }
 
   .day-separator {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
+    margin: var(--space-4) var(--space-4) var(--space-2);
     color: var(--color-muted);
-    font-size: var(--text-sm);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-size: var(--text-xs);
+    font-weight: 600;
   }
 
   .day-separator::before,
   .day-separator::after {
     content: '';
     flex: 1;
-    border-top: 1px solid color-mix(in srgb, var(--color-surface-outline) 70%, transparent);
-    opacity: 0.7;
+    border-top: 1px solid var(--color-surface-outline);
   }
 
-  .day-separator span {
-    padding: 0.2rem 0.75rem;
-    border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-surface-elevated) 78%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    color: var(--color-muted);
+  .unread-divider {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin: var(--space-2) var(--space-4);
+    color: var(--color-error);
+    font-size: var(--text-xs);
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
   }
 
+  .unread-divider::before,
+  .unread-divider::after {
+    content: '';
+    flex: 1;
+    border-top: 1px solid color-mix(in srgb, var(--color-error) 55%, transparent);
+  }
+
+  /* Messages are flat rows; hover reveals a floating action toolbar. */
   .message {
-    display: grid;
-    grid-template-columns: auto auto 1fr;
-    column-gap: 0.55rem;
-    row-gap: 0.3rem;
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
-    padding: 0.65rem 0.9rem;
-    border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
-    transition: transform var(--transition), box-shadow var(--transition);
+    column-gap: var(--space-2);
+    row-gap: var(--space-1);
+    padding: var(--space-1) var(--space-4);
+    margin: 1px 0;
+    border-left: 2px solid transparent;
+    /* Isolate layout/style recalculation per message so long histories stay cheap. */
+    contain: layout style;
   }
 
   .message:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-xs);
+    background: color-mix(in srgb, var(--color-surface-raised) 45%, transparent);
   }
 
   .message.highlighted {
-    border-color: color-mix(in srgb, var(--color-secondary) 45%, transparent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-secondary) 28%, transparent);
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    border-left-color: var(--color-primary);
+  }
+
+  .message .username {
+    font-weight: 600;
+    font-size: var(--text-md);
+    color: var(--color-on-surface);
   }
 
   .message .timestamp {
     font-size: var(--text-xs);
     color: var(--color-muted);
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    opacity: 0.7;
-  }
-
-  .message .username {
-    font-weight: 600;
-    color: var(--color-on-surface);
+    font-family: var(--font-mono);
   }
 
   .message .role {
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     font-weight: 600;
-    align-self: center;
+    color: var(--color-muted);
+  }
+
+  .reply-quote {
+    flex-basis: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    max-width: 100%;
+    padding: var(--space-1) var(--space-2);
+    border: none;
+    border-left: 2px solid var(--color-outline-strong);
+    border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+    background: color-mix(in srgb, var(--color-surface-raised) 55%, transparent);
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .reply-quote:hover {
+    background: var(--color-surface-raised);
+    color: var(--color-on-surface);
+  }
+
+  .reply-quote-arrow {
+    flex-shrink: 0;
+    opacity: 0.7;
+  }
+
+  .reply-quote-user {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--color-on-surface-variant);
+  }
+
+  .reply-quote-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .bot-badge {
     display: inline-flex;
     align-items: center;
-    justify-self: start;
-    padding: 0.1rem 0.4rem;
-    border-radius: var(--radius-xs, 4px);
-    font-size: var(--text-xs);
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    background: color-mix(in srgb, var(--color-primary) 22%, transparent);
-    color: var(--color-primary);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
     align-self: center;
-    line-height: 1.3;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-xs);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1rem;
+    background: var(--color-primary-container);
+    color: var(--color-primary);
   }
 
   .content-wrapper {
-    grid-column: 1 / -1;
-    display: flex;
-    gap: 0.75rem;
-    align-items: flex-start;
+    flex-basis: 100%;
+    min-width: 0;
   }
 
   .message .content {
-    flex: 1;
-    color: var(--color-on-surface);
-    line-height: 1.65;
+    display: block;
+    color: var(--color-on-surface-variant);
+    font-size: var(--text-md);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+
+  .message .content :global(p) {
+    margin: 0;
+  }
+
+  .edited-badge {
+    margin-left: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--color-muted);
   }
 
   .ephemeral-badge {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    margin-top: 0.5rem;
-    padding: 0.2rem 0.6rem;
+    margin-top: var(--space-2);
+    padding: 0 var(--space-2);
     border-radius: var(--radius-pill);
     font-size: var(--text-xs);
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-weight: 600;
+    line-height: 1.25rem;
     background: color-mix(in srgb, var(--color-warning) 15%, transparent);
-    color: color-mix(in srgb, var(--color-warning) 80%, var(--color-on-surface) 20%);
+    color: var(--color-warning);
     width: fit-content;
   }
 
+  /* Floating per-message toolbar, shown on hover or keyboard focus. */
   .message-actions {
+    position: absolute;
+    top: calc(-1 * var(--space-3));
+    right: var(--space-4);
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0;
+    padding: var(--space-1);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-surface-outline);
+    background: var(--color-surface-elevated);
+    box-shadow: var(--shadow-sm);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .message:hover .message-actions,
+  .message:focus-within .message-actions {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .message-action {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0.25rem 0.45rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
-    color: var(--color-on-surface);
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border-radius: var(--radius-xs);
+    border: none;
+    background: transparent;
+    color: var(--color-muted);
     cursor: pointer;
-    font-size: var(--text-sm);
-    transition: background var(--transition), border-color var(--transition), transform var(--transition);
   }
 
   .message-action:hover,
   .message-action.active {
-    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
-    border-color: color-mix(in srgb, var(--color-primary) 36%, transparent);
-    transform: translateY(-1px);
+    background: var(--color-surface-raised);
+    color: var(--color-on-surface);
   }
 
-  .message-action.danger {
-    color: color-mix(in srgb, var(--color-error) 80%, var(--color-on-surface));
+  .message-action.active {
+    color: var(--color-primary);
   }
 
   .message-action.danger:hover {
-    background: color-mix(in srgb, var(--color-error) 18%, transparent);
-    border-color: color-mix(in srgb, var(--color-error) 32%, transparent);
+    background: color-mix(in srgb, var(--color-error) 14%, transparent);
+    color: var(--color-error);
   }
 
   .link-previews {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    margin-top: 0.65rem;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
   }
 
   .message .content :global(code) {
-    background: color-mix(in srgb, var(--color-primary) 25%, transparent);
-    padding: 0.15rem 0.35rem;
-    border-radius: 6px;
-    font-size: 0.9em;
+    background: var(--color-surface-raised);
+    padding: 0.125rem var(--space-1);
+    border-radius: var(--radius-xs);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
   }
 
   .message .content :global(pre) {
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
-    border-radius: var(--radius-sm);
-    padding: 0.9rem;
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
     overflow-x: auto;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+    border: 1px solid var(--color-surface-outline);
   }
 
   .message .content :global(pre code) {
@@ -1637,8 +2357,8 @@
     padding: 0;
     margin: 0;
     background: transparent;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 0.9em;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
   }
 
   .message .content :global(.hljs) {
@@ -1647,20 +2367,20 @@
 
   .message .content :global(.hljs-comment),
   .message .content :global(.hljs-quote) {
-    color: color-mix(in srgb, var(--color-muted) 92%, transparent);
+    color: var(--color-muted);
     font-style: italic;
   }
 
   .message .content :global(.hljs-keyword),
   .message .content :global(.hljs-selector-tag),
   .message .content :global(.hljs-subst) {
-    color: color-mix(in srgb, var(--color-secondary) 80%, var(--color-on-surface) 20%);
+    color: color-mix(in srgb, var(--color-primary) 80%, var(--color-on-surface) 20%);
   }
 
   .message .content :global(.hljs-string),
   .message .content :global(.hljs-doctag),
   .message .content :global(.hljs-regexp) {
-    color: color-mix(in srgb, var(--color-tertiary) 80%, var(--color-on-surface) 20%);
+    color: color-mix(in srgb, var(--color-success) 75%, var(--color-on-surface) 25%);
   }
 
   .message .content :global(.hljs-title),
@@ -1681,7 +2401,7 @@
   .message .content :global(.hljs-attribute),
   .message .content :global(.hljs-variable),
   .message .content :global(.hljs-template-variable) {
-    color: color-mix(in srgb, var(--color-success) 75%, var(--color-on-surface) 25%);
+    color: color-mix(in srgb, var(--color-error) 70%, var(--color-on-surface) 30%);
   }
 
   .message .content :global(.hljs-meta),
@@ -1692,84 +2412,237 @@
   .message img {
     max-width: min(420px, 100%);
     border-radius: var(--radius-md);
-    margin-top: 0.65rem;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
-    box-shadow: var(--shadow-xs);
+    margin-top: var(--space-2);
+    border: 1px solid var(--color-surface-outline);
+  }
+
+  .attachment-card {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-surface-outline);
+    background: var(--color-surface-elevated);
+    color: var(--color-on-surface);
+    text-decoration: none;
+    max-width: min(420px, 100%);
+  }
+
+  .attachment-card:hover {
+    border-color: var(--color-outline-strong);
+    background: var(--color-surface-raised);
+    text-decoration: none;
+  }
+
+  .attachment-icon {
+    display: inline-flex;
+    color: var(--color-primary);
+    flex-shrink: 0;
+  }
+
+  .attachment-details {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .attachment-name {
+    font-weight: 500;
+    font-size: var(--text-md);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .attachment-size {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
   }
 
   .reactions {
-    grid-column: 1 / -1;
+    flex-basis: 100%;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4rem;
-    margin-top: 0.15rem;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
   }
 
   .reaction-chip {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: var(--space-1);
     border-radius: var(--radius-pill);
-    padding: 0.3rem 0.65rem;
+    padding: 0.125rem var(--space-2);
     font-size: var(--text-sm);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    color: var(--color-on-surface);
+    line-height: 1.25rem;
+    border: 1px solid var(--color-surface-outline);
+    background: var(--color-surface-elevated);
+    color: var(--color-on-surface-variant);
+  }
+
+  .reaction-chip:hover {
+    border-color: var(--color-outline-strong);
   }
 
   .reaction-chip.active {
-    background: color-mix(in srgb, var(--color-primary) 32%, transparent);
-    border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+    background: var(--color-primary-container);
+    border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+    color: var(--color-on-surface);
   }
 
   .reaction-chip.add {
-    font-weight: 700;
+    color: var(--color-muted);
+    font-weight: 600;
   }
 
+  .thread-indicator {
+    justify-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0.125rem var(--space-2);
+    border-radius: var(--radius-pill);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-primary);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .thread-indicator:hover {
+    background: var(--color-primary-container);
+  }
+
+  /* Composer */
   .input-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 1rem;
+    gap: var(--space-2);
     align-items: end;
-    padding: clamp(1rem, 2vw, 1.35rem);
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
-    border: 1px solid var(--color-surface-outline);
-    box-shadow: var(--shadow-sm);
+    padding: var(--space-3) var(--space-4) var(--space-4);
+    border-top: 1px solid var(--color-surface-outline);
+    background: var(--color-surface);
   }
 
   .command-feedback {
     grid-column: 1 / -1;
-    padding: 0.45rem 0.75rem;
-    border-radius: var(--radius-md);
-    font-size: var(--text-md);
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    border: 1px solid color-mix(in srgb, var(--color-success) 25%, transparent);
-    background: color-mix(in srgb, var(--color-success) 12%, transparent);
-    color: color-mix(in srgb, var(--color-success) 80%, var(--color-on-surface) 20%);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent);
+    background: color-mix(in srgb, var(--color-success) 10%, transparent);
+    color: var(--color-success);
   }
 
   .command-feedback.error {
-    border-color: color-mix(in srgb, var(--color-error) 32%, transparent);
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
-    color: color-mix(in srgb, var(--color-error) 85%, var(--color-on-surface) 15%);
+    border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
+    background: color-mix(in srgb, var(--color-error) 10%, transparent);
+    color: var(--color-error);
+  }
+
+  .reply-bar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-raised);
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+  }
+
+  .reply-bar-label {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    overflow: hidden;
+  }
+
+  .reply-bar-label strong {
+    color: var(--color-on-surface);
+  }
+
+  .reply-bar-preview {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .reply-bar-cancel {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-muted);
+    cursor: pointer;
+    font-size: var(--text-sm);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-xs);
+  }
+
+  .reply-bar-cancel:hover {
+    color: var(--color-on-surface);
+    background: var(--color-surface-elevated);
+  }
+
+  .typing-indicator {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+  }
+
+  .typing-dots {
+    display: inline-flex;
+    gap: 0.1875rem;
+  }
+
+  .typing-dots span {
+    width: 0.25rem;
+    height: 0.25rem;
+    border-radius: 50%;
+    background: var(--color-muted);
+    animation: typing-bounce 1.2s infinite ease-in-out;
+  }
+
+  .typing-dots span:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .typing-dots span:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  @keyframes typing-bounce {
+    0%,
+    60%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.5;
+    }
+    30% {
+      transform: translateY(-3px);
+      opacity: 1;
+    }
   }
 
   textarea {
     width: 100%;
-    min-height: 3rem;
+    min-height: var(--control-height-lg);
     max-height: 360px;
     resize: none;
     overflow-y: hidden;
     overflow-x: hidden;
     border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
-    background: color-mix(in srgb, var(--color-surface-raised) 84%, transparent);
-    color: var(--color-on-surface);
-    padding: 0.85rem 1rem;
+    padding: var(--space-3) var(--space-4);
     line-height: 1.5;
   }
 
@@ -1780,24 +2653,24 @@
   .controls {
     display: flex;
     align-items: flex-end;
-    gap: 0.9rem;
+    gap: var(--space-2);
   }
 
   .input-controls {
     display: flex;
     align-items: center;
-    gap: 0.65rem;
+    gap: var(--space-2);
   }
 
   .preview-container {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.4rem;
-    background: color-mix(in srgb, var(--color-secondary) 12%, transparent);
-    padding: 0.55rem;
+    gap: var(--space-1);
+    background: var(--color-surface-raised);
+    padding: var(--space-2);
     border-radius: var(--radius-md);
-    border: 1px dashed color-mix(in srgb, var(--color-secondary) 32%, transparent);
+    border: 1px dashed var(--color-outline-strong);
   }
 
   .preview-container img {
@@ -1808,9 +2681,44 @@
 
   .preview-remove {
     background: transparent;
-    color: var(--color-secondary);
+    color: var(--color-muted);
     border: none;
+    display: inline-flex;
+    padding: var(--space-1);
+    border-radius: var(--radius-xs);
+  }
+
+  .preview-remove:hover {
+    color: var(--color-error);
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  }
+
+  .file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-width: 220px;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-elevated);
     font-size: var(--text-sm);
+  }
+
+  .file-chip svg {
+    flex-shrink: 0;
+    color: var(--color-primary);
+  }
+
+  .file-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-chip-size {
+    color: var(--color-muted);
+    font-size: var(--text-xs);
+    flex-shrink: 0;
   }
 
   .file-input {
@@ -1827,47 +2735,266 @@
 
   .file-button,
   .send {
-    width: 2.75rem;
-    height: 2.75rem;
-    border-radius: 0.9rem;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
-    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-    color: var(--color-secondary);
+    width: var(--control-height-lg);
+    height: var(--control-height-lg);
+    flex-shrink: 0;
+    border-radius: var(--radius-md);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     padding: 0;
   }
 
-  .file-button svg,
-  .send svg {
-    width: 1.2rem;
-    height: 1.2rem;
+  .file-button {
+    border: 1px solid var(--color-surface-outline);
+    background: var(--color-surface-raised);
+    color: var(--color-on-surface-variant);
   }
 
-  .file-button:hover,
-  .send:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-xs);
+  .file-button:hover {
+    border-color: var(--color-outline-strong);
+    color: var(--color-on-surface);
   }
 
   .send {
-    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+    border: none;
+    background: var(--color-primary);
     color: var(--color-on-primary);
-    border-color: transparent;
   }
 
-  @media (max-width: 1280px) {
+  .send:hover {
+    background: color-mix(in srgb, var(--color-primary) 88%, var(--color-on-surface));
+  }
+
+  .file-button svg,
+  .send svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  /* Thread / DM side panel */
+  .thread-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 25;
+    width: min(360px, 90%);
+    display: flex;
+    flex-direction: column;
+    background: var(--color-surface-elevated);
+    border-left: 1px solid var(--color-surface-outline);
+    box-shadow: var(--shadow-md);
+  }
+
+  .thread-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-surface-outline);
+    font-weight: 600;
+    font-size: var(--text-md);
+  }
+
+  .thread-header-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .thread-header-title svg {
+    color: var(--color-primary);
+    flex-shrink: 0;
+  }
+
+  .thread-close {
+    border: none;
+    background: transparent;
+    color: var(--color-muted);
+    cursor: pointer;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-xs);
+  }
+
+  .thread-close:hover {
+    color: var(--color-on-surface);
+    background: var(--color-surface-raised);
+  }
+
+  .thread-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .thread-message {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-raised);
+  }
+
+  .thread-message.root {
+    background: var(--color-primary-container);
+  }
+
+  .thread-message-meta {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+
+  .thread-message-meta .username {
+    font-weight: 600;
+    color: var(--color-on-surface);
+    font-size: var(--text-sm);
+  }
+
+  .thread-message-meta .timestamp {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+    font-family: var(--font-mono);
+  }
+
+  .thread-message-text {
+    color: var(--color-on-surface-variant);
+    font-size: var(--text-sm);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+
+  .thread-message-text :global(p) {
+    margin: 0;
+  }
+
+  .thread-message-text img {
+    max-width: 100%;
+    border-radius: var(--radius-sm);
+    margin-top: var(--space-1);
+  }
+
+  .thread-empty {
+    margin: 0;
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+    text-align: center;
+    padding: var(--space-4);
+  }
+
+  .thread-input {
+    padding: var(--space-3);
+    border-top: 1px solid var(--color-surface-outline);
+  }
+
+  .thread-input input {
+    width: 100%;
+    border-radius: var(--radius-md);
+  }
+
+  /* Connection overlay */
+  .connection-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-overlay);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-5);
+    background: var(--color-overlay);
+    backdrop-filter: blur(6px);
+  }
+
+  /* Delay the connecting state so fast connects never flash the overlay. */
+  .connection-overlay.connecting {
+    animation: connection-fade-in 0.2s ease 0.4s both;
+  }
+
+  @keyframes connection-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .connection-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    max-width: 420px;
+    padding: var(--space-6);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-elevated);
+    border: 1px solid var(--color-surface-outline);
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+  }
+
+  .connection-card h2 {
+    font-size: var(--text-xl);
+  }
+
+  .connection-card p {
+    margin: 0;
+    color: var(--color-muted);
+    line-height: 1.5;
+  }
+
+  .connection-detail {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    word-break: break-all;
+  }
+
+  .connection-spinner {
+    width: var(--space-6);
+    height: var(--space-6);
+    border-radius: 50%;
+    border: 3px solid var(--color-surface-raised);
+    border-top-color: var(--color-primary);
+    animation: connection-spin 0.8s linear infinite;
+  }
+
+  @keyframes connection-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .connection-actions {
+    display: flex;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* Responsive: stack panes on narrow windows. */
+  @media (max-width: 1100px) {
     .page {
       flex-direction: column;
       height: auto;
       min-height: 100vh;
+      overflow: visible;
     }
 
     .page :global(.channels),
     .page :global(.sidebar) {
-      width: 100%;
+      width: 100% !important;
+      max-height: 40vh;
       order: 0;
+      border-bottom: 1px solid var(--color-surface-outline);
     }
 
     .resizer {
@@ -1876,18 +3003,19 @@
 
     .chat {
       order: 1;
+      border-left: none;
+      border-right: none;
+      min-height: 60vh;
     }
 
     .page :global(.sidebar) {
       order: 2;
+      border-bottom: none;
+      border-top: 1px solid var(--color-surface-outline);
     }
   }
 
-  @media (max-width: 768px) {
-    .page {
-      padding: clamp(1rem, 4vw, 1.5rem);
-    }
-
+  @media (max-width: 640px) {
     .input-row {
       grid-template-columns: 1fr;
     }
@@ -1897,4 +3025,3 @@
     }
   }
 </style>
-

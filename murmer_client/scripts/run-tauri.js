@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
 
 const args = process.argv.slice(2);
 const env = { ...process.env };
@@ -19,10 +20,15 @@ if (process.platform === 'linux') {
   }
 }
 
-const child = spawn('npx', ['tauri', ...args], {
+// Invoke the Tauri CLI's JS entry point with the current Node binary instead
+// of going through `npx` + a shell: it avoids shell quoting issues (DEP0190)
+// and behaves the same on Linux, macOS and Windows.
+const require = createRequire(import.meta.url);
+const tauriBin = require.resolve('@tauri-apps/cli/tauri.js');
+
+const child = spawn(process.execPath, [tauriBin, ...args], {
   env,
-  stdio: 'inherit',
-  shell: true
+  stdio: 'inherit'
 });
 
 child.on('exit', (code, signal) => {

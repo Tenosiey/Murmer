@@ -30,7 +30,7 @@ specifics.
 ## Security expectations
 - Authentication relies on Ed25519 signatures with replay protection.
 - Rate limiting exists for both authentication and chat traffic.
-- File uploads are restricted to images and validated by content-type and size.
+- File uploads are validated by size and an extension safe-list; images are additionally checked by magic bytes. Active content (HTML, SVG, scripts) is never accepted.
 - Channel management honours role assignments when `ADMIN_TOKEN` is configured.
 - Production deployments should keep CORS disabled unless explicitly required.
 

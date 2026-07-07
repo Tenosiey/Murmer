@@ -66,7 +66,7 @@
           </li>
         {/each}
       </ul>
-      <button type="button" class="help-close" on:click={onClose} bind:this={closeButton}>
+      <button type="button" class="btn help-close" on:click={onClose} bind:this={closeButton}>
         Close
       </button>
     </div>
@@ -77,37 +77,42 @@
   .help-overlay {
     position: fixed;
     inset: 0;
-    background: color-mix(in srgb, var(--color-overlay) 85%, transparent);
+    background: var(--color-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: clamp(1.5rem, 4vw, 3rem);
+    padding: var(--space-5);
     z-index: var(--z-overlay);
   }
 
   .help-panel {
-    width: min(720px, 92vw);
+    width: min(640px, 92vw);
     max-height: min(70vh, 640px);
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
-    background: color-mix(in srgb, var(--color-surface-elevated) 96%, transparent);
+    gap: var(--space-4);
+    background: var(--color-surface-elevated);
     border-radius: var(--radius-lg);
     border: 1px solid var(--color-surface-outline);
     box-shadow: var(--shadow-lg);
-    padding: clamp(1rem, 3vw, 1.75rem);
+    padding: var(--space-5);
   }
 
   .help-header {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: var(--space-1);
+  }
+
+  .help-header h2 {
+    font-size: var(--text-lg);
   }
 
   .help-description {
+    margin: 0;
     color: var(--color-muted);
-    font-size: var(--text-md);
+    font-size: var(--text-sm);
   }
 
   .help-command-list {
@@ -116,57 +121,47 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
     overflow-y: auto;
   }
 
   .help-command {
-    border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 92%, transparent);
-    padding: 0.75rem 0.9rem;
+    padding: var(--space-3) 0;
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: var(--space-1);
+  }
+
+  .help-command + .help-command {
+    border-top: 1px solid var(--color-surface-outline);
   }
 
   .help-command-heading {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: var(--space-2);
     align-items: center;
   }
 
   .help-command-usage {
     font-family: var(--font-mono);
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    border-radius: var(--radius-sm);
-    padding: 0.2rem 0.4rem;
+    font-size: var(--text-sm);
+    background: var(--color-surface-raised);
+    border-radius: var(--radius-xs);
+    padding: 0.125rem var(--space-2);
   }
 
   .help-command-aliases {
     color: var(--color-muted);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
   }
 
   .help-command-description {
     margin: 0;
     color: var(--color-muted);
-    font-size: var(--text-md);
+    font-size: var(--text-sm);
   }
 
   .help-close {
     align-self: flex-end;
-    padding: 0.55rem 0.9rem;
-    border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-muted) 24%, transparent);
-    background: color-mix(in srgb, var(--color-muted) 18%, transparent);
-    color: var(--color-on-surface);
-    font-weight: 600;
-    transition: transform var(--transition);
-  }
-
-  .help-close:hover {
-    transform: translateY(-1px);
   }
 </style>

@@ -99,3 +99,54 @@ pub const UNKNOWN_CATEGORY: &str = r#"{"type":"error","message":"unknown-categor
 
 /// Failed to move channel to category.
 pub const CHANNEL_MOVE_FAILED: &str = r#"{"type":"error","message":"channel-move-failed"}"#;
+
+/// Channel topic validation failed.
+pub const INVALID_CHANNEL_TOPIC: &str = r#"{"type":"error","message":"invalid-channel-topic"}"#;
+
+/// The referenced channel does not exist.
+pub const UNKNOWN_CHANNEL: &str = r#"{"type":"error","message":"unknown-channel"}"#;
+
+/// Failed to update the channel topic in the database.
+pub const TOPIC_UPDATE_FAILED: &str = r#"{"type":"error","message":"topic-update-failed"}"#;
+
+/// User lacks permission for moderation actions (kick, ban, mute).
+pub const MODERATION_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"moderation-permission-denied"}"#;
+
+/// Moderation target could not be resolved to a connected user.
+pub const MODERATION_TARGET_NOT_FOUND: &str =
+    r#"{"type":"error","message":"moderation-target-not-found"}"#;
+
+/// Moderation target outranks or equals the requester and is protected.
+pub const MODERATION_TARGET_PROTECTED: &str =
+    r#"{"type":"error","message":"moderation-target-protected"}"#;
+
+/// Moderation actions cannot target the requester themselves.
+pub const CANNOT_MODERATE_SELF: &str = r#"{"type":"error","message":"cannot-moderate-self"}"#;
+
+/// Failed to persist a moderation action.
+pub const MODERATION_FAILED: &str = r#"{"type":"error","message":"moderation-failed"}"#;
+
+/// Connection rejected because the user is banned.
+pub const BANNED: &str = r#"{"type":"error","message":"banned"}"#;
+
+/// Direct message target is not a known user on this server.
+pub const DM_TARGET_NOT_FOUND: &str = r#"{"type":"error","message":"dm-target-not-found"}"#;
+
+/// Direct messages cannot be sent to oneself.
+pub const CANNOT_DM_SELF: &str = r#"{"type":"error","message":"cannot-dm-self"}"#;
+
+/// Failed to persist a direct message.
+pub const DM_SEND_FAILED: &str = r#"{"type":"error","message":"dm-send-failed"}"#;
+
+/// Failed to load a direct message conversation.
+pub const DM_HISTORY_FAILED: &str = r#"{"type":"error","message":"dm-history-failed"}"#;
+
+/// Pin target does not exist (unknown or deleted message).
+pub const PIN_TARGET_NOT_FOUND: &str = r#"{"type":"error","message":"pin-target-not-found"}"#;
+
+/// The channel already carries the maximum number of pins.
+pub const PIN_LIMIT_REACHED: &str = r#"{"type":"error","message":"pin-limit-reached"}"#;
+
+/// Failed to persist a pin change.
+pub const PIN_FAILED: &str = r#"{"type":"error","message":"pin-failed"}"#;

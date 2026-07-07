@@ -22,9 +22,16 @@ shell.
 - `src-tauri/` – Rust-side glue for native integrations
 
 Prefer small, composable Svelte components. Styling rules: components use
-the `--color-*`/`--text-*`/`--radius-*`/`--shadow-*`/`--z-*` tokens defined
-in `src/routes/+layout.svelte` — never `--md-sys-*` directly and no hardcoded
-colors or font sizes.
+the design tokens defined in `src/routes/+layout.svelte` —
+`--color-*`, `--space-*` (4px scale, for all padding/margin/gap),
+`--text-*`, `--radius-*`, `--shadow-*`, `--control-height*` and `--z-*`.
+No hardcoded colors, font sizes or one-off spacing values. Reuse the shared
+primitives from the layout (`.btn`, `.btn-primary`, `.btn-ghost`,
+`.btn-danger`, `.icon-btn`, `.field`, `.menu-panel`, `.badge`,
+`.surface-card`) instead of restyling buttons/inputs per component. UI text
+uses Inter (`--font-sans`); JetBrains Mono (`--font-mono`) is reserved for
+code, timestamps and server addresses. Icons are inline stroke SVGs
+(1.8 stroke width) — no emoji as icons.
 
 ## Security considerations
 - Key pairs are stored in `localStorage`; treat this as acceptable for the

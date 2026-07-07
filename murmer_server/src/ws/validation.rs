@@ -1,6 +1,6 @@
 //! Validation helpers for WebSocket message parameters.
 
-use super::constants::{MAX_ALLOWED_VOICE_BITRATE, USER_STATUSES};
+use super::constants::{MAX_ALLOWED_VOICE_BITRATE, MAX_TOPIC_LENGTH, USER_STATUSES};
 
 /// Normalize a user status string to a valid status value.
 ///
@@ -23,6 +23,14 @@ pub fn validate_voice_quality(value: &str) -> bool {
         && trimmed
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ' ')
+}
+
+/// Validate a channel topic/description.
+///
+/// Topics may be empty (clearing the topic) but must stay within the length
+/// limit and must not contain control characters.
+pub fn validate_channel_topic(value: &str) -> bool {
+    value.len() <= MAX_TOPIC_LENGTH && !value.chars().any(char::is_control)
 }
 
 /// Validate and convert a bitrate value to i32.

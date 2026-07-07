@@ -20,7 +20,7 @@ launches the server in one step: `docker compose up --build`.
   messages and channels)
 - `db/` – database connection, schema and queries
 - `bot/` – REST API for bots (see `BOT_API.md`)
-- `upload.rs` – multipart image upload endpoint with MIME validation
+- `upload.rs` – multipart file upload endpoint with extension/MIME validation
 - `admin.rs` – `/role` endpoint guarded by a bearer token
 - `security.rs` – rate limiting, replay protection and validation utilities
 
@@ -32,7 +32,7 @@ Required environment variables:
 - `DATABASE_URL` – PostgreSQL connection string
 
 Optional environment variables:
-- `UPLOAD_DIR` – directory for uploaded images (`uploads/` by default)
+- `UPLOAD_DIR` – directory for uploaded files (`uploads/` by default)
 - `SERVER_PASSWORD` – shared secret required during presence/auth flows
 - `ADMIN_TOKEN` – enables the `/role` endpoint and channel management controls
 - `CORS_ALLOW_ORIGINS` – comma-separated origins allowed to call HTTP

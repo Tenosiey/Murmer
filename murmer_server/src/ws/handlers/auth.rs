@@ -133,6 +133,22 @@ pub(super) async fn handle_presence(
                 return Err(());
             }
 
+            // Reject banned users before they are registered as present.
+            let public_key = v.get("publicKey").and_then(|p| p.as_str());
+            match db::is_banned(&state.db, public_key, u).await {
+                Ok(true) => {
+                    error!("Rejected banned user: {}", u);
+                    let _ = sender
+                        .send(Message::Text(errors::BANNED.to_string().into()))
+                        .await;
+                    return Err(());
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    error!("Failed to check ban state for {u}: {e}");
+                }
+            }
+
             state.users.lock().await.insert(u.to_string());
             state.known_users.lock().await.insert(u.to_string());
             state
