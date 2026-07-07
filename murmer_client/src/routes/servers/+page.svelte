@@ -12,12 +12,19 @@
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import { normalizeServerUrl } from '$lib/utils';
   import { serverStatus } from '$lib/stores/serverStatus';
+  import { connectionError } from '$lib/stores/connection';
   import StatusDot from '$lib/components/StatusDot.svelte';
   import { createInviteLink, parseInviteLink } from '$lib/invite';
 
   onMount(() => {
     if (!get(session).user) goto('/login');
     serverStatus.start();
+    // Surface the reason we were sent back here (wrong password, ban, ...).
+    const carried = get(connectionError);
+    if (carried) {
+      error = carried;
+      connectionError.set(null);
+    }
   });
 
   onDestroy(() => {

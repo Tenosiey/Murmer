@@ -6,6 +6,12 @@ pub const CHANNEL_MANAGE_ROLES: &[&str] = &["Admin", "Mod", "Owner"];
 /// Roles that are allowed to assign or remove roles from other users.
 pub const ROLE_MANAGE_ROLES: &[&str] = &["Owner"];
 
+/// Maximum duration in seconds for a timed mute (30 days).
+pub const MAX_MUTE_SECONDS: i64 = 30 * 24 * 60 * 60;
+
+/// Minimum duration in seconds for a timed mute.
+pub const MIN_MUTE_SECONDS: i64 = 10;
+
 /// Default quality label assigned to new voice channels.
 pub const DEFAULT_VOICE_QUALITY: &str = "standard";
 
@@ -35,6 +41,18 @@ pub const MAX_SEARCH_RESULTS: i64 = 200;
 
 /// Maximum number of messages to load in a single history request.
 pub const MAX_HISTORY_LIMIT: i64 = 200;
+
+/// Maximum number of characters preserved in a reply's quoted snippet.
+pub const MAX_REPLY_PREVIEW_CHARS: usize = 200;
+
+/// Maximum number of messages returned for a single thread.
+pub const MAX_THREAD_MESSAGES: i64 = 200;
+
+/// Minimum interval between typing broadcasts from a single connection.
+pub const TYPING_BROADCAST_INTERVAL_MS: u64 = 1_000;
+
+/// Maximum number of pinned messages per channel.
+pub const MAX_PINS_PER_CHANNEL: i64 = 25;
 
 /// Default number of messages to load when no limit is specified.
 pub const DEFAULT_HISTORY_LIMIT: i64 = 50;

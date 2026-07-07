@@ -23,6 +23,7 @@ pub(super) async fn handle_join(
         *chan_tx = get_or_create_channel(state, *channel_id).await;
         *chan_rx = chan_tx.subscribe();
         db::send_history(&state.db, sender, *channel_id, None, DEFAULT_HISTORY_LIMIT).await;
+        super::pins::send_pins(state, sender, *channel_id).await;
     }
 }
 
@@ -184,6 +185,16 @@ pub(super) async fn handle_chat(
         return;
     }
 
+    if super::moderation::is_muted(state, user).await {
+        let msg = serde_json::json!({
+            "type": "error",
+            "message": "muted",
+        })
+        .to_string();
+        let _ = sender.send(Message::Text(msg.into())).await;
+        return;
+    }
+
     if let Some(text) = v.get("text").and_then(|t| t.as_str()) {
         if text.len() > MAX_MESSAGE_LENGTH {
             let _ = sender
@@ -199,6 +210,65 @@ pub(super) async fn handle_chat(
         map.remove("channel");
     }
     let timestamp = sanitize_message_timestamp(v);
+
+    // Replies carry only the target message id from the client; the quoted
+    // snippet and thread root are rebuilt from the stored message so a client
+    // cannot forge quotes or attach messages to arbitrary threads.
+    let reply_target = v.get("replyTo").and_then(|r| match r {
+        Value::Number(n) => n.as_i64(),
+        Value::Object(o) => o.get("id").and_then(|i| i.as_i64()),
+        _ => None,
+    });
+    if let Some(map) = v.as_object_mut() {
+        map.remove("replyTo");
+        map.remove("threadId");
+    }
+    if let Some(target_id) = reply_target {
+        if let Ok(target_id32) = i32::try_from(target_id) {
+            match db::get_message_record(&state.db, target_id32).await {
+                Ok(Some(record)) if record.channel_id == channel_id => {
+                    let quoted_user = record
+                        .content
+                        .get("user")
+                        .and_then(|u| u.as_str())
+                        .unwrap_or("");
+                    let quoted_text = reply_preview(
+                        record
+                            .content
+                            .get("text")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or(""),
+                        MAX_REPLY_PREVIEW_CHARS,
+                    );
+                    v["replyTo"] = serde_json::json!({
+                        "id": target_id,
+                        "user": quoted_user,
+                        "text": quoted_text,
+                    });
+                    // Replying to a reply joins the existing thread instead of
+                    // starting a nested one.
+                    let thread_root = record
+                        .content
+                        .get("threadId")
+                        .and_then(|t| t.as_i64())
+                        .unwrap_or(target_id);
+                    v["threadId"] = Value::from(thread_root);
+                }
+                Ok(_) => {
+                    let msg = serde_json::json!({
+                        "type": "error",
+                        "message": "reply-target-not-found",
+                    })
+                    .to_string();
+                    let _ = sender.send(Message::Text(msg.into())).await;
+                    return;
+                }
+                Err(error) => {
+                    error!("failed to load reply target {target_id}: {error}");
+                }
+            }
+        }
+    }
 
     let mut ephemeral_expiry: Option<DateTime<Utc>> = None;
     if let Some(raw_expiry) = v.get("expiresAt").and_then(|value| value.as_str()) {
@@ -241,6 +311,19 @@ pub(super) async fn handle_chat(
             let out_with_id = serde_json::to_string(&v).unwrap_or_else(|_| out.clone());
             let chan_tx = get_or_create_channel(state, channel_id).await;
             let _ = chan_tx.send(out_with_id);
+
+            // Channel broadcasts only reach clients joined to this channel, so
+            // additionally announce the message globally. Clients use this to
+            // track unread counts and mentions for channels they are not
+            // currently viewing.
+            let notify = serde_json::json!({
+                "type": "message-notify",
+                "channelId": channel_id,
+                "id": id,
+                "user": user,
+                "text": v.get("text").cloned().unwrap_or(Value::Null),
+            });
+            let _ = state.tx.send(notify.to_string());
 
             if let Some(expiry) = ephemeral_expiry {
                 let state_clone = Arc::clone(state);
@@ -570,6 +653,112 @@ pub(super) async fn handle_edit_message(
             let _ = sender.send(Message::Text(msg.into())).await;
         }
     }
+}
+
+/// Handle a thread load request: return the root message and all replies that
+/// belong to its thread.
+pub(super) async fn handle_load_thread(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    channel_id: i32,
+) {
+    let root_id32 = match v
+        .get("rootId")
+        .and_then(|r| r.as_i64())
+        .and_then(|id| i32::try_from(id).ok())
+    {
+        Some(id) => id,
+        None => {
+            let msg =
+                serde_json::json!({"type": "error", "message": "invalid-message-id"}).to_string();
+            let _ = sender.send(Message::Text(msg.into())).await;
+            return;
+        }
+    };
+
+    match db::fetch_thread(&state.db, channel_id, root_id32, MAX_THREAD_MESSAGES).await {
+        Ok(rows) => {
+            let mut ids = Vec::new();
+            for (id, _) in &rows {
+                if let Ok(value) = i32::try_from(*id) {
+                    ids.push(value);
+                }
+            }
+
+            let reaction_map = if ids.is_empty() {
+                std::collections::HashMap::new()
+            } else {
+                match db::get_reactions_for_messages(&state.db, &ids).await {
+                    Ok(map) => map,
+                    Err(error) => {
+                        error!("Failed to load reactions for thread {root_id32}: {error}");
+                        std::collections::HashMap::new()
+                    }
+                }
+            };
+
+            let mut messages = Vec::new();
+            for (id, content) in rows {
+                if let Ok(mut value) = serde_json::from_str::<Value>(&content) {
+                    value["id"] = Value::from(id);
+                    #[allow(clippy::collapsible_if)]
+                    if let Ok(id32) = i32::try_from(id) {
+                        if let Some(reactions) = reaction_map.get(&id32) {
+                            if let Ok(reaction_value) = serde_json::to_value(reactions) {
+                                value["reactions"] = reaction_value;
+                            }
+                        }
+                    }
+                    messages.push(value);
+                }
+            }
+
+            let payload = serde_json::json!({
+                "type": "thread",
+                "rootId": root_id32,
+                "channelId": channel_id,
+                "messages": messages,
+            });
+            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+        }
+        Err(error) => {
+            error!("failed to load thread {root_id32}: {error}");
+            let msg =
+                serde_json::json!({"type": "error", "message": "thread-load-failed"}).to_string();
+            let _ = sender.send(Message::Text(msg.into())).await;
+        }
+    }
+}
+
+/// Handle a typing notification: rebroadcast it to everyone in the channel.
+/// Typing events are transient and never persisted; a per-connection throttle
+/// keeps a misbehaving client from flooding the channel.
+pub(super) async fn handle_typing(
+    state: &Arc<AppState>,
+    channel_id: i32,
+    user_name: &Option<String>,
+    last_typing_broadcast: &mut Option<std::time::Instant>,
+) {
+    let Some(user) = user_name.as_deref() else {
+        return;
+    };
+
+    let throttle = std::time::Duration::from_millis(TYPING_BROADCAST_INTERVAL_MS);
+    if let Some(prev) = last_typing_broadcast {
+        if prev.elapsed() < throttle {
+            return;
+        }
+    }
+    *last_typing_broadcast = Some(std::time::Instant::now());
+
+    let payload = serde_json::json!({
+        "type": "typing",
+        "user": user,
+        "channelId": channel_id,
+    });
+    let chan_tx = get_or_create_channel(state, channel_id).await;
+    let _ = chan_tx.send(payload.to_string());
 }
 
 /// Handle reaction (add/remove emoji) request.

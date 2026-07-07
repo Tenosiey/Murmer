@@ -1,17 +1,27 @@
-<!-- Right-hand sidebar listing online/offline users with status and roles. -->
+<!-- Right-hand sidebar listing online/offline users with status and roles.
+     Clicking a user opens a direct message conversation; right-clicking opens
+     the user menu (DM, roles, moderation). -->
 <script lang="ts">
   import { onlineUsers } from '$lib/stores/online';
   import { offlineUsers } from '$lib/stores/users';
   import { roles } from '$lib/stores/roles';
   import { session } from '$lib/stores/session';
+  import { dm } from '$lib/stores/dm';
   import { rightSidebarWidth } from '$lib/stores/layout';
   import { STATUS_LABELS } from '$lib/stores/status';
   import { ensureStatus } from '$lib/chat/helpers';
   import type { UserStatus } from '$lib/types';
 
   export let statusMap: Record<string, UserStatus>;
-  export let currentUserIsOwner: boolean;
   export let onUserContextMenu: (event: MouseEvent, user: string) => void;
+  export let onOpenDm: (user: string) => void;
+
+  const dmUnread = dm.unread;
+
+  function handleClick(user: string) {
+    if (user === $session.user) return;
+    onOpenDm(user);
+  }
 </script>
 
 <div class="sidebar" style="width: {$rightSidebarWidth}px">
@@ -20,8 +30,10 @@
   <ul>
     {#each $onlineUsers as user}
       <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+      <!-- svelte-ignore a11y-click-events-have-key-events -->
       <li
-        class:clickable={currentUserIsOwner && user !== $session.user}
+        class:clickable={user !== $session.user}
+        on:click={() => handleClick(user)}
         on:contextmenu={(e) => onUserContextMenu(e, user)}
       >
         <span class={`status ${ensureStatus(statusMap, user, 'online')}`}></span>
@@ -31,6 +43,9 @@
           style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
           >{user}</span
         >
+        {#if $dmUnread[user]}
+          <span class="dm-badge" title="Unread direct messages">{$dmUnread[user]}</span>
+        {/if}
         {#if $roles[user]}
           <span
             class="role"
@@ -45,8 +60,10 @@
   <ul>
     {#each $offlineUsers as user}
       <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+      <!-- svelte-ignore a11y-click-events-have-key-events -->
       <li
-        class:clickable={currentUserIsOwner && user !== $session.user}
+        class:clickable={user !== $session.user}
+        on:click={() => handleClick(user)}
         on:contextmenu={(e) => onUserContextMenu(e, user)}
       >
         <span class={`status ${ensureStatus(statusMap, user)}`}></span>
@@ -56,6 +73,9 @@
           style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
           >{user}</span
         >
+        {#if $dmUnread[user]}
+          <span class="dm-badge" title="Unread direct messages">{$dmUnread[user]}</span>
+        {/if}
         {#if $roles[user]}
           <span
             class="role"
@@ -120,7 +140,7 @@
   }
 
   .sidebar li.clickable {
-    cursor: context-menu;
+    cursor: pointer;
   }
 
   .status {
@@ -151,5 +171,17 @@
     color: var(--color-muted);
     text-transform: capitalize;
     min-width: 3.5rem;
+  }
+
+  .dm-badge {
+    background: var(--color-error);
+    color: #fff;
+    border-radius: 999px;
+    font-size: var(--text-xs);
+    font-weight: 700;
+    min-width: 1.2rem;
+    padding: 0.05rem 0.35rem;
+    text-align: center;
+    flex-shrink: 0;
   }
 </style>

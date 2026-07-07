@@ -2,7 +2,7 @@
  * Utility functions for message processing and validation.
  */
 
-import type { AttachmentInfo, Message } from './types';
+import type { AttachmentInfo, Message, ReplyInfo } from './types';
 
 /**
  * Normalize reactions object to ensure consistent structure.
@@ -48,6 +48,20 @@ export function normalizeAttachment(value: unknown): AttachmentInfo | undefined 
 }
 
 /**
+ * Validate the reply metadata attached to a message by the server.
+ * @param value - Raw replyTo data
+ * @returns A safe reply descriptor, or undefined if invalid
+ */
+export function normalizeReplyTo(value: unknown): ReplyInfo | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.id !== 'number' || !Number.isFinite(raw.id)) return undefined;
+  const user = typeof raw.user === 'string' ? raw.user : '';
+  const text = typeof raw.text === 'string' ? raw.text : '';
+  return { id: raw.id, user, text };
+}
+
+/**
  * Prepare a raw message for display by normalizing timestamps, reactions, and ephemeral status.
  * @param raw - Raw message from server
  * @returns Prepared message ready for display
@@ -85,6 +99,17 @@ export function prepareMessage(raw: Message): Message {
     msg.attachment = attachment;
   } else {
     delete (msg as any).attachment;
+  }
+
+  // Normalize reply metadata
+  const replyTo = normalizeReplyTo(raw.replyTo);
+  if (replyTo) {
+    msg.replyTo = replyTo;
+  } else {
+    delete (msg as any).replyTo;
+  }
+  if (typeof raw.threadId !== 'number' || !Number.isFinite(raw.threadId)) {
+    delete (msg as any).threadId;
   }
 
   // Normalize expiry

@@ -17,7 +17,11 @@ small team can deploy a private chat space quickly.
 - Desktop client with auto-reconnect and connection quality indicators
 - Slash commands (`/help`, `/me`, `/shrug`, `/topic`, `/status`, `/focus`,
   `/ephemeral`, `/search`)
-- Ephemeral messaging, message search, pinned messages and message editing
+- Ephemeral messaging, message search, server-synced pinned messages and message editing
+- Message replies with quoted previews and lightweight threads
+- Typing indicators and per-channel unread badges with new-message markers
+- Moderation tools: role-gated kick, ban and timed mutes
+- Direct messages between users with persistent history and unread badges
 - Screen sharing in voice channels
 - REST API for bots (see [`murmer_server/BOT_API.md`](murmer_server/BOT_API.md))
 

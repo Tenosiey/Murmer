@@ -4,7 +4,15 @@ import { VOICE_QUALITY_PRESETS, DEFAULT_VOICE_PRESET } from './constants';
 
 export type MessageBlock =
   | { kind: 'separator'; label: string; key: string }
+  | { kind: 'unread'; key: string }
   | { kind: 'message'; message: Message; key: string; links: string[] };
+
+export interface MessageBlockOptions {
+  /** Insert a "new messages" marker before the first foreign message with an id above this. */
+  unreadAfterId?: number;
+  /** The viewer's username; their own messages never count as unread. */
+  currentUser?: string | null;
+}
 
 export function pingToStrength(ms: number): number {
   return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
@@ -46,12 +54,28 @@ function linksFor(message: Message): string[] {
   return links;
 }
 
-export function buildMessageBlocks(messages: Message[]): MessageBlock[] {
+export function buildMessageBlocks(
+  messages: Message[],
+  options: MessageBlockOptions = {}
+): MessageBlock[] {
   const blocks: MessageBlock[] = [];
   let lastDateKey: string | null = null;
 
+  const { unreadAfterId, currentUser } = options;
+  let unreadMarkerPlaced = unreadAfterId === undefined || unreadAfterId <= 0;
+
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
+
+    if (
+      !unreadMarkerPlaced &&
+      typeof message.id === 'number' &&
+      message.id > unreadAfterId! &&
+      message.user !== currentUser
+    ) {
+      blocks.push({ kind: 'unread', key: 'unread-marker' });
+      unreadMarkerPlaced = true;
+    }
     const timestamp = parseTimestampValue(message.timestamp);
     if (timestamp) {
       const currentKey = dateKey(timestamp);

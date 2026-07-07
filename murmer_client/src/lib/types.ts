@@ -4,6 +4,12 @@ export interface AttachmentInfo {
   size: number;
 }
 
+export interface ReplyInfo {
+  id: number;
+  user: string;
+  text: string;
+}
+
 export interface Message {
   type: string;
   user?: string;
@@ -19,6 +25,8 @@ export interface Message {
   expiresAt?: string;
   edited?: boolean;
   editedAt?: string;
+  replyTo?: ReplyInfo;
+  threadId?: number;
   [key: string]: unknown;
 }
 
