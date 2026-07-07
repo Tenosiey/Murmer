@@ -96,83 +96,54 @@
 <style>
   .menu {
     position: fixed;
-    background: color-mix(in srgb, var(--color-surface-raised) 96%, transparent);
+    background: var(--color-surface-elevated);
     border: 1px solid var(--color-surface-outline);
-    padding: 0.45rem;
+    padding: var(--space-1);
     z-index: var(--z-modal);
     list-style: none;
     margin: 0;
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-md);
-    backdrop-filter: var(--blur-elevated);
-    min-width: 220px;
+    min-width: 200px;
+    max-height: 70vh;
+    overflow-y: auto;
   }
 
   .entry {
-    padding: 0.7rem 1rem;
+    padding: var(--space-2) var(--space-3);
     cursor: pointer;
     white-space: nowrap;
     background: none;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-xs);
     color: var(--color-on-surface);
     width: 100%;
     text-align: left;
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    font-weight: 500;
-    letter-spacing: 0.01em;
-    transition: all var(--motion-duration-short) var(--motion-easing-standard);
-    position: relative;
-    overflow: hidden;
-  }
-
-  .entry::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 3px;
-    height: 0;
-    background: linear-gradient(180deg, var(--color-primary), var(--color-secondary));
-    border-radius: 0 999px 999px 0;
-    transition: height var(--motion-duration-short) var(--motion-easing-standard);
-  }
-
-  .entry:hover::before,
-  .entry:focus-visible::before {
-    height: 70%;
+    gap: var(--space-2);
+    font-weight: 400;
+    font-size: var(--text-md);
   }
 
   .entry:hover,
   .entry:focus-visible {
-    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    background: var(--color-surface-raised);
     color: var(--color-on-surface);
-    padding-left: 1.2rem;
-  }
-
-  .entry:active {
-    transform: scale(0.98);
   }
 
   .entry-danger {
     color: var(--color-error);
   }
 
-  .entry-danger::before {
-    background: var(--color-error);
-  }
-
   .entry-danger:hover,
   .entry-danger:focus-visible {
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
+    background: color-mix(in srgb, var(--color-error) 14%, transparent);
     color: var(--color-error);
   }
 
   .entry-icon {
-    font-size: var(--text-lg);
+    font-size: var(--text-md);
     flex-shrink: 0;
   }
 
@@ -181,7 +152,6 @@
   }
 
   .entry:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--color-secondary) 45%, transparent);
-    outline-offset: -2px;
+    outline: none;
   }
 </style>

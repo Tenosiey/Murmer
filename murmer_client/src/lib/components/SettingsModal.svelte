@@ -108,7 +108,7 @@
     <div class="modal-content" on:click|stopPropagation on:keydown={handleKeydown} role="document" tabindex="0">
       <div class="modal-header">
         <h2 id="settings-title">Settings</h2>
-        <button class="close-btn" on:click={close} aria-label="Close settings">
+        <button class="icon-btn close-btn" on:click={close} aria-label="Close settings">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -118,7 +118,7 @@
 
       <div class="modal-body">
         <div class="settings-section">
-          <h3 class="section-title">🔊 Audio Settings</h3>
+          <h3 class="section-title">Audio</h3>
           
           <div class="setting-group">
             <label for="volume-slider" class="setting-label">
@@ -175,7 +175,7 @@
         </div>
 
         <div class="settings-section">
-          <h3 class="section-title">🎙️ Voice Activation</h3>
+          <h3 class="section-title">Voice activation</h3>
           
           <div class="setting-group">
             <label for="voice-mode-select" class="setting-label">Voice Mode</label>
@@ -223,7 +223,7 @@
               <div class="ptt-key-setting">
                 <button
                   id="ptt-key-button"
-                  class="ptt-key-button"
+                  class="btn ptt-key-button"
                   class:capturing={capturingPttKey}
                   on:click={capturePttKey}
                   disabled={capturingPttKey}
@@ -243,7 +243,7 @@
         </div>
 
         <div class="settings-section">
-          <h3 class="section-title">🔑 Identity</h3>
+          <h3 class="section-title">Identity</h3>
           <div class="setting-group">
             <label class="setting-label" for="public-key-display">Public Key</label>
             <div class="pubkey-row">
@@ -254,7 +254,7 @@
                 readonly
                 value={publicKey}
               />
-              <button class="copy-btn" on:click={copyPublicKey} title="Copy public key">
+              <button class="icon-btn copy-btn" on:click={copyPublicKey} title="Copy public key">
                 {#if keyCopied}
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="20,6 9,17 4,12"></polyline>
@@ -274,9 +274,9 @@
         </div>
 
         <div class="settings-section">
-          <h3 class="section-title">🔄 Updates</h3>
+          <h3 class="section-title">Updates</h3>
           <div class="setting-group">
-            <button class="update-btn" on:click={checkUpdates}>Check for Updates</button>
+            <button class="btn update-btn" on:click={checkUpdates}>Check for Updates</button>
             {#if updateMessage}
               <div class="update-message" class:success={updateMessage.includes('latest')} class:warning={updateMessage.includes('available')}>
                 {updateMessage}
@@ -287,7 +287,7 @@
       </div>
 
       <div class="modal-footer">
-        <button class="primary-btn" on:click={close}>Done</button>
+        <button class="btn btn-primary" on:click={close}>Done</button>
       </div>
     </div>
   </div>
@@ -297,102 +297,82 @@
   .modal-overlay {
     position: fixed;
     inset: 0;
-    /* A stronger dim instead of a full-screen backdrop blur — blur here is
+    /* A plain dim instead of a full-screen backdrop blur — blur here is
        very expensive in WebKitGTK (Linux) while the modal is open. */
-    background: color-mix(in srgb, var(--color-overlay) 55%, rgba(5, 10, 26, 0.88));
+    background: var(--color-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: var(--space-5);
     z-index: var(--z-modal);
-    animation: fadeIn 0.24s ease-out;
+    animation: fadeIn 0.15s ease-out;
   }
 
   .modal-content {
     background: var(--color-surface-elevated);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-lg);
     border: 1px solid var(--color-surface-outline);
     width: min(540px, 92vw);
     max-height: 82vh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    animation: slideIn 0.28s cubic-bezier(0.25, 0.9, 0.3, 1.2);
+    animation: slideIn 0.18s var(--motion-easing-standard);
   }
 
   .modal-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: clamp(1.25rem, 4vw, 1.5rem);
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
     border-bottom: 1px solid var(--color-surface-outline);
-    background: color-mix(in srgb, var(--color-surface-raised) 86%, transparent);
   }
 
   .modal-header h2 {
-    margin: 0;
-    font-size: var(--text-xl);
-    letter-spacing: -0.01em;
-  }
-
-  .close-btn {
-    background: transparent;
-    border: 1px solid transparent;
-    color: var(--color-muted);
-    cursor: pointer;
-    padding: 0.45rem;
-    border-radius: var(--radius-sm);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .close-btn:hover,
-  .close-btn:focus-visible {
-    border-color: color-mix(in srgb, var(--color-muted) 30%, transparent);
-    color: var(--color-on-surface);
-    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    font-size: var(--text-lg);
   }
 
   .modal-body {
-    padding: clamp(1.25rem, 4vw, 1.75rem);
-    max-height: 62vh;
+    padding: var(--space-5);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: var(--space-6);
   }
 
   .settings-section {
     display: grid;
-    gap: 1.25rem;
+    gap: var(--space-4);
   }
 
   .section-title {
-    margin: 0;
-    font-size: 1rem;
+    font-size: var(--text-xs);
     font-weight: 600;
-    letter-spacing: 0.03em;
-    color: var(--color-secondary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
   }
 
   .setting-group {
     display: grid;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .setting-label {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--color-on-surface);
     font-size: var(--text-md);
   }
 
   .setting-value {
     font-size: var(--text-sm);
-    color: var(--color-secondary);
+    color: var(--color-muted);
+    font-family: var(--font-mono);
   }
 
   .setting-description {
@@ -403,7 +383,7 @@
 
   .slider-container {
     position: relative;
-    height: 2.25rem;
+    height: var(--control-height);
     display: flex;
     align-items: center;
   }
@@ -413,22 +393,21 @@
     position: absolute;
     left: 0;
     right: 0;
-    height: 6px;
+    height: 4px;
     top: 50%;
     transform: translateY(-50%);
-    background: color-mix(in srgb, var(--color-surface-raised) 86%, transparent);
+    background: var(--color-surface-raised);
     border-radius: var(--radius-pill);
-    border: 1px solid var(--color-surface-outline);
     pointer-events: none;
   }
 
   .slider-track-fill {
     position: absolute;
     left: 0;
-    height: 6px;
+    height: 4px;
     top: 50%;
     transform: translateY(-50%);
-    background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+    background: var(--color-primary);
     border-radius: var(--radius-pill);
     pointer-events: none;
     z-index: 1;
@@ -440,45 +419,37 @@
     -webkit-appearance: none;
     appearance: none;
     background: transparent;
+    border: none;
     position: relative;
     z-index: 2;
     margin: 0;
     padding: 0;
+    min-height: 0;
     cursor: pointer;
+  }
+
+  .volume-slider:focus {
+    box-shadow: none;
   }
 
   .volume-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
-    background: var(--color-on-primary);
-    border: 2.5px solid var(--color-primary);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    background: var(--color-on-surface);
+    border: 2px solid var(--color-primary);
     cursor: pointer;
-    transition: transform var(--transition), box-shadow var(--transition);
-  }
-
-  .volume-slider::-webkit-slider-thumb:hover {
-    transform: scale(1.12);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
   .volume-slider::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
-    background: var(--color-on-primary);
-    border: 2.5px solid var(--color-primary);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    background: var(--color-on-surface);
+    border: 2px solid var(--color-primary);
     cursor: pointer;
-    transition: transform var(--transition), box-shadow var(--transition);
-  }
-
-  .volume-slider::-moz-range-thumb:hover {
-    transform: scale(1.12);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
   .volume-slider::-moz-range-track {
@@ -488,41 +459,22 @@
 
   .pubkey-row {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-2);
     align-items: center;
   }
 
   .pubkey-input {
     flex: 1;
-    padding: 0.65rem 0.85rem;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-surface-outline);
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
+    min-width: 0;
     color: var(--color-muted);
-    font-family: 'Courier New', Courier, monospace;
-    font-size: var(--text-sm);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
     cursor: text;
     user-select: all;
   }
 
   .copy-btn {
-    flex-shrink: 0;
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    color: var(--color-secondary);
-    cursor: pointer;
-    padding: 0.55rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: var(--transition);
-  }
-
-  .copy-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-xs);
-    border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
+    border: 1px solid var(--color-surface-outline);
   }
 
   .select-container {
@@ -531,44 +483,24 @@
 
   .device-select {
     width: 100%;
-    padding: 0.75rem 1rem;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-surface-outline);
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
-    color: var(--color-on-surface);
     appearance: none;
+    padding-right: var(--space-6);
+    border-radius: var(--radius-md);
   }
 
   .select-arrow {
     position: absolute;
-    right: 0.9rem;
+    right: var(--space-3);
     top: 50%;
     transform: translateY(-50%);
     pointer-events: none;
     color: var(--color-muted);
-  }
-
-  .ptt-key-button,
-  .update-btn,
-  .primary-btn {
-    border-radius: var(--radius-sm);
-    font-weight: 600;
-    padding: 0.75rem 1.1rem;
-    border: 1px solid transparent;
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    color: var(--color-secondary);
-    cursor: pointer;
-    transition: var(--transition);
+    display: inline-flex;
   }
 
   .ptt-key-button.capturing {
-    background: color-mix(in srgb, var(--color-warning) 26%, transparent);
-    color: var(--color-on-surface);
-  }
-
-  .ptt-key-button:disabled {
-    opacity: 0.6;
-    cursor: wait;
+    border-color: var(--color-warning);
+    color: var(--color-warning);
   }
 
   .update-btn {
@@ -588,22 +520,8 @@
     color: var(--color-warning);
   }
 
-  .primary-btn {
-    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
-    color: var(--color-on-primary);
-    border: none;
-    padding-inline: 1.5rem;
-  }
-
-  .ptt-key-button:hover,
-  .update-btn:hover,
-  .primary-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-xs);
-  }
-
   .modal-footer {
-    padding: clamp(1rem, 3vw, 1.5rem);
+    padding: var(--space-4) var(--space-5);
     border-top: 1px solid var(--color-surface-outline);
     display: flex;
     justify-content: flex-end;
@@ -620,7 +538,7 @@
 
   @keyframes slideIn {
     from {
-      transform: translateY(12px);
+      transform: translateY(8px);
       opacity: 0;
     }
     to {
@@ -629,4 +547,3 @@
     }
   }
 </style>
-

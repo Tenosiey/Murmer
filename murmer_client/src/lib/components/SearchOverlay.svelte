@@ -102,8 +102,8 @@
           bind:value={query}
           bind:this={inputEl}
         />
-        <button type="submit" class="search-submit" disabled={loading}>Search</button>
-        <button type="button" class="search-close" on:click={onClose}>Close</button>
+        <button type="submit" class="btn btn-primary search-submit" disabled={loading}>Search</button>
+        <button type="button" class="btn search-close" on:click={onClose}>Close</button>
       </form>
       {#if error}
         <p class="search-error">{error}</p>
@@ -141,79 +141,52 @@
   .search-overlay {
     position: fixed;
     inset: 0;
-    background: color-mix(in srgb, var(--color-overlay) 85%, transparent);
+    background: var(--color-overlay);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
-    padding: clamp(1.5rem, 4vw, 3rem);
+    padding: var(--space-8) var(--space-5) var(--space-5);
     z-index: var(--z-overlay);
   }
 
   .search-panel {
-    width: min(720px, 92vw);
+    width: min(640px, 92vw);
+    max-height: min(70vh, 640px);
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
-    background: color-mix(in srgb, var(--color-surface-elevated) 96%, transparent);
+    gap: var(--space-3);
+    background: var(--color-surface-elevated);
     border-radius: var(--radius-lg);
     border: 1px solid var(--color-surface-outline);
     box-shadow: var(--shadow-lg);
-    padding: clamp(1rem, 3vw, 1.75rem);
+    padding: var(--space-4);
   }
 
   .search-form {
     display: flex;
-    gap: 0.6rem;
+    gap: var(--space-2);
     flex-wrap: wrap;
   }
 
   .search-form input {
     flex: 1;
     min-width: 12rem;
-    padding: 0.65rem 0.85rem;
     border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-surface-raised) 92%, transparent);
-    color: var(--color-on-surface);
-  }
-
-  .search-form input:focus {
-    outline: 2px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
-    outline-offset: 2px;
-  }
-
-  .search-form button {
-    padding: 0.6rem 0.95rem;
-    border-radius: var(--radius-md);
-    font-weight: 600;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
-    color: var(--color-on-surface);
-    transition: background var(--transition), transform var(--transition), opacity var(--transition);
-  }
-
-  .search-form button:not([disabled]):hover {
-    transform: translateY(-1px);
-  }
-
-  .search-form button[disabled] {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-
-  .search-form .search-close {
-    background: color-mix(in srgb, var(--color-muted) 16%, transparent);
-    border-color: color-mix(in srgb, var(--color-muted) 24%, transparent);
   }
 
   .search-error {
-    color: color-mix(in srgb, var(--color-error) 85%, var(--color-on-surface) 15%);
-    font-weight: 600;
+    margin: 0;
+    color: var(--color-error);
+    font-size: var(--text-sm);
+    font-weight: 500;
   }
 
   .search-status {
+    margin: 0;
     color: var(--color-muted);
-    font-size: var(--text-md);
+    font-size: var(--text-sm);
+    text-align: center;
+    padding: var(--space-4) 0;
   }
 
   .search-results {
@@ -222,8 +195,7 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    max-height: 320px;
+    gap: var(--space-1);
     overflow-y: auto;
   }
 
@@ -232,37 +204,39 @@
     text-align: left;
     display: flex;
     flex-direction: column;
-    gap: 0.45rem;
-    border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 92%, transparent);
+    gap: var(--space-1);
+    border-radius: var(--radius-sm);
+    border: none;
+    background: transparent;
     color: var(--color-on-surface);
-    padding: 0.75rem 0.9rem;
-    transition: border-color var(--transition), transform var(--transition);
+    padding: var(--space-2) var(--space-3);
   }
 
   .search-result:hover {
-    transform: translateY(-1px);
-    border-color: color-mix(in srgb, var(--color-primary) 32%, transparent);
+    background: var(--color-surface-raised);
   }
 
   .search-result-text {
-    font-weight: 600;
+    font-weight: 500;
+    font-size: var(--text-md);
+    overflow-wrap: anywhere;
   }
 
   .search-result-meta {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.6rem;
-    font-size: var(--text-sm);
+    gap: var(--space-2);
+    font-size: var(--text-xs);
     color: var(--color-muted);
+  }
+
+  .search-result-time {
+    font-family: var(--font-mono);
   }
 
   .search-result-ephemeral {
     font-size: var(--text-xs);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: color-mix(in srgb, var(--color-warning) 75%, var(--color-on-surface) 25%);
+    font-weight: 600;
+    color: var(--color-warning);
   }
 </style>

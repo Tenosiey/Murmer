@@ -23,37 +23,19 @@
   }
 </script>
 
-<main class="login-page page-container">
-  <div class="login-grid">
-    <section class="login-hero">
+<main class="login-page">
+  <div class="login-column">
+    <header class="login-intro">
       <div class="eyebrow">Welcome back</div>
-      <h1 class="headline-hero">Sign in to Murmer</h1>
+      <h1>Sign in to Murmer</h1>
       <p class="body-muted">
-        Connect instantly with your communities using secure voice and text. Choose a display name and we will sync the rest across your servers.
+        Secure voice and text for your communities. Choose a display name to get started —
+        your identity key stays on this device.
       </p>
-    <div class="feature-grid" role="list">
-      <article class="feature-card surface-tonal surface-outline" role="listitem">
-        <span class="feature-icon" aria-hidden="true">🔒</span>
-        <div>
-          <h3>Secure presence</h3>
-          <p>Keyed sessions live locally, so you keep control of your identity.</p>
-        </div>
-      </article>
-      <article class="feature-card surface-tonal surface-outline" role="listitem">
-        <span class="feature-icon" aria-hidden="true">🎙️</span>
-        <div>
-          <h3>Voice ready</h3>
-          <p>Jump into channels instantly with adaptive voice activation modes.</p>
-        </div>
-      </article>
-    </div>
-    </section>
+    </header>
 
     <form class="login-card surface-card" on:submit|preventDefault={login} aria-labelledby="login-heading">
-      <div class="card-header">
-        <h2 id="login-heading">Your details</h2>
-        <p>We only use this name inside your active server.</p>
-      </div>
+      <h2 id="login-heading" class="sr-only">Your details</h2>
       <label class="field">
         <span>Display name</span>
         <input
@@ -65,140 +47,91 @@
           required
         />
       </label>
-      <button type="submit" class="button-primary">Continue</button>
-      <p class="hint">You can change this later from Settings.</p>
+      <button type="submit" class="btn btn-primary">Continue</button>
+      <p class="hint">Only used inside your active server. You can change it later in Settings.</p>
     </form>
+
+    <ul class="feature-list" aria-label="Highlights">
+      <li>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span>Keyed sessions live locally — you keep control of your identity.</span>
+      </li>
+      <li>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+        <span>Jump into voice channels instantly with adaptive activation modes.</span>
+      </li>
+    </ul>
   </div>
 </main>
 
 <style>
   .login-page {
-    position: relative;
-    min-height: calc(100vh - 4rem);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-5);
   }
 
-  .login-page::after {
-    content: '';
-    position: absolute;
-    inset: 3rem 2rem auto auto;
-    width: clamp(160px, 18vw, 220px);
-    height: clamp(160px, 18vw, 220px);
-    border-radius: 40%;
-    background: radial-gradient(circle, color-mix(in srgb, var(--color-primary) 28%, transparent) 0%, transparent 70%);
-    filter: blur(0.5px);
-    pointer-events: none;
-  }
-
-  .login-grid {
-    display: grid;
-    gap: clamp(2rem, 4vw, 5rem);
-    align-items: start;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 420px));
-  }
-
-  .login-hero {
+  .login-column {
+    width: min(400px, 100%);
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
-    max-width: 520px;
+    gap: var(--space-5);
   }
 
-  .feature-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1rem;
-  }
-
-  .feature-card {
+  .login-intro {
     display: flex;
-    gap: 0.85rem;
-    padding: 0.9rem 1.1rem;
-    border-radius: var(--radius-md);
-    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-2);
   }
 
-  .feature-icon {
-    font-size: 1.4rem;
+  .login-intro h1 {
+    font-size: var(--text-2xl);
   }
 
-  .feature-card h3 {
-    margin: 0 0 0.35rem;
-    font-size: var(--text-lg);
-    letter-spacing: -0.01em;
-  }
-
-  .feature-card p {
+  .login-intro p {
     margin: 0;
-    color: var(--color-muted);
-    line-height: 1.5;
   }
 
   .login-card {
-    position: relative;
-    width: min(420px, 100%);
     display: flex;
     flex-direction: column;
-    gap: 1.6rem;
-    padding: clamp(2rem, 4vw, 2.9rem);
+    gap: var(--space-4);
+    padding: var(--space-5);
   }
 
-  .login-card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 24%, transparent);
-    opacity: 0.45;
-    pointer-events: none;
-  }
-
-  .card-header {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .card-header h2 {
-    margin: 0;
-    font-size: var(--text-xl);
-    letter-spacing: -0.01em;
-  }
-
-  .card-header p {
-    margin: 0;
-    color: var(--color-muted);
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    font-weight: 600;
-    color: var(--color-on-surface-variant);
-  }
-
-  .field span {
-    font-size: var(--text-md);
-    text-transform: none;
-  }
-
-  .field input {
-    width: 100%;
+  .login-card .btn {
+    min-height: var(--control-height-lg);
   }
 
   .hint {
     margin: 0;
     color: var(--color-muted);
-    font-size: var(--text-md);
+    font-size: var(--text-sm);
   }
 
-  @media (max-width: 720px) {
-    .login-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .login-hero {
-      max-width: 100%;
-    }
+  .feature-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
   }
-  </style>
+
+  .feature-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+  }
+
+  .feature-list svg {
+    flex-shrink: 0;
+    margin-top: 0.125rem;
+    color: var(--color-primary);
+  }
+</style>

@@ -74,33 +74,36 @@
   .pinned-bar {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    border-radius: var(--radius-lg);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 90%, transparent);
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--color-surface-outline);
+    background: var(--color-surface-elevated);
   }
 
   .pinned-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    font-weight: 600;
-    color: var(--color-on-surface);
+    gap: var(--space-2);
   }
 
   .pinned-title {
-    font-size: var(--text-md);
+    font-size: var(--text-xs);
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
+    color: var(--color-muted);
   }
 
   .pinned-count {
-    font-size: var(--text-sm);
-    padding: 0.1rem 0.6rem;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    min-width: 1.125rem;
+    line-height: 1.125rem;
+    padding: 0 var(--space-1);
     border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
-    color: var(--color-on-surface);
+    text-align: center;
+    background: var(--color-surface-raised);
+    color: var(--color-on-surface-variant);
   }
 
   .pinned-list {
@@ -109,73 +112,76 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-1);
+    max-height: 10rem;
+    overflow-y: auto;
   }
 
   .pinned-item {
     display: flex;
-    gap: 0.5rem;
-    align-items: stretch;
+    gap: var(--space-1);
+    align-items: center;
   }
 
   .pinned-preview {
     flex: 1;
+    min-width: 0;
     display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
+    align-items: baseline;
+    gap: var(--space-2);
     text-align: left;
-    border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
-    padding: 0.6rem 0.75rem;
-    color: var(--color-on-surface);
+    border-radius: var(--radius-sm);
+    border: none;
+    background: transparent;
+    padding: var(--space-1) var(--space-2);
+    color: var(--color-on-surface-variant);
     cursor: pointer;
-    transition: background var(--transition), border-color var(--transition), transform var(--transition);
   }
 
   .pinned-preview:hover {
-    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
-    border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
-    transform: translateY(-1px);
+    background: var(--color-surface-raised);
   }
 
   .pinned-author {
     font-weight: 600;
-    font-size: var(--text-md);
+    font-size: var(--text-sm);
+    color: var(--color-on-surface);
+    flex-shrink: 0;
   }
 
   .pinned-text {
-    font-size: var(--text-md);
-    color: color-mix(in srgb, var(--color-on-surface) 88%, transparent);
-    word-break: break-word;
+    font-size: var(--text-sm);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .pinned-timestamp {
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     color: var(--color-muted);
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+    margin-left: auto;
   }
 
   .pinned-remove {
     border: none;
-    border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    color: var(--color-on-surface);
-    width: 30px;
-    height: 30px;
+    border-radius: var(--radius-xs);
+    background: transparent;
+    color: var(--color-muted);
+    width: 1.5rem;
+    height: 1.5rem;
+    flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: background var(--transition), transform var(--transition);
+    font-size: var(--text-xs);
   }
 
   .pinned-remove:hover {
-    background: color-mix(in srgb, var(--color-error) 22%, transparent);
-    transform: translateY(-1px);
-  }
-
-  .pinned-remove:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
-    outline-offset: 2px;
+    background: color-mix(in srgb, var(--color-error) 14%, transparent);
+    color: var(--color-error);
   }
 </style>

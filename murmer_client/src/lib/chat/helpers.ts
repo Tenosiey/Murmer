@@ -231,13 +231,3 @@ export function ensureStatus(
   return (map[user] ?? fallback) as UserStatus;
 }
 
-export function notificationButtonIcon(value: string): string {
-  switch (value) {
-    case 'mentions':
-      return '@';
-    case 'mute':
-      return '🔕';
-    default:
-      return '🔔';
-  }
-}

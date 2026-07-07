@@ -151,22 +151,17 @@
   <header class="page-header">
     <div class="title-group">
       <div class="eyebrow">Server hub</div>
-      <h1 class="headline-hero">Choose where to connect</h1>
-      <p class="body-muted">Curate the spaces you visit most often and jump in with a single tap.</p>
-      <nav class="page-tabs" aria-label="Primary navigation">
-        <a href="/servers" class="tab active" aria-current="page">Servers</a>
-        <a href="/chat" class="tab">Enter chat</a>
-      </nav>
+      <h1>Choose where to connect</h1>
+      <p class="body-muted">Curate the spaces you visit most often and jump in with a single click.</p>
     </div>
     <div class="account-card surface-card" aria-live="polite">
       <div class="avatar" aria-hidden="true">{($session.user ?? '??').slice(0, 2).toUpperCase()}</div>
       <div class="account-meta">
         <span class="label">Signed in as</span>
         <strong>{$session.user}</strong>
-        <span class="meta-sub">Stay visible across devices</span>
       </div>
       <div class="quick-actions">
-        <button type="button" class="ghost" on:click={openSettings}>
+        <button type="button" class="icon-btn" on:click={openSettings}>
           <svg
             width="20"
             height="20"
@@ -185,7 +180,7 @@
           </svg>
           <span class="sr-only">Open settings</span>
         </button>
-        <button type="button" class="ghost danger" on:click={logout}>
+        <button type="button" class="icon-btn danger" on:click={logout}>
           <svg
             width="20"
             height="20"
@@ -218,19 +213,19 @@
       <p>Use a Murmer server address or invite URL. Passwords stay on your device.</p>
     </div>
     <form class="add" on:submit|preventDefault={add}>
+      <label class="field address-field">
+        <span>Address</span>
+        <input bind:value={newServer} placeholder="host:port or wss://example" required />
+      </label>
       <label class="field">
         <span>Custom name</span>
         <input bind:value={newName} placeholder="Community" />
       </label>
       <label class="field">
-        <span>Address</span>
-        <input bind:value={newServer} placeholder="host:port or wss://example" required />
-      </label>
-      <label class="field">
         <span>Password</span>
         <input type="password" bind:value={newPassword} placeholder="Optional" />
       </label>
-      <button type="submit" class="button-primary primary-action">Save server</button>
+      <button type="submit" class="btn btn-primary primary-action">Save server</button>
     </form>
   </section>
 
@@ -240,7 +235,7 @@
       <span class="count">{$servers.length} saved</span>
     </header>
     {#if $servers.length === 0}
-      <div class="empty-state surface-tonal surface-outline">
+      <div class="empty-state surface-card">
         <h3>No servers yet</h3>
         <p>Add your first server to start chatting and sharing voice rooms.</p>
       </div>
@@ -255,13 +250,12 @@
             <h3>{server.name}</h3>
             <p class="meta" title={server.url}>{server.url}</p>
             <div class="card-actions">
-              <button type="button" class="secondary" on:click={() => join(server)}>
-                <span aria-hidden="true">↗</span>
-                <span>Join</span>
+              <button type="button" class="btn btn-primary join" on:click={() => join(server)}>
+                Join
               </button>
               <button
                 type="button"
-                class="ghost"
+                class="icon-btn"
                 on:click={() => copyInvite(server)}
                 title={copiedServer === server.url ? 'Copied!' : 'Copy invite link'}
               >
@@ -272,7 +266,7 @@
                 {/if}
                 <span class="sr-only">{copiedServer === server.url ? 'Copied' : 'Copy invite link'}</span>
               </button>
-              <button type="button" class="ghost danger" on:click={() => removeServer(server.url)}>
+              <button type="button" class="icon-btn danger" on:click={() => removeServer(server.url)}>
                 <svg
                   width="18"
                   height="18"
@@ -302,239 +296,101 @@
 
 
 <style>
-  .servers-page {
-    gap: clamp(2rem, 5vw, 3.75rem);
-  }
-
   .page-header {
     display: flex;
-    gap: clamp(2rem, 5vw, 4rem);
-    align-items: center;
+    gap: var(--space-5);
+    align-items: flex-start;
     flex-wrap: wrap;
     justify-content: space-between;
   }
 
   .title-group {
-    max-width: 560px;
+    max-width: 32rem;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-2);
   }
 
-  .page-tabs {
-    display: inline-flex;
-    gap: 0.5rem;
-    padding: 0.4rem;
-    border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-surface-elevated) 75%, transparent);
-    border: 1px solid var(--color-surface-outline);
-    width: fit-content;
+  .title-group h1 {
+    font-size: var(--text-2xl);
   }
 
-  .page-tabs .tab {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.45rem 1.1rem;
-    border-radius: var(--radius-pill);
-    color: var(--color-muted);
-    text-decoration: none;
-    font-weight: 600;
-    transition: all var(--transition);
-  }
-
-  .page-tabs .tab::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 20%, transparent), transparent);
-    opacity: 0;
-    transition: opacity var(--transition);
-  }
-
-  .page-tabs .tab:hover::after {
-    opacity: 1;
-  }
-
-  .page-tabs .tab.active {
-    color: var(--color-on-surface);
-    background: var(--color-surface-raised);
-    box-shadow: var(--shadow-xs);
+  .title-group p {
+    margin: 0;
   }
 
   .account-card {
-    position: relative;
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: 1.1rem;
+    display: flex;
+    gap: var(--space-3);
     align-items: center;
-    padding: 1.4rem 1.6rem;
-    overflow: hidden;
-    min-width: 260px;
-  }
-
-  .account-card::after {
-    content: '';
-    position: absolute;
-    inset: -40% -20% 40% auto;
-    background: radial-gradient(circle at top right, color-mix(in srgb, var(--color-primary) 40%, transparent), transparent 60%);
-    pointer-events: none;
+    padding: var(--space-3) var(--space-4);
   }
 
   .avatar {
-    width: 3rem;
-    height: 3rem;
-    border-radius: 1rem;
+    width: var(--control-height-lg);
+    height: var(--control-height-lg);
+    border-radius: var(--radius-md);
     display: grid;
     place-items: center;
-    font-weight: 700;
-    font-size: var(--text-lg);
-    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
-    color: var(--color-on-primary);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    font-weight: 600;
+    font-size: var(--text-md);
+    background: var(--color-primary-container);
+    color: var(--color-primary);
+    flex-shrink: 0;
   }
 
   .account-meta {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
-    position: relative;
-    z-index: 1;
+    gap: var(--space-1);
+    margin-right: var(--space-3);
   }
 
   .account-meta .label {
     font-size: var(--text-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
     color: var(--color-muted);
   }
 
   .account-meta strong {
-    font-size: var(--text-lg);
-    letter-spacing: -0.01em;
-  }
-
-  .meta-sub {
-    font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--color-muted) 90%, transparent);
+    font-size: var(--text-md);
   }
 
   .quick-actions {
     display: flex;
-    gap: 0.6rem;
-    position: relative;
-    z-index: 1;
-  }
-
-  .ghost,
-  .secondary {
-    border-radius: var(--radius-sm);
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    padding: 0.7rem 1.15rem;
-    transition: all var(--transition);
-    border: 1px solid color-mix(in srgb, var(--color-outline-strong) 80%, transparent);
-    background: color-mix(in srgb, var(--color-surface-raised) 88%, transparent);
-    color: color-mix(in srgb, var(--color-on-surface) 90%, var(--color-muted) 10%);
-  }
-
-  .secondary {
-    background: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface-elevated) 82%);
-    color: var(--color-on-surface);
-    border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
-  }
-
-  .ghost svg {
-    width: 1.1rem;
-    height: 1.1rem;
-  }
-
-  .ghost:hover,
-  .secondary:hover,
-  .button-primary:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-xs);
-  }
-
-  .ghost.danger {
-    color: var(--color-error);
-    border-color: color-mix(in srgb, var(--color-error) 45%, transparent);
-    background: color-mix(in srgb, var(--color-error) 16%, transparent);
-  }
-
-  .ghost.danger:hover {
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-error) 55%, transparent);
-  }
-
-  .quick-actions .ghost {
-    width: 2.75rem;
-    height: 2.75rem;
-    border-radius: 0.95rem;
-    padding: 0.55rem;
+    gap: var(--space-1);
   }
 
   .create-card {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: clamp(1.5rem, 4vw, 2.8rem);
-    padding: clamp(2rem, 4vw, 2.75rem);
-    position: relative;
-    overflow: hidden;
-  }
-
-  .create-card::after {
-    content: '';
-    position: absolute;
-    inset: auto auto -40% -30%;
-    width: 360px;
-    height: 360px;
-    background: radial-gradient(circle, color-mix(in srgb, var(--color-tertiary) 22%, transparent) 0%, transparent 70%);
-    pointer-events: none;
+    grid-template-columns: minmax(220px, 1fr) 2fr;
+    gap: var(--space-5);
+    padding: var(--space-5);
   }
 
   .card-copy {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    position: relative;
-    z-index: 1;
+    gap: var(--space-2);
   }
 
   .card-copy h2 {
-    margin: 0;
-    font-size: var(--text-xl);
-    letter-spacing: -0.01em;
+    font-size: var(--text-lg);
   }
 
   .card-copy p {
     margin: 0;
     color: var(--color-muted);
-    line-height: 1.5;
   }
 
   .add {
     display: grid;
-    gap: 1rem;
-    position: relative;
-    z-index: 1;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+    align-items: end;
   }
 
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    font-weight: 600;
-    color: var(--color-on-surface-variant);
-  }
-
-  .field span {
-    font-size: var(--text-sm);
+  .add .address-field {
+    grid-column: 1 / -1;
   }
 
   .primary-action {
@@ -544,36 +400,33 @@
   .server-list {
     display: flex;
     flex-direction: column;
-    gap: 1.6rem;
+    gap: var(--space-4);
   }
 
   .section-header {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    gap: 1rem;
+    gap: var(--space-3);
   }
 
   .section-header h2 {
-    margin: 0;
-    font-size: var(--text-xl);
+    font-size: var(--text-lg);
   }
 
   .count {
-    font-size: var(--text-md);
+    font-size: var(--text-sm);
     color: var(--color-muted);
   }
 
   .empty-state {
-    padding: clamp(2.4rem, 6vw, 3.6rem);
-    border-radius: var(--radius-lg);
+    padding: var(--space-7) var(--space-5);
     text-align: center;
     display: grid;
-    gap: 0.75rem;
+    gap: var(--space-2);
   }
 
   .empty-state h3 {
-    margin: 0;
     font-size: var(--text-lg);
   }
 
@@ -584,110 +437,71 @@
 
   .grid {
     display: grid;
-    gap: clamp(1.3rem, 3vw, 1.9rem);
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: var(--space-4);
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   }
 
   .server-card {
-    position: relative;
-    padding: 1.6rem;
+    padding: var(--space-4);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    outline: none;
-  }
-
-  .server-card::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    border: 1px solid color-mix(in srgb, var(--color-surface-outline) 65%, transparent);
-    opacity: 0.4;
-    pointer-events: none;
-  }
-
-  .server-card:focus-visible {
-    border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary) 22%, transparent);
+    gap: var(--space-2);
   }
 
   .server-card h3 {
-    margin: 0;
     font-size: var(--text-lg);
-    letter-spacing: -0.01em;
-    position: relative;
-    z-index: 1;
   }
 
   .meta {
     margin: 0;
     color: var(--color-muted);
     font-family: var(--font-mono);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    position: relative;
-    z-index: 1;
   }
 
   .status {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     color: var(--color-muted);
     font-size: var(--text-sm);
-    position: relative;
-    z-index: 1;
   }
 
   .card-actions {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    position: relative;
-    z-index: 1;
-    margin-top: auto;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
   }
 
-  .card-actions .secondary {
+  .card-actions .join {
     flex: 1;
   }
 
-  .card-actions .ghost {
-    width: 2.6rem;
-    height: 2.6rem;
-    border-radius: 0.85rem;
-    padding: 0.45rem;
-  }
-
-  .card-actions .secondary span:first-child {
-    font-size: var(--text-lg);
-  }
-
   .error-banner {
-    padding: 0.75rem 1.1rem;
+    padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-md);
     font-size: var(--text-md);
-    font-weight: 600;
+    font-weight: 500;
     border: 1px solid color-mix(in srgb, var(--color-error) 35%, transparent);
     background: color-mix(in srgb, var(--color-error) 12%, transparent);
     color: var(--color-error);
   }
 
-  @media (max-width: 640px) {
-    .account-card {
-      width: 100%;
-      grid-template-columns: auto 1fr;
-      grid-template-areas:
-        'avatar meta'
-        'actions actions';
+  @media (max-width: 720px) {
+    .create-card {
+      grid-template-columns: 1fr;
     }
 
-    .quick-actions {
-      grid-area: actions;
-      justify-content: flex-start;
+    .add {
+      grid-template-columns: 1fr;
+    }
+
+    .account-card {
+      width: 100%;
     }
   }
 </style>

@@ -132,7 +132,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 1.5rem;
+    padding: var(--space-3) var(--space-4);
     background: var(--color-surface-raised);
     border-bottom: 1px solid var(--color-surface-outline);
   }
@@ -146,7 +146,7 @@
 
   .screenshare-controls {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-1);
   }
 
   .screenshare-controls button {
@@ -154,7 +154,7 @@
     border: none;
     color: var(--color-muted);
     cursor: pointer;
-    padding: 0.5rem;
+    padding: var(--space-2);
     border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
@@ -163,7 +163,7 @@
   }
 
   .screenshare-controls button:hover {
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    background: var(--color-surface-raised);
     color: var(--color-on-surface);
   }
 

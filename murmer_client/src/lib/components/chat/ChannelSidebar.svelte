@@ -151,7 +151,9 @@
       {#each group.voiceChannels as ch (ch.id)}
         <div class="voice-group">
           <button on:click={() => onJoinVoiceChannel(ch.id)} on:contextmenu={(e) => onOpenChannelMenu(e, ch.id, true)}>
-            <span class="chan-icon">&#x1f50a;</span>
+            <span class="chan-icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+            </span>
             <span class="voice-channel-name">{ch.name}</span>
             <span class="voice-channel-quality">{formatVoiceQuality(ch)}</span>
           </button>
@@ -219,7 +221,9 @@
       <div class="voice-controls-buttons">
         {#if inVoice}
           <button class="voice-control-btn leave" on:click={onLeaveVoice}>
-            <span class="btn-icon">⬅️</span>
+            <span class="btn-icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </span>
             <span class="btn-text">Leave Voice</span>
           </button>
         {/if}
@@ -234,16 +238,10 @@
           title={!inVoice ? 'Join a voice channel first' : $microphoneMuted ? 'Unmute Microphone' : 'Mute Microphone'}
         >
           <span class="btn-icon">
-            {#if !inVoice}
-              🎤
-            {:else if $microphoneMuted}
-              🎤🚫
-            {:else if $voiceMode === 'vad' && $voiceActivity}
-              🎤✨
-            {:else if $voiceMode === 'ptt' && $isPttActive}
-              🎤🔥
+            {#if inVoice && $microphoneMuted}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="2" y1="2" x2="22" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
             {:else}
-              🎤
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
             {/if}
           </span>
           <span class="btn-text">
@@ -270,7 +268,13 @@
           disabled={!inVoice}
           title={!inVoice ? 'Join a voice channel first' : $outputMuted ? 'Unmute Output' : 'Mute Output'}
         >
-          <span class="btn-icon">{inVoice && $outputMuted ? '🔇' : '🔊'}</span>
+          <span class="btn-icon">
+            {#if inVoice && $outputMuted}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>
+            {:else}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+            {/if}
+          </span>
           <span class="btn-text">{!inVoice ? 'Speaker' : $outputMuted ? 'Unmute Out' : 'Mute Out'}</span>
         </button>
       </div>
@@ -283,47 +287,51 @@
 </div>
 
 <style>
+  /* Left pane: sits on the app background, no card chrome. */
   .channels {
-    width: clamp(220px, 18vw, 260px);
-    background: color-mix(in srgb, var(--color-surface-elevated) 86%, transparent);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--color-surface-outline);
-    box-shadow: var(--shadow-xs);
-    padding: clamp(1rem, 2vw, 1.25rem);
+    width: clamp(200px, 18vw, 280px);
+    flex-shrink: 0;
+    background: var(--color-bg);
+    padding: var(--space-3) var(--space-2);
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 1px;
     overflow-y: auto;
   }
 
   .channels .section {
-    margin: 0.6rem 0 0.15rem 0;
+    margin: var(--space-3) var(--space-2) var(--space-1);
     font-size: var(--text-xs);
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.08em;
     color: var(--color-muted);
+  }
+
+  .channels .section:first-child {
+    margin-top: 0;
   }
 
   .category-header {
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: var(--space-1);
     user-select: none;
-    border-radius: var(--radius-sm, 4px);
-    padding: 0.15rem 0.25rem;
-    transition: background 0.15s;
+    border-radius: var(--radius-xs);
+    padding: var(--space-1) var(--space-2);
+    margin-inline: 0;
+    transition: color var(--transition);
   }
 
   .category-header:hover {
-    background: color-mix(in srgb, var(--color-surface-elevated) 60%, transparent);
+    color: var(--color-on-surface-variant);
   }
 
   .category-chevron {
     display: inline-block;
-    font-size: 0.6rem;
-    transition: transform 0.15s ease;
+    font-size: 0.625rem;
+    transition: transform var(--motion-duration-medium) var(--motion-easing-standard);
     flex-shrink: 0;
   }
 
@@ -333,27 +341,39 @@
 
   .channels button {
     width: 100%;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid transparent;
+    min-height: 2rem;
+    padding: var(--space-1) var(--space-2);
+    border: none;
     background: transparent;
     color: var(--color-muted);
     text-align: left;
     border-radius: var(--radius-sm);
-    font-weight: 600;
+    font-weight: 500;
     font-size: var(--text-md);
-    letter-spacing: 0.01em;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     position: relative;
   }
 
+  .channels button:hover {
+    background: var(--color-surface-elevated);
+    color: var(--color-on-surface-variant);
+  }
+
+  .channels button.active {
+    background: var(--color-surface-raised);
+    color: var(--color-on-surface);
+  }
+
   .chan-icon {
-    font-size: 1rem;
-    opacity: 0.65;
-    width: 1.2rem;
-    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    opacity: 0.7;
     flex-shrink: 0;
+    font-weight: 500;
   }
 
   .chan-name {
@@ -366,24 +386,25 @@
 
   .channels button.unread {
     color: var(--color-on-surface);
-    font-weight: 700;
+    font-weight: 600;
   }
 
   .unread-badge {
     flex-shrink: 0;
-    min-width: 1.35rem;
-    padding: 0.05rem 0.4rem;
+    min-width: 1.25rem;
+    padding: 0 var(--space-1);
     border-radius: var(--radius-pill);
     text-align: center;
     font-size: var(--text-xs);
-    font-weight: 700;
-    background: color-mix(in srgb, var(--color-primary) 30%, transparent);
-    color: var(--color-on-surface);
+    font-weight: 600;
+    line-height: 1.125rem;
+    background: var(--color-surface-raised);
+    color: var(--color-on-surface-variant);
   }
 
   .unread-badge.mention {
-    background: color-mix(in srgb, var(--color-error) 70%, transparent);
-    color: var(--color-on-primary, #fff);
+    background: var(--color-error);
+    color: var(--color-surface);
   }
 
   .voice-group {
@@ -394,19 +415,18 @@
   .voice-user-list {
     list-style: none;
     margin: 0;
-    padding: 0.2rem 0 0 1.6rem;
+    padding: 0 0 var(--space-1) var(--space-5);
     display: flex;
     flex-direction: column;
-    gap: 0.15rem;
   }
 
   .voice-user-list li {
     display: flex;
     align-items: center;
-    gap: 0.45rem;
-    padding: 0.3rem 0.55rem;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-xs);
-    font-size: var(--text-md);
+    font-size: var(--text-sm);
     transition: background var(--transition);
   }
 
@@ -415,7 +435,7 @@
   }
 
   .voice-user-list li:hover {
-    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+    background: var(--color-surface-elevated);
   }
 
   .voice-user-list li.talking {
@@ -427,161 +447,161 @@
     height: 0.5rem;
     border-radius: 50%;
     background: var(--color-success);
-    opacity: 0.5;
+    opacity: 0.4;
     flex-shrink: 0;
     transition: opacity 0.15s ease-in, box-shadow 0.15s ease-in;
   }
 
   .voice-user-list .status.voice.talking {
     opacity: 1;
-    box-shadow: 0 0 6px color-mix(in srgb, var(--color-success) 50%, transparent);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--color-success) 60%, transparent);
     transition: opacity 0.05s ease-out, box-shadow 0.05s ease-out;
   }
 
   .voice-user-list .username {
-    font-weight: 600;
-    font-size: var(--text-sm);
-    color: var(--color-on-surface);
+    font-weight: 500;
+    color: var(--color-on-surface-variant);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .voice-user-list .role {
     font-size: var(--text-xs);
-    font-weight: 600;
+    font-weight: 500;
     opacity: 0.75;
+    flex-shrink: 0;
   }
 
   .voice-channel-name {
     flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .voice-channel-quality {
     margin-left: auto;
     font-size: var(--text-xs);
-    font-weight: 600;
-    color: color-mix(in srgb, var(--color-muted) 85%, transparent);
+    font-weight: 500;
+    color: var(--color-muted);
+    flex-shrink: 0;
   }
 
-  .channels button:hover {
-    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-    color: var(--color-on-surface);
-  }
-
-  .channels button.active {
-    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
-    color: var(--color-on-surface);
-    border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 24%, transparent);
-  }
-
+  /* Voice controls dock at the bottom of the pane. */
   .voice-controls-container {
     margin-top: auto;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--color-surface-outline);
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+    padding-top: var(--space-3);
   }
 
   .voice-controls-panel {
     border-radius: var(--radius-md);
-    padding: 0.75rem;
-    background: color-mix(in srgb, var(--color-surface-raised) 86%, transparent);
+    padding: var(--space-2);
+    background: var(--color-surface-elevated);
     border: 1px solid var(--color-surface-outline);
     display: flex;
     flex-direction: column;
-    gap: 0.55rem;
+    gap: var(--space-2);
   }
 
   .voice-controls-header {
     font-size: var(--text-xs);
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-muted);
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
+    padding: var(--space-1) var(--space-1) 0;
   }
 
   .voice-controls-buttons {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: var(--space-1);
   }
 
   .voice-control-btn {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    padding: 0.5rem 0.7rem;
+    gap: var(--space-2);
+    min-height: var(--control-height);
+    padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
-    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-    color: var(--color-on-surface);
-    font-weight: 600;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-on-surface-variant);
+    font-weight: 500;
     font-size: var(--text-sm);
     width: 100%;
   }
 
+  .voice-control-btn:hover:not(:disabled) {
+    background: var(--color-surface-raised);
+    color: var(--color-on-surface);
+  }
+
   .btn-icon {
-    font-size: var(--text-md);
-    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    flex-shrink: 0;
   }
 
   .btn-text {
     font-size: var(--text-sm);
   }
 
-  .voice-control-btn:hover {
-    border-color: color-mix(in srgb, var(--color-primary) 32%, transparent);
-  }
-
   .voice-control-btn.leave {
-    border-color: color-mix(in srgb, var(--color-error) 45%, transparent);
     color: var(--color-error);
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
   }
 
   .voice-control-btn.leave:hover {
-    border-color: color-mix(in srgb, var(--color-error) 60%, transparent);
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
+    color: var(--color-error);
   }
 
   .voice-control-btn.disabled {
-    opacity: 0.4;
+    opacity: 0.45;
     cursor: default;
     pointer-events: none;
   }
 
   .voice-control-btn.mute.muted {
-    background: color-mix(in srgb, var(--color-error) 15%, transparent);
-    border-color: color-mix(in srgb, var(--color-error) 45%, transparent);
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
     color: var(--color-error);
   }
 
   .voice-control-btn.mute.active,
   .voice-control-btn.mute.ptt-active {
-    background: color-mix(in srgb, var(--color-success) 18%, transparent);
-    border-color: color-mix(in srgb, var(--color-success) 40%, transparent);
+    background: color-mix(in srgb, var(--color-success) 12%, transparent);
     color: var(--color-success);
   }
 
   .screenshare-indicator {
     background: transparent;
     border: none;
-    padding: 0.25rem;
+    padding: var(--space-1);
     cursor: pointer;
     color: var(--color-primary);
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-sm);
-    transition: all 0.2s;
+    border-radius: var(--radius-xs);
+    flex-shrink: 0;
+    width: auto;
+    min-height: 0;
   }
 
   .screenshare-indicator:hover {
-    background: color-mix(in srgb, var(--color-primary) 16%, transparent);
-    color: var(--color-on-primary);
+    background: var(--color-primary-container);
+    color: var(--color-primary);
   }
 
   .screenshare-indicator svg {
-    width: 1rem;
-    height: 1rem;
+    width: 0.875rem;
+    height: 0.875rem;
   }
 </style>

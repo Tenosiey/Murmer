@@ -1098,7 +1098,7 @@
     const target = userRoleMenuTarget;
     const currentRole = $roles[target]?.role;
     const items: { label: string; action: () => void; danger?: boolean; icon?: string }[] = [];
-    items.push({ label: 'Send Message', icon: '✉️', action: () => openDm(target) });
+    items.push({ label: 'Send Message', action: () => openDm(target) });
     if (currentUserIsOwner) {
       for (const role of ASSIGNABLE_ROLES) {
         if (currentRole?.toLowerCase() === role.toLowerCase()) continue;
@@ -1109,14 +1109,14 @@
       }
     }
     if (canModerate(target)) {
-      items.push({ label: 'Mute (10 min)', icon: '🔇', action: () => muteUser(target, 600) });
-      items.push({ label: 'Mute (1 hour)', icon: '🔇', action: () => muteUser(target, 3600) });
-      items.push({ label: 'Mute (until lifted)', icon: '🔇', action: () => muteUser(target) });
-      items.push({ label: 'Unmute', icon: '🔊', action: () => unmuteUser(target) });
+      items.push({ label: 'Mute (10 min)', action: () => muteUser(target, 600) });
+      items.push({ label: 'Mute (1 hour)', action: () => muteUser(target, 3600) });
+      items.push({ label: 'Mute (until lifted)', action: () => muteUser(target) });
+      items.push({ label: 'Unmute', action: () => unmuteUser(target) });
       if ($onlineUsers.includes(target)) {
-        items.push({ label: 'Kick User', icon: '👢', danger: true, action: () => kickUser(target) });
+        items.push({ label: 'Kick User', danger: true, action: () => kickUser(target) });
       }
-      items.push({ label: 'Ban User', icon: '🔨', danger: true, action: () => banUser(target) });
+      items.push({ label: 'Ban User', danger: true, action: () => banUser(target) });
       items.push({ label: 'Unban User', action: () => unbanUser(target) });
     }
     return items;
@@ -1599,8 +1599,8 @@
                     <span class="reply-quote-text">{reply.text || 'Original message'}</span>
                   </button>
                 {/if}
-                <span class="timestamp">{block.message.time}</span>
                 <span class="username">{block.message.user}</span>
+                <span class="timestamp">{block.message.time}</span>
                 {#if block.message.bot}
                   <span class="bot-badge">BOT</span>
                 {/if}
@@ -1643,7 +1643,9 @@
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      <span class="attachment-icon" aria-hidden="true">📎</span>
+                      <span class="attachment-icon" aria-hidden="true">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                      </span>
                       <span class="attachment-details">
                         <span class="attachment-name">{block.message.attachment.name}</span>
                         {#if block.message.attachment.size > 0}
@@ -1669,10 +1671,20 @@
                       <button
                         type="button"
                         class="message-action"
+                        on:click={() => addReactionPrompt(block.message.id as number)}
+                        title="Add reaction"
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                        <span class="sr-only">Add reaction</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="message-action"
                         on:click={() => startReply(block.message)}
                         title="Reply"
                       >
-                        ↩️
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+                        <span class="sr-only">Reply</span>
                       </button>
                       {#if canEditMessage(block.message)}
                         <button
@@ -1681,7 +1693,8 @@
                           on:click={() => editChatMessage(block.message)}
                           title="Edit message"
                         >
-                          ✏️
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
+                          <span class="sr-only">Edit message</span>
                         </button>
                       {/if}
                       {#if canPinMessage(block.message)}
@@ -1692,7 +1705,8 @@
                           on:click={() => togglePinMessage(block.message)}
                           title={isMessagePinned(block.message) ? 'Unpin message' : 'Pin message'}
                         >
-                          📌
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+                          <span class="sr-only">{isMessagePinned(block.message) ? 'Unpin message' : 'Pin message'}</span>
                         </button>
                       {/if}
                       {#if canDeleteMessage(block.message)}
@@ -1702,30 +1716,38 @@
                           on:click={() => deleteChatMessage(block.message)}
                           title="Delete message"
                         >
-                          🗑️
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          <span class="sr-only">Delete message</span>
                         </button>
                       {/if}
                     </div>
                   {/if}
                 </div>
                 {#if typeof block.message.id === 'number'}
-                  <div class="reactions">
-                    {#each reactionEntries(block.message) as reaction (reaction.emoji)}
+                  {@const reactions = reactionEntries(block.message)}
+                  {#if reactions.length > 0}
+                    <div class="reactions">
+                      {#each reactions as reaction (reaction.emoji)}
+                        <button
+                          class="reaction-chip"
+                          class:active={reaction.users.includes($session.user ?? '')}
+                          on:click={() =>
+                            toggleReaction(block.message.id as number, reaction.emoji, reaction.users)}
+                          title={reaction.users.join(', ')}
+                        >
+                          <span class="emoji">{reaction.emoji}</span>
+                          <span class="count">{reaction.users.length}</span>
+                        </button>
+                      {/each}
                       <button
-                        class="reaction-chip"
-                        class:active={reaction.users.includes($session.user ?? '')}
-                        on:click={() =>
-                          toggleReaction(block.message.id as number, reaction.emoji, reaction.users)}
-                        title={reaction.users.join(', ')}
+                        class="reaction-chip add"
+                        on:click={() => addReactionPrompt(block.message.id as number)}
+                        title="Add reaction"
                       >
-                        <span class="emoji">{reaction.emoji}</span>
-                        <span class="count">{reaction.users.length}</span>
+                        +
                       </button>
-                    {/each}
-                    <button class="reaction-chip add" on:click={() => addReactionPrompt(block.message.id as number)}>
-                      +
-                    </button>
-                  </div>
+                    </div>
+                  {/if}
                   {#if threadReplyCounts.get(block.message.id)}
                     {@const replyCount = threadReplyCounts.get(block.message.id) ?? 0}
                     <button
@@ -1734,7 +1756,8 @@
                       on:click={() => openThread(block.message.id as number)}
                       title="Open thread"
                     >
-                      💬 {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                      {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
                     </button>
                   {/if}
                 {/if}
@@ -1800,7 +1823,7 @@
                 <img src={previewUrl} alt="preview" class="preview" />
               {:else}
                 <span class="file-chip" title={pendingFile.name}>
-                  <span aria-hidden="true">📎</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                   <span class="file-chip-name">{pendingFile.name}</span>
                   {#if pendingFile.size > 0}
                     <span class="file-chip-size">{formatFileSize(pendingFile.size)}</span>
@@ -1879,7 +1902,7 @@
                     <img src={tm.image as string} alt="" />
                   {:else if tm.attachment}
                     <a href={tm.attachment.url} target="_blank" rel="noopener noreferrer">
-                      📎 {tm.attachment.name}
+                      {tm.attachment.name}
                     </a>
                   {/if}
                 </div>
@@ -1902,7 +1925,10 @@
       {#if $dmActivePeer}
         <aside class="thread-panel" aria-label="Direct messages">
           <header class="thread-header">
-            <span>✉️ {$dmActivePeer}</span>
+            <span class="thread-header-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+              {$dmActivePeer}
+            </span>
             <button
               type="button"
               class="thread-close"
@@ -1984,8 +2010,8 @@
         </p>
         <p class="connection-detail">{$selectedServer ?? 'Unknown server'}</p>
         <div class="connection-actions">
-          <button type="button" class="connection-retry" on:click={retryConnect}>Try again</button>
-          <button type="button" class="connection-back" on:click={() => leaveToServers()}>
+          <button type="button" class="btn btn-primary" on:click={retryConnect}>Try again</button>
+          <button type="button" class="btn" on:click={() => leaveToServers()}>
             Back to servers
           </button>
         </div>
@@ -1995,15 +2021,13 @@
 {/if}
 
 <style>
+  /* App shell: three full-height panes separated by 1px borders. The
+     sidebars sit on --color-bg, the chat pane on --color-surface. */
   .page {
     display: flex;
     height: 100vh;
-    padding: clamp(1.25rem, 2.5vw, 1.75rem);
-    gap: clamp(0.75rem, 2vw, 1rem);
-  }
-
-  .page.focus {
-    padding-inline: clamp(1.5rem, 4vw, 3rem);
+    background: var(--color-bg);
+    overflow: hidden;
   }
 
   /* .channels/.sidebar are the root elements of ChannelSidebar/UserList;
@@ -2015,36 +2039,34 @@
   }
 
   .page.focus .chat {
-    max-width: 1080px;
+    max-width: 60rem;
     margin: 0 auto;
+    border-left: 1px solid var(--color-surface-outline);
+    border-right: 1px solid var(--color-surface-outline);
   }
 
   .resizer {
-    width: 6px;
+    width: 5px;
+    margin: 0 -2px;
     cursor: col-resize;
     position: relative;
     flex-shrink: 0;
+    z-index: 5;
   }
 
-  .resizer::after {
-    content: '';
-    position: absolute;
-    inset: calc(50% - 18px) auto;
-    left: 50%;
-    width: 2px;
-    height: 36px;
-    border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-on-surface) 12%, transparent);
-    transform: translateX(-50%);
+  .resizer:hover {
+    background: color-mix(in srgb, var(--color-primary) 35%, transparent);
   }
 
   .chat {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 0.9rem;
     min-width: 0;
     position: relative;
+    background: var(--color-surface);
+    border-left: 1px solid var(--color-surface-outline);
+    border-right: 1px solid var(--color-surface-outline);
   }
 
   /* pointer-events: none keeps drag events flowing to .chat underneath. */
@@ -2055,31 +2077,24 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-lg);
-    border: 2px dashed color-mix(in srgb, var(--color-primary) 55%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 72%, transparent);
+    border: 2px dashed var(--color-primary);
+    background: color-mix(in srgb, var(--color-surface) 80%, transparent);
     pointer-events: none;
   }
 
   .drop-overlay span {
-    padding: 0.6rem 1.2rem;
-    border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-elevated);
+    border: 1px solid var(--color-surface-outline);
     color: var(--color-on-surface);
-    font-weight: 700;
+    font-weight: 600;
     font-size: var(--text-md);
-    letter-spacing: 0.02em;
   }
 
   .messages-shell {
     flex: 1;
     min-height: 0;
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-raised) 90%, transparent);
-    border: 1px solid var(--color-surface-outline);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    overflow: hidden;
     display: flex;
   }
 
@@ -2089,46 +2104,36 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 0.8rem;
-    padding: clamp(0.9rem, 2vw, 1.25rem);
+    padding: var(--space-4) 0;
   }
 
   .day-separator {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
+    margin: var(--space-4) var(--space-4) var(--space-2);
     color: var(--color-muted);
-    font-size: var(--text-sm);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-size: var(--text-xs);
+    font-weight: 600;
   }
 
   .day-separator::before,
   .day-separator::after {
     content: '';
     flex: 1;
-    border-top: 1px solid color-mix(in srgb, var(--color-surface-outline) 70%, transparent);
-    opacity: 0.7;
-  }
-
-  .day-separator span {
-    padding: 0.2rem 0.75rem;
-    border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-surface-elevated) 78%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    color: var(--color-muted);
-    font-weight: 600;
+    border-top: 1px solid var(--color-surface-outline);
   }
 
   .unread-divider {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
+    margin: var(--space-2) var(--space-4);
     color: var(--color-error);
     font-size: var(--text-xs);
-    letter-spacing: 0.1em;
+    font-weight: 600;
     text-transform: uppercase;
-    font-weight: 700;
+    letter-spacing: 0.06em;
   }
 
   .unread-divider::before,
@@ -2138,57 +2143,60 @@
     border-top: 1px solid color-mix(in srgb, var(--color-error) 55%, transparent);
   }
 
-  .unread-divider span {
-    padding: 0.1rem 0.6rem;
-    border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-error) 16%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-error) 40%, transparent);
-  }
-
+  /* Messages are flat rows; hover reveals a floating action toolbar. */
   .message {
-    display: grid;
-    grid-template-columns: auto auto 1fr;
-    column-gap: 0.55rem;
-    row-gap: 0.3rem;
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
-    padding: 0.65rem 0.9rem;
-    border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
-    transition: transform var(--transition), box-shadow var(--transition);
+    column-gap: var(--space-2);
+    row-gap: var(--space-1);
+    padding: var(--space-1) var(--space-4);
+    margin: 1px 0;
+    border-left: 2px solid transparent;
     /* Isolate layout/style recalculation per message so long histories stay cheap. */
     contain: layout style;
   }
 
   .message:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-xs);
+    background: color-mix(in srgb, var(--color-surface-raised) 45%, transparent);
   }
 
   .message.highlighted {
-    border-color: color-mix(in srgb, var(--color-secondary) 45%, transparent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-secondary) 28%, transparent);
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    border-left-color: var(--color-primary);
+  }
+
+  .message .username {
+    font-weight: 600;
+    font-size: var(--text-md);
+    color: var(--color-on-surface);
   }
 
   .message .timestamp {
     font-size: var(--text-xs);
     color: var(--color-muted);
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    opacity: 0.7;
+    font-family: var(--font-mono);
+  }
+
+  .message .role {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--color-muted);
   }
 
   .reply-quote {
-    grid-column: 1 / -1;
+    flex-basis: 100%;
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--space-2);
     min-width: 0;
     max-width: 100%;
-    padding: 0.2rem 0.5rem;
+    padding: var(--space-1) var(--space-2);
     border: none;
-    border-left: 2px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
-    border-radius: var(--radius-xs, 4px);
-    background: color-mix(in srgb, var(--color-surface-elevated) 55%, transparent);
+    border-left: 2px solid var(--color-outline-strong);
+    border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+    background: color-mix(in srgb, var(--color-surface-raised) 55%, transparent);
     color: var(--color-muted);
     font-size: var(--text-sm);
     cursor: pointer;
@@ -2196,7 +2204,7 @@
   }
 
   .reply-quote:hover {
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    background: var(--color-surface-raised);
     color: var(--color-on-surface);
   }
 
@@ -2208,7 +2216,7 @@
   .reply-quote-user {
     flex-shrink: 0;
     font-weight: 600;
-    color: var(--color-on-surface);
+    color: var(--color-on-surface-variant);
   }
 
   .reply-quote-text {
@@ -2217,126 +2225,131 @@
     white-space: nowrap;
   }
 
-  .message .username {
-    font-weight: 600;
-    color: var(--color-on-surface);
-  }
-
-  .message .role {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    align-self: center;
-  }
-
   .bot-badge {
     display: inline-flex;
     align-items: center;
-    justify-self: start;
-    padding: 0.1rem 0.4rem;
-    border-radius: var(--radius-xs, 4px);
-    font-size: var(--text-xs);
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    background: color-mix(in srgb, var(--color-primary) 22%, transparent);
-    color: var(--color-primary);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
     align-self: center;
-    line-height: 1.3;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-xs);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1rem;
+    background: var(--color-primary-container);
+    color: var(--color-primary);
   }
 
   .content-wrapper {
-    grid-column: 1 / -1;
-    display: flex;
-    gap: 0.75rem;
-    align-items: flex-start;
+    flex-basis: 100%;
+    min-width: 0;
   }
 
   .message .content {
-    flex: 1;
-    color: var(--color-on-surface);
-    line-height: 1.65;
+    display: block;
+    color: var(--color-on-surface-variant);
+    font-size: var(--text-md);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+
+  .message .content :global(p) {
+    margin: 0;
   }
 
   .edited-badge {
-    margin-left: 0.35rem;
+    margin-left: var(--space-1);
     font-size: var(--text-xs);
     color: var(--color-muted);
-    font-style: italic;
   }
 
   .ephemeral-badge {
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    margin-top: 0.5rem;
-    padding: 0.2rem 0.6rem;
+    margin-top: var(--space-2);
+    padding: 0 var(--space-2);
     border-radius: var(--radius-pill);
     font-size: var(--text-xs);
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-weight: 600;
+    line-height: 1.25rem;
     background: color-mix(in srgb, var(--color-warning) 15%, transparent);
-    color: color-mix(in srgb, var(--color-warning) 80%, var(--color-on-surface) 20%);
+    color: var(--color-warning);
     width: fit-content;
   }
 
+  /* Floating per-message toolbar, shown on hover or keyboard focus. */
   .message-actions {
+    position: absolute;
+    top: calc(-1 * var(--space-3));
+    right: var(--space-4);
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0;
+    padding: var(--space-1);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-surface-outline);
+    background: var(--color-surface-elevated);
+    box-shadow: var(--shadow-sm);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .message:hover .message-actions,
+  .message:focus-within .message-actions {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .message-action {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0.25rem 0.45rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
-    color: var(--color-on-surface);
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border-radius: var(--radius-xs);
+    border: none;
+    background: transparent;
+    color: var(--color-muted);
     cursor: pointer;
-    font-size: var(--text-sm);
-    transition: background var(--transition), border-color var(--transition), transform var(--transition);
   }
 
   .message-action:hover,
   .message-action.active {
-    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
-    border-color: color-mix(in srgb, var(--color-primary) 36%, transparent);
-    transform: translateY(-1px);
+    background: var(--color-surface-raised);
+    color: var(--color-on-surface);
   }
 
-  .message-action.danger {
-    color: color-mix(in srgb, var(--color-error) 80%, var(--color-on-surface));
+  .message-action.active {
+    color: var(--color-primary);
   }
 
   .message-action.danger:hover {
-    background: color-mix(in srgb, var(--color-error) 18%, transparent);
-    border-color: color-mix(in srgb, var(--color-error) 32%, transparent);
+    background: color-mix(in srgb, var(--color-error) 14%, transparent);
+    color: var(--color-error);
   }
 
   .link-previews {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    margin-top: 0.65rem;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
   }
 
   .message .content :global(code) {
-    background: color-mix(in srgb, var(--color-primary) 25%, transparent);
-    padding: 0.15rem 0.35rem;
-    border-radius: 6px;
-    font-size: 0.9em;
+    background: var(--color-surface-raised);
+    padding: 0.125rem var(--space-1);
+    border-radius: var(--radius-xs);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
   }
 
   .message .content :global(pre) {
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
-    border-radius: var(--radius-sm);
-    padding: 0.9rem;
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
     overflow-x: auto;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+    border: 1px solid var(--color-surface-outline);
   }
 
   .message .content :global(pre code) {
@@ -2344,8 +2357,8 @@
     padding: 0;
     margin: 0;
     background: transparent;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 0.9em;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
   }
 
   .message .content :global(.hljs) {
@@ -2354,20 +2367,20 @@
 
   .message .content :global(.hljs-comment),
   .message .content :global(.hljs-quote) {
-    color: color-mix(in srgb, var(--color-muted) 92%, transparent);
+    color: var(--color-muted);
     font-style: italic;
   }
 
   .message .content :global(.hljs-keyword),
   .message .content :global(.hljs-selector-tag),
   .message .content :global(.hljs-subst) {
-    color: color-mix(in srgb, var(--color-secondary) 80%, var(--color-on-surface) 20%);
+    color: color-mix(in srgb, var(--color-primary) 80%, var(--color-on-surface) 20%);
   }
 
   .message .content :global(.hljs-string),
   .message .content :global(.hljs-doctag),
   .message .content :global(.hljs-regexp) {
-    color: color-mix(in srgb, var(--color-tertiary) 80%, var(--color-on-surface) 20%);
+    color: color-mix(in srgb, var(--color-success) 75%, var(--color-on-surface) 25%);
   }
 
   .message .content :global(.hljs-title),
@@ -2388,7 +2401,7 @@
   .message .content :global(.hljs-attribute),
   .message .content :global(.hljs-variable),
   .message .content :global(.hljs-template-variable) {
-    color: color-mix(in srgb, var(--color-success) 75%, var(--color-on-surface) 25%);
+    color: color-mix(in srgb, var(--color-error) 70%, var(--color-on-surface) 30%);
   }
 
   .message .content :global(.hljs-meta),
@@ -2399,34 +2412,33 @@
   .message img {
     max-width: min(420px, 100%);
     border-radius: var(--radius-md);
-    margin-top: 0.65rem;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
-    box-shadow: var(--shadow-xs);
+    margin-top: var(--space-2);
+    border: 1px solid var(--color-surface-outline);
   }
 
   .attachment-card {
     display: inline-flex;
     align-items: center;
-    gap: 0.6rem;
-    margin-top: 0.65rem;
-    padding: 0.55rem 0.85rem;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+    padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
+    border: 1px solid var(--color-surface-outline);
+    background: var(--color-surface-elevated);
     color: var(--color-on-surface);
     text-decoration: none;
     max-width: min(420px, 100%);
-    transition: background var(--transition), border-color var(--transition), transform var(--transition);
   }
 
   .attachment-card:hover {
-    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
-    border-color: color-mix(in srgb, var(--color-primary) 32%, transparent);
-    transform: translateY(-1px);
+    border-color: var(--color-outline-strong);
+    background: var(--color-surface-raised);
+    text-decoration: none;
   }
 
   .attachment-icon {
-    font-size: 1.2rem;
+    display: inline-flex;
+    color: var(--color-primary);
     flex-shrink: 0;
   }
 
@@ -2437,7 +2449,8 @@
   }
 
   .attachment-name {
-    font-weight: 600;
+    font-weight: 500;
+    font-size: var(--text-md);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -2448,120 +2461,97 @@
     color: var(--color-muted);
   }
 
-  .file-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    max-width: 220px;
-    padding: 0.35rem 0.6rem;
-    border-radius: var(--radius-sm);
-    background: color-mix(in srgb, var(--color-surface-raised) 84%, transparent);
-    font-size: var(--text-sm);
-  }
-
-  .file-chip-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .file-chip-size {
-    color: var(--color-muted);
-    font-size: var(--text-xs);
-    flex-shrink: 0;
-  }
-
   .reactions {
-    grid-column: 1 / -1;
+    flex-basis: 100%;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4rem;
-    margin-top: 0.15rem;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
   }
 
   .reaction-chip {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: var(--space-1);
     border-radius: var(--radius-pill);
-    padding: 0.3rem 0.65rem;
+    padding: 0.125rem var(--space-2);
     font-size: var(--text-sm);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    color: var(--color-on-surface);
+    line-height: 1.25rem;
+    border: 1px solid var(--color-surface-outline);
+    background: var(--color-surface-elevated);
+    color: var(--color-on-surface-variant);
+  }
+
+  .reaction-chip:hover {
+    border-color: var(--color-outline-strong);
   }
 
   .reaction-chip.active {
-    background: color-mix(in srgb, var(--color-primary) 32%, transparent);
-    border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+    background: var(--color-primary-container);
+    border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+    color: var(--color-on-surface);
   }
 
   .reaction-chip.add {
-    font-weight: 700;
+    color: var(--color-muted);
+    font-weight: 600;
   }
 
   .thread-indicator {
-    grid-column: 1 / -1;
-    justify-self: start;
+    justify-self: flex-start;
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.25rem 0.6rem;
+    gap: var(--space-1);
+    padding: 0.125rem var(--space-2);
     border-radius: var(--radius-pill);
-    border: 1px solid color-mix(in srgb, var(--color-secondary) 28%, transparent);
-    background: color-mix(in srgb, var(--color-secondary) 10%, transparent);
-    color: var(--color-on-surface);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-primary);
     font-size: var(--text-sm);
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
   }
 
   .thread-indicator:hover {
-    background: color-mix(in srgb, var(--color-secondary) 20%, transparent);
-    border-color: color-mix(in srgb, var(--color-secondary) 45%, transparent);
+    background: var(--color-primary-container);
   }
 
+  /* Composer */
   .input-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 1rem;
+    gap: var(--space-2);
     align-items: end;
-    padding: clamp(1rem, 2vw, 1.35rem);
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
-    border: 1px solid var(--color-surface-outline);
-    box-shadow: var(--shadow-sm);
+    padding: var(--space-3) var(--space-4) var(--space-4);
+    border-top: 1px solid var(--color-surface-outline);
+    background: var(--color-surface);
   }
 
   .command-feedback {
     grid-column: 1 / -1;
-    padding: 0.45rem 0.75rem;
-    border-radius: var(--radius-md);
-    font-size: var(--text-md);
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    border: 1px solid color-mix(in srgb, var(--color-success) 25%, transparent);
-    background: color-mix(in srgb, var(--color-success) 12%, transparent);
-    color: color-mix(in srgb, var(--color-success) 80%, var(--color-on-surface) 20%);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent);
+    background: color-mix(in srgb, var(--color-success) 10%, transparent);
+    color: var(--color-success);
   }
 
   .command-feedback.error {
-    border-color: color-mix(in srgb, var(--color-error) 32%, transparent);
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
-    color: color-mix(in srgb, var(--color-error) 85%, var(--color-on-surface) 15%);
+    border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
+    background: color-mix(in srgb, var(--color-error) 10%, transparent);
+    color: var(--color-error);
   }
 
   .reply-bar {
     grid-column: 1 / -1;
     display: flex;
     align-items: center;
-    gap: 0.6rem;
-    padding: 0.4rem 0.75rem;
-    border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
-    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-raised);
     font-size: var(--text-sm);
     color: var(--color-muted);
   }
@@ -2571,7 +2561,7 @@
     min-width: 0;
     display: flex;
     align-items: baseline;
-    gap: 0.4rem;
+    gap: var(--space-2);
     overflow: hidden;
   }
 
@@ -2592,33 +2582,32 @@
     color: var(--color-muted);
     cursor: pointer;
     font-size: var(--text-sm);
-    padding: 0.15rem 0.35rem;
-    border-radius: var(--radius-sm);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-xs);
   }
 
   .reply-bar-cancel:hover {
     color: var(--color-on-surface);
-    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+    background: var(--color-surface-elevated);
   }
 
   .typing-indicator {
     grid-column: 1 / -1;
     display: flex;
     align-items: center;
-    gap: 0.45rem;
-    font-size: var(--text-sm);
+    gap: var(--space-2);
+    font-size: var(--text-xs);
     color: var(--color-muted);
-    font-style: italic;
   }
 
   .typing-dots {
     display: inline-flex;
-    gap: 0.2rem;
+    gap: 0.1875rem;
   }
 
   .typing-dots span {
-    width: 0.3rem;
-    height: 0.3rem;
+    width: 0.25rem;
+    height: 0.25rem;
     border-radius: 50%;
     background: var(--color-muted);
     animation: typing-bounce 1.2s infinite ease-in-out;
@@ -2645,133 +2634,15 @@
     }
   }
 
-  .thread-panel {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 25;
-    width: min(380px, 90%);
-    display: flex;
-    flex-direction: column;
-    border-radius: var(--radius-lg);
-    background: var(--color-surface-raised);
-    border: 1px solid var(--color-surface-outline);
-    box-shadow: var(--shadow-sm);
-    overflow: hidden;
-  }
-
-  .thread-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--color-surface-outline);
-    font-weight: 700;
-    font-size: var(--text-md);
-  }
-
-  .thread-close {
-    border: none;
-    background: transparent;
-    color: var(--color-muted);
-    cursor: pointer;
-    padding: 0.2rem 0.45rem;
-    border-radius: var(--radius-sm);
-  }
-
-  .thread-close:hover {
-    color: var(--color-on-surface);
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-  }
-
-  .thread-messages {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-    padding: 0.9rem;
-  }
-
-  .thread-message {
-    padding: 0.5rem 0.7rem;
-    border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 10%, transparent);
-  }
-
-  .thread-message.root {
-    border-color: color-mix(in srgb, var(--color-secondary) 35%, transparent);
-    background: color-mix(in srgb, var(--color-secondary) 10%, transparent);
-  }
-
-  .thread-message-meta {
-    display: flex;
-    align-items: baseline;
-    gap: 0.5rem;
-  }
-
-  .thread-message-meta .username {
-    font-weight: 600;
-    color: var(--color-on-surface);
-    font-size: var(--text-sm);
-  }
-
-  .thread-message-meta .timestamp {
-    font-size: var(--text-xs);
-    color: var(--color-muted);
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    opacity: 0.7;
-  }
-
-  .thread-message-text {
-    color: var(--color-on-surface);
-    font-size: var(--text-sm);
-    line-height: 1.55;
-    overflow-wrap: anywhere;
-  }
-
-  .thread-message-text img {
-    max-width: 100%;
-    border-radius: var(--radius-sm);
-    margin-top: 0.35rem;
-  }
-
-  .thread-empty {
-    margin: 0;
-    color: var(--color-muted);
-    font-size: var(--text-sm);
-    text-align: center;
-  }
-
-  .thread-input {
-    padding: 0.75rem;
-    border-top: 1px solid var(--color-surface-outline);
-  }
-
-  .thread-input input {
-    width: 100%;
-    padding: 0.55rem 0.75rem;
-    border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 84%, transparent);
-    color: var(--color-on-surface);
-  }
-
   textarea {
     width: 100%;
-    min-height: 3rem;
+    min-height: var(--control-height-lg);
     max-height: 360px;
     resize: none;
     overflow-y: hidden;
     overflow-x: hidden;
     border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
-    background: color-mix(in srgb, var(--color-surface-raised) 84%, transparent);
-    color: var(--color-on-surface);
-    padding: 0.85rem 1rem;
+    padding: var(--space-3) var(--space-4);
     line-height: 1.5;
   }
 
@@ -2782,24 +2653,24 @@
   .controls {
     display: flex;
     align-items: flex-end;
-    gap: 0.9rem;
+    gap: var(--space-2);
   }
 
   .input-controls {
     display: flex;
     align-items: center;
-    gap: 0.65rem;
+    gap: var(--space-2);
   }
 
   .preview-container {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.4rem;
-    background: color-mix(in srgb, var(--color-secondary) 12%, transparent);
-    padding: 0.55rem;
+    gap: var(--space-1);
+    background: var(--color-surface-raised);
+    padding: var(--space-2);
     border-radius: var(--radius-md);
-    border: 1px dashed color-mix(in srgb, var(--color-secondary) 32%, transparent);
+    border: 1px dashed var(--color-outline-strong);
   }
 
   .preview-container img {
@@ -2810,9 +2681,44 @@
 
   .preview-remove {
     background: transparent;
-    color: var(--color-secondary);
+    color: var(--color-muted);
     border: none;
+    display: inline-flex;
+    padding: var(--space-1);
+    border-radius: var(--radius-xs);
+  }
+
+  .preview-remove:hover {
+    color: var(--color-error);
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  }
+
+  .file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-width: 220px;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-elevated);
     font-size: var(--text-sm);
+  }
+
+  .file-chip svg {
+    flex-shrink: 0;
+    color: var(--color-primary);
+  }
+
+  .file-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-chip-size {
+    color: var(--color-muted);
+    font-size: var(--text-xs);
+    flex-shrink: 0;
   }
 
   .file-input {
@@ -2829,45 +2735,181 @@
 
   .file-button,
   .send {
-    width: 2.75rem;
-    height: 2.75rem;
-    border-radius: 0.9rem;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
-    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-    color: var(--color-secondary);
+    width: var(--control-height-lg);
+    height: var(--control-height-lg);
+    flex-shrink: 0;
+    border-radius: var(--radius-md);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     padding: 0;
   }
 
-  .file-button svg,
-  .send svg {
-    width: 1.2rem;
-    height: 1.2rem;
+  .file-button {
+    border: 1px solid var(--color-surface-outline);
+    background: var(--color-surface-raised);
+    color: var(--color-on-surface-variant);
   }
 
-  .file-button:hover,
-  .send:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-xs);
+  .file-button:hover {
+    border-color: var(--color-outline-strong);
+    color: var(--color-on-surface);
   }
 
   .send {
-    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+    border: none;
+    background: var(--color-primary);
     color: var(--color-on-primary);
-    border-color: transparent;
   }
 
+  .send:hover {
+    background: color-mix(in srgb, var(--color-primary) 88%, var(--color-on-surface));
+  }
+
+  .file-button svg,
+  .send svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  /* Thread / DM side panel */
+  .thread-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 25;
+    width: min(360px, 90%);
+    display: flex;
+    flex-direction: column;
+    background: var(--color-surface-elevated);
+    border-left: 1px solid var(--color-surface-outline);
+    box-shadow: var(--shadow-md);
+  }
+
+  .thread-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--color-surface-outline);
+    font-weight: 600;
+    font-size: var(--text-md);
+  }
+
+  .thread-header-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .thread-header-title svg {
+    color: var(--color-primary);
+    flex-shrink: 0;
+  }
+
+  .thread-close {
+    border: none;
+    background: transparent;
+    color: var(--color-muted);
+    cursor: pointer;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-xs);
+  }
+
+  .thread-close:hover {
+    color: var(--color-on-surface);
+    background: var(--color-surface-raised);
+  }
+
+  .thread-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+
+  .thread-message {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-raised);
+  }
+
+  .thread-message.root {
+    background: var(--color-primary-container);
+  }
+
+  .thread-message-meta {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+
+  .thread-message-meta .username {
+    font-weight: 600;
+    color: var(--color-on-surface);
+    font-size: var(--text-sm);
+  }
+
+  .thread-message-meta .timestamp {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+    font-family: var(--font-mono);
+  }
+
+  .thread-message-text {
+    color: var(--color-on-surface-variant);
+    font-size: var(--text-sm);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+
+  .thread-message-text :global(p) {
+    margin: 0;
+  }
+
+  .thread-message-text img {
+    max-width: 100%;
+    border-radius: var(--radius-sm);
+    margin-top: var(--space-1);
+  }
+
+  .thread-empty {
+    margin: 0;
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+    text-align: center;
+    padding: var(--space-4);
+  }
+
+  .thread-input {
+    padding: var(--space-3);
+    border-top: 1px solid var(--color-surface-outline);
+  }
+
+  .thread-input input {
+    width: 100%;
+    border-radius: var(--radius-md);
+  }
+
+  /* Connection overlay */
   .connection-overlay {
     position: fixed;
     inset: 0;
-    z-index: 100;
+    z-index: var(--z-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 1.5rem;
-    background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+    padding: var(--space-5);
+    background: var(--color-overlay);
     backdrop-filter: blur(6px);
   }
 
@@ -2889,18 +2931,17 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
     max-width: 420px;
-    padding: clamp(1.75rem, 4vw, 2.5rem);
+    padding: var(--space-6);
     border-radius: var(--radius-lg);
-    background: var(--color-surface-raised);
+    background: var(--color-surface-elevated);
     border: 1px solid var(--color-surface-outline);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-lg);
     text-align: center;
   }
 
   .connection-card h2 {
-    margin: 0;
     font-size: var(--text-xl);
   }
 
@@ -2912,15 +2953,15 @@
 
   .connection-detail {
     font-family: var(--font-mono);
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     word-break: break-all;
   }
 
   .connection-spinner {
-    width: 2.25rem;
-    height: 2.25rem;
+    width: var(--space-6);
+    height: var(--space-6);
     border-radius: 50%;
-    border: 3px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+    border: 3px solid var(--color-surface-raised);
     border-top-color: var(--color-primary);
     animation: connection-spin 0.8s linear infinite;
   }
@@ -2933,49 +2974,27 @@
 
   .connection-actions {
     display: flex;
-    gap: 0.75rem;
-    margin-top: 0.5rem;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
     flex-wrap: wrap;
     justify-content: center;
   }
 
-  .connection-retry,
-  .connection-back {
-    padding: 0.65rem 1.3rem;
-    border-radius: var(--radius-sm);
-    font-weight: 600;
-    transition: all var(--transition);
-  }
-
-  .connection-retry {
-    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
-    color: var(--color-on-primary);
-    border: none;
-  }
-
-  .connection-back {
-    background: color-mix(in srgb, var(--color-surface-raised) 88%, transparent);
-    color: var(--color-on-surface);
-    border: 1px solid color-mix(in srgb, var(--color-outline-strong) 80%, transparent);
-  }
-
-  .connection-retry:hover,
-  .connection-back:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-xs);
-  }
-
-  @media (max-width: 1280px) {
+  /* Responsive: stack panes on narrow windows. */
+  @media (max-width: 1100px) {
     .page {
       flex-direction: column;
       height: auto;
       min-height: 100vh;
+      overflow: visible;
     }
 
     .page :global(.channels),
     .page :global(.sidebar) {
-      width: 100%;
+      width: 100% !important;
+      max-height: 40vh;
       order: 0;
+      border-bottom: 1px solid var(--color-surface-outline);
     }
 
     .resizer {
@@ -2984,18 +3003,19 @@
 
     .chat {
       order: 1;
+      border-left: none;
+      border-right: none;
+      min-height: 60vh;
     }
 
     .page :global(.sidebar) {
       order: 2;
+      border-bottom: none;
+      border-top: 1px solid var(--color-surface-outline);
     }
   }
 
-  @media (max-width: 768px) {
-    .page {
-      padding: clamp(1rem, 4vw, 1.5rem);
-    }
-
+  @media (max-width: 640px) {
     .input-row {
       grid-template-columns: 1fr;
     }
@@ -3005,4 +3025,3 @@
     }
   }
 </style>
-
