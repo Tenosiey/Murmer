@@ -179,27 +179,18 @@ pub(super) async fn handle_chat(
     };
 
     if !security::check_message_rate_limit(&state.rate_limiter, user).await {
-        let _ = sender
-            .send(Message::Text(errors::MESSAGE_RATE_LIMIT.to_string().into()))
-            .await;
+        send_error(sender, errors::MESSAGE_RATE_LIMIT).await;
         return;
     }
 
     if super::moderation::is_muted(state, user).await {
-        let msg = serde_json::json!({
-            "type": "error",
-            "message": "muted",
-        })
-        .to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::MUTED).await;
         return;
     }
 
     if let Some(text) = v.get("text").and_then(|t| t.as_str()) {
         if text.len() > MAX_MESSAGE_LENGTH {
-            let _ = sender
-                .send(Message::Text(errors::MESSAGE_TOO_LONG.to_string().into()))
-                .await;
+            send_error(sender, errors::MESSAGE_TOO_LONG).await;
             return;
         }
     }
@@ -255,12 +246,7 @@ pub(super) async fn handle_chat(
                     v["threadId"] = Value::from(thread_root);
                 }
                 Ok(_) => {
-                    let msg = serde_json::json!({
-                        "type": "error",
-                        "message": "reply-target-not-found",
-                    })
-                    .to_string();
-                    let _ = sender.send(Message::Text(msg.into())).await;
+                    send_error(sender, errors::REPLY_TARGET_NOT_FOUND).await;
                     return;
                 }
                 Err(error) => {
@@ -374,35 +360,20 @@ pub(super) async fn handle_delete_message(
     let requester = match user_name.clone() {
         Some(name) => name,
         None => {
-            let msg = serde_json::json!({
-                "type": "error",
-                "message": "not-authenticated",
-            })
-            .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::NOT_AUTHENTICATED).await;
             return;
         }
     };
 
     let Some(raw_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
-        let msg = serde_json::json!({
-            "type": "error",
-            "message": "invalid-message-id",
-        })
-        .to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::INVALID_MESSAGE_ID).await;
         return;
     };
 
     let message_id32 = match i32::try_from(raw_id) {
         Ok(id) => id,
         Err(_) => {
-            let msg = serde_json::json!({
-                "type": "error",
-                "message": "invalid-message-id",
-            })
-            .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::INVALID_MESSAGE_ID).await;
             return;
         }
     };
@@ -410,33 +381,18 @@ pub(super) async fn handle_delete_message(
     let record = match db::get_message_record(&state.db, message_id32).await {
         Ok(Some(record)) => record,
         Ok(None) => {
-            let msg = serde_json::json!({
-                "type": "error",
-                "message": "message-not-found",
-            })
-            .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::MESSAGE_NOT_FOUND).await;
             return;
         }
         Err(error) => {
             error!("failed to load message {raw_id} for deletion: {error}");
-            let msg = serde_json::json!({
-                "type": "error",
-                "message": "message-delete-failed",
-            })
-            .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::MESSAGE_DELETE_FAILED).await;
             return;
         }
     };
 
     if record.channel_id != channel_id {
-        let msg = serde_json::json!({
-            "type": "error",
-            "message": "message-wrong-channel",
-        })
-        .to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::MESSAGE_WRONG_CHANNEL).await;
         return;
     }
 
@@ -452,12 +408,7 @@ pub(super) async fn handle_delete_message(
     }
 
     if !allowed {
-        let msg = serde_json::json!({
-            "type": "error",
-            "message": "message-permission-denied",
-        })
-        .to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::MESSAGE_PERMISSION_DENIED).await;
         return;
     }
 
@@ -472,21 +423,11 @@ pub(super) async fn handle_delete_message(
             let _ = chan_sender.send(payload.to_string());
         }
         Ok(false) => {
-            let msg = serde_json::json!({
-                "type": "error",
-                "message": "message-not-found",
-            })
-            .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::MESSAGE_NOT_FOUND).await;
         }
         Err(error) => {
             error!("failed to delete message {raw_id}: {error}");
-            let msg = serde_json::json!({
-                "type": "error",
-                "message": "message-delete-failed",
-            })
-            .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::MESSAGE_DELETE_FAILED).await;
         }
     }
 }
@@ -502,86 +443,49 @@ pub(super) async fn handle_edit_message(
     let requester = match user_name.clone() {
         Some(name) => name,
         None => {
-            let msg = serde_json::json!({
-                "type": "error",
-                "message": "not-authenticated",
-            })
-            .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::NOT_AUTHENTICATED).await;
             return;
         }
     };
 
     let Some(raw_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
-        let msg = serde_json::json!({
-            "type": "error",
-            "message": "invalid-message-id",
-        })
-        .to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::INVALID_MESSAGE_ID).await;
         return;
     };
 
     let message_id32 = match i32::try_from(raw_id) {
         Ok(id) => id,
         Err(_) => {
-            let msg = serde_json::json!({
-                "type": "error",
-                "message": "invalid-message-id",
-            })
-            .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::INVALID_MESSAGE_ID).await;
             return;
         }
     };
 
     let Some(new_text) = v.get("text").and_then(|t| t.as_str()) else {
-        let msg = serde_json::json!({
-            "type": "error",
-            "message": "invalid-message-text",
-        })
-        .to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::INVALID_MESSAGE_TEXT).await;
         return;
     };
 
     if new_text.trim().is_empty() || new_text.len() > MAX_MESSAGE_LENGTH {
-        let _ = sender
-            .send(Message::Text(errors::MESSAGE_TOO_LONG.to_string().into()))
-            .await;
+        send_error(sender, errors::MESSAGE_TOO_LONG).await;
         return;
     }
 
     let record = match db::get_message_record(&state.db, message_id32).await {
         Ok(Some(record)) => record,
         Ok(None) => {
-            let msg = serde_json::json!({
-                "type": "error",
-                "message": "message-not-found",
-            })
-            .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::MESSAGE_NOT_FOUND).await;
             return;
         }
         Err(error) => {
             error!("failed to load message {raw_id} for edit: {error}");
-            let msg = serde_json::json!({
-                "type": "error",
-                "message": "message-edit-failed",
-            })
-            .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::MESSAGE_EDIT_FAILED).await;
             return;
         }
     };
 
     if record.channel_id != channel_id {
-        let msg = serde_json::json!({
-            "type": "error",
-            "message": "message-wrong-channel",
-        })
-        .to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::MESSAGE_WRONG_CHANNEL).await;
         return;
     }
 
@@ -594,12 +498,7 @@ pub(super) async fn handle_edit_message(
     // Editing rewrites someone's words, so unlike deletion it is never
     // extended to moderators - only the author may do it.
     if owner.as_deref() != Some(requester.as_str()) {
-        let msg = serde_json::json!({
-            "type": "error",
-            "message": "message-permission-denied",
-        })
-        .to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::MESSAGE_PERMISSION_DENIED).await;
         return;
     }
 
@@ -613,12 +512,7 @@ pub(super) async fn handle_edit_message(
         Ok(out) => out,
         Err(error) => {
             error!("failed to serialize edited message {raw_id}: {error}");
-            let msg = serde_json::json!({
-                "type": "error",
-                "message": "message-edit-failed",
-            })
-            .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::MESSAGE_EDIT_FAILED).await;
             return;
         }
     };
@@ -636,21 +530,11 @@ pub(super) async fn handle_edit_message(
             let _ = chan_sender.send(payload.to_string());
         }
         Ok(false) => {
-            let msg = serde_json::json!({
-                "type": "error",
-                "message": "message-not-found",
-            })
-            .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::MESSAGE_NOT_FOUND).await;
         }
         Err(error) => {
             error!("failed to edit message {raw_id}: {error}");
-            let msg = serde_json::json!({
-                "type": "error",
-                "message": "message-edit-failed",
-            })
-            .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::MESSAGE_EDIT_FAILED).await;
         }
     }
 }
@@ -670,9 +554,7 @@ pub(super) async fn handle_load_thread(
     {
         Some(id) => id,
         None => {
-            let msg =
-                serde_json::json!({"type": "error", "message": "invalid-message-id"}).to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::INVALID_MESSAGE_ID).await;
             return;
         }
     };
@@ -724,9 +606,7 @@ pub(super) async fn handle_load_thread(
         }
         Err(error) => {
             error!("failed to load thread {root_id32}: {error}");
-            let msg =
-                serde_json::json!({"type": "error", "message": "thread-load-failed"}).to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::THREAD_LOAD_FAILED).await;
         }
     }
 }
@@ -771,29 +651,23 @@ pub(super) async fn handle_react(
     let user = match user_name.clone() {
         Some(name) => name,
         None => {
-            let msg =
-                serde_json::json!({"type": "error", "message": "not-authenticated"}).to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::NOT_AUTHENTICATED).await;
             return;
         }
     };
 
     let Some(message_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
-        let msg = serde_json::json!({"type": "error", "message": "invalid-message-id"}).to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::INVALID_MESSAGE_ID).await;
         return;
     };
 
     let Some(action) = v.get("action").and_then(|a| a.as_str()) else {
-        let msg =
-            serde_json::json!({"type": "error", "message": "invalid-reaction-action"}).to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::INVALID_REACTION_ACTION).await;
         return;
     };
 
     let Some(raw_emoji) = v.get("emoji").and_then(|e| e.as_str()) else {
-        let msg = serde_json::json!({"type": "error", "message": "invalid-emoji"}).to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::INVALID_EMOJI).await;
         return;
     };
 
@@ -802,17 +676,14 @@ pub(super) async fn handle_react(
         || emoji.len() > 16
         || emoji.chars().any(|c| c.is_control() || c.is_whitespace())
     {
-        let msg = serde_json::json!({"type": "error", "message": "invalid-emoji"}).to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::INVALID_EMOJI).await;
         return;
     }
 
     let message_id32 = match i32::try_from(message_id) {
         Ok(val) => val,
         Err(_) => {
-            let msg =
-                serde_json::json!({"type": "error", "message": "invalid-message-id"}).to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::INVALID_MESSAGE_ID).await;
             return;
         }
     };
@@ -820,16 +691,12 @@ pub(super) async fn handle_react(
     let target_channel_id = match db::get_message_channel_id(&state.db, message_id32).await {
         Ok(Some(ch)) => ch,
         Ok(None) => {
-            let msg =
-                serde_json::json!({"type": "error", "message": "message-not-found"}).to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::MESSAGE_NOT_FOUND).await;
             return;
         }
         Err(e) => {
             error!("failed to lookup message channel for reaction: {e}");
-            let msg =
-                serde_json::json!({"type": "error", "message": "reaction-failed"}).to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::REACTION_FAILED).await;
             return;
         }
     };
@@ -838,17 +705,14 @@ pub(super) async fn handle_react(
         "add" => db::add_reaction(&state.db, message_id32, &user, emoji).await,
         "remove" => db::remove_reaction(&state.db, message_id32, &user, emoji).await,
         _ => {
-            let msg = serde_json::json!({"type": "error", "message": "invalid-reaction-action"})
-                .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::INVALID_REACTION_ACTION).await;
             return;
         }
     };
 
     if let Err(e) = result {
         error!("db reaction error: {e}");
-        let msg = serde_json::json!({"type": "error", "message": "reaction-failed"}).to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::REACTION_FAILED).await;
         return;
     }
 

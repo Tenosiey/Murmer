@@ -184,10 +184,12 @@ cargo build --release
 ## Security highlights
 
 - Authentication uses Ed25519 signatures; timestamps are validated and bound to
-  per-user nonces.
+  per-user nonces. A claimed public key is always verified — also on servers
+  without a password — so roles and moderation identity cannot be spoofed.
 - IP-based rate limiting protects authentication and chat message throughput.
 - Filenames are sanitised, uploads are limited to a safe-list of extensions and image contents are inspected before saving.
-- Admin operations use constant-time comparisons to mitigate timing attacks.
+- Admin token and server password checks use constant-time comparisons to
+  mitigate timing attacks.
 - Channel management honours server-side role assignments when admin mode is on.
 
 ## Contributing

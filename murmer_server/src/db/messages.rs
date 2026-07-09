@@ -116,10 +116,12 @@ pub async fn search_messages(
     query: &str,
     limit: i64,
 ) -> Result<Vec<(i64, String)>, tokio_postgres::Error> {
+    // escape_like_pattern uses backslash, PostgreSQL's default LIKE escape
+    // character; an explicit ESCAPE clause is not needed.
     let pattern = format!("%{}%", escape_like_pattern(query));
     let rows = db
         .query(
-            "SELECT id::bigint, content FROM messages WHERE channel_id = $1 AND content ILIKE $2 ESCAPE '\\\\' ORDER BY id DESC LIMIT $3",
+            "SELECT id::bigint, content FROM messages WHERE channel_id = $1 AND content ILIKE $2 ORDER BY id DESC LIMIT $3",
             &[&channel_id, &pattern, &limit],
         )
         .await?;
