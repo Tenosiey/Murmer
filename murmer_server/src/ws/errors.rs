@@ -1,6 +1,9 @@
 //! WebSocket error message constants.
 //!
-//! These constants provide consistent error responses to clients.
+//! Pre-serialized `{"type":"error","message":"<code>"}` frames, sent to a
+//! single client via [`crate::ws::helpers::send_error`]. The client maps each
+//! code to user-facing text in `murmer_client/src/lib/errors.ts` — keep the
+//! two files in sync when adding codes.
 
 /// Client attempted to send a message without authenticating first.
 pub const UNAUTHENTICATED: &str = r#"{"type":"error","message":"unauthenticated"}"#;
@@ -150,3 +153,55 @@ pub const PIN_LIMIT_REACHED: &str = r#"{"type":"error","message":"pin-limit-reac
 
 /// Failed to persist a pin change.
 pub const PIN_FAILED: &str = r#"{"type":"error","message":"pin-failed"}"#;
+
+/// Request requires an authenticated user name (presence not yet processed).
+pub const NOT_AUTHENTICATED: &str = r#"{"type":"error","message":"not-authenticated"}"#;
+
+/// Status update carried a missing or unknown status value.
+pub const INVALID_STATUS: &str = r#"{"type":"error","message":"invalid-status"}"#;
+
+/// Sender is muted and may not send messages.
+pub const MUTED: &str = r#"{"type":"error","message":"muted"}"#;
+
+/// Message ID is missing, malformed or out of range.
+pub const INVALID_MESSAGE_ID: &str = r#"{"type":"error","message":"invalid-message-id"}"#;
+
+/// The referenced message does not exist.
+pub const MESSAGE_NOT_FOUND: &str = r#"{"type":"error","message":"message-not-found"}"#;
+
+/// The referenced message belongs to a different channel.
+pub const MESSAGE_WRONG_CHANNEL: &str = r#"{"type":"error","message":"message-wrong-channel"}"#;
+
+/// Requester may not delete or edit this message.
+pub const MESSAGE_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"message-permission-denied"}"#;
+
+/// Failed to delete a message.
+pub const MESSAGE_DELETE_FAILED: &str = r#"{"type":"error","message":"message-delete-failed"}"#;
+
+/// Failed to edit a message.
+pub const MESSAGE_EDIT_FAILED: &str = r#"{"type":"error","message":"message-edit-failed"}"#;
+
+/// Replacement message text is missing or invalid.
+pub const INVALID_MESSAGE_TEXT: &str = r#"{"type":"error","message":"invalid-message-text"}"#;
+
+/// Reaction action was neither `add` nor `remove`.
+pub const INVALID_REACTION_ACTION: &str = r#"{"type":"error","message":"invalid-reaction-action"}"#;
+
+/// Reaction emoji is missing or malformed.
+pub const INVALID_EMOJI: &str = r#"{"type":"error","message":"invalid-emoji"}"#;
+
+/// Failed to persist or load reactions.
+pub const REACTION_FAILED: &str = r#"{"type":"error","message":"reaction-failed"}"#;
+
+/// The message a reply targets no longer exists.
+pub const REPLY_TARGET_NOT_FOUND: &str = r#"{"type":"error","message":"reply-target-not-found"}"#;
+
+/// Failed to load a thread.
+pub const THREAD_LOAD_FAILED: &str = r#"{"type":"error","message":"thread-load-failed"}"#;
+
+/// Bot presence frame did not include a token.
+pub const MISSING_BOT_TOKEN: &str = r#"{"type":"error","message":"missing-bot-token"}"#;
+
+/// Bot token is unknown or the bot is deactivated.
+pub const INVALID_BOT_TOKEN: &str = r#"{"type":"error","message":"invalid-bot-token"}"#;

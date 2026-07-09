@@ -5,10 +5,98 @@ use crate::{bot, db, roles::RoleInfo, security, AppState};
 use axum::extract::ws::{Message, WebSocket};
 use base64::{engine::general_purpose, Engine as _};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use futures::{stream::SplitSink, SinkExt};
+use futures::stream::SplitSink;
 use serde_json::Value;
 use std::sync::Arc;
+use subtle::ConstantTimeEq;
 use tracing::error;
+
+/// Verify that the presence frame proves ownership of its claimed public key:
+/// the timestamp must be fresh and unused (replay protection) and the Ed25519
+/// signature over it must verify against the key. Sends the matching error to
+/// the client and returns `Err` on failure.
+async fn verify_key_proof(
+    sender: &mut SplitSink<WebSocket, Message>,
+    state: &Arc<AppState>,
+    v: &Value,
+    client_ip: &str,
+) -> Result<(), ()> {
+    let (Some(pk), Some(sig), Some(ts)) = (
+        v.get("publicKey").and_then(|p| p.as_str()),
+        v.get("signature").and_then(|s| s.as_str()),
+        v.get("timestamp").and_then(|t| t.as_str()),
+    ) else {
+        send_error(sender, errors::INVALID_SIGNATURE).await;
+        return Err(());
+    };
+
+    if !security::check_auth_rate_limit(&state.rate_limiter, client_ip).await {
+        send_error(sender, errors::AUTH_RATE_LIMIT).await;
+        return Err(());
+    }
+
+    let timestamp = match security::validate_timestamp(ts) {
+        Ok(ts) => ts,
+        Err(err) => {
+            error!("Authentication failed - {}: {}", err, ts);
+            send_error(sender, errors::INVALID_TIMESTAMP).await;
+            return Err(());
+        }
+    };
+
+    let nonce = format!("{}:{}", pk, timestamp);
+    if !security::check_and_store_nonce(&state.rate_limiter, &nonce).await {
+        send_error(sender, errors::REPLAY_ATTACK).await;
+        return Err(());
+    }
+
+    let (Ok(pk_bytes), Ok(sig_bytes)) = (
+        general_purpose::STANDARD.decode(pk),
+        general_purpose::STANDARD.decode(sig),
+    ) else {
+        error!("Authentication failed - invalid base64 encoding");
+        send_error(sender, errors::INVALID_ENCODING).await;
+        return Err(());
+    };
+
+    let Ok(pk_array) = pk_bytes.as_slice().try_into() else {
+        error!(
+            "Authentication failed - public key wrong length: {}",
+            pk_bytes.len()
+        );
+        send_error(sender, errors::INVALID_KEY_LENGTH).await;
+        return Err(());
+    };
+
+    let key = match VerifyingKey::from_bytes(&pk_array) {
+        Ok(key) => key,
+        Err(e) => {
+            error!("Authentication failed - invalid public key: {}", e);
+            send_error(sender, errors::INVALID_PUBLIC_KEY).await;
+            return Err(());
+        }
+    };
+
+    let signature = match Signature::from_slice(&sig_bytes) {
+        Ok(signature) => signature,
+        Err(e) => {
+            error!("Authentication failed - invalid signature format: {}", e);
+            send_error(sender, errors::INVALID_SIGNATURE_FORMAT).await;
+            return Err(());
+        }
+    };
+
+    if key.verify(ts.as_bytes(), &signature).is_err() {
+        error!(
+            "Authentication failed - signature verification failed for key: {}",
+            pk
+        );
+        send_error(sender, errors::INVALID_SIGNATURE).await;
+        return Err(());
+    }
+
+    Ok(())
+}
 
 /// Handle user presence (authentication) message.
 pub(super) async fn handle_presence(
@@ -22,125 +110,45 @@ pub(super) async fn handle_presence(
 ) -> Result<(), ()> {
     if !*authenticated {
         if let Some(required) = &state.password {
-            let provided = v.get("password").and_then(|p| p.as_str());
-            if provided != Some(required) {
-                let _ = sender
-                    .send(Message::Text(errors::INVALID_PASSWORD.to_string().into()))
-                    .await;
-                return Err(());
-            }
-        }
-
-        if let (Some(pk), Some(sig), Some(ts)) = (
-            v.get("publicKey").and_then(|p| p.as_str()),
-            v.get("signature").and_then(|s| s.as_str()),
-            v.get("timestamp").and_then(|t| t.as_str()),
-        ) {
-            if !security::check_auth_rate_limit(&state.rate_limiter, client_ip).await {
-                let _ = sender
-                    .send(Message::Text(errors::AUTH_RATE_LIMIT.to_string().into()))
-                    .await;
-                return Err(());
-            }
-
-            let timestamp = match security::validate_timestamp(ts) {
-                Ok(ts) => ts,
-                Err(err) => {
-                    error!("Authentication failed - {}: {}", err, ts);
-                    let _ = sender
-                        .send(Message::Text(errors::INVALID_TIMESTAMP.to_string().into()))
-                        .await;
-                    return Err(());
-                }
-            };
-
-            let nonce = format!("{}:{}", pk, timestamp);
-            if !security::check_and_store_nonce(&state.rate_limiter, &nonce).await {
-                let _ = sender
-                    .send(Message::Text(errors::REPLAY_ATTACK.to_string().into()))
-                    .await;
-                return Err(());
-            }
-
-            if let (Ok(pk_bytes), Ok(sig_bytes)) = (
-                general_purpose::STANDARD.decode(pk),
-                general_purpose::STANDARD.decode(sig),
-            ) {
-                if let Ok(pk_array) = pk_bytes.as_slice().try_into() {
-                    match VerifyingKey::from_bytes(&pk_array) {
-                        Ok(key) => match Signature::from_slice(&sig_bytes) {
-                            Ok(signature) => {
-                                if key.verify(ts.as_bytes(), &signature).is_ok() {
-                                    *authenticated = true;
-                                } else {
-                                    error!(
-                                        "Authentication failed - signature verification failed for key: {}",
-                                        pk
-                                    );
-                                    let _ = sender
-                                        .send(Message::Text(
-                                            errors::INVALID_SIGNATURE.to_string().into(),
-                                        ))
-                                        .await;
-                                    return Err(());
-                                }
-                            }
-                            Err(e) => {
-                                error!("Authentication failed - invalid signature format: {}", e);
-                                let _ = sender
-                                    .send(Message::Text(
-                                        errors::INVALID_SIGNATURE_FORMAT.to_string().into(),
-                                    ))
-                                    .await;
-                                return Err(());
-                            }
-                        },
-                        Err(e) => {
-                            error!("Authentication failed - invalid public key: {}", e);
-                            let _ = sender
-                                .send(Message::Text(errors::INVALID_PUBLIC_KEY.to_string().into()))
-                                .await;
-                            return Err(());
-                        }
-                    }
-                } else {
-                    error!(
-                        "Authentication failed - public key wrong length: {}",
-                        pk_bytes.len()
-                    );
-                    let _ = sender
-                        .send(Message::Text(errors::INVALID_KEY_LENGTH.to_string().into()))
-                        .await;
-                    return Err(());
-                }
-            } else {
-                error!("Authentication failed - invalid base64 encoding");
-                let _ = sender
-                    .send(Message::Text(errors::INVALID_ENCODING.to_string().into()))
-                    .await;
+            let provided = v.get("password").and_then(|p| p.as_str()).unwrap_or("");
+            if !bool::from(provided.as_bytes().ct_eq(required.as_bytes())) {
+                send_error(sender, errors::INVALID_PASSWORD).await;
                 return Err(());
             }
         }
     }
 
+    // A claimed public key must always be proven, even on an open server or a
+    // repeated presence frame: roles, bans and moderation identity attach to
+    // the key, so accepting it unverified would allow impersonation.
+    let verified_key = if v.get("publicKey").is_some() {
+        verify_key_proof(sender, state, v, client_ip).await?;
+        *authenticated = true;
+        v.get("publicKey")
+            .and_then(|p| p.as_str())
+            .map(str::to_string)
+    } else {
+        // Without a key there is nothing to verify; servers without a
+        // password accept the connection as an anonymous (role-less) user.
+        if state.password.is_none() {
+            *authenticated = true;
+        }
+        None
+    };
+
     if *authenticated {
         if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
             if !security::validate_user_name(u) {
                 error!("Invalid user name: {}", u);
-                let _ = sender
-                    .send(Message::Text(errors::INVALID_USERNAME.to_string().into()))
-                    .await;
+                send_error(sender, errors::INVALID_USERNAME).await;
                 return Err(());
             }
 
             // Reject banned users before they are registered as present.
-            let public_key = v.get("publicKey").and_then(|p| p.as_str());
-            match db::is_banned(&state.db, public_key, u).await {
+            match db::is_banned(&state.db, verified_key.as_deref(), u).await {
                 Ok(true) => {
                     error!("Rejected banned user: {}", u);
-                    let _ = sender
-                        .send(Message::Text(errors::BANNED.to_string().into()))
-                        .await;
+                    send_error(sender, errors::BANNED).await;
                     return Err(());
                 }
                 Ok(false) => {}
@@ -161,7 +169,7 @@ pub(super) async fn handle_presence(
             broadcast_users(state).await;
             *user_name = Some(u.to_string());
 
-            if let Some(pk) = v.get("publicKey").and_then(|p| p.as_str()) {
+            if let Some(pk) = verified_key.as_deref() {
                 state
                     .user_keys
                     .lock()
@@ -195,9 +203,7 @@ pub(super) async fn handle_presence(
             .await;
         }
     } else {
-        let _ = sender
-            .send(Message::Text(errors::INVALID_SIGNATURE.to_string().into()))
-            .await;
+        send_error(sender, errors::INVALID_SIGNATURE).await;
         return Err(());
     }
 
@@ -216,11 +222,7 @@ pub(super) async fn handle_bot_presence(
     let token = match v.get("token").and_then(|t| t.as_str()) {
         Some(t) => t,
         None => {
-            let _ = sender
-                .send(Message::Text(
-                    r#"{"type":"error","message":"missing-bot-token"}"#.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::MISSING_BOT_TOKEN).await;
             return Err(());
         }
     };
@@ -229,11 +231,7 @@ pub(super) async fn handle_bot_presence(
     let record = match bot::db::get_bot_by_token_hash(&state.db, &hash).await {
         Ok(Some(b)) if b.active => b,
         _ => {
-            let _ = sender
-                .send(Message::Text(
-                    r#"{"type":"error","message":"invalid-bot-token"}"#.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::INVALID_BOT_TOKEN).await;
             return Err(());
         }
     };

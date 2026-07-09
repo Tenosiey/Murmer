@@ -9,7 +9,7 @@ use crate::ws::{constants::*, errors, helpers::*};
 use crate::{db, AppState};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{Duration as ChronoDuration, Utc};
-use futures::{stream::SplitSink, SinkExt};
+use futures::stream::SplitSink;
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -23,31 +23,19 @@ async fn check_allowed(
     target: &str,
 ) -> bool {
     if requester == target {
-        let _ = sender
-            .send(Message::Text(
-                errors::CANNOT_MODERATE_SELF.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::CANNOT_MODERATE_SELF).await;
         return false;
     }
 
     let requester_rank = user_moderation_rank(state, requester).await;
     if requester_rank == 0 {
-        let _ = sender
-            .send(Message::Text(
-                errors::MODERATION_PERMISSION_DENIED.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::MODERATION_PERMISSION_DENIED).await;
         return false;
     }
 
     let target_rank = user_moderation_rank(state, target).await;
     if target_rank >= requester_rank {
-        let _ = sender
-            .send(Message::Text(
-                errors::MODERATION_TARGET_PROTECTED.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::MODERATION_TARGET_PROTECTED).await;
         return false;
     }
 
@@ -62,11 +50,7 @@ async fn require_requester(
     match user_name.clone() {
         Some(name) => Some(name),
         None => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::MODERATION_PERMISSION_DENIED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::MODERATION_PERMISSION_DENIED).await;
             None
         }
     }
@@ -77,11 +61,7 @@ async fn require_target(sender: &mut SplitSink<WebSocket, Message>, v: &Value) -
     match v.get("user").and_then(|u| u.as_str()) {
         Some(user) if !user.trim().is_empty() => Some(user.to_string()),
         _ => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::MODERATION_TARGET_NOT_FOUND.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::MODERATION_TARGET_NOT_FOUND).await;
             None
         }
     }
@@ -98,11 +78,7 @@ async fn resolve_target_key(
         keys.get(target).cloned()
     };
     if key.is_none() {
-        let _ = sender
-            .send(Message::Text(
-                errors::MODERATION_TARGET_NOT_FOUND.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::MODERATION_TARGET_NOT_FOUND).await;
     }
     key
 }
@@ -138,11 +114,7 @@ pub(super) async fn handle_kick_user(
 
     let online = state.users.lock().await.contains(&target);
     if !online {
-        let _ = sender
-            .send(Message::Text(
-                errors::MODERATION_TARGET_NOT_FOUND.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::MODERATION_TARGET_NOT_FOUND).await;
         return;
     }
 
@@ -172,9 +144,7 @@ pub(super) async fn handle_ban_user(
 
     if let Err(e) = db::add_ban(&state.db, &key, &target, &requester).await {
         error!("Failed to persist ban for {target}: {e}");
-        let _ = sender
-            .send(Message::Text(errors::MODERATION_FAILED.to_string().into()))
-            .await;
+        send_error(sender, errors::MODERATION_FAILED).await;
         return;
     }
 
@@ -210,17 +180,11 @@ pub(super) async fn handle_unban_user(
             info!(requester, target, "User unbanned");
         }
         Ok(false) => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::MODERATION_TARGET_NOT_FOUND.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::MODERATION_TARGET_NOT_FOUND).await;
         }
         Err(e) => {
             error!("Failed to lift ban for {target}: {e}");
-            let _ = sender
-                .send(Message::Text(errors::MODERATION_FAILED.to_string().into()))
-                .await;
+            send_error(sender, errors::MODERATION_FAILED).await;
         }
     }
 }
@@ -256,9 +220,7 @@ pub(super) async fn handle_mute_user(
 
     if let Err(e) = db::add_mute(&state.db, &key, &target, &requester, until).await {
         error!("Failed to persist mute for {target}: {e}");
-        let _ = sender
-            .send(Message::Text(errors::MODERATION_FAILED.to_string().into()))
-            .await;
+        send_error(sender, errors::MODERATION_FAILED).await;
         return;
     }
 
@@ -308,17 +270,11 @@ pub(super) async fn handle_unmute_user(
             info!(requester, target, "User unmuted");
         }
         Ok(_) => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::MODERATION_TARGET_NOT_FOUND.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::MODERATION_TARGET_NOT_FOUND).await;
         }
         Err(e) => {
             error!("Failed to lift mute for {target}: {e}");
-            let _ = sender
-                .send(Message::Text(errors::MODERATION_FAILED.to_string().into()))
-                .await;
+            send_error(sender, errors::MODERATION_FAILED).await;
         }
     }
 }

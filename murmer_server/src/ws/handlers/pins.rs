@@ -50,20 +50,13 @@ async fn broadcast_pins(state: &Arc<AppState>, channel_id: i32) {
 }
 
 /// Extract the target message id or reply with a pin error.
-async fn require_message_id(
-    sender: &mut SplitSink<WebSocket, Message>,
-    v: &Value,
-) -> Option<i32> {
+async fn require_message_id(sender: &mut SplitSink<WebSocket, Message>, v: &Value) -> Option<i32> {
     let id = v
         .get("messageId")
         .and_then(|m| m.as_i64())
         .and_then(|m| i32::try_from(m).ok());
     if id.is_none() {
-        let _ = sender
-            .send(Message::Text(
-                errors::PIN_TARGET_NOT_FOUND.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::PIN_TARGET_NOT_FOUND).await;
     }
     id
 }
@@ -98,32 +91,20 @@ pub(super) async fn handle_pin_message(
                     info!(user, message_id, "Message pinned");
                 }
                 Ok(false) => {
-                    let _ = sender
-                        .send(Message::Text(
-                            errors::PIN_LIMIT_REACHED.to_string().into(),
-                        ))
-                        .await;
+                    send_error(sender, errors::PIN_LIMIT_REACHED).await;
                 }
                 Err(e) => {
                     error!("Failed to pin message {message_id}: {e}");
-                    let _ = sender
-                        .send(Message::Text(errors::PIN_FAILED.to_string().into()))
-                        .await;
+                    send_error(sender, errors::PIN_FAILED).await;
                 }
             }
         }
         Ok(None) => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::PIN_TARGET_NOT_FOUND.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::PIN_TARGET_NOT_FOUND).await;
         }
         Err(e) => {
             error!("Failed to load message {message_id} for pinning: {e}");
-            let _ = sender
-                .send(Message::Text(errors::PIN_FAILED.to_string().into()))
-                .await;
+            send_error(sender, errors::PIN_FAILED).await;
         }
     }
 }
@@ -151,9 +132,7 @@ pub(super) async fn handle_unpin_message(
         Ok(None) => {}
         Err(e) => {
             error!("Failed to unpin message {message_id}: {e}");
-            let _ = sender
-                .send(Message::Text(errors::PIN_FAILED.to_string().into()))
-                .await;
+            send_error(sender, errors::PIN_FAILED).await;
         }
     }
 }

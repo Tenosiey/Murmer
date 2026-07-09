@@ -26,45 +26,28 @@ pub(super) async fn handle_dm(
     };
 
     if !security::check_message_rate_limit(&state.rate_limiter, &from).await {
-        let _ = sender
-            .send(Message::Text(errors::MESSAGE_RATE_LIMIT.to_string().into()))
-            .await;
+        send_error(sender, errors::MESSAGE_RATE_LIMIT).await;
         return;
     }
 
     if super::moderation::is_muted(state, &from).await {
-        let msg = serde_json::json!({
-            "type": "error",
-            "message": "muted",
-        })
-        .to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::MUTED).await;
         return;
     }
 
     let to = match v.get("to").and_then(|t| t.as_str()).map(str::trim) {
         Some(to) if !to.is_empty() => to.to_string(),
         _ => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::DM_TARGET_NOT_FOUND.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::DM_TARGET_NOT_FOUND).await;
             return;
         }
     };
     if to == from {
-        let _ = sender
-            .send(Message::Text(errors::CANNOT_DM_SELF.to_string().into()))
-            .await;
+        send_error(sender, errors::CANNOT_DM_SELF).await;
         return;
     }
     if !state.known_users.lock().await.contains(&to) {
-        let _ = sender
-            .send(Message::Text(
-                errors::DM_TARGET_NOT_FOUND.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::DM_TARGET_NOT_FOUND).await;
         return;
     }
 
@@ -75,9 +58,7 @@ pub(super) async fn handle_dm(
         return;
     }
     if text.len() > MAX_MESSAGE_LENGTH {
-        let _ = sender
-            .send(Message::Text(errors::MESSAGE_TOO_LONG.to_string().into()))
-            .await;
+        send_error(sender, errors::MESSAGE_TOO_LONG).await;
         return;
     }
 
@@ -106,9 +87,7 @@ pub(super) async fn handle_dm(
         }
         Err(e) => {
             error!("Failed to persist direct message from {from} to {to}: {e}");
-            let _ = sender
-                .send(Message::Text(errors::DM_SEND_FAILED.to_string().into()))
-                .await;
+            send_error(sender, errors::DM_SEND_FAILED).await;
         }
     }
 }
@@ -126,11 +105,7 @@ pub(super) async fn handle_load_dm_history(
     let peer = match v.get("with").and_then(|w| w.as_str()).map(str::trim) {
         Some(peer) if !peer.is_empty() => peer.to_string(),
         _ => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::DM_TARGET_NOT_FOUND.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::DM_TARGET_NOT_FOUND).await;
             return;
         }
     };
@@ -160,11 +135,7 @@ pub(super) async fn handle_load_dm_history(
         }
         Err(e) => {
             error!("Failed to load DM history between {user} and {peer}: {e}");
-            let _ = sender
-                .send(Message::Text(
-                    errors::DM_HISTORY_FAILED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::DM_HISTORY_FAILED).await;
         }
     }
 }

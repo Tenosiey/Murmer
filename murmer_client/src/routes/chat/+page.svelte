@@ -739,7 +739,8 @@
         return true;
       }
       case 'shrug': {
-        const shrug = '¯\_(ツ)_/¯';
+        // Backslash-escaped so markdown doesn't italicize the face.
+        const shrug = '¯\\\\\\_(ツ)\\_/¯';
         const text = rest ? `${rest} ${shrug}` : shrug;
         chat.send(currentUser ?? 'anon', text);
         return true;
@@ -988,17 +989,23 @@
     voiceChannels.create(name, preset, categoryId);
   }
 
-  function joinVoiceChannel(id: number) {
-    if ($session.user) {
-      if (inVoice && currentVoiceChannelId !== null) {
-        voice.leave(currentVoiceChannelId);
-      }
-      currentVoiceChannelId = id;
-      const info = $voiceChannels.find((vc) => vc.id === id);
-      voice.join($session.user, id, info);
-      inVoice = true;
-      scrollBottom();
+  async function joinVoiceChannel(id: number) {
+    if (!$session.user) return;
+    if (inVoice && currentVoiceChannelId !== null) {
+      voice.leave(currentVoiceChannelId);
     }
+    const info = $voiceChannels.find((vc) => vc.id === id);
+    try {
+      await voice.join($session.user, id, info);
+    } catch (error) {
+      console.error('Failed to join voice channel', error);
+      inVoice = false;
+      setCommandFeedback('Could not access your microphone. Check the permission and input device.', 'error');
+      return;
+    }
+    currentVoiceChannelId = id;
+    inVoice = true;
+    scrollBottom();
   }
 
   let menuChannelId: number | null = null;
