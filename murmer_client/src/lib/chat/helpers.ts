@@ -1,11 +1,22 @@
 import type { Message, UserStatus, VoiceChannelInfo } from '../types';
 import { extractLinks } from '../link-preview';
-import { VOICE_QUALITY_PRESETS, DEFAULT_VOICE_PRESET } from './constants';
+import { VOICE_QUALITY_PRESETS } from './constants';
 
 export type MessageBlock =
   | { kind: 'separator'; label: string; key: string }
   | { kind: 'unread'; key: string }
-  | { kind: 'message'; message: Message; key: string; links: string[] };
+  | {
+      kind: 'message';
+      message: Message;
+      key: string;
+      links: string[];
+      /** True when this message continues the previous author's group and
+       *  renders without its own avatar/username header. */
+      continuation: boolean;
+    };
+
+/** Messages from the same author within this window collapse into one group. */
+const GROUP_WINDOW_MS = 5 * 60 * 1000;
 
 export interface MessageBlockOptions {
   /** Insert a "new messages" marker before the first foreign message with an id above this. */
@@ -60,6 +71,8 @@ export function buildMessageBlocks(
 ): MessageBlock[] {
   const blocks: MessageBlock[] = [];
   let lastDateKey: string | null = null;
+  let groupUser: string | null = null;
+  let groupTime: number | null = null;
 
   const { unreadAfterId, currentUser } = options;
   let unreadMarkerPlaced = unreadAfterId === undefined || unreadAfterId <= 0;
@@ -75,6 +88,7 @@ export function buildMessageBlocks(
     ) {
       blocks.push({ kind: 'unread', key: 'unread-marker' });
       unreadMarkerPlaced = true;
+      groupUser = null;
     }
     const timestamp = parseTimestampValue(message.timestamp);
     if (timestamp) {
@@ -86,7 +100,25 @@ export function buildMessageBlocks(
           key: `separator-${currentKey}-${message.id ?? index}`
         });
         lastDateKey = currentKey;
+        groupUser = null;
       }
+    }
+
+    /* A message continues the current group when it has the same author,
+       arrives within the grouping window and is not a reply (replies show
+       their quote and deserve a fresh header). */
+    const time = timestamp?.getTime() ?? null;
+    const continuation =
+      groupUser !== null &&
+      message.user === groupUser &&
+      !message.replyTo &&
+      groupTime !== null &&
+      time !== null &&
+      time - groupTime <= GROUP_WINDOW_MS;
+
+    if (!continuation) {
+      groupUser = message.user ?? null;
+      groupTime = time;
     }
 
     const links = linksFor(message);
@@ -94,7 +126,8 @@ export function buildMessageBlocks(
       kind: 'message',
       message,
       key: `message-${message.id ?? `${index}-${message.time ?? ''}`}`,
-      links
+      links,
+      continuation
     });
   }
 
@@ -201,17 +234,6 @@ export function formatVoiceQuality(info: VoiceChannelInfo): string {
   const bitrate = info.bitrate ?? preset?.bitrate ?? null;
   const label = preset ? preset.label : info.quality;
   return bitrate && bitrate > 0 ? `${label} (${Math.round(bitrate / 1000)} kbps)` : label;
-}
-
-export function promptVoicePreset(): { quality: string; bitrate: number | null } {
-  const input = prompt(
-    'Voice quality (low, standard, high, ultra, lossless)',
-    DEFAULT_VOICE_PRESET.quality
-  );
-  if (!input) return { quality: DEFAULT_VOICE_PRESET.quality, bitrate: DEFAULT_VOICE_PRESET.bitrate };
-  const normalized = input.trim().toLowerCase();
-  const preset = VOICE_QUALITY_PRESETS.find((p) => p.quality === normalized) ?? DEFAULT_VOICE_PRESET;
-  return { quality: preset.quality, bitrate: preset.bitrate };
 }
 
 export function reactionEntries(

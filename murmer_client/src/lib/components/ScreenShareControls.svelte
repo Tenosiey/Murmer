@@ -7,6 +7,7 @@
   import { isScreenSharing, startScreenShare, stopScreenShare, screenShareSettings } from '$lib/stores/screenShare';
   import { session } from '$lib/stores/session';
   import { QUALITY_PRESETS, type QualityPreset } from '$lib/screenshare/manager';
+  import { dialogs } from '$lib/stores/dialogs';
   
   export let currentVoiceChannel: number | null = null;
   export let inVoice: boolean = false;
@@ -23,7 +24,10 @@
       stopScreenShare();
     } else {
       if (!inVoice || !currentVoiceChannel || !$session.user) {
-        alert('You must be in a voice channel to share your screen');
+        await dialogs.alert({
+          title: 'Join a voice channel first',
+          message: 'You must be in a voice channel to share your screen.'
+        });
         return;
       }
 
@@ -42,7 +46,10 @@
         await startScreenShare($session.user, currentVoiceChannel);
       } catch (error) {
         console.error('Failed to start screen share:', error);
-        alert('Failed to start screen sharing. Please ensure you granted permission.');
+        dialogs.alert({
+          title: 'Screen sharing failed',
+          message: 'Could not start screen sharing. Please ensure you granted permission.'
+        });
       }
     }
   }
