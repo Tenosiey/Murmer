@@ -15,7 +15,10 @@ import {
   vadSensitivity,
   pttKey,
   isPttActive,
-  voiceActivity
+  voiceActivity,
+  echoCancellation,
+  noiseSuppression,
+  autoGainControl
 } from '../stores/settings';
 import { resetRemoteSpeaking } from '../stores/voiceSpeaking';
 import { get } from 'svelte/store';
@@ -90,6 +93,9 @@ export class VoiceManager {
 
     voiceMode.subscribe(() => this.updateTransmissionMode());
     vadSensitivity.subscribe(() => this.updateVadSensitivity());
+    echoCancellation.subscribe(() => this.applyMicProcessing());
+    noiseSuppression.subscribe(() => this.applyMicProcessing());
+    autoGainControl.subscribe(() => this.applyMicProcessing());
     pttKey.subscribe((key) => {
       if (this.ptt) {
         this.ptt.setKey(key);
@@ -153,6 +159,23 @@ export class VoiceManager {
     if (get(voiceMode) === 'vad' && this.vad) {
       this.vad.updateSensitivity(get(vadSensitivity));
     }
+  }
+
+  private micProcessingConstraints(): MediaTrackConstraints {
+    return {
+      echoCancellation: get(echoCancellation),
+      noiseSuppression: get(noiseSuppression),
+      autoGainControl: get(autoGainControl)
+    };
+  }
+
+  /** Re-apply the mic processing settings to the live capture track. */
+  private applyMicProcessing() {
+    const track = this.rawStream?.getAudioTracks()[0];
+    if (!track) return;
+    track.applyConstraints(this.micProcessingConstraints()).catch((error) => {
+      console.warn('Failed to apply microphone processing constraints:', error);
+    });
   }
 
   /**
@@ -414,10 +437,9 @@ export class VoiceManager {
     // Acquire the microphone before touching any state: this is the only
     // step that can fail.
     const device = get(inputDeviceId);
-    const constraints: MediaStreamConstraints = device
-      ? { audio: { deviceId: { exact: device } } }
-      : { audio: true };
-    const rawStream = await navigator.mediaDevices.getUserMedia(constraints);
+    const audio: MediaTrackConstraints = this.micProcessingConstraints();
+    if (device) audio.deviceId = { exact: device };
+    const rawStream = await navigator.mediaDevices.getUserMedia({ audio });
 
     this.userName = user;
     this.channelId = channelId;

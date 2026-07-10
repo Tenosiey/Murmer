@@ -3,7 +3,17 @@
   The component renders nothing when the `open` prop is false.
 -->
 <script lang="ts">
-  import { volume, inputDeviceId, outputDeviceId, voiceMode, vadSensitivity, pttKey } from '$lib/stores/settings';
+  import {
+    volume,
+    inputDeviceId,
+    outputDeviceId,
+    voiceMode,
+    vadSensitivity,
+    pttKey,
+    echoCancellation,
+    noiseSuppression,
+    autoGainControl
+  } from '$lib/stores/settings';
   import { APP_VERSION } from '$lib/version';
   import { theme, accent, DEFAULT_ACCENT } from '$lib/stores/theme';
   import ThemeWheel from '$lib/components/ThemeWheel.svelte';
@@ -260,6 +270,37 @@
         </div>
 
         <div class="settings-section">
+          <h3 class="section-title">Microphone processing</h3>
+
+          <div class="setting-group">
+            <label class="toggle-row">
+              <input type="checkbox" bind:checked={$noiseSuppression} />
+              <span class="toggle-text">
+                <span class="toggle-label">Noise suppression</span>
+                <span class="toggle-description">Filter out constant background noise like fans or keyboards</span>
+              </span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" bind:checked={$echoCancellation} />
+              <span class="toggle-text">
+                <span class="toggle-label">Echo cancellation</span>
+                <span class="toggle-description">Prevent others from hearing their own audio through your microphone</span>
+              </span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" bind:checked={$autoGainControl} />
+              <span class="toggle-text">
+                <span class="toggle-label">Automatic gain control</span>
+                <span class="toggle-description">Keep your voice at a steady volume level</span>
+              </span>
+            </label>
+            <div class="setting-description">
+              Changes apply immediately, including while you are in a voice channel.
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
           <h3 class="section-title">Voice activation</h3>
           
           <div class="setting-group">
@@ -370,6 +411,7 @@
             <div class="setting-description">Current version: {APP_VERSION}</div>
           </div>
         </div>
+
       </div>
 
       <div class="modal-footer">
@@ -589,6 +631,39 @@
   .volume-slider::-moz-range-track {
     background: transparent;
     border: none;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    cursor: pointer;
+  }
+
+  .toggle-row input[type='checkbox'] {
+    margin-top: 0.2rem;
+    accent-color: var(--color-primary);
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+
+  .toggle-text {
+    display: grid;
+    gap: 0.125rem;
+  }
+
+  .toggle-label {
+    font-weight: 500;
+    font-size: var(--text-md);
+    color: var(--color-on-surface);
+  }
+
+  .toggle-description {
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+    line-height: 1.4;
   }
 
   .pubkey-row {

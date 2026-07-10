@@ -110,6 +110,33 @@ export function getUserVolume(userId: string): number {
   return currentVolumes[userId] ?? 1.0;
 }
 
+// Microphone processing (applied as getUserMedia constraints)
+const ECHO_CANCEL_KEY = 'murmer_echo_cancellation';
+const NOISE_SUPPRESS_KEY = 'murmer_noise_suppression';
+const AUTO_GAIN_KEY = 'murmer_auto_gain';
+
+function loadBool(key: string, def: boolean): boolean {
+  if (!browser) return def;
+  const stored = localStorage.getItem(key);
+  return stored === null ? def : stored === 'true';
+}
+
+export const echoCancellation = writable<boolean>(loadBool(ECHO_CANCEL_KEY, true));
+export const noiseSuppression = writable<boolean>(loadBool(NOISE_SUPPRESS_KEY, true));
+export const autoGainControl = writable<boolean>(loadBool(AUTO_GAIN_KEY, true));
+
+echoCancellation.subscribe((value) => {
+  if (browser) localStorage.setItem(ECHO_CANCEL_KEY, String(value));
+});
+
+noiseSuppression.subscribe((value) => {
+  if (browser) localStorage.setItem(NOISE_SUPPRESS_KEY, String(value));
+});
+
+autoGainControl.subscribe((value) => {
+  if (browser) localStorage.setItem(AUTO_GAIN_KEY, String(value));
+});
+
 // Voice activation and push-to-talk settings
 export type VoiceMode = 'continuous' | 'vad' | 'ptt';
 
