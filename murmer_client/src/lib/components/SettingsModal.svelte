@@ -36,6 +36,23 @@
   let outputs: MediaDeviceInfo[] = [];
   let capturingPttKey = false;
 
+  // Each settings topic lives on its own tab shown in the left rail.
+  const TABS = [
+    { id: 'appearance', label: 'Appearance' },
+    { id: 'audio', label: 'Audio' },
+    { id: 'microphone', label: 'Microphone' },
+    { id: 'voice', label: 'Voice' },
+    { id: 'identity', label: 'Identity' },
+    { id: 'updates', label: 'Updates' },
+    { id: 'server', label: 'Server', ownerOnly: true }
+  ] as const;
+  let activeTab: (typeof TABS)[number]['id'] = 'appearance';
+  $: visibleTabs = TABS.filter((tab) => !('ownerOnly' in tab && tab.ownerOnly) || $serverInfo);
+  // If the active tab disappears (e.g. server info clears), fall back to the first.
+  $: if (!visibleTabs.some((tab) => tab.id === activeTab)) {
+    activeTab = visibleTabs[0].id;
+  }
+
   // Preset theme colors shown next to the wheel; each is a wheel position.
   const ACCENT_PRESETS = [
     { name: 'Sky', hue: 215, saturation: 78 },
@@ -159,7 +176,20 @@
         </button>
       </div>
 
-      <div class="modal-body">
+      <div class="settings-layout">
+        <nav class="settings-tabs" aria-label="Settings sections">
+          {#each visibleTabs as tab}
+            <button
+              class="tab-btn"
+              class:selected={activeTab === tab.id}
+              aria-pressed={activeTab === tab.id}
+              on:click={() => (activeTab = tab.id)}
+            >{tab.label}</button>
+          {/each}
+        </nav>
+
+        <div class="modal-body">
+        {#if activeTab === 'appearance'}
         <div class="settings-section">
           <h3 class="section-title">Appearance</h3>
 
@@ -212,7 +242,9 @@
             </div>
           </div>
         </div>
+        {/if}
 
+        {#if activeTab === 'audio'}
         <div class="settings-section">
           <h3 class="section-title">Audio</h3>
           
@@ -269,7 +301,9 @@
             </div>
           </div>
         </div>
+        {/if}
 
+        {#if activeTab === 'microphone'}
         <div class="settings-section">
           <h3 class="section-title">Microphone processing</h3>
 
@@ -300,7 +334,9 @@
             </div>
           </div>
         </div>
+        {/if}
 
+        {#if activeTab === 'voice'}
         <div class="settings-section">
           <h3 class="section-title">Voice activation</h3>
           
@@ -368,7 +404,9 @@
             </div>
           {/if}
         </div>
+        {/if}
 
+        {#if activeTab === 'identity'}
         <div class="settings-section">
           <h3 class="section-title">Identity</h3>
           <div class="setting-group">
@@ -399,7 +437,9 @@
             </div>
           </div>
         </div>
+        {/if}
 
+        {#if activeTab === 'updates'}
         <div class="settings-section">
           <h3 class="section-title">Updates</h3>
           <div class="setting-group">
@@ -412,8 +452,9 @@
             <div class="setting-description">Current version: {APP_VERSION}</div>
           </div>
         </div>
+        {/if}
 
-        {#if $serverInfo}
+        {#if activeTab === 'server' && $serverInfo}
           <div class="settings-section">
             <h3 class="section-title">Server</h3>
             <div class="setting-group">
@@ -427,6 +468,7 @@
             </div>
           </div>
         {/if}
+        </div>
       </div>
 
       <div class="modal-footer">
@@ -456,12 +498,51 @@
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
     border: 1px solid var(--color-surface-outline);
-    width: min(540px, 92vw);
-    max-height: 82vh;
+    width: min(720px, 94vw);
+    height: min(560px, 82vh);
     overflow: hidden;
     display: flex;
     flex-direction: column;
     animation: slideIn 0.18s var(--motion-easing-standard);
+  }
+
+  .settings-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .settings-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-4) var(--space-3);
+    border-right: 1px solid var(--color-surface-outline);
+    flex-shrink: 0;
+    width: 12rem;
+    overflow-y: auto;
+  }
+
+  .tab-btn {
+    text-align: left;
+    justify-content: flex-start;
+    background: transparent;
+    border: none;
+    color: var(--color-muted);
+    font-weight: 500;
+    font-size: var(--text-md);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+  }
+
+  .tab-btn:hover {
+    background: var(--color-surface-raised);
+    color: var(--color-on-surface);
+  }
+
+  .tab-btn.selected {
+    background: var(--color-primary-container);
+    color: var(--color-primary);
   }
 
   .modal-header {
@@ -478,6 +559,8 @@
   }
 
   .modal-body {
+    flex: 1;
+    min-width: 0;
     padding: var(--space-5);
     overflow-y: auto;
     display: flex;
