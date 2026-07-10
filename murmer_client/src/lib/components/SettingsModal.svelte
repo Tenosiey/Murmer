@@ -298,7 +298,7 @@
           <div class="setting-group">
             <button class="btn update-btn" on:click={checkUpdates} disabled={updating}>Check for Updates</button>
             {#if updateMessage}
-              <div class="update-message" class:success={updateMessage.includes('latest')} class:warning={updateMessage.includes('available')}>
+              <div class="update-message" class:success={updateMessage.startsWith('You are running')} class:warning={updateMessage.startsWith('Update available')}>
                 {updateMessage}
               </div>
             {/if}
