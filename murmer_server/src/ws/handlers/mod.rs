@@ -168,6 +168,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "get-server-info" => {
                                 handle_get_server_info(&state, &mut sender, &user_name).await;
                             }
+                            "connection-stats" => {
+                                handle_connection_stats(&state, &v, &user_name).await;
+                            }
+                            "get-connection-stats" => {
+                                handle_get_connection_stats(&state, &mut sender, &user_name).await;
+                            }
                             "voice-join" => {
                                 handle_voice_join(&state, &mut sender, &v, &mut voice_channel, &user_name).await;
                             }
@@ -356,6 +362,78 @@ async fn handle_get_server_info(
     let msg = serde_json::json!({
         "type": "server-info",
         "version": env!("CARGO_PKG_VERSION"),
+    });
+    let _ = sender.send(Message::Text(msg.to_string().into())).await;
+}
+
+/// Store a client's self-reported connection quality numbers (ping, voice
+/// RTT/jitter/packet loss). The entry is keyed by the authenticated user name
+/// so clients cannot report on behalf of someone else, values are validated
+/// and clamped, and everything stays in memory only (dropped on disconnect).
+async fn handle_connection_stats(state: &Arc<AppState>, v: &Value, user_name: &Option<String>) {
+    let Some(user) = user_name.as_deref() else {
+        return;
+    };
+
+    fn stat(v: &Value, key: &str, max: f64) -> Option<f64> {
+        v.get(key)?
+            .as_f64()
+            .filter(|n| n.is_finite() && *n >= 0.0)
+            .map(|n| n.min(max))
+    }
+
+    let entry = crate::ConnectionStatsEntry {
+        ping_ms: stat(v, "ping", super::constants::MAX_REPORTED_STAT_MS),
+        voice_rtt_ms: stat(v, "voiceRtt", super::constants::MAX_REPORTED_STAT_MS),
+        voice_jitter_ms: stat(v, "voiceJitter", super::constants::MAX_REPORTED_STAT_MS),
+        voice_loss_percent: stat(v, "voiceLoss", 100.0),
+        updated_at: std::time::Instant::now(),
+    };
+    state
+        .connection_stats
+        .lock()
+        .await
+        .insert(user.to_string(), entry);
+}
+
+/// Send every user's latest self-reported connection stats to the requester.
+/// Only answered for Owner/Admin roles, checked against the server-side role
+/// map so clients cannot spoof access. Unauthorised requests are dropped
+/// silently, mirroring `get-server-info`.
+async fn handle_get_connection_stats(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    user_name: &Option<String>,
+) {
+    let Some(requester) = user_name.as_deref() else {
+        return;
+    };
+
+    if !can_view_connection_stats(state, requester).await {
+        info!(requester, "Denied connection stats request");
+        return;
+    }
+
+    let stats: serde_json::Map<String, Value> = {
+        let map = state.connection_stats.lock().await;
+        map.iter()
+            .map(|(user, entry)| {
+                (
+                    user.clone(),
+                    serde_json::json!({
+                        "ping": entry.ping_ms,
+                        "voiceRtt": entry.voice_rtt_ms,
+                        "voiceJitter": entry.voice_jitter_ms,
+                        "voiceLoss": entry.voice_loss_percent,
+                        "ageSeconds": entry.updated_at.elapsed().as_secs(),
+                    }),
+                )
+            })
+            .collect()
+    };
+    let msg = serde_json::json!({
+        "type": "connection-stats-list",
+        "stats": stats,
     });
     let _ = sender.send(Message::Text(msg.to_string().into())).await;
 }
@@ -683,6 +761,7 @@ async fn handle_disconnect(state: &Arc<AppState>, user_name: Option<String>) {
         }
 
         state.voice_mutes.lock().await.remove(&name);
+        state.connection_stats.lock().await.remove(&name);
 
         // Clean up any active screen shares owned by the disconnecting user.
         {

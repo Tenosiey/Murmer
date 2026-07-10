@@ -410,6 +410,20 @@ pub async fn can_view_server_info(state: &Arc<AppState>, user: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Determine whether a user is authorised to view other users' self-reported
+/// connection stats. Restricted to Owner and Admin roles.
+pub async fn can_view_connection_stats(state: &Arc<AppState>, user: &str) -> bool {
+    let roles = state.roles.lock().await;
+    roles
+        .get(user)
+        .map(|info| {
+            super::constants::CONNECTION_STATS_ROLES
+                .iter()
+                .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
+        })
+        .unwrap_or(false)
+}
+
 /// Determine whether a user is authorised to manage roles.
 pub async fn can_manage_roles(state: &Arc<AppState>, user: &str) -> bool {
     let roles = state.roles.lock().await;

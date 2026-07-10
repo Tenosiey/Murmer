@@ -39,7 +39,19 @@ export interface RemotePeer {
 export interface ConnectionStats {
   rtt: number;
   jitter: number;
+  /** Packet loss over the last stats window, percent 0–100. */
+  packetLoss: number;
   strength: number;
+}
+
+/** A user's self-reported connection stats as relayed by the server. */
+export interface UserConnectionStats {
+  ping: number | null;
+  voiceRtt: number | null;
+  voiceJitter: number | null;
+  voiceLoss: number | null;
+  /** Seconds since the user last reported. */
+  ageSeconds: number;
 }
 
 export interface RoleInfo {

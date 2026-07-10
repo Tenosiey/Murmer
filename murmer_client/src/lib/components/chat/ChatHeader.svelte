@@ -5,6 +5,7 @@
 <script lang="ts">
   import PingDot from '$lib/components/PingDot.svelte';
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
+  import ConnectionStatsPanel from '$lib/components/ConnectionStatsPanel.svelte';
   import { ping } from '$lib/stores/ping';
   import { session } from '$lib/stores/session';
   import { theme } from '$lib/stores/theme';
@@ -39,6 +40,10 @@
   let notificationMenuButton: HTMLButtonElement | null = null;
   let notificationMenuElement: HTMLDivElement | null = null;
 
+  let statsMenuOpen = false;
+  let statsMenuButton: HTMLButtonElement | null = null;
+  let statsMenuElement: HTMLDivElement | null = null;
+
   $: currentUserStatus = $session.user
     ? ensureStatus(statusMap, $session.user, 'online')
     : 'offline';
@@ -56,6 +61,7 @@
     lastChannelId = channelId;
     statusMenuOpen = false;
     notificationMenuOpen = false;
+    statsMenuOpen = false;
   }
 
   function toggleStatusMenu(event: MouseEvent) {
@@ -63,7 +69,15 @@
     if (notificationMenuOpen) {
       notificationMenuOpen = false;
     }
+    statsMenuOpen = false;
     statusMenuOpen = !statusMenuOpen;
+  }
+
+  function toggleStatsMenu(event: MouseEvent) {
+    event.stopPropagation();
+    statusMenuOpen = false;
+    notificationMenuOpen = false;
+    statsMenuOpen = !statsMenuOpen;
   }
 
   function selectStatus(value: UserStatus) {
@@ -95,6 +109,19 @@
       if (notificationMenuElement && target && notificationMenuElement.contains(target)) return;
       if (notificationMenuButton && target && notificationMenuButton.contains(target)) return;
       notificationMenuOpen = false;
+    }
+    if (statsMenuOpen) {
+      if (statsMenuElement && target && statsMenuElement.contains(target)) return;
+      if (statsMenuButton && target && statsMenuButton.contains(target)) return;
+      statsMenuOpen = false;
+    }
+  }
+
+  function handleStatsMenuKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      statsMenuOpen = false;
+      event.stopPropagation();
+      event.preventDefault();
     }
   }
 
@@ -177,9 +204,30 @@
         </div>
       {/if}
     </div>
-      <div class="connection-info">
-        <PingDot ping={$ping} />
-        <ConnectionBars strength={serverStrength} />
+      <div class="connection-control">
+        <button
+          class="connection-info"
+          bind:this={statsMenuButton}
+          aria-haspopup="true"
+          aria-expanded={statsMenuOpen}
+          on:click={toggleStatsMenu}
+          title="Connection stats"
+        >
+          <PingDot ping={$ping} />
+          <ConnectionBars strength={serverStrength} />
+        </button>
+        {#if statsMenuOpen}
+          <div
+            class="stats-menu"
+            bind:this={statsMenuElement}
+            role="menu"
+            tabindex="-1"
+            on:click|stopPropagation
+            on:keydown={handleStatsMenuKeydown}
+          >
+            <ConnectionStatsPanel />
+          </div>
+        {/if}
       </div>
     </div>
     <div class="action-group">
@@ -518,11 +566,36 @@
     text-transform: capitalize;
   }
 
+  .connection-control {
+    position: relative;
+  }
+
   .connection-info {
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
-    padding: 0 var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+  }
+
+  .connection-info:hover,
+  .connection-info:focus-visible {
+    background: var(--color-surface-raised);
+    outline: none;
+  }
+
+  .stats-menu {
+    position: absolute;
+    top: calc(100% + var(--space-1));
+    right: 0;
+    background: var(--color-surface-elevated);
+    border: 1px solid var(--color-surface-outline);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    z-index: var(--z-dropdown);
   }
 
   .notification-control {

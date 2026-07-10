@@ -15,6 +15,10 @@ small team can deploy a private chat space quickly.
 - Configurable user roles with optional colour accents
 - Secure file and image sharing (extension safe-list, content-type checks, size limits and path sanitisation)
 - Desktop client with auto-reconnect and connection quality indicators
+- Connection stats panel (server ping, voice RTT, jitter, packet loss); Owners
+  and Admins can additionally view every user's self-reported stats (quality
+  numbers only — no IPs or device details, kept in memory and dropped on
+  disconnect)
 - Slash commands (`/help`, `/me`, `/shrug`, `/topic`, `/status`,
   `/ephemeral`, `/search`)
 - Link previews with server-side OpenGraph fetching (client IPs stay hidden from linked sites)

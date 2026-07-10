@@ -31,6 +31,11 @@ const DEFAULT_AUDIO_BITRATE = 64_000;
 export class VoiceManager {
   private peers: Record<string, RTCPeerConnection> = {};
   private statsIntervals: Record<string, number> = {};
+  /** Cumulative RTP packet counters per peer, used to compute windowed loss. */
+  private prevPacketCounts: Record<
+    string,
+    { received: number; lost: number; sent: number; remoteLost: number }
+  > = {};
   private localStream: MediaStream | null = null;
   private userName: string | null = null;
   private channelId: number | null = null;
@@ -327,6 +332,7 @@ export class VoiceManager {
         clearInterval(interval);
         delete this.statsIntervals[id];
       }
+      delete this.prevPacketCounts[id];
     }
     this.emit(peersList.filter((r) => r.id !== id));
   }
@@ -338,6 +344,10 @@ export class VoiceManager {
       const reports = await pc.getStats();
       let rtt = 0;
       let jitter = 0;
+      let received = 0;
+      let lost = 0;
+      let sent = 0;
+      let remoteLost = 0;
       reports.forEach((report) => {
         if (
           report.type === 'candidate-pair' &&
@@ -346,19 +356,45 @@ export class VoiceManager {
         ) {
           rtt = (report as any).currentRoundTripTime * 1000;
         }
-        if (
-          report.type === 'remote-inbound-rtp' &&
-          (report as any).kind === 'audio' &&
-          (report as any).jitter != null
-        ) {
-          jitter = (report as any).jitter * 1000;
+        if (report.type === 'remote-inbound-rtp' && (report as any).kind === 'audio') {
+          if ((report as any).jitter != null) {
+            jitter = (report as any).jitter * 1000;
+          }
+          remoteLost += (report as any).packetsLost ?? 0;
+        }
+        if (report.type === 'inbound-rtp' && (report as any).kind === 'audio') {
+          received += (report as any).packetsReceived ?? 0;
+          lost += (report as any).packetsLost ?? 0;
+        }
+        if (report.type === 'outbound-rtp' && (report as any).kind === 'audio') {
+          sent += (report as any).packetsSent ?? 0;
         }
       });
-      const strength =
+
+      // Loss over the window since the previous poll, in both directions:
+      // packets we didn't receive plus packets the peer reports missing from
+      // us. Deltas are clamped because the cumulative counters may decrease
+      // (e.g. after duplicate packets or an SSRC restart).
+      const prev = this.prevPacketCounts[id] ?? { received: 0, lost: 0, sent: 0, remoteLost: 0 };
+      this.prevPacketCounts[id] = { received, lost, sent, remoteLost };
+      const dReceived = Math.max(0, received - prev.received);
+      const dLost = Math.max(0, lost - prev.lost);
+      const dSent = Math.max(0, sent - prev.sent);
+      const dRemoteLost = Math.max(0, remoteLost - prev.remoteLost);
+      const inboundLoss = dReceived + dLost > 0 ? (dLost / (dReceived + dLost)) * 100 : 0;
+      const outboundLoss = dSent > 0 ? Math.min(100, (dRemoteLost / dSent) * 100) : 0;
+      const packetLoss = Math.max(inboundLoss, outboundLoss);
+
+      let strength =
         rtt === 0 ? 5 : rtt < 50 ? 5 : rtt < 100 ? 4 : rtt < 200 ? 3 : rtt < 400 ? 2 : 1;
+      // Heavy packet loss ruins a call even on a fast link, so cap the bars.
+      if (packetLoss >= 10) strength = Math.min(strength, 1);
+      else if (packetLoss >= 5) strength = Math.min(strength, 2);
+      else if (packetLoss >= 2) strength = Math.min(strength, 3);
+
       for (const p of peersList) {
         if (p.id === id) {
-          p.stats = { rtt, jitter, strength };
+          p.stats = { rtt, jitter, packetLoss, strength };
         }
       }
       this.emit([...peersList]);
