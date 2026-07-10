@@ -9,6 +9,14 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Send a pre-serialized error frame (see [`crate::ws::errors`]) to one client.
+/// Send failures are ignored; the socket loop notices a dead connection itself.
+pub async fn send_error(sender: &mut SplitSink<WebSocket, Message>, error_json: &str) {
+    let _ = sender
+        .send(Message::Text(error_json.to_string().into()))
+        .await;
+}
+
 /// Collect online users and all known users without holding locks.
 pub async fn get_user_lists(state: &Arc<AppState>) -> (Vec<String>, Vec<String>) {
     let online = {

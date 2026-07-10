@@ -17,6 +17,7 @@
   import { onMount } from 'svelte';
   import { APP_VERSION } from '$lib/version';
   import { theme } from '$lib/stores/theme';
+  import DialogHost from '$lib/components/DialogHost.svelte';
 
   // Fonts are bundled locally so startup never blocks on a network fetch
   // and the desktop client works fully offline.
@@ -461,5 +462,7 @@
 </style>
 
 <slot />
+
+<DialogHost />
 
 <div class="version">{APP_VERSION}</div>

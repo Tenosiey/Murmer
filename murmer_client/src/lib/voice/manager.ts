@@ -354,9 +354,22 @@ export class VoiceManager {
 
   /**
    * Join a voice channel and start streaming the local microphone.
+   *
+   * Rejects (without changing any state) when microphone access fails, so a
+   * denied permission prompt doesn't leave the manager stuck in a half-joined
+   * state that blocks all future joins.
    */
   async join(user: string, channelId: number, peersList: RemotePeer[], info?: VoiceChannelInfo) {
     if (this.userName) return;
+
+    // Acquire the microphone before touching any state: this is the only
+    // step that can fail.
+    const device = get(inputDeviceId);
+    const constraints: MediaStreamConstraints = device
+      ? { audio: { deviceId: { exact: device } } }
+      : { audio: true };
+    const rawStream = await navigator.mediaDevices.getUserMedia(constraints);
+
     this.userName = user;
     this.channelId = channelId;
     this.channelConfig = info
@@ -380,11 +393,6 @@ export class VoiceManager {
     chat.on('voice-answer', (m) => this.handleAnswer(m));
     chat.on('voice-candidate', (m) => this.handleCandidate(m));
     chat.on('voice-leave', (m) => this.handleLeave(m, peersList));
-    const device = get(inputDeviceId);
-    const constraints: MediaStreamConstraints = device
-      ? { audio: { deviceId: { exact: device } } }
-      : { audio: true };
-    const rawStream = await navigator.mediaDevices.getUserMedia(constraints);
 
     this.localStream = await this.setupAudioProcessing(rawStream);
     this.updateTransmissionMode(rawStream);

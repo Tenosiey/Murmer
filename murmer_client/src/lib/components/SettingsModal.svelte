@@ -8,10 +8,14 @@
   import { loadKeyPair } from '$lib/keypair';
   import { onMount } from 'svelte';
   import { PushToTalkManager } from '$lib/voice/ptt';
+  import { check } from '@tauri-apps/plugin-updater';
+  import { relaunch } from '@tauri-apps/plugin-process';
+  import { dialogs } from '$lib/stores/dialogs';
   export let open: boolean;
   export let close: () => void;
 
   let updateMessage = '';
+  let updating = false;
   let publicKey = '';
   let keyCopied = false;
 
@@ -46,28 +50,44 @@
   }
 
   async function checkUpdates() {
+    if (updating) return;
+    updating = true;
     updateMessage = 'Checking...';
     try {
-      const res = await fetch(
-        'https://api.github.com/repos/Tenosiey/Murmer/releases?per_page=10'
-      );
-      if (!res.ok) throw new Error('request failed');
-      const releases = await res.json();
-      if (Array.isArray(releases) && releases.length > 0) {
-        const stable = releases.find((r) => !r.prerelease);
-        const pre = releases.find((r) => r.prerelease);
-        if (pre && pre.tag_name && pre.tag_name !== APP_VERSION) {
-          updateMessage = `Pre-release available: ${pre.tag_name}`;
-        } else if (stable && stable.tag_name && stable.tag_name !== APP_VERSION) {
-          updateMessage = `Update available: ${stable.tag_name}`;
-        } else {
-          updateMessage = 'You are running the latest version.';
-        }
-      } else {
-        updateMessage = 'No releases found.';
+      const update = await check();
+      if (!update) {
+        updateMessage = 'You are running the latest version.';
+        return;
       }
+      updateMessage = `Update available: ${update.version}`;
+      const install = await dialogs.confirm({
+        title: 'Install update?',
+        message: `Version ${update.version} is available (you have ${APP_VERSION}). The app will restart after installing.`,
+        confirmLabel: 'Install'
+      });
+      if (!install) return;
+      let contentLength = 0;
+      let downloaded = 0;
+      await update.downloadAndInstall((event) => {
+        if (event.event === 'Started') {
+          contentLength = event.data.contentLength ?? 0;
+          updateMessage = 'Downloading update...';
+        } else if (event.event === 'Progress') {
+          downloaded += event.data.chunkLength;
+          if (contentLength > 0) {
+            updateMessage = `Downloading update... ${Math.round((downloaded / contentLength) * 100)}%`;
+          }
+        } else if (event.event === 'Finished') {
+          updateMessage = 'Installing update...';
+        }
+      });
+      // On Windows the installer exits the app itself; relaunch covers other platforms.
+      await relaunch();
     } catch (e) {
-      updateMessage = 'Failed to check for updates.';
+      console.error('Update failed', e);
+      updateMessage = 'Update failed. Try again or download the latest release from GitHub.';
+    } finally {
+      updating = false;
     }
   }
 
@@ -276,12 +296,13 @@
         <div class="settings-section">
           <h3 class="section-title">Updates</h3>
           <div class="setting-group">
-            <button class="btn update-btn" on:click={checkUpdates}>Check for Updates</button>
+            <button class="btn update-btn" on:click={checkUpdates} disabled={updating}>Check for Updates</button>
             {#if updateMessage}
-              <div class="update-message" class:success={updateMessage.includes('latest')} class:warning={updateMessage.includes('available')}>
+              <div class="update-message" class:success={updateMessage.startsWith('You are running')} class:warning={updateMessage.startsWith('Update available')}>
                 {updateMessage}
               </div>
             {/if}
+            <div class="setting-description">Current version: {APP_VERSION}</div>
           </div>
         </div>
       </div>

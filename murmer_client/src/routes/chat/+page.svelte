@@ -26,6 +26,10 @@
   import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
   import PinnedBar from '$lib/components/chat/PinnedBar.svelte';
   import UserList from '$lib/components/chat/UserList.svelte';
+  import MessageItem from '$lib/components/chat/MessageItem.svelte';
+  import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
+  import ConversationPanel from '$lib/components/chat/ConversationPanel.svelte';
+  import ConnectionOverlay from '$lib/components/chat/ConnectionOverlay.svelte';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
@@ -45,35 +49,29 @@
   import { loadKeyPair, sign } from '$lib/keypair';
   import { connection, connectionError } from '$lib/stores/connection';
   import { describeServerError, isFatalConnectionError } from '$lib/errors';
-  import { renderMarkdown } from '$lib/markdown';
   import type { Message, UserStatus, ScreenSharePeer } from '$lib/types';
   import {
     pingToStrength,
     buildMessageBlocks,
     describeDuration,
-    ephemeralInfo,
-    formatFileSize,
-    promptVoicePreset,
-    reactionEntries,
-    searchResultPreview,
     type MessageBlock
   } from '$lib/chat/helpers';
+  import { dialogs } from '$lib/stores/dialogs';
+  import EmojiPicker from '$lib/components/EmojiPicker.svelte';
   import {
     MODERATOR_ROLES,
-    MESSAGE_INPUT_MAX_HEIGHT,
     MAX_TOPIC_LENGTH,
     MIN_EPHEMERAL_SECONDS,
     MAX_EPHEMERAL_SECONDS,
-    VOICE_QUALITY_PRESETS
+    VOICE_QUALITY_PRESETS,
+    DEFAULT_VOICE_PRESET
   } from '$lib/chat/constants';
 
   let serverStrength = 0;
   $: serverStrength = pingToStrength($ping);
 
   let message = '';
-  let fileInput: HTMLInputElement;
-  let messageInput: HTMLTextAreaElement;
-  let inputScrollable = false;
+  let composer: MessageComposer;
   let previewUrl: string | null = null;
   let pendingFile: File | null = null;
   let dragDepth = 0;
@@ -110,8 +108,6 @@
 
   let replyingTo: Message | null = null;
   let threadRootId: number | null = null;
-  let threadReplyText = '';
-  let dmText = '';
   const dmConversations = dm.conversations;
   const dmActivePeer = dm.activePeer;
   let threadMessages: Message[] = [];
@@ -163,28 +159,8 @@
     }
   }
 
-  function handleFileChange() {
-    setPendingFile(fileInput?.files?.[0] ?? null);
-  }
-
   function clearPendingFile() {
-    if (fileInput) fileInput.value = '';
     setPendingFile(null);
-  }
-
-  function handlePaste(event: ClipboardEvent) {
-    const items = event.clipboardData?.items;
-    if (!items) return;
-    for (const item of items) {
-      if (item.kind === 'file') {
-        const file = item.getAsFile();
-        if (file) {
-          event.preventDefault();
-          setPendingFile(file);
-          return;
-        }
-      }
-    }
   }
 
   function dragHasFiles(event: DragEvent): boolean {
@@ -216,17 +192,6 @@
     if (file) setPendingFile(file);
   }
 
-  function autoResize() {
-    if (messageInput) {
-      messageInput.style.height = 'auto';
-      const h = Math.min(messageInput.scrollHeight, MESSAGE_INPUT_MAX_HEIGHT);
-      messageInput.style.height = h + 'px';
-      inputScrollable = messageInput.scrollHeight > h;
-    } else {
-      inputScrollable = false;
-    }
-  }
-
   function toggleReaction(messageId: number | undefined, emoji: string, users: string[]) {
     if (typeof messageId !== 'number') return;
     const current = $session.user;
@@ -235,11 +200,27 @@
     chat.react(messageId, emoji, hasReaction ? 'remove' : 'add');
   }
 
-  function addReactionPrompt(messageId: number | undefined) {
+  let emojiPickerOpen = false;
+  let emojiPickerX = 0;
+  let emojiPickerY = 0;
+  let emojiPickerMessageId: number | null = null;
+
+  function openEmojiPicker(messageId: number | undefined, event: MouseEvent) {
     if (typeof messageId !== 'number') return;
-    const emoji = prompt('React with emoji')?.trim();
-    if (!emoji) return;
-    chat.react(messageId, emoji, 'add');
+    emojiPickerMessageId = messageId;
+    emojiPickerX = event.clientX;
+    emojiPickerY = event.clientY;
+    emojiPickerOpen = true;
+  }
+
+  function closeEmojiPicker() {
+    emojiPickerOpen = false;
+    emojiPickerMessageId = null;
+  }
+
+  function pickReaction(emoji: string) {
+    if (emojiPickerMessageId === null) return;
+    chat.react(emojiPickerMessageId, emoji, 'add');
   }
 
   $: statusMap = (() => {
@@ -265,7 +246,6 @@
     return MODERATOR_ROLES.some((role) => info.role?.toLowerCase() === role.toLowerCase());
   })();
 
-  $: autoResize();
   let inVoice = false;
   let settingsOpen = false;
   let currentChatChannelId: number = 0;
@@ -632,7 +612,6 @@
     if (trimmed.startsWith('/')) {
       if (handleSlashCommand(trimmed)) {
         message = '';
-        autoResize();
         return;
       }
     }
@@ -640,7 +619,6 @@
     chat.send($session.user ?? 'anon', message, replyTarget);
     replyingTo = null;
     message = '';
-    autoResize();
   }
 
   async function sendFile() {
@@ -739,7 +717,8 @@
         return true;
       }
       case 'shrug': {
-        const shrug = '¯\_(ツ)_/¯';
+        // Backslash-escaped so markdown doesn't italicize the face.
+        const shrug = '¯\\\\\\_(ツ)\\_/¯';
         const text = rest ? `${rest} ${shrug}` : shrug;
         chat.send(currentUser ?? 'anon', text);
         return true;
@@ -870,7 +849,7 @@
   function startReply(msg: Message) {
     if (typeof msg.id !== 'number') return;
     replyingTo = msg;
-    messageInput?.focus();
+    composer?.focusInput();
   }
 
   function cancelReply() {
@@ -879,47 +858,38 @@
 
   function openThread(rootId: number) {
     threadRootId = rootId;
-    threadReplyText = '';
     chat.loadThread(rootId);
   }
 
   function closeThread() {
     threadRootId = null;
-    threadReplyText = '';
   }
 
-  function sendThreadReply() {
-    const trimmed = threadReplyText.trim();
-    if (trimmed === '' || threadRootId === null) return;
-    chat.send($session.user ?? 'anon', trimmed, threadRootId);
-    threadReplyText = '';
+  function sendThreadReply(text: string) {
+    if (threadRootId === null) return;
+    chat.send($session.user ?? 'anon', text, threadRootId);
   }
 
   function openDm(user: string) {
     if (user === $session.user) return;
     closeThread();
-    dmText = '';
     dm.open(user);
     chat.loadDmHistory(user);
   }
 
   function closeDm() {
     dm.close();
-    dmText = '';
   }
 
-  function sendDmMessage() {
+  function sendDmMessage(text: string) {
     const peer = $dmActivePeer;
-    const trimmed = dmText.trim();
-    if (!peer || trimmed === '') return;
-    chat.sendDm(peer, trimmed);
-    dmText = '';
+    if (!peer) return;
+    chat.sendDm(peer, text);
   }
 
   $: dmMessages = $dmActivePeer ? ($dmConversations[$dmActivePeer] ?? []) : [];
 
   function handleComposerInput() {
-    autoResize();
     if (message.trim().length > 0) {
       chat.sendTyping();
     }
@@ -941,7 +911,10 @@
   async function handleViewScreenShare(userId: string) {
     try {
       if (!$session.user || currentVoiceChannelId === null) {
-        alert('You must be in a voice channel to view screen shares');
+        await dialogs.alert({
+          title: 'Join a voice channel first',
+          message: 'You must be in a voice channel to view screen shares.'
+        });
         return;
       }
 
@@ -959,7 +932,10 @@
     } catch (error) {
       pendingScreenShareView = null;
       console.error('Failed to view screen share:', error);
-      alert('Failed to view screen share');
+      dialogs.alert({
+        title: 'Screen share unavailable',
+        message: 'Could not open this screen share. The stream may have ended.'
+      });
     }
   }
 
@@ -976,29 +952,65 @@
     goto('/servers');
   }
 
-  function createChannelPrompt(categoryId: number | null = null) {
-    const name = prompt('New channel name');
-    if (name) channels.create(name, categoryId);
+  async function createChannelPrompt(categoryId: number | null = null) {
+    const name = await dialogs.prompt({
+      title: 'Create text channel',
+      label: 'Channel name',
+      placeholder: 'e.g. general',
+      confirmLabel: 'Create'
+    });
+    if (name) channels.create(name.trim(), categoryId);
   }
 
-  function createVoiceChannelPrompt(categoryId: number | null = null) {
-    const name = prompt('New voice channel name');
+  async function selectVoicePreset(): Promise<{ quality: string; bitrate: number | null } | null> {
+    const quality = await dialogs.select({
+      title: 'Voice quality',
+      options: VOICE_QUALITY_PRESETS.map((preset) => ({
+        value: preset.quality,
+        label: preset.label,
+        description:
+          preset.bitrate && preset.bitrate > 0
+            ? `${Math.round(preset.bitrate / 1000)} kbps`
+            : 'Uncompressed audio'
+      })),
+      initial: DEFAULT_VOICE_PRESET.quality,
+      confirmLabel: 'Apply'
+    });
+    if (quality === null) return null;
+    const preset = VOICE_QUALITY_PRESETS.find((p) => p.quality === quality) ?? DEFAULT_VOICE_PRESET;
+    return { quality: preset.quality, bitrate: preset.bitrate };
+  }
+
+  async function createVoiceChannelPrompt(categoryId: number | null = null) {
+    const name = await dialogs.prompt({
+      title: 'Create voice channel',
+      label: 'Channel name',
+      placeholder: 'e.g. Lounge',
+      confirmLabel: 'Next'
+    });
     if (!name) return;
-    const preset = promptVoicePreset();
-    voiceChannels.create(name, preset, categoryId);
+    const preset = await selectVoicePreset();
+    if (!preset) return;
+    voiceChannels.create(name.trim(), preset, categoryId);
   }
 
-  function joinVoiceChannel(id: number) {
-    if ($session.user) {
-      if (inVoice && currentVoiceChannelId !== null) {
-        voice.leave(currentVoiceChannelId);
-      }
-      currentVoiceChannelId = id;
-      const info = $voiceChannels.find((vc) => vc.id === id);
-      voice.join($session.user, id, info);
-      inVoice = true;
-      scrollBottom();
+  async function joinVoiceChannel(id: number) {
+    if (!$session.user) return;
+    if (inVoice && currentVoiceChannelId !== null) {
+      voice.leave(currentVoiceChannelId);
     }
+    const info = $voiceChannels.find((vc) => vc.id === id);
+    try {
+      await voice.join($session.user, id, info);
+    } catch (error) {
+      console.error('Failed to join voice channel', error);
+      inVoice = false;
+      setCommandFeedback('Could not access your microphone. Check the permission and input device.', 'error');
+      return;
+    }
+    currentVoiceChannelId = id;
+    inVoice = true;
+    scrollBottom();
   }
 
   let menuChannelId: number | null = null;
@@ -1074,8 +1086,14 @@
     chat.sendRaw({ type: 'kick-user', user });
   }
 
-  function banUser(user: string) {
-    if (!confirm(`Ban ${user} from this server?`)) return;
+  async function banUser(user: string) {
+    const confirmed = await dialogs.confirm({
+      title: `Ban ${user}?`,
+      message: 'They will be disconnected and unable to rejoin until unbanned.',
+      confirmLabel: 'Ban user',
+      danger: true
+    });
+    if (!confirmed) return;
     chat.sendRaw({ type: 'ban-user', user });
   }
 
@@ -1174,14 +1192,18 @@
     focusMode.update((v) => !v);
   }
 
-  function editTopic() {
+  async function editTopic() {
     const existing = $channelTopics[currentChatChannelId] ?? '';
-    const input = prompt('Set channel topic', existing);
+    const input = await dialogs.prompt({
+      title: 'Channel topic',
+      message: 'Shown next to the channel name. Leave empty to clear the topic.',
+      initial: existing,
+      placeholder: 'What is this channel about?',
+      maxLength: MAX_TOPIC_LENGTH,
+      confirmLabel: 'Save',
+      required: false
+    });
     if (input === null) return;
-    if (input.length > MAX_TOPIC_LENGTH) {
-      setCommandFeedback(`Topics are limited to ${MAX_TOPIC_LENGTH} characters.`, 'error');
-      return;
-    }
     channelTopics.setTopic(currentChatChannelId, input);
   }
 
@@ -1199,9 +1221,14 @@
     return msg.user === current;
   }
 
-  function editChatMessage(msg: Message) {
+  async function editChatMessage(msg: Message) {
     if (typeof msg.id !== 'number' || typeof msg.text !== 'string') return;
-    const input = prompt('Edit message', msg.text);
+    const input = await dialogs.prompt({
+      title: 'Edit message',
+      initial: msg.text,
+      multiline: true,
+      confirmLabel: 'Save'
+    });
     if (input === null) return;
     const trimmed = input.trim();
     if (trimmed === '' || input === msg.text) return;
@@ -1229,8 +1256,13 @@
 
   async function deleteChatMessage(msg: Message) {
     if (typeof msg.id !== 'number') return;
-    const confirmation = await Promise.resolve(confirm('Delete this message?') as boolean | Promise<boolean>);
-    if (!confirmation) return;
+    const confirmed = await dialogs.confirm({
+      title: 'Delete message?',
+      message: 'This removes the message for everyone. This cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true
+    });
+    if (!confirmed) return;
     chat.delete(msg.id);
   }
 
@@ -1306,15 +1338,25 @@
     }
   }
 
-  function createCategoryPrompt() {
-    const name = prompt('New category name');
-    if (name) categories.create(name);
+  async function createCategoryPrompt() {
+    const name = await dialogs.prompt({
+      title: 'Create category',
+      label: 'Category name',
+      placeholder: 'e.g. Projects',
+      confirmLabel: 'Create'
+    });
+    if (name) categories.create(name.trim());
   }
 
-  function renameCategoryPrompt(id: number) {
+  async function renameCategoryPrompt(id: number) {
     const cat = $categories.find((c) => c.id === id);
-    const name = prompt('Rename category', cat?.name ?? '');
-    if (name) categories.rename(id, name);
+    const name = await dialogs.prompt({
+      title: 'Rename category',
+      label: 'Category name',
+      initial: cat?.name ?? '',
+      confirmLabel: 'Rename'
+    });
+    if (name) categories.rename(id, name.trim());
   }
 
   function buildMoveToItems(channelId: number, voice: boolean): Array<{ label: string; action: () => void }> {
@@ -1581,389 +1623,76 @@
                 <span>New</span>
               </div>
             {:else if block.kind === 'message'}
-              <div
-                class="message"
-                data-message-id={typeof block.message.id === 'number' ? block.message.id : undefined}
-                class:highlighted={highlightedMessageId === block.message.id}
-              >
-                {#if block.message.replyTo}
-                  {@const reply = block.message.replyTo}
-                  <button
-                    type="button"
-                    class="reply-quote"
-                    on:click={() => focusMessage(reply.id)}
-                    title={`Jump to ${reply.user}'s message`}
-                  >
-                    <span class="reply-quote-arrow" aria-hidden="true">↪</span>
-                    <span class="reply-quote-user">{reply.user}</span>
-                    <span class="reply-quote-text">{reply.text || 'Original message'}</span>
-                  </button>
-                {/if}
-                <span class="username">{block.message.user}</span>
-                <span class="timestamp">{block.message.time}</span>
-                {#if block.message.bot}
-                  <span class="bot-badge">BOT</span>
-                {/if}
-                {#if block.message.user && $roles[block.message.user]}
-                  <span
-                    class="role"
-                    style={$roles[block.message.user].color ? `color: ${$roles[block.message.user].color}` : ''}
-                  >
-                    {$roles[block.message.user].role}
-                  </span>
-                {/if}
-                <div class="content-wrapper">
-                  <span class="content">
-                  {#if block.message.text}
-                    {@html renderMarkdown(block.message.text)}
-                  {/if}
-                  {#if block.message.edited}
-                    <span
-                      class="edited-badge"
-                      title={block.message.editedAt ? `Edited ${new Date(block.message.editedAt).toLocaleString()}` : 'Edited'}
-                    >
-                      (edited)
-                    </span>
-                  {/if}
-                  {#if block.links.length > 0}
-                    <div class="link-previews">
-                      {#each block.links as link (link)}
-                        <LinkPreview url={link} />
-                      {/each}
-                    </div>
-                  {/if}
-                  {#if block.message.image}
-                    <img src={block.message.image as string} alt="" />
-                  {/if}
-                  {#if block.message.attachment}
-                    <a
-                      class="attachment-card"
-                      href={block.message.attachment.url}
-                      download={block.message.attachment.name}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <span class="attachment-icon" aria-hidden="true">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                      </span>
-                      <span class="attachment-details">
-                        <span class="attachment-name">{block.message.attachment.name}</span>
-                        {#if block.message.attachment.size > 0}
-                          <span class="attachment-size">{formatFileSize(block.message.attachment.size)}</span>
-                        {/if}
-                      </span>
-                    </a>
-                  {/if}
-                  {#if block.message.ephemeral}
-                    {@const eInfo = ephemeralInfo(block.message, now)}
-                    {#if eInfo}
-                      <span
-                        class="ephemeral-badge"
-                        title={eInfo.absolute ?? undefined}
-                      >
-                        {eInfo.label}
-                      </span>
-                    {/if}
-                  {/if}
-                </span>
-                  {#if typeof block.message.id === 'number' && (canPinMessage(block.message) || canDeleteMessage(block.message))}
-                    <div class="message-actions">
-                      <button
-                        type="button"
-                        class="message-action"
-                        on:click={() => addReactionPrompt(block.message.id as number)}
-                        title="Add reaction"
-                      >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-                        <span class="sr-only">Add reaction</span>
-                      </button>
-                      <button
-                        type="button"
-                        class="message-action"
-                        on:click={() => startReply(block.message)}
-                        title="Reply"
-                      >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
-                        <span class="sr-only">Reply</span>
-                      </button>
-                      {#if canEditMessage(block.message)}
-                        <button
-                          type="button"
-                          class="message-action"
-                          on:click={() => editChatMessage(block.message)}
-                          title="Edit message"
-                        >
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
-                          <span class="sr-only">Edit message</span>
-                        </button>
-                      {/if}
-                      {#if canPinMessage(block.message)}
-                        <button
-                          type="button"
-                          class="message-action"
-                          class:active={isMessagePinned(block.message)}
-                          on:click={() => togglePinMessage(block.message)}
-                          title={isMessagePinned(block.message) ? 'Unpin message' : 'Pin message'}
-                        >
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
-                          <span class="sr-only">{isMessagePinned(block.message) ? 'Unpin message' : 'Pin message'}</span>
-                        </button>
-                      {/if}
-                      {#if canDeleteMessage(block.message)}
-                        <button
-                          type="button"
-                          class="message-action danger"
-                          on:click={() => deleteChatMessage(block.message)}
-                          title="Delete message"
-                        >
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                          <span class="sr-only">Delete message</span>
-                        </button>
-                      {/if}
-                    </div>
-                  {/if}
-                </div>
-                {#if typeof block.message.id === 'number'}
-                  {@const reactions = reactionEntries(block.message)}
-                  {#if reactions.length > 0}
-                    <div class="reactions">
-                      {#each reactions as reaction (reaction.emoji)}
-                        <button
-                          class="reaction-chip"
-                          class:active={reaction.users.includes($session.user ?? '')}
-                          on:click={() =>
-                            toggleReaction(block.message.id as number, reaction.emoji, reaction.users)}
-                          title={reaction.users.join(', ')}
-                        >
-                          <span class="emoji">{reaction.emoji}</span>
-                          <span class="count">{reaction.users.length}</span>
-                        </button>
-                      {/each}
-                      <button
-                        class="reaction-chip add"
-                        on:click={() => addReactionPrompt(block.message.id as number)}
-                        title="Add reaction"
-                      >
-                        +
-                      </button>
-                    </div>
-                  {/if}
-                  {#if threadReplyCounts.get(block.message.id)}
-                    {@const replyCount = threadReplyCounts.get(block.message.id) ?? 0}
-                    <button
-                      type="button"
-                      class="thread-indicator"
-                      on:click={() => openThread(block.message.id as number)}
-                      title="Open thread"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                      {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
-                    </button>
-                  {/if}
-                {/if}
-              </div>
+              <MessageItem
+                message={block.message}
+                links={block.links}
+                continuation={block.continuation}
+                {now}
+                highlighted={highlightedMessageId === block.message.id}
+                pinned={isMessagePinned(block.message)}
+                replyCount={typeof block.message.id === 'number'
+                  ? (threadReplyCounts.get(block.message.id) ?? 0)
+                  : 0}
+                canEdit={canEditMessage(block.message)}
+                canDelete={canDeleteMessage(block.message)}
+                canPin={canPinMessage(block.message)}
+                onFocusMessage={focusMessage}
+                onReply={startReply}
+                onEdit={editChatMessage}
+                onTogglePin={togglePinMessage}
+                onDelete={deleteChatMessage}
+                onOpenEmojiPicker={openEmojiPicker}
+                onToggleReaction={toggleReaction}
+                onOpenThread={openThread}
+              />
             {/if}
+          {:else}
+            <div class="channel-empty">
+              <h3>Welcome to #{currentChatChannelName}</h3>
+              <p>This is the beginning of the channel. Say hi!</p>
+            </div>
           {/each}
         </div>
       </div>
-      <div class="input-row">
-        {#if commandFeedback}
-          <div class={`command-feedback ${commandFeedbackType}`}>{commandFeedback}</div>
-        {/if}
-        {#if replyingTo}
-          <div class="reply-bar">
-            <span class="reply-bar-label">
-              Replying to <strong>{replyingTo.user}</strong>
-              <span class="reply-bar-preview">{searchResultPreview(replyingTo)}</span>
-            </span>
-            <button
-              type="button"
-              class="reply-bar-cancel"
-              on:click={cancelReply}
-              aria-label="Cancel reply"
-            >
-              ✕
-            </button>
-          </div>
-        {/if}
-        {#if typingLabel}
-          <div class="typing-indicator" aria-live="polite">
-            <span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span>
-            {typingLabel}
-          </div>
-        {/if}
-        <textarea
-          class:scrollable={inputScrollable}
-          bind:value={message}
-          bind:this={messageInput}
-          rows="1"
-          placeholder="Message"
-          on:input={handleComposerInput}
-          on:paste={handlePaste}
-          on:keydown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            } else if (e.key === 'Escape' && replyingTo) {
-              cancelReply();
-            }
-          }}
-        ></textarea>
-        <input
-          id="fileInputElem"
-          type="file"
-          class="file-input"
-          bind:this={fileInput}
-          on:change={handleFileChange}
-        />
-        <div class="controls">
-          {#if pendingFile}
-            <div class="preview-container">
-              {#if previewUrl}
-                <img src={previewUrl} alt="preview" class="preview" />
-              {:else}
-                <span class="file-chip" title={pendingFile.name}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                  <span class="file-chip-name">{pendingFile.name}</span>
-                  {#if pendingFile.size > 0}
-                    <span class="file-chip-size">{formatFileSize(pendingFile.size)}</span>
-                  {/if}
-                </span>
-              {/if}
-              <button class="preview-remove" on:click={clearPendingFile} aria-label="Remove file">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
-            </div>
-          {/if}
-          <div class="input-controls">
-            <button
-              type="button"
-              class="file-button"
-              title="Upload file"
-              aria-label="Upload file"
-              on:click={() => fileInput.click()}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
-                />
-              </svg>
-            </button>
-            <button class="send" on:click={send} title="Send message" aria-label="Send message">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
+      <MessageComposer
+        bind:this={composer}
+        bind:value={message}
+        {replyingTo}
+        {typingLabel}
+        {commandFeedback}
+        {commandFeedbackType}
+        {pendingFile}
+        {previewUrl}
+        onSend={send}
+        onInput={handleComposerInput}
+        onCancelReply={cancelReply}
+        onFileSelected={setPendingFile}
+      />
 
       {#if threadRootId !== null}
-        <aside class="thread-panel" aria-label="Thread">
-          <header class="thread-header">
-            <span>Thread</span>
-            <button
-              type="button"
-              class="thread-close"
-              on:click={closeThread}
-              aria-label="Close thread"
-            >
-              ✕
-            </button>
-          </header>
-          <div class="thread-messages">
-            {#each threadMessages as tm (tm.id)}
-              <div class="thread-message" class:root={tm.id === threadRootId}>
-                <div class="thread-message-meta">
-                  <span class="username">{tm.user}</span>
-                  <span class="timestamp">{tm.time}</span>
-                </div>
-                <div class="thread-message-text">
-                  {#if tm.text}
-                    {@html renderMarkdown(tm.text)}
-                  {:else if tm.image}
-                    <img src={tm.image as string} alt="" />
-                  {:else if tm.attachment}
-                    <a href={tm.attachment.url} target="_blank" rel="noopener noreferrer">
-                      {tm.attachment.name}
-                    </a>
-                  {/if}
-                </div>
-              </div>
-            {:else}
-              <p class="thread-empty">Loading thread…</p>
-            {/each}
-          </div>
-          <form class="thread-input" on:submit|preventDefault={sendThreadReply}>
-            <input
-              type="text"
-              bind:value={threadReplyText}
-              placeholder="Reply in thread…"
-              aria-label="Reply in thread"
-            />
-          </form>
-        </aside>
+        <ConversationPanel
+          kind="thread"
+          title="Thread"
+          messages={threadMessages}
+          emptyText="Loading thread…"
+          placeholder="Reply in thread…"
+          onSend={sendThreadReply}
+          onClose={closeThread}
+          emphasize={(msg) => msg.id === threadRootId}
+        />
       {/if}
 
       {#if $dmActivePeer}
-        <aside class="thread-panel" aria-label="Direct messages">
-          <header class="thread-header">
-            <span class="thread-header-title">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-              {$dmActivePeer}
-            </span>
-            <button
-              type="button"
-              class="thread-close"
-              on:click={closeDm}
-              aria-label="Close direct messages"
-            >
-              ✕
-            </button>
-          </header>
-          <div class="thread-messages">
-            {#each dmMessages as dmsg (dmsg.id)}
-              <div class="thread-message" class:root={dmsg.from === $session.user}>
-                <div class="thread-message-meta">
-                  <span class="username">{dmsg.from}</span>
-                  <span class="timestamp">{dmsg.time}</span>
-                </div>
-                <div class="thread-message-text">
-                  {#if dmsg.text}
-                    {@html renderMarkdown(dmsg.text)}
-                  {/if}
-                </div>
-              </div>
-            {:else}
-              <p class="thread-empty">No messages yet. Say hi!</p>
-            {/each}
-          </div>
-          <form class="thread-input" on:submit|preventDefault={sendDmMessage}>
-            <input
-              type="text"
-              bind:value={dmText}
-              placeholder={`Message ${$dmActivePeer}…`}
-              aria-label="Direct message"
-            />
-          </form>
-        </aside>
+        <ConversationPanel
+          kind="dm"
+          title={$dmActivePeer}
+          messages={dmMessages}
+          emptyText="No messages yet. Say hi!"
+          placeholder={`Message ${$dmActivePeer}…`}
+          onSend={sendDmMessage}
+          onClose={closeDm}
+          emphasize={(msg) => msg.from === $session.user}
+        />
       {/if}
 
       {#each $voice as peer (peer.id)}
@@ -1990,34 +1719,25 @@
   onClose={closeVolumeMenu}
 />
 
+<EmojiPicker
+  open={emojiPickerOpen}
+  x={emojiPickerX}
+  y={emojiPickerY}
+  onPick={pickReaction}
+  onClose={closeEmojiPicker}
+/>
+
 {#if viewingScreenShare}
   <ScreenShareViewer peer={viewingScreenShare} onClose={closeScreenShareViewer} />
 {/if}
 
 {#if $connection === 'connecting' || $connection === 'disconnected' || $connection === 'failed'}
-  <div class="connection-overlay" class:connecting={$connection === 'connecting'} role="alert">
-    <div class="connection-card">
-      {#if $connection === 'connecting'}
-        <div class="connection-spinner" aria-hidden="true"></div>
-        <h2>Connecting…</h2>
-        <p class="connection-detail">{$selectedServer ?? 'Unknown server'}</p>
-      {:else}
-        <h2>{$connection === 'failed' ? 'Could not connect' : 'Connection lost'}</h2>
-        <p>
-          {$connection === 'failed'
-            ? 'The server is offline or unreachable. Check the address or try again later.'
-            : 'The connection to the server was lost. It may have gone offline.'}
-        </p>
-        <p class="connection-detail">{$selectedServer ?? 'Unknown server'}</p>
-        <div class="connection-actions">
-          <button type="button" class="btn btn-primary" on:click={retryConnect}>Try again</button>
-          <button type="button" class="btn" on:click={() => leaveToServers()}>
-            Back to servers
-          </button>
-        </div>
-      {/if}
-    </div>
-  </div>
+  <ConnectionOverlay
+    state={$connection}
+    server={$selectedServer}
+    onRetry={retryConnect}
+    onBack={() => leaveToServers()}
+  />
 {/if}
 
 <style>
@@ -2143,841 +1863,23 @@
     border-top: 1px solid color-mix(in srgb, var(--color-error) 55%, transparent);
   }
 
-  /* Messages are flat rows; hover reveals a floating action toolbar. */
-  .message {
-    position: relative;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    column-gap: var(--space-2);
-    row-gap: var(--space-1);
-    padding: var(--space-1) var(--space-4);
-    margin: 1px 0;
-    border-left: 2px solid transparent;
-    /* Isolate layout/style recalculation per message so long histories stay cheap. */
-    contain: layout style;
-  }
-
-  .message:hover {
-    background: color-mix(in srgb, var(--color-surface-raised) 45%, transparent);
-  }
-
-  .message.highlighted {
-    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-    border-left-color: var(--color-primary);
-  }
-
-  .message .username {
-    font-weight: 600;
-    font-size: var(--text-md);
-    color: var(--color-on-surface);
-  }
-
-  .message .timestamp {
-    font-size: var(--text-xs);
-    color: var(--color-muted);
-    font-family: var(--font-mono);
-  }
-
-  .message .role {
-    font-size: var(--text-xs);
-    font-weight: 600;
-    color: var(--color-muted);
-  }
-
-  .reply-quote {
-    flex-basis: 100%;
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-    max-width: 100%;
-    padding: var(--space-1) var(--space-2);
-    border: none;
-    border-left: 2px solid var(--color-outline-strong);
-    border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
-    background: color-mix(in srgb, var(--color-surface-raised) 55%, transparent);
-    color: var(--color-muted);
-    font-size: var(--text-sm);
-    cursor: pointer;
-    text-align: left;
-  }
-
-  .reply-quote:hover {
-    background: var(--color-surface-raised);
-    color: var(--color-on-surface);
-  }
-
-  .reply-quote-arrow {
-    flex-shrink: 0;
-    opacity: 0.7;
-  }
-
-  .reply-quote-user {
-    flex-shrink: 0;
-    font-weight: 600;
-    color: var(--color-on-surface-variant);
-  }
-
-  .reply-quote-text {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .bot-badge {
-    display: inline-flex;
-    align-items: center;
-    align-self: center;
-    padding: 0 var(--space-1);
-    border-radius: var(--radius-xs);
-    font-size: 0.625rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    line-height: 1rem;
-    background: var(--color-primary-container);
-    color: var(--color-primary);
-  }
-
-  .content-wrapper {
-    flex-basis: 100%;
-    min-width: 0;
-  }
-
-  .message .content {
-    display: block;
-    color: var(--color-on-surface-variant);
-    font-size: var(--text-md);
-    line-height: 1.55;
-    overflow-wrap: anywhere;
-  }
-
-  .message .content :global(p) {
-    margin: 0;
-  }
-
-  .edited-badge {
-    margin-left: var(--space-1);
-    font-size: var(--text-xs);
-    color: var(--color-muted);
-  }
-
-  .ephemeral-badge {
-    display: inline-flex;
-    align-items: center;
-    margin-top: var(--space-2);
-    padding: 0 var(--space-2);
-    border-radius: var(--radius-pill);
-    font-size: var(--text-xs);
-    font-weight: 600;
-    line-height: 1.25rem;
-    background: color-mix(in srgb, var(--color-warning) 15%, transparent);
-    color: var(--color-warning);
-    width: fit-content;
-  }
-
-  /* Floating per-message toolbar, shown on hover or keyboard focus. */
-  .message-actions {
-    position: absolute;
-    top: calc(-1 * var(--space-3));
-    right: var(--space-4);
-    display: inline-flex;
-    align-items: center;
-    gap: 0;
-    padding: var(--space-1);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-surface-outline);
-    background: var(--color-surface-elevated);
-    box-shadow: var(--shadow-sm);
-    opacity: 0;
-    pointer-events: none;
-    z-index: 2;
-  }
-
-  .message:hover .message-actions,
-  .message:focus-within .message-actions {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .message-action {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    padding: 0;
-    border-radius: var(--radius-xs);
-    border: none;
-    background: transparent;
-    color: var(--color-muted);
-    cursor: pointer;
-  }
-
-  .message-action:hover,
-  .message-action.active {
-    background: var(--color-surface-raised);
-    color: var(--color-on-surface);
-  }
-
-  .message-action.active {
-    color: var(--color-primary);
-  }
-
-  .message-action.danger:hover {
-    background: color-mix(in srgb, var(--color-error) 14%, transparent);
-    color: var(--color-error);
-  }
-
-  .link-previews {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    margin-top: var(--space-2);
-  }
-
-  .message .content :global(code) {
-    background: var(--color-surface-raised);
-    padding: 0.125rem var(--space-1);
-    border-radius: var(--radius-xs);
-    font-family: var(--font-mono);
-    font-size: 0.85em;
-  }
-
-  .message .content :global(pre) {
-    background: var(--color-bg);
-    border-radius: var(--radius-md);
-    padding: var(--space-3);
-    overflow-x: auto;
-    border: 1px solid var(--color-surface-outline);
-  }
-
-  .message .content :global(pre code) {
-    display: block;
-    padding: 0;
-    margin: 0;
-    background: transparent;
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-  }
-
-  .message .content :global(.hljs) {
-    color: var(--color-on-surface);
-  }
-
-  .message .content :global(.hljs-comment),
-  .message .content :global(.hljs-quote) {
-    color: var(--color-muted);
-    font-style: italic;
-  }
-
-  .message .content :global(.hljs-keyword),
-  .message .content :global(.hljs-selector-tag),
-  .message .content :global(.hljs-subst) {
-    color: color-mix(in srgb, var(--color-primary) 80%, var(--color-on-surface) 20%);
-  }
-
-  .message .content :global(.hljs-string),
-  .message .content :global(.hljs-doctag),
-  .message .content :global(.hljs-regexp) {
-    color: color-mix(in srgb, var(--color-success) 75%, var(--color-on-surface) 25%);
-  }
-
-  .message .content :global(.hljs-title),
-  .message .content :global(.hljs-section),
-  .message .content :global(.hljs-function),
-  .message .content :global(.hljs-name) {
-    color: color-mix(in srgb, var(--color-primary) 78%, var(--color-on-surface) 22%);
-  }
-
-  .message .content :global(.hljs-number),
-  .message .content :global(.hljs-literal),
-  .message .content :global(.hljs-symbol),
-  .message .content :global(.hljs-bullet) {
-    color: color-mix(in srgb, var(--color-warning) 75%, var(--color-on-surface) 25%);
-  }
-
-  .message .content :global(.hljs-attr),
-  .message .content :global(.hljs-attribute),
-  .message .content :global(.hljs-variable),
-  .message .content :global(.hljs-template-variable) {
-    color: color-mix(in srgb, var(--color-error) 70%, var(--color-on-surface) 30%);
-  }
-
-  .message .content :global(.hljs-meta),
-  .message .content :global(.hljs-meta .hljs-string) {
-    color: color-mix(in srgb, var(--color-primary) 65%, var(--color-on-surface) 35%);
-  }
-
-  .message img {
-    max-width: min(420px, 100%);
-    border-radius: var(--radius-md);
-    margin-top: var(--space-2);
-    border: 1px solid var(--color-surface-outline);
-  }
-
-  .attachment-card {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-3);
-    margin-top: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-surface-outline);
-    background: var(--color-surface-elevated);
-    color: var(--color-on-surface);
-    text-decoration: none;
-    max-width: min(420px, 100%);
-  }
-
-  .attachment-card:hover {
-    border-color: var(--color-outline-strong);
-    background: var(--color-surface-raised);
-    text-decoration: none;
-  }
-
-  .attachment-icon {
-    display: inline-flex;
-    color: var(--color-primary);
-    flex-shrink: 0;
-  }
-
-  .attachment-details {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-
-  .attachment-name {
-    font-weight: 500;
-    font-size: var(--text-md);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .attachment-size {
-    font-size: var(--text-xs);
-    color: var(--color-muted);
-  }
-
-  .reactions {
-    flex-basis: 100%;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-    margin-top: var(--space-1);
-  }
-
-  .reaction-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    border-radius: var(--radius-pill);
-    padding: 0.125rem var(--space-2);
-    font-size: var(--text-sm);
-    line-height: 1.25rem;
-    border: 1px solid var(--color-surface-outline);
-    background: var(--color-surface-elevated);
-    color: var(--color-on-surface-variant);
-  }
-
-  .reaction-chip:hover {
-    border-color: var(--color-outline-strong);
-  }
-
-  .reaction-chip.active {
-    background: var(--color-primary-container);
-    border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
-    color: var(--color-on-surface);
-  }
-
-  .reaction-chip.add {
-    color: var(--color-muted);
-    font-weight: 600;
-  }
-
-  .thread-indicator {
-    justify-self: flex-start;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    padding: 0.125rem var(--space-2);
-    border-radius: var(--radius-pill);
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--color-primary);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    cursor: pointer;
-  }
-
-  .thread-indicator:hover {
-    background: var(--color-primary-container);
-  }
-
-  /* Composer */
-  .input-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: var(--space-2);
-    align-items: end;
-    padding: var(--space-3) var(--space-4) var(--space-4);
-    border-top: 1px solid var(--color-surface-outline);
-    background: var(--color-surface);
-  }
-
-  .command-feedback {
-    grid-column: 1 / -1;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent);
-    background: color-mix(in srgb, var(--color-success) 10%, transparent);
-    color: var(--color-success);
-  }
-
-  .command-feedback.error {
-    border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
-    background: color-mix(in srgb, var(--color-error) 10%, transparent);
-    color: var(--color-error);
-  }
-
-  .reply-bar {
-    grid-column: 1 / -1;
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-1) var(--space-3);
-    border-radius: var(--radius-sm);
-    background: var(--color-surface-raised);
-    font-size: var(--text-sm);
-    color: var(--color-muted);
-  }
-
-  .reply-bar-label {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-2);
-    overflow: hidden;
-  }
-
-  .reply-bar-label strong {
-    color: var(--color-on-surface);
-  }
-
-  .reply-bar-preview {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .reply-bar-cancel {
-    flex-shrink: 0;
-    border: none;
-    background: transparent;
-    color: var(--color-muted);
-    cursor: pointer;
-    font-size: var(--text-sm);
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-xs);
-  }
-
-  .reply-bar-cancel:hover {
-    color: var(--color-on-surface);
-    background: var(--color-surface-elevated);
-  }
-
-  .typing-indicator {
-    grid-column: 1 / -1;
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-xs);
-    color: var(--color-muted);
-  }
-
-  .typing-dots {
-    display: inline-flex;
-    gap: 0.1875rem;
-  }
-
-  .typing-dots span {
-    width: 0.25rem;
-    height: 0.25rem;
-    border-radius: 50%;
-    background: var(--color-muted);
-    animation: typing-bounce 1.2s infinite ease-in-out;
-  }
-
-  .typing-dots span:nth-child(2) {
-    animation-delay: 0.15s;
-  }
-
-  .typing-dots span:nth-child(3) {
-    animation-delay: 0.3s;
-  }
-
-  @keyframes typing-bounce {
-    0%,
-    60%,
-    100% {
-      transform: translateY(0);
-      opacity: 0.5;
-    }
-    30% {
-      transform: translateY(-3px);
-      opacity: 1;
-    }
-  }
-
-  textarea {
-    width: 100%;
-    min-height: var(--control-height-lg);
-    max-height: 360px;
-    resize: none;
-    overflow-y: hidden;
-    overflow-x: hidden;
-    border-radius: var(--radius-md);
-    padding: var(--space-3) var(--space-4);
-    line-height: 1.5;
-  }
-
-  textarea.scrollable {
-    overflow-y: auto;
-  }
-
-  .controls {
-    display: flex;
-    align-items: flex-end;
-    gap: var(--space-2);
-  }
-
-  .input-controls {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .preview-container {
+  .channel-empty {
+    margin: auto;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--space-1);
-    background: var(--color-surface-raised);
-    padding: var(--space-2);
-    border-radius: var(--radius-md);
-    border: 1px dashed var(--color-outline-strong);
-  }
-
-  .preview-container img {
-    max-width: 120px;
-    max-height: 120px;
-    border-radius: var(--radius-sm);
-  }
-
-  .preview-remove {
-    background: transparent;
-    color: var(--color-muted);
-    border: none;
-    display: inline-flex;
-    padding: var(--space-1);
-    border-radius: var(--radius-xs);
-  }
-
-  .preview-remove:hover {
-    color: var(--color-error);
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
-  }
-
-  .file-chip {
-    display: inline-flex;
-    align-items: center;
     gap: var(--space-2);
-    max-width: 220px;
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
-    background: var(--color-surface-elevated);
-    font-size: var(--text-sm);
-  }
-
-  .file-chip svg {
-    flex-shrink: 0;
-    color: var(--color-primary);
-  }
-
-  .file-chip-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .file-chip-size {
-    color: var(--color-muted);
-    font-size: var(--text-xs);
-    flex-shrink: 0;
-  }
-
-  .file-input {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  .file-button,
-  .send {
-    width: var(--control-height-lg);
-    height: var(--control-height-lg);
-    flex-shrink: 0;
-    border-radius: var(--radius-md);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-  }
-
-  .file-button {
-    border: 1px solid var(--color-surface-outline);
-    background: var(--color-surface-raised);
-    color: var(--color-on-surface-variant);
-  }
-
-  .file-button:hover {
-    border-color: var(--color-outline-strong);
-    color: var(--color-on-surface);
-  }
-
-  .send {
-    border: none;
-    background: var(--color-primary);
-    color: var(--color-on-primary);
-  }
-
-  .send:hover {
-    background: color-mix(in srgb, var(--color-primary) 88%, var(--color-on-surface));
-  }
-
-  .file-button svg,
-  .send svg {
-    width: 1.25rem;
-    height: 1.25rem;
-  }
-
-  /* Thread / DM side panel */
-  .thread-panel {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 25;
-    width: min(360px, 90%);
-    display: flex;
-    flex-direction: column;
-    background: var(--color-surface-elevated);
-    border-left: 1px solid var(--color-surface-outline);
-    box-shadow: var(--shadow-md);
-  }
-
-  .thread-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--color-surface-outline);
-    font-weight: 600;
-    font-size: var(--text-md);
-  }
-
-  .thread-header-title {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .thread-header-title svg {
-    color: var(--color-primary);
-    flex-shrink: 0;
-  }
-
-  .thread-close {
-    border: none;
-    background: transparent;
-    color: var(--color-muted);
-    cursor: pointer;
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-xs);
-  }
-
-  .thread-close:hover {
-    color: var(--color-on-surface);
-    background: var(--color-surface-raised);
-  }
-
-  .thread-messages {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    padding: var(--space-3);
-  }
-
-  .thread-message {
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-raised);
-  }
-
-  .thread-message.root {
-    background: var(--color-primary-container);
-  }
-
-  .thread-message-meta {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-2);
-  }
-
-  .thread-message-meta .username {
-    font-weight: 600;
-    color: var(--color-on-surface);
-    font-size: var(--text-sm);
-  }
-
-  .thread-message-meta .timestamp {
-    font-size: var(--text-xs);
-    color: var(--color-muted);
-    font-family: var(--font-mono);
-  }
-
-  .thread-message-text {
-    color: var(--color-on-surface-variant);
-    font-size: var(--text-sm);
-    line-height: 1.55;
-    overflow-wrap: anywhere;
-  }
-
-  .thread-message-text :global(p) {
-    margin: 0;
-  }
-
-  .thread-message-text img {
-    max-width: 100%;
-    border-radius: var(--radius-sm);
-    margin-top: var(--space-1);
-  }
-
-  .thread-empty {
-    margin: 0;
-    color: var(--color-muted);
-    font-size: var(--text-sm);
-    text-align: center;
-    padding: var(--space-4);
-  }
-
-  .thread-input {
-    padding: var(--space-3);
-    border-top: 1px solid var(--color-surface-outline);
-  }
-
-  .thread-input input {
-    width: 100%;
-    border-radius: var(--radius-md);
-  }
-
-  /* Connection overlay */
-  .connection-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: var(--z-overlay);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-5);
-    background: var(--color-overlay);
-    backdrop-filter: blur(6px);
-  }
-
-  /* Delay the connecting state so fast connects never flash the overlay. */
-  .connection-overlay.connecting {
-    animation: connection-fade-in 0.2s ease 0.4s both;
-  }
-
-  @keyframes connection-fade-in {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-
-  .connection-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-3);
-    max-width: 420px;
     padding: var(--space-6);
-    border-radius: var(--radius-lg);
-    background: var(--color-surface-elevated);
-    border: 1px solid var(--color-surface-outline);
-    box-shadow: var(--shadow-lg);
     text-align: center;
   }
 
-  .connection-card h2 {
+  .channel-empty h3 {
     font-size: var(--text-xl);
   }
 
-  .connection-card p {
+  .channel-empty p {
     margin: 0;
     color: var(--color-muted);
-    line-height: 1.5;
-  }
-
-  .connection-detail {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    word-break: break-all;
-  }
-
-  .connection-spinner {
-    width: var(--space-6);
-    height: var(--space-6);
-    border-radius: 50%;
-    border: 3px solid var(--color-surface-raised);
-    border-top-color: var(--color-primary);
-    animation: connection-spin 0.8s linear infinite;
-  }
-
-  @keyframes connection-spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  .connection-actions {
-    display: flex;
-    gap: var(--space-3);
-    margin-top: var(--space-2);
-    flex-wrap: wrap;
-    justify-content: center;
   }
 
   /* Responsive: stack panes on narrow windows. */
@@ -3012,16 +1914,6 @@
       order: 2;
       border-bottom: none;
       border-top: 1px solid var(--color-surface-outline);
-    }
-  }
-
-  @media (max-width: 640px) {
-    .input-row {
-      grid-template-columns: 1fr;
-    }
-
-    .controls {
-      justify-content: flex-end;
     }
   }
 </style>
