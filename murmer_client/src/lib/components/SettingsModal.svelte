@@ -5,6 +5,8 @@
 <script lang="ts">
   import { volume, inputDeviceId, outputDeviceId, voiceMode, vadSensitivity, pttKey } from '$lib/stores/settings';
   import { APP_VERSION } from '$lib/version';
+  import { theme, accent, DEFAULT_ACCENT } from '$lib/stores/theme';
+  import ThemeWheel from '$lib/components/ThemeWheel.svelte';
   import { loadKeyPair } from '$lib/keypair';
   import { onMount } from 'svelte';
   import { PushToTalkManager } from '$lib/voice/ptt';
@@ -22,6 +24,16 @@
   let inputs: MediaDeviceInfo[] = [];
   let outputs: MediaDeviceInfo[] = [];
   let capturingPttKey = false;
+
+  // Preset theme colors shown next to the wheel; each is a wheel position.
+  const ACCENT_PRESETS = [
+    { name: 'Sky', hue: 215, saturation: 78 },
+    { name: 'Indigo', hue: 250, saturation: 68 },
+    { name: 'Violet', hue: 285, saturation: 68 },
+    { name: 'Rose', hue: 340, saturation: 72 },
+    { name: 'Ember', hue: 22, saturation: 80 },
+    { name: 'Moss', hue: 150, saturation: 55 }
+  ];
 
   onMount(async () => {
     try {
@@ -137,6 +149,59 @@
       </div>
 
       <div class="modal-body">
+        <div class="settings-section">
+          <h3 class="section-title">Appearance</h3>
+
+          <div class="setting-group">
+            <span class="setting-label" id="theme-mode-label">Theme</span>
+            <div class="mode-toggle" role="group" aria-labelledby="theme-mode-label">
+              <button
+                class="btn mode-btn"
+                class:selected={$theme === 'dark'}
+                aria-pressed={$theme === 'dark'}
+                on:click={() => theme.set('dark')}
+              >Dark</button>
+              <button
+                class="btn mode-btn"
+                class:selected={$theme === 'light'}
+                aria-pressed={$theme === 'light'}
+                on:click={() => theme.set('light')}
+              >Light</button>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <span class="setting-label">Theme color</span>
+            <div class="accent-picker">
+              <ThemeWheel
+                hue={($accent ?? DEFAULT_ACCENT).hue}
+                saturation={($accent ?? DEFAULT_ACCENT).saturation}
+                onchange={(hue, saturation) => accent.set({ hue, saturation })}
+              />
+              <div class="accent-side">
+                <div class="swatch-grid">
+                  {#each ACCENT_PRESETS as preset}
+                    <button
+                      class="swatch"
+                      class:selected={$accent?.hue === preset.hue && $accent?.saturation === preset.saturation}
+                      style={`background: hsl(${preset.hue} ${preset.saturation}% 50%);`}
+                      title={preset.name}
+                      aria-label={`Use ${preset.name} theme color`}
+                      on:click={() => accent.set({ hue: preset.hue, saturation: preset.saturation })}
+                    ></button>
+                  {/each}
+                </div>
+                <button class="btn reset-accent" on:click={() => accent.reset()} disabled={$accent === null}>
+                  Reset to default
+                </button>
+              </div>
+            </div>
+            <div class="setting-description">
+              Drag the dot to recolor the whole app — the angle picks the color, the distance from the center picks how strong it is.
+            </div>
+          </div>
+        </div>
+
         <div class="settings-section">
           <h3 class="section-title">Audio</h3>
           
@@ -400,6 +465,54 @@
     font-size: var(--text-sm);
     color: var(--color-muted);
     line-height: 1.5;
+  }
+
+  .mode-toggle {
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .mode-btn.selected {
+    background: var(--color-primary-container);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  .accent-picker {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+  }
+
+  .accent-side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .swatch-grid {
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    gap: var(--space-2);
+    justify-content: start;
+  }
+
+  .swatch {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-surface-outline);
+  }
+
+  .swatch.selected {
+    box-shadow:
+      0 0 0 2px var(--color-surface-elevated),
+      0 0 0 4px var(--color-primary);
+  }
+
+  .reset-accent {
+    align-self: flex-start;
   }
 
   .slider-container {
