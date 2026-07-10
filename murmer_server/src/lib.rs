@@ -7,6 +7,7 @@ pub mod admin;
 pub mod bot;
 pub mod config;
 pub mod db;
+pub mod link_preview;
 pub mod roles;
 pub mod security;
 pub mod upload;

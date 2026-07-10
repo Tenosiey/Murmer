@@ -2,6 +2,7 @@
 //!
 //! - `/ws`: WebSocket endpoint for chat and voice events.
 //! - `/upload`: HTTP endpoint for uploading files.
+//! - `/link-preview`: HTTP endpoint returning OpenGraph metadata for a URL.
 //! - `/role`: HTTP endpoint for managing user roles (requires `ADMIN_TOKEN`).
 //!
 //! Configuration via environment variables:
@@ -22,7 +23,8 @@ use axum::{
 };
 use dotenvy::dotenv;
 use murmer_server::{
-    admin, bot, config::Config, db, upload, ws, AppState, RateLimiter, VoiceChannelState,
+    admin, bot, config::Config, db, link_preview, upload, ws, AppState, RateLimiter,
+    VoiceChannelState,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -135,6 +137,7 @@ async fn main() -> Result<()> {
                 upload::MAX_FILE_SIZE + (1024_usize * 1024),
             )),
         )
+        .route("/link-preview", get(link_preview::link_preview))
         .route("/role", post(admin::set_role))
         .merge(bot::routes::router())
         .nest_service(
