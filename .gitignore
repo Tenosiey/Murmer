@@ -24,6 +24,11 @@ coverage
 # Environment overrides
 .env
 
+# Tauri updater signing keys must never be committed
+*.key
+*.key.pub
+%USERPROFILE%/
+
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore

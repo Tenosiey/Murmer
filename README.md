@@ -174,12 +174,75 @@ npm run tauri build
 
 Bundles are produced in `murmer_client/src-tauri/target/release/bundle`.
 
+Note: because the app ships auto-updates (see below), `npm run tauri build`
+signs the updater artifacts and therefore needs the signing key in the
+environment:
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.tauri\murmer.key" -Raw
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "<password>"
+```
+
 4. (Optional) Produce an optimised server binary:
 
 ```bash
 cd ../murmer_server
 cargo build --release
 ```
+
+## Releases and auto-updates
+
+The desktop client updates itself via the Tauri updater: **Settings → Updates →
+Check for Updates** downloads and installs the latest GitHub release without a
+manual download. This requires every release to ship signed updater artifacts
+and a `latest.json`, which the `Release` GitHub Actions workflow
+([`.github/workflows/release.yml`](.github/workflows/release.yml)) produces
+automatically.
+
+One-time setup (already done for this repository once the secrets exist):
+
+1. Generate the updater signing keypair:
+
+   ```bash
+   cd murmer_client
+   npm run tauri signer generate -- -w ~/.tauri/murmer.key
+   ```
+
+   Keep the private key safe — if it is lost, existing installs can no longer
+   receive updates and users must reinstall manually.
+2. Put the public key into `plugins.updater.pubkey` in
+   `murmer_client/src-tauri/tauri.conf.json`.
+3. Add the repository secrets `TAURI_SIGNING_PRIVATE_KEY` (contents of the key
+   file) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (the password chosen during
+   generation) under GitHub → Settings → Secrets → Actions.
+
+Publishing a release:
+
+1. Bump the version:
+
+   ```bash
+   cd murmer_client
+   npm run bump
+   ```
+
+   Versions follow the date-based scheme `YYYY.MDD.N` (year, month+day,
+   counter for multiple releases on the same day), e.g. `2026.710.0` for the
+   first release on 2026-07-10. The script writes the new version into
+   `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`.
+   The scheme stays semver-ordered — required, because installed clients only
+   offer an update when the new version compares greater than theirs.
+2. Commit, tag and push:
+
+   ```bash
+   git commit -am "Release v<version>"
+   git tag v<version>
+   git push origin v<version>
+   ```
+
+The workflow builds the NSIS installer, signs the updater artifacts and
+publishes everything as a regular (non-prerelease) GitHub release. Releases
+must not be marked as pre-release — the updater endpoint
+`releases/latest/download/latest.json` ignores prereleases.
 
 ## Security highlights
 
