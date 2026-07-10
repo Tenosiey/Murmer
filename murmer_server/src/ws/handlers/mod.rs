@@ -27,6 +27,7 @@ use axum::{
 };
 use futures::{stream::SplitSink, SinkExt, StreamExt};
 use serde_json::Value;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, instrument};
@@ -194,6 +195,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                     let _ = state.tx.send(text.to_string());
                                 }
                             }
+                            "voice-mute" => {
+                                if claims_own_user(&v, &user_name) {
+                                    handle_voice_mute(&state, &v).await;
+                                    let _ = state.tx.send(text.to_string());
+                                }
+                            }
                             "kick-user" => {
                                 moderation::handle_kick_user(&state, &mut sender, &v, &user_name).await;
                             }
@@ -354,6 +361,7 @@ async fn handle_voice_join(
         let _ = state.tx.send(msg.to_string());
 
         send_active_screen_shares(state, sender, ch_id).await;
+        send_voice_mutes(state, sender, ch_id).await;
     }
 }
 
@@ -374,6 +382,7 @@ async fn handle_voice_leave(
             info.users.remove(u);
         }
         drop(map);
+        state.voice_mutes.lock().await.remove(u);
         broadcast_voice(state, ch_id).await;
         if *voice_channel == Some(ch_id) {
             *voice_channel = None;
@@ -419,6 +428,65 @@ async fn handle_screenshare_stop(state: &Arc<AppState>, v: &Value) {
         if set.is_empty() {
             shares.remove(&ch_id);
         }
+    }
+}
+
+/// Record a user's current voice mute state (microphone / output).
+async fn handle_voice_mute(state: &Arc<AppState>, v: &Value) {
+    let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
+        return;
+    };
+    let mic_muted = v.get("micMuted").and_then(|m| m.as_bool()).unwrap_or(false);
+    let output_muted = v
+        .get("outputMuted")
+        .and_then(|m| m.as_bool())
+        .unwrap_or(false);
+    state
+        .voice_mutes
+        .lock()
+        .await
+        .insert(user.to_string(), (mic_muted, output_muted));
+}
+
+/// Send the current mute states of everyone in a voice channel to a single client.
+async fn send_voice_mutes(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    channel_id: i32,
+) {
+    let members: HashSet<String> = {
+        let channels = state.voice_channels.lock().await;
+        channels
+            .get(&channel_id)
+            .map(|info| info.users.clone())
+            .unwrap_or_default()
+    };
+    if members.is_empty() {
+        return;
+    }
+    let states: serde_json::Map<String, Value> = {
+        let mutes = state.voice_mutes.lock().await;
+        members
+            .iter()
+            .filter_map(|user| {
+                mutes.get(user).map(|(mic, output)| {
+                    (
+                        user.clone(),
+                        serde_json::json!({ "micMuted": mic, "outputMuted": output }),
+                    )
+                })
+            })
+            .collect()
+    };
+    if states.is_empty() {
+        return;
+    }
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "voice-mute-active",
+        "channelId": channel_id,
+        "states": states,
+    })) {
+        let _ = sender.send(Message::Text(msg.into())).await;
     }
 }
 
@@ -583,6 +651,8 @@ async fn handle_disconnect(state: &Arc<AppState>, user_name: Option<String>) {
         if let Some(ch_id) = ch_to_broadcast {
             broadcast_voice(state, ch_id).await;
         }
+
+        state.voice_mutes.lock().await.remove(&name);
 
         // Clean up any active screen shares owned by the disconnecting user.
         {

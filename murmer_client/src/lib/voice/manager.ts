@@ -10,6 +10,7 @@ import {
   volume,
   inputDeviceId,
   microphoneMuted,
+  outputMuted,
   voiceMode,
   vadSensitivity,
   pttKey,
@@ -44,6 +45,8 @@ export class VoiceManager {
 
   private joinSound = new Audio('/sounds/user_join_voice_sound.mp3');
   private leaveSound = new Audio('/sounds/user_leave_voice_sound.mp3');
+  private muteSound = new Audio('/sounds/mute_sound.wav');
+  private unmuteSound = new Audio('/sounds/unmute_sound.wav');
 
   private config: RTCConfiguration = {
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -55,10 +58,31 @@ export class VoiceManager {
     volume.subscribe((v) => {
       this.joinSound.volume = v;
       this.leaveSound.volume = v;
+      this.muteSound.volume = v;
+      this.unmuteSound.volume = v;
     });
 
-    microphoneMuted.subscribe(() => {
+    // Skip the first (synchronous) subscribe call so the persisted mute state
+    // restored on startup doesn't trigger a blip.
+    let micInitialized = false;
+    microphoneMuted.subscribe((muted) => {
       this.updateTransmissionState();
+      this.broadcastMuteState();
+      if (!micInitialized) {
+        micInitialized = true;
+        return;
+      }
+      this.playMuteSound(muted);
+    });
+
+    let outputInitialized = false;
+    outputMuted.subscribe((muted) => {
+      this.broadcastMuteState();
+      if (!outputInitialized) {
+        outputInitialized = true;
+        return;
+      }
+      this.playMuteSound(muted);
     });
 
     this.vad = new VoiceActivityDetector();
@@ -129,6 +153,31 @@ export class VoiceManager {
     if (get(voiceMode) === 'vad' && this.vad) {
       this.vad.updateSensitivity(get(vadSensitivity));
     }
+  }
+
+  /**
+   * Tell the other clients in the channel whether our microphone and/or
+   * speaker are muted so they can show an indicator beside our name. No-op
+   * while not connected to a voice channel.
+   */
+  private broadcastMuteState() {
+    if (!this.userName || this.channelId === null) return;
+    chat.sendRaw({
+      type: 'voice-mute',
+      user: this.userName,
+      channelId: this.channelId,
+      micMuted: get(microphoneMuted),
+      outputMuted: get(outputMuted)
+    });
+  }
+
+  /** Play the short mute/unmute feedback blip. */
+  private playMuteSound(muted: boolean) {
+    const sound = muted ? this.muteSound : this.unmuteSound;
+    try {
+      sound.currentTime = 0;
+      sound.play().catch(() => {});
+    } catch {}
   }
 
   private updateTransmissionState() {
@@ -398,6 +447,7 @@ export class VoiceManager {
     this.updateTransmissionMode(rawStream);
 
     chat.sendRaw({ type: 'voice-join', user, channelId });
+    this.broadcastMuteState();
   }
 
   /**

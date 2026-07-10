@@ -75,6 +75,8 @@ pub struct AppState {
     pub mutes: Arc<Mutex<HashMap<String, Option<chrono::DateTime<chrono::Utc>>>>>,
     /// Active screen shares per voice channel: channel_id -> set of usernames sharing.
     pub active_screen_shares: Arc<Mutex<HashMap<i32, HashSet<String>>>>,
+    /// Voice mute state per user: username -> (microphone_muted, output_muted).
+    pub voice_mutes: Arc<Mutex<HashMap<String, (bool, bool)>>>,
     pub upload_dir: PathBuf,
     pub password: Option<String>,
     pub admin_token: Option<String>,

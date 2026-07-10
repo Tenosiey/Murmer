@@ -16,6 +16,7 @@
   import { leftSidebarWidth } from '$lib/stores/layout';
   import { microphoneMuted, outputMuted, voiceMode, voiceActivity, isPttActive } from '$lib/stores/settings';
   import { remoteSpeaking } from '$lib/stores/voiceSpeaking';
+  import { voiceMuteStates } from '$lib/stores/voiceMute';
   import { activeScreenShares } from '$lib/stores/screenShare';
   import { unread } from '$lib/stores/unread';
   import { formatVoiceQuality } from '$lib/chat/helpers';
@@ -160,6 +161,10 @@
           {#if $voiceUsers[ch.id]?.length}
             <ul class="voice-user-list">
               {#each $voiceUsers[ch.id] as user}
+                {@const mute =
+                  user === $session.user
+                    ? { micMuted: $microphoneMuted, outputMuted: $outputMuted }
+                    : ($voiceMuteStates[user] ?? { micMuted: false, outputMuted: false })}
                 <li
                   on:contextmenu={(e) => user !== $session.user && onOpenUserVolumeMenu(e, user)}
                   class:clickable={user !== $session.user}
@@ -188,6 +193,20 @@
                       style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
                       >{$roles[user].role}</span
                     >
+                  {/if}
+                  {#if mute.micMuted || mute.outputMuted}
+                    <span class="mute-icons">
+                      {#if mute.micMuted}
+                        <span class="mute-icon" title="Microphone muted" aria-label="Microphone muted">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="2" y1="2" x2="22" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                        </span>
+                      {/if}
+                      {#if mute.outputMuted}
+                        <span class="mute-icon" title="Speaker muted" aria-label="Speaker muted">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>
+                        </span>
+                      {/if}
+                    </span>
                   {/if}
                   {#if $activeScreenShares[ch.id]?.includes(user) && user !== $session.user}
                     <button
@@ -473,6 +492,20 @@
     font-weight: 500;
     opacity: 0.75;
     flex-shrink: 0;
+  }
+
+  .mute-icons {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    flex-shrink: 0;
+    color: var(--color-error);
+  }
+
+  .mute-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .voice-channel-name {
