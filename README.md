@@ -15,8 +15,10 @@ small team can deploy a private chat space quickly.
 - Configurable user roles with optional colour accents
 - Secure file and image sharing (extension safe-list, content-type checks, size limits and path sanitisation)
 - Desktop client with auto-reconnect and connection quality indicators
-- Slash commands (`/help`, `/me`, `/shrug`, `/topic`, `/status`, `/focus`,
+- Slash commands (`/help`, `/me`, `/shrug`, `/topic`, `/status`,
   `/ephemeral`, `/search`)
+- Link previews with server-side OpenGraph fetching (client IPs stay hidden from linked sites)
+- Configurable noise suppression, echo cancellation and automatic gain control
 - Ephemeral messaging, message search, server-synced pinned messages and message editing
 - Message replies with quoted previews and lightweight threads
 - Typing indicators and per-channel unread badges with new-message markers

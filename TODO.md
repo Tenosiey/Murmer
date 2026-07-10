@@ -17,7 +17,7 @@ Use the checkboxes to track progress.
 - [x] Direct messages between users
 - [x] Edit sent messages
 - [x] File sharing beyond images
-- [ ] Link previews (OpenGraph embeds)
+- [x] Link previews (OpenGraph embeds)
 - [x] Message threading/replies
 - [x] Paste images from clipboard / drag & drop
 - [x] Quote/reply to single messages (lightweight alternative to full threading)
@@ -36,7 +36,7 @@ Use the checkboxes to track progress.
 - [ ] Gesture recognition through webcam
 - [ ] Live polling during meetings
 - [ ] Meeting notes that auto-generate from voice
-- [ ] Noise suppression and echo cancellation
+- [x] Noise suppression and echo cancellation
 - [ ] Optional spatial/3D audio
 - [ ] Record and play back voice messages
 - [ ] Real-time transcription of voice to text
@@ -56,7 +56,7 @@ Use the checkboxes to track progress.
 - [ ] Backup & export of chat history and uploads
 - [ ] Decentralized/mesh networking option
 - [ ] End-to-end encryption for private channels
-- [ ] Implement auto updates
+- [x] Implement auto updates
 - [ ] SQLite mode as alternative to PostgreSQL (single-binary deploy)
 - [ ] Web client (browser build without Tauri, join via invite link)
 - [ ] Mini-games embedded in chat
