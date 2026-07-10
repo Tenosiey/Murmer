@@ -165,6 +165,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "ping" => {
                                 handle_ping(&mut sender, &v).await;
                             }
+                            "get-server-info" => {
+                                handle_get_server_info(&state, &mut sender, &user_name).await;
+                            }
                             "voice-join" => {
                                 handle_voice_join(&state, &mut sender, &v, &mut voice_channel, &user_name).await;
                             }
@@ -327,6 +330,33 @@ async fn handle_status_update(
 async fn handle_ping(sender: &mut SplitSink<WebSocket, Message>, v: &Value) {
     let id = v.get("id").cloned().unwrap_or(Value::Null);
     let msg = serde_json::json!({ "type": "pong", "id": id });
+    let _ = sender.send(Message::Text(msg.to_string().into())).await;
+}
+
+/// Handle a request for server details (currently the running version).
+/// Only answered for users whose role is in `SERVER_INFO_ROLES`; the check
+/// runs against the server-side role map, so clients cannot spoof access.
+/// Unauthorised requests are dropped without an error frame: clients send
+/// this automatically based on their (possibly stale) view of their own
+/// role, so a denial must not surface as a user-facing error.
+async fn handle_get_server_info(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    user_name: &Option<String>,
+) {
+    let Some(requester) = user_name.as_deref() else {
+        return;
+    };
+
+    if !can_view_server_info(state, requester).await {
+        info!(requester, "Denied server info request");
+        return;
+    }
+
+    let msg = serde_json::json!({
+        "type": "server-info",
+        "version": env!("CARGO_PKG_VERSION"),
+    });
     let _ = sender.send(Message::Text(msg.to_string().into())).await;
 }
 

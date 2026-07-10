@@ -396,6 +396,20 @@ pub async fn user_moderation_rank(state: &Arc<AppState>, user: &str) -> u8 {
     moderation_rank(roles.get(user).map(|info| info.role.as_str()))
 }
 
+/// Determine whether a user is authorised to see server details such as the
+/// running version. Restricted to Owner and Admin roles.
+pub async fn can_view_server_info(state: &Arc<AppState>, user: &str) -> bool {
+    let roles = state.roles.lock().await;
+    roles
+        .get(user)
+        .map(|info| {
+            super::constants::SERVER_INFO_ROLES
+                .iter()
+                .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
+        })
+        .unwrap_or(false)
+}
+
 /// Determine whether a user is authorised to manage roles.
 pub async fn can_manage_roles(state: &Arc<AppState>, user: &str) -> bool {
     let roles = state.roles.lock().await;

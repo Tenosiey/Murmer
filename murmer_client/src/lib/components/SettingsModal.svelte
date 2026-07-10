@@ -15,6 +15,7 @@
     autoGainControl
   } from '$lib/stores/settings';
   import { APP_VERSION } from '$lib/version';
+  import { serverInfo } from '$lib/stores/serverInfo';
   import { theme, accent, DEFAULT_ACCENT } from '$lib/stores/theme';
   import ThemeWheel from '$lib/components/ThemeWheel.svelte';
   import { loadKeyPair } from '$lib/keypair';
@@ -412,6 +413,20 @@
           </div>
         </div>
 
+        {#if $serverInfo}
+          <div class="settings-section">
+            <h3 class="section-title">Server</h3>
+            <div class="setting-group">
+              <div class="setting-label">
+                Server version
+                <span class="setting-value">{$serverInfo.version}</span>
+              </div>
+              <div class="setting-description">
+                Only visible to users with the Owner or Admin role.
+              </div>
+            </div>
+          </div>
+        {/if}
       </div>
 
       <div class="modal-footer">
