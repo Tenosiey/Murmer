@@ -1,6 +1,6 @@
 <!--
   Chat page header: channel name/topic, own status menu, connection info,
-  theme/focus/notification toggles and the search/settings/leave/logout actions.
+  theme/notification toggles and the search/settings/leave/logout actions.
 -->
 <script lang="ts">
   import PingDot from '$lib/components/PingDot.svelte';
@@ -8,7 +8,6 @@
   import { ping } from '$lib/stores/ping';
   import { session } from '$lib/stores/session';
   import { theme } from '$lib/stores/theme';
-  import { focusMode } from '$lib/stores/layout';
   import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
   import { channelNotifications, type ChannelNotificationPreference } from '$lib/stores/channelNotifications';
   import { NOTIFICATION_OPTIONS } from '$lib/chat/constants';
@@ -113,10 +112,6 @@
       event.stopPropagation();
       event.preventDefault();
     }
-  }
-
-  function toggleFocusMode() {
-    focusMode.update((v) => !v);
   }
 </script>
 
@@ -252,52 +247,6 @@
         <path d="m15 5 4 4" />
       </svg>
       <span class="sr-only">Edit channel topic</span>
-    </button>
-    <button
-      class="btn btn-ghost focus-toggle"
-      class:focusActive={$focusMode}
-      aria-pressed={$focusMode}
-      on:click={toggleFocusMode}
-      title={$focusMode ? 'Exit focus mode' : 'Enter focus mode'}
-    >
-      {#if $focusMode}
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M15 3h6v6" />
-          <path d="m21 3-7 7" />
-          <path d="m3 21 7-7" />
-          <path d="M9 21H3v-6" />
-        </svg>
-        <span>Restore</span>
-      {:else}
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <circle cx="12" cy="12" r="3" />
-          <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-          <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-          <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-          <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-        </svg>
-        <span>Focus</span>
-      {/if}
     </button>
     <div class="notification-control">
       <button
@@ -574,26 +523,6 @@
     align-items: center;
     gap: var(--space-2);
     padding: 0 var(--space-2);
-  }
-
-  .focus-toggle {
-    min-height: var(--control-height);
-    padding: 0 var(--space-3);
-  }
-
-  .focus-toggle span {
-    font-size: var(--text-sm);
-    font-weight: 500;
-  }
-
-  .focus-toggle svg {
-    width: 1rem;
-    height: 1rem;
-  }
-
-  .focus-toggle.focusActive {
-    background: var(--color-primary-container);
-    color: var(--color-on-surface);
   }
 
   .notification-control {

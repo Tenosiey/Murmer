@@ -35,7 +35,7 @@
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { categories } from '$lib/stores/categories';
   import type { CategoryInfo } from '$lib/types';
-  import { leftSidebarWidth, rightSidebarWidth, focusMode } from '$lib/stores/layout';
+  import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
   import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
   import { pinned } from '$lib/stores/pins';
@@ -750,12 +750,6 @@
         }
         return true;
       }
-      case 'focus': {
-        const active = get(focusMode);
-        focusMode.set(!active);
-        setCommandFeedback(active ? 'Focus mode disabled.' : 'Focus mode enabled.');
-        return true;
-      }
       case 'ephemeral':
       case 'temp': {
         if (!rest) {
@@ -1188,10 +1182,6 @@
     settingsOpen = false;
   }
 
-  function toggleFocusMode() {
-    focusMode.update((v) => !v);
-  }
-
   async function editTopic() {
     const existing = $channelTopics[currentChatChannelId] ?? '';
     const input = await dialogs.prompt({
@@ -1306,10 +1296,6 @@
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
 
     switch (key) {
-      case 'f':
-        event.preventDefault();
-        toggleFocusMode();
-        break;
       case 'm':
         event.preventDefault();
         toggleMicrophone();
@@ -1553,7 +1539,7 @@
   });
 </script>
 
-  <div class="page" class:focus={$focusMode}>
+  <div class="page">
     <ChannelSidebar
       {currentChatChannelId}
       {currentVoiceChannelId}
@@ -1748,21 +1734,6 @@
     height: 100vh;
     background: var(--color-bg);
     overflow: hidden;
-  }
-
-  /* .channels/.sidebar are the root elements of ChannelSidebar/UserList;
-     :global escapes Svelte's per-component style scoping. */
-  .page.focus :global(.channels),
-  .page.focus :global(.sidebar),
-  .page.focus .resizer {
-    display: none;
-  }
-
-  .page.focus .chat {
-    max-width: 60rem;
-    margin: 0 auto;
-    border-left: 1px solid var(--color-surface-outline);
-    border-right: 1px solid var(--color-surface-outline);
   }
 
   .resizer {

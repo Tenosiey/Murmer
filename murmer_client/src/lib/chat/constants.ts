@@ -63,7 +63,6 @@ export const HELP_COMMANDS: Array<{
     usage: '/status <online|away|busy|offline>',
     description: 'Change your presence indicator across all connected clients.'
   },
-  { usage: '/focus', description: 'Toggle focus mode for a distraction-free chat view.' },
   {
     usage: '/ephemeral <seconds> <message>',
     description:
