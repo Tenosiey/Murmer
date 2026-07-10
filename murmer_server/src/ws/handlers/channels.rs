@@ -3,7 +3,7 @@
 use crate::ws::{constants::*, errors, helpers::*, validation::*};
 use crate::{db, security, AppState, VoiceChannelState};
 use axum::extract::ws::{Message, WebSocket};
-use futures::{stream::SplitSink, SinkExt};
+use futures::stream::SplitSink;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -22,11 +22,7 @@ pub(super) async fn handle_create_channel(
 
     if !security::validate_channel_name(ch) {
         error!("Invalid channel name: {}", ch);
-        let _ = sender
-            .send(Message::Text(
-                errors::INVALID_CHANNEL_NAME.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::INVALID_CHANNEL_NAME).await;
         return;
     }
 
@@ -34,22 +30,14 @@ pub(super) async fn handle_create_channel(
         Some(name) => name,
         None => {
             error!("create-channel requested before presence was fully processed");
-            let _ = sender
-                .send(Message::Text(
-                    errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
             return;
         }
     };
 
     if !can_manage_channels(state, requester).await {
         error!("User {requester} attempted to create channel without permission");
-        let _ = sender
-            .send(Message::Text(
-                errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
     }
 
@@ -61,16 +49,12 @@ pub(super) async fn handle_create_channel(
     match db::add_channel(&state.db, ch, category_id).await {
         Ok(Some(record)) => {
             get_or_create_channel(state, record.id).await;
-            broadcast_new_channel(state, record.id, &record.name, record.category_id).await;
+            broadcast_new_channel(state, &record).await;
         }
         Ok(None) => {}
         Err(e) => {
             error!("db add channel error: {e}");
-            let _ = sender
-                .send(Message::Text(
-                    errors::CHANNEL_CREATION_FAILED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CHANNEL_CREATION_FAILED).await;
         }
     }
 }
@@ -103,11 +87,7 @@ pub(super) async fn handle_delete_channel(
     };
 
     if record.name == "general" {
-        let _ = sender
-            .send(Message::Text(
-                errors::CANNOT_DELETE_GENERAL.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::CANNOT_DELETE_GENERAL).await;
         return Err(());
     }
 
@@ -115,32 +95,20 @@ pub(super) async fn handle_delete_channel(
         Some(name) => name,
         None => {
             error!("delete-channel requested before presence was fully processed");
-            let _ = sender
-                .send(Message::Text(
-                    errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
             return Err(());
         }
     };
 
     if !can_manage_channels(state, requester).await {
         error!("User {requester} attempted to delete channel without permission");
-        let _ = sender
-            .send(Message::Text(
-                errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return Err(());
     }
 
     if let Err(e) = db::remove_channel(&state.db, ch_id).await {
         error!("db remove channel error: {e}");
-        let _ = sender
-            .send(Message::Text(
-                errors::CHANNEL_DELETION_FAILED.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::CHANNEL_DELETION_FAILED).await;
     } else {
         state.channels.lock().await.remove(&ch_id);
         broadcast_remove_channel(state, ch_id).await;
@@ -172,21 +140,13 @@ pub(super) async fn handle_move_channel(
     let requester = match user_name.as_deref() {
         Some(n) => n,
         None => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
             return;
         }
     };
 
     if !can_manage_channels(state, requester).await {
-        let _ = sender
-            .send(Message::Text(
-                errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
     }
 
@@ -222,19 +182,63 @@ pub(super) async fn handle_move_channel(
             broadcast_channel_move(state, ch_id, category_id, is_voice).await;
         }
         Ok(false) => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::CHANNEL_MOVE_FAILED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CHANNEL_MOVE_FAILED).await;
         }
         Err(e) => {
             error!("db move channel error: {e}");
-            let _ = sender
-                .send(Message::Text(
-                    errors::CHANNEL_MOVE_FAILED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CHANNEL_MOVE_FAILED).await;
+        }
+    }
+}
+
+/// Handle set channel topic request.
+pub(super) async fn handle_set_channel_topic(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(ch_id) = v
+        .get("channelId")
+        .and_then(|c| c.as_i64())
+        .map(|c| c as i32)
+    else {
+        return;
+    };
+    let Some(raw_topic) = v.get("topic").and_then(|t| t.as_str()) else {
+        return;
+    };
+
+    let topic = raw_topic.trim();
+    if !validate_channel_topic(topic) {
+        send_error(sender, errors::INVALID_CHANNEL_TOPIC).await;
+        return;
+    }
+
+    let requester = match user_name.as_deref() {
+        Some(n) => n,
+        None => {
+            send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
+            return;
+        }
+    };
+
+    if !can_manage_channels(state, requester).await {
+        error!("User {requester} attempted to set channel topic without permission");
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
+        return;
+    }
+
+    match db::set_channel_description(&state.db, ch_id, topic).await {
+        Ok(true) => {
+            broadcast_channel_topic(state, ch_id, topic).await;
+        }
+        Ok(false) => {
+            send_error(sender, errors::UNKNOWN_CHANNEL).await;
+        }
+        Err(e) => {
+            error!("db set channel topic error: {e}");
+            send_error(sender, errors::TOPIC_UPDATE_FAILED).await;
         }
     }
 }
@@ -252,11 +256,7 @@ pub(super) async fn handle_create_voice_channel(
 
     if !security::validate_channel_name(ch) {
         error!("Invalid voice channel name: {}", ch);
-        let _ = sender
-            .send(Message::Text(
-                errors::INVALID_CHANNEL_NAME.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::INVALID_CHANNEL_NAME).await;
         return;
     }
 
@@ -264,22 +264,14 @@ pub(super) async fn handle_create_voice_channel(
         Some(name) => name,
         None => {
             error!("create-voice-channel requested before presence was fully processed");
-            let _ = sender
-                .send(Message::Text(
-                    errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
             return;
         }
     };
 
     if !can_manage_channels(state, requester).await {
         error!("User {requester} attempted to create voice channel without permission");
-        let _ = sender
-            .send(Message::Text(
-                errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
     }
 
@@ -291,11 +283,7 @@ pub(super) async fn handle_create_voice_channel(
         .map(str::to_string)
         .unwrap_or_else(|| DEFAULT_VOICE_QUALITY.to_string());
     if !validate_voice_quality(&quality_value) {
-        let _ = sender
-            .send(Message::Text(
-                errors::INVALID_VOICE_QUALITY.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::INVALID_VOICE_QUALITY).await;
         return;
     }
 
@@ -304,11 +292,7 @@ pub(super) async fn handle_create_voice_channel(
         Some(val) => match val.as_i64().and_then(validate_bitrate) {
             Some(valid) => Some(valid),
             None => {
-                let _ = sender
-                    .send(Message::Text(
-                        errors::INVALID_VOICE_BITRATE.to_string().into(),
-                    ))
-                    .await;
+                send_error(sender, errors::INVALID_VOICE_BITRATE).await;
                 return;
             }
         },
@@ -362,33 +346,21 @@ pub(super) async fn handle_update_voice_channel(
         Some(name) => name,
         None => {
             error!("update-voice-channel requested before presence was fully processed");
-            let _ = sender
-                .send(Message::Text(
-                    errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
             return;
         }
     };
 
     if !can_manage_channels(state, requester).await {
         error!("User {requester} attempted to update voice channel without permission");
-        let _ = sender
-            .send(Message::Text(
-                errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
     }
 
     let quality_override = if let Some(raw) = v.get("quality").and_then(|q| q.as_str()) {
         let trimmed = raw.trim();
         if !validate_voice_quality(trimmed) {
-            let _ = sender
-                .send(Message::Text(
-                    errors::INVALID_VOICE_QUALITY.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::INVALID_VOICE_QUALITY).await;
             return;
         }
         Some(trimmed.to_string())
@@ -403,11 +375,7 @@ pub(super) async fn handle_update_voice_channel(
             match val.as_i64().and_then(validate_bitrate) {
                 Some(valid) => Some(Some(valid)),
                 None => {
-                    let _ = sender
-                        .send(Message::Text(
-                            errors::INVALID_VOICE_BITRATE.to_string().into(),
-                        ))
-                        .await;
+                    send_error(sender, errors::INVALID_VOICE_BITRATE).await;
                     return;
                 }
             }
@@ -418,11 +386,7 @@ pub(super) async fn handle_update_voice_channel(
 
     let current = state.voice_channels.lock().await;
     let Some(existing) = current.get(&ch_id).cloned() else {
-        let _ = sender
-            .send(Message::Text(
-                errors::UNKNOWN_VOICE_CHANNEL.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::UNKNOWN_VOICE_CHANNEL).await;
         return;
     };
     drop(current);
@@ -445,19 +409,11 @@ pub(super) async fn handle_update_voice_channel(
             }
         }
         Ok(false) => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::UNKNOWN_VOICE_CHANNEL.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::UNKNOWN_VOICE_CHANNEL).await;
         }
         Err(e) => {
             error!("Failed to update voice channel {ch_id}: {e}");
-            let _ = sender
-                .send(Message::Text(
-                    errors::VOICE_CHANNEL_UPDATE_FAILED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::VOICE_CHANNEL_UPDATE_FAILED).await;
         }
     }
 }
@@ -482,22 +438,14 @@ pub(super) async fn handle_delete_voice_channel(
         Some(name) => name,
         None => {
             error!("delete-voice-channel requested before presence was fully processed");
-            let _ = sender
-                .send(Message::Text(
-                    errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
             return;
         }
     };
 
     if !can_manage_channels(state, requester).await {
         error!("User {requester} attempted to delete voice channel without permission");
-        let _ = sender
-            .send(Message::Text(
-                errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
     }
 
@@ -521,32 +469,20 @@ pub(super) async fn handle_create_category(
     };
 
     if !security::validate_channel_name(name) {
-        let _ = sender
-            .send(Message::Text(
-                errors::INVALID_CATEGORY_NAME.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::INVALID_CATEGORY_NAME).await;
         return;
     }
 
     let requester = match user_name.as_deref() {
         Some(n) => n,
         None => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
             return;
         }
     };
 
     if !can_manage_channels(state, requester).await {
-        let _ = sender
-            .send(Message::Text(
-                errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
     }
 
@@ -562,11 +498,7 @@ pub(super) async fn handle_create_category(
         }
         Err(e) => {
             error!("db add category error: {e}");
-            let _ = sender
-                .send(Message::Text(
-                    errors::CATEGORY_CREATION_FAILED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CATEGORY_CREATION_FAILED).await;
         }
     }
 }
@@ -586,32 +518,20 @@ pub(super) async fn handle_rename_category(
     };
 
     if !security::validate_channel_name(name) {
-        let _ = sender
-            .send(Message::Text(
-                errors::INVALID_CATEGORY_NAME.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::INVALID_CATEGORY_NAME).await;
         return;
     }
 
     let requester = match user_name.as_deref() {
         Some(n) => n,
         None => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
             return;
         }
     };
 
     if !can_manage_channels(state, requester).await {
-        let _ = sender
-            .send(Message::Text(
-                errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
     }
 
@@ -620,17 +540,11 @@ pub(super) async fn handle_rename_category(
             broadcast_rename_category(state, id, name).await;
         }
         Ok(false) => {
-            let _ = sender
-                .send(Message::Text(errors::UNKNOWN_CATEGORY.to_string().into()))
-                .await;
+            send_error(sender, errors::UNKNOWN_CATEGORY).await;
         }
         Err(e) => {
             error!("db rename category error: {e}");
-            let _ = sender
-                .send(Message::Text(
-                    errors::CATEGORY_RENAME_FAILED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CATEGORY_RENAME_FAILED).await;
         }
     }
 }
@@ -649,21 +563,13 @@ pub(super) async fn handle_delete_category(
     let requester = match user_name.as_deref() {
         Some(n) => n,
         None => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
             return;
         }
     };
 
     if !can_manage_channels(state, requester).await {
-        let _ = sender
-            .send(Message::Text(
-                errors::CHANNEL_PERMISSION_DENIED.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
     }
 
@@ -672,17 +578,11 @@ pub(super) async fn handle_delete_category(
             broadcast_remove_category(state, id).await;
         }
         Ok(false) => {
-            let _ = sender
-                .send(Message::Text(errors::UNKNOWN_CATEGORY.to_string().into()))
-                .await;
+            send_error(sender, errors::UNKNOWN_CATEGORY).await;
         }
         Err(e) => {
             error!("db delete category error: {e}");
-            let _ = sender
-                .send(Message::Text(
-                    errors::CATEGORY_DELETION_FAILED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::CATEGORY_DELETION_FAILED).await;
         }
     }
 }

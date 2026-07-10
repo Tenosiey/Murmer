@@ -1,11 +1,8 @@
 [package]
 name = "murmer_client"
-version = "2026.3.10-alpha.1"
-description = "A Tauri App"
-authors = ["you"]
+version = "2026.710.1"
+description = "Murmer desktop client (Tauri shell)"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -23,7 +20,13 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-window-state = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Same glib that gtk/tao already pull in; used to filter tray-icon log spam.
+glib = "0.18"
 

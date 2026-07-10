@@ -3,21 +3,65 @@
   The component renders nothing when the `open` prop is false.
 -->
 <script lang="ts">
-  import { volume, inputDeviceId, outputDeviceId, voiceMode, vadSensitivity, pttKey } from '$lib/stores/settings';
+  import {
+    volume,
+    inputDeviceId,
+    outputDeviceId,
+    voiceMode,
+    vadSensitivity,
+    pttKey,
+    echoCancellation,
+    noiseSuppression,
+    autoGainControl
+  } from '$lib/stores/settings';
   import { APP_VERSION } from '$lib/version';
+  import { serverInfo } from '$lib/stores/serverInfo';
+  import { theme, accent, DEFAULT_ACCENT } from '$lib/stores/theme';
+  import ThemeWheel from '$lib/components/ThemeWheel.svelte';
   import { loadKeyPair } from '$lib/keypair';
   import { onMount } from 'svelte';
   import { PushToTalkManager } from '$lib/voice/ptt';
+  import { check } from '@tauri-apps/plugin-updater';
+  import { relaunch } from '@tauri-apps/plugin-process';
+  import { dialogs } from '$lib/stores/dialogs';
   export let open: boolean;
   export let close: () => void;
 
   let updateMessage = '';
+  let updating = false;
   let publicKey = '';
   let keyCopied = false;
 
   let inputs: MediaDeviceInfo[] = [];
   let outputs: MediaDeviceInfo[] = [];
   let capturingPttKey = false;
+
+  // Each settings topic lives on its own tab shown in the left rail.
+  const TABS = [
+    { id: 'appearance', label: 'Appearance' },
+    { id: 'audio', label: 'Audio' },
+    { id: 'microphone', label: 'Microphone' },
+    { id: 'voice', label: 'Voice' },
+    { id: 'identity', label: 'Identity' },
+    { id: 'updates', label: 'Updates' },
+    { id: 'server', label: 'Server', ownerOnly: true }
+  ] as const;
+  let activeTab: (typeof TABS)[number]['id'] = 'appearance';
+  $: visibleTabs = TABS.filter((tab) => !('ownerOnly' in tab && tab.ownerOnly) || $serverInfo);
+  // If the active tab disappears (e.g. server info clears), fall back to the first.
+  $: if (!visibleTabs.some((tab) => tab.id === activeTab)) {
+    activeTab = visibleTabs[0].id;
+  }
+
+  // Preset theme colors shown next to the wheel; each is a wheel position.
+  const ACCENT_PRESETS = [
+    { name: 'Sky', hue: 215, saturation: 78 },
+    { name: 'Indigo', hue: 250, saturation: 68 },
+    { name: 'Violet', hue: 285, saturation: 68 },
+    { name: 'Rose', hue: 340, saturation: 72 },
+    { name: 'Ember', hue: 22, saturation: 80 },
+    { name: 'Moss', hue: 150, saturation: 55 }
+  ];
 
   onMount(async () => {
     try {
@@ -46,28 +90,44 @@
   }
 
   async function checkUpdates() {
+    if (updating) return;
+    updating = true;
     updateMessage = 'Checking...';
     try {
-      const res = await fetch(
-        'https://api.github.com/repos/Tenosiey/Murmer/releases?per_page=10'
-      );
-      if (!res.ok) throw new Error('request failed');
-      const releases = await res.json();
-      if (Array.isArray(releases) && releases.length > 0) {
-        const stable = releases.find((r) => !r.prerelease);
-        const pre = releases.find((r) => r.prerelease);
-        if (pre && pre.tag_name && pre.tag_name !== APP_VERSION) {
-          updateMessage = `Pre-release available: ${pre.tag_name}`;
-        } else if (stable && stable.tag_name && stable.tag_name !== APP_VERSION) {
-          updateMessage = `Update available: ${stable.tag_name}`;
-        } else {
-          updateMessage = 'You are running the latest version.';
-        }
-      } else {
-        updateMessage = 'No releases found.';
+      const update = await check();
+      if (!update) {
+        updateMessage = 'You are running the latest version.';
+        return;
       }
+      updateMessage = `Update available: ${update.version}`;
+      const install = await dialogs.confirm({
+        title: 'Install update?',
+        message: `Version ${update.version} is available (you have ${APP_VERSION}). The app will restart after installing.`,
+        confirmLabel: 'Install'
+      });
+      if (!install) return;
+      let contentLength = 0;
+      let downloaded = 0;
+      await update.downloadAndInstall((event) => {
+        if (event.event === 'Started') {
+          contentLength = event.data.contentLength ?? 0;
+          updateMessage = 'Downloading update...';
+        } else if (event.event === 'Progress') {
+          downloaded += event.data.chunkLength;
+          if (contentLength > 0) {
+            updateMessage = `Downloading update... ${Math.round((downloaded / contentLength) * 100)}%`;
+          }
+        } else if (event.event === 'Finished') {
+          updateMessage = 'Installing update...';
+        }
+      });
+      // On Windows the installer exits the app itself; relaunch covers other platforms.
+      await relaunch();
     } catch (e) {
-      updateMessage = 'Failed to check for updates.';
+      console.error('Update failed', e);
+      updateMessage = 'Update failed. Try again or download the latest release from GitHub.';
+    } finally {
+      updating = false;
     }
   }
 
@@ -108,7 +168,7 @@
     <div class="modal-content" on:click|stopPropagation on:keydown={handleKeydown} role="document" tabindex="0">
       <div class="modal-header">
         <h2 id="settings-title">Settings</h2>
-        <button class="close-btn" on:click={close} aria-label="Close settings">
+        <button class="icon-btn close-btn" on:click={close} aria-label="Close settings">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -116,9 +176,77 @@
         </button>
       </div>
 
-      <div class="modal-body">
+      <div class="settings-layout">
+        <nav class="settings-tabs" aria-label="Settings sections">
+          {#each visibleTabs as tab}
+            <button
+              class="tab-btn"
+              class:selected={activeTab === tab.id}
+              aria-pressed={activeTab === tab.id}
+              on:click={() => (activeTab = tab.id)}
+            >{tab.label}</button>
+          {/each}
+        </nav>
+
+        <div class="modal-body">
+        {#if activeTab === 'appearance'}
         <div class="settings-section">
-          <h3 class="section-title">🔊 Audio Settings</h3>
+          <h3 class="section-title">Appearance</h3>
+
+          <div class="setting-group">
+            <span class="setting-label" id="theme-mode-label">Theme</span>
+            <div class="mode-toggle" role="group" aria-labelledby="theme-mode-label">
+              <button
+                class="btn mode-btn"
+                class:selected={$theme === 'dark'}
+                aria-pressed={$theme === 'dark'}
+                on:click={() => theme.set('dark')}
+              >Dark</button>
+              <button
+                class="btn mode-btn"
+                class:selected={$theme === 'light'}
+                aria-pressed={$theme === 'light'}
+                on:click={() => theme.set('light')}
+              >Light</button>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <span class="setting-label">Theme color</span>
+            <div class="accent-picker">
+              <ThemeWheel
+                hue={($accent ?? DEFAULT_ACCENT).hue}
+                saturation={($accent ?? DEFAULT_ACCENT).saturation}
+                onchange={(hue, saturation) => accent.set({ hue, saturation })}
+              />
+              <div class="accent-side">
+                <div class="swatch-grid">
+                  {#each ACCENT_PRESETS as preset}
+                    <button
+                      class="swatch"
+                      class:selected={$accent?.hue === preset.hue && $accent?.saturation === preset.saturation}
+                      style={`background: hsl(${preset.hue} ${preset.saturation}% 50%);`}
+                      title={preset.name}
+                      aria-label={`Use ${preset.name} theme color`}
+                      on:click={() => accent.set({ hue: preset.hue, saturation: preset.saturation })}
+                    ></button>
+                  {/each}
+                </div>
+                <button class="btn reset-accent" on:click={() => accent.reset()} disabled={$accent === null}>
+                  Reset to default
+                </button>
+              </div>
+            </div>
+            <div class="setting-description">
+              Drag the dot to recolor the whole app — the angle picks the color, the distance from the center picks how strong it is.
+            </div>
+          </div>
+        </div>
+        {/if}
+
+        {#if activeTab === 'audio'}
+        <div class="settings-section">
+          <h3 class="section-title">Audio</h3>
           
           <div class="setting-group">
             <label for="volume-slider" class="setting-label">
@@ -173,9 +301,44 @@
             </div>
           </div>
         </div>
+        {/if}
 
+        {#if activeTab === 'microphone'}
         <div class="settings-section">
-          <h3 class="section-title">🎙️ Voice Activation</h3>
+          <h3 class="section-title">Microphone processing</h3>
+
+          <div class="setting-group">
+            <label class="toggle-row">
+              <input type="checkbox" bind:checked={$noiseSuppression} />
+              <span class="toggle-text">
+                <span class="toggle-label">Noise suppression</span>
+                <span class="toggle-description">Filter out constant background noise like fans or keyboards</span>
+              </span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" bind:checked={$echoCancellation} />
+              <span class="toggle-text">
+                <span class="toggle-label">Echo cancellation</span>
+                <span class="toggle-description">Prevent others from hearing their own audio through your microphone</span>
+              </span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" bind:checked={$autoGainControl} />
+              <span class="toggle-text">
+                <span class="toggle-label">Automatic gain control</span>
+                <span class="toggle-description">Keep your voice at a steady volume level</span>
+              </span>
+            </label>
+            <div class="setting-description">
+              Changes apply immediately, including while you are in a voice channel.
+            </div>
+          </div>
+        </div>
+        {/if}
+
+        {#if activeTab === 'voice'}
+        <div class="settings-section">
+          <h3 class="section-title">Voice activation</h3>
           
           <div class="setting-group">
             <label for="voice-mode-select" class="setting-label">Voice Mode</label>
@@ -223,7 +386,7 @@
               <div class="ptt-key-setting">
                 <button
                   id="ptt-key-button"
-                  class="ptt-key-button"
+                  class="btn ptt-key-button"
                   class:capturing={capturingPttKey}
                   on:click={capturePttKey}
                   disabled={capturingPttKey}
@@ -241,9 +404,11 @@
             </div>
           {/if}
         </div>
+        {/if}
 
+        {#if activeTab === 'identity'}
         <div class="settings-section">
-          <h3 class="section-title">🔑 Identity</h3>
+          <h3 class="section-title">Identity</h3>
           <div class="setting-group">
             <label class="setting-label" for="public-key-display">Public Key</label>
             <div class="pubkey-row">
@@ -254,7 +419,7 @@
                 readonly
                 value={publicKey}
               />
-              <button class="copy-btn" on:click={copyPublicKey} title="Copy public key">
+              <button class="icon-btn copy-btn" on:click={copyPublicKey} title="Copy public key">
                 {#if keyCopied}
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="20,6 9,17 4,12"></polyline>
@@ -272,22 +437,42 @@
             </div>
           </div>
         </div>
+        {/if}
 
+        {#if activeTab === 'updates'}
         <div class="settings-section">
-          <h3 class="section-title">🔄 Updates</h3>
+          <h3 class="section-title">Updates</h3>
           <div class="setting-group">
-            <button class="update-btn" on:click={checkUpdates}>Check for Updates</button>
+            <button class="btn update-btn" on:click={checkUpdates} disabled={updating}>Check for Updates</button>
             {#if updateMessage}
-              <div class="update-message" class:success={updateMessage.includes('latest')} class:warning={updateMessage.includes('available')}>
+              <div class="update-message" class:success={updateMessage.startsWith('You are running')} class:warning={updateMessage.startsWith('Update available')}>
                 {updateMessage}
               </div>
             {/if}
+            <div class="setting-description">Current version: {APP_VERSION}</div>
           </div>
+        </div>
+        {/if}
+
+        {#if activeTab === 'server' && $serverInfo}
+          <div class="settings-section">
+            <h3 class="section-title">Server</h3>
+            <div class="setting-group">
+              <div class="setting-label">
+                Server version
+                <span class="setting-value">{$serverInfo.version}</span>
+              </div>
+              <div class="setting-description">
+                Only visible to users with the Owner or Admin role.
+              </div>
+            </div>
+          </div>
+        {/if}
         </div>
       </div>
 
       <div class="modal-footer">
-        <button class="primary-btn" on:click={close}>Done</button>
+        <button class="btn btn-primary" on:click={close}>Done</button>
       </div>
     </div>
   </div>
@@ -297,102 +482,123 @@
   .modal-overlay {
     position: fixed;
     inset: 0;
-    background: color-mix(in srgb, var(--color-overlay) 92%, rgba(5, 10, 26, 0.75));
+    /* A plain dim instead of a full-screen backdrop blur — blur here is
+       very expensive in WebKitGTK (Linux) while the modal is open. */
+    background: var(--color-overlay);
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: var(--space-5);
     z-index: var(--z-modal);
-    backdrop-filter: blur(16px);
-    animation: fadeIn 0.24s ease-out;
+    animation: fadeIn 0.15s ease-out;
   }
 
   .modal-content {
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
+    background: var(--color-surface-elevated);
     border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-md);
+    box-shadow: var(--shadow-lg);
     border: 1px solid var(--color-surface-outline);
-    width: min(540px, 92vw);
-    max-height: 82vh;
+    width: min(720px, 94vw);
+    height: min(560px, 82vh);
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    animation: slideIn 0.28s cubic-bezier(0.25, 0.9, 0.3, 1.2);
-    backdrop-filter: var(--blur-elevated);
+    animation: slideIn 0.18s var(--motion-easing-standard);
+  }
+
+  .settings-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .settings-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-4) var(--space-3);
+    border-right: 1px solid var(--color-surface-outline);
+    flex-shrink: 0;
+    width: 12rem;
+    overflow-y: auto;
+  }
+
+  .tab-btn {
+    text-align: left;
+    justify-content: flex-start;
+    background: transparent;
+    border: none;
+    color: var(--color-muted);
+    font-weight: 500;
+    font-size: var(--text-md);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+  }
+
+  .tab-btn:hover {
+    background: var(--color-surface-raised);
+    color: var(--color-on-surface);
+  }
+
+  .tab-btn.selected {
+    background: var(--color-primary-container);
+    color: var(--color-primary);
   }
 
   .modal-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: clamp(1.25rem, 4vw, 1.5rem);
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
     border-bottom: 1px solid var(--color-surface-outline);
-    background: color-mix(in srgb, var(--color-surface-raised) 86%, transparent);
   }
 
   .modal-header h2 {
-    margin: 0;
-    font-size: var(--text-xl);
-    letter-spacing: -0.01em;
-  }
-
-  .close-btn {
-    background: transparent;
-    border: 1px solid transparent;
-    color: var(--color-muted);
-    cursor: pointer;
-    padding: 0.45rem;
-    border-radius: var(--radius-sm);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .close-btn:hover,
-  .close-btn:focus-visible {
-    border-color: color-mix(in srgb, var(--color-muted) 30%, transparent);
-    color: var(--color-on-surface);
-    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    font-size: var(--text-lg);
   }
 
   .modal-body {
-    padding: clamp(1.25rem, 4vw, 1.75rem);
-    max-height: 62vh;
+    flex: 1;
+    min-width: 0;
+    padding: var(--space-5);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: var(--space-6);
   }
 
   .settings-section {
     display: grid;
-    gap: 1.25rem;
+    gap: var(--space-4);
   }
 
   .section-title {
-    margin: 0;
-    font-size: 1rem;
+    font-size: var(--text-xs);
     font-weight: 600;
-    letter-spacing: 0.03em;
-    color: var(--color-secondary);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
   }
 
   .setting-group {
     display: grid;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .setting-label {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-weight: 600;
+    font-weight: 500;
     color: var(--color-on-surface);
     font-size: var(--text-md);
   }
 
   .setting-value {
     font-size: var(--text-sm);
-    color: var(--color-secondary);
+    color: var(--color-muted);
+    font-family: var(--font-mono);
   }
 
   .setting-description {
@@ -401,9 +607,57 @@
     line-height: 1.5;
   }
 
+  .mode-toggle {
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .mode-btn.selected {
+    background: var(--color-primary-container);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  .accent-picker {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+  }
+
+  .accent-side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .swatch-grid {
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    gap: var(--space-2);
+    justify-content: start;
+  }
+
+  .swatch {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-surface-outline);
+  }
+
+  .swatch.selected {
+    box-shadow:
+      0 0 0 2px var(--color-surface-elevated),
+      0 0 0 4px var(--color-primary);
+  }
+
+  .reset-accent {
+    align-self: flex-start;
+  }
+
   .slider-container {
     position: relative;
-    height: 2.25rem;
+    height: var(--control-height);
     display: flex;
     align-items: center;
   }
@@ -413,22 +667,21 @@
     position: absolute;
     left: 0;
     right: 0;
-    height: 6px;
+    height: 4px;
     top: 50%;
     transform: translateY(-50%);
-    background: color-mix(in srgb, var(--color-surface-raised) 86%, transparent);
+    background: var(--color-surface-raised);
     border-radius: var(--radius-pill);
-    border: 1px solid var(--color-surface-outline);
     pointer-events: none;
   }
 
   .slider-track-fill {
     position: absolute;
     left: 0;
-    height: 6px;
+    height: 4px;
     top: 50%;
     transform: translateY(-50%);
-    background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+    background: var(--color-primary);
     border-radius: var(--radius-pill);
     pointer-events: none;
     z-index: 1;
@@ -440,45 +693,37 @@
     -webkit-appearance: none;
     appearance: none;
     background: transparent;
+    border: none;
     position: relative;
     z-index: 2;
     margin: 0;
     padding: 0;
+    min-height: 0;
     cursor: pointer;
+  }
+
+  .volume-slider:focus {
+    box-shadow: none;
   }
 
   .volume-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
-    background: var(--color-on-primary);
-    border: 2.5px solid var(--color-primary);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    background: var(--color-on-surface);
+    border: 2px solid var(--color-primary);
     cursor: pointer;
-    transition: transform var(--transition), box-shadow var(--transition);
-  }
-
-  .volume-slider::-webkit-slider-thumb:hover {
-    transform: scale(1.12);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
   .volume-slider::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
-    background: var(--color-on-primary);
-    border: 2.5px solid var(--color-primary);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    background: var(--color-on-surface);
+    border: 2px solid var(--color-primary);
     cursor: pointer;
-    transition: transform var(--transition), box-shadow var(--transition);
-  }
-
-  .volume-slider::-moz-range-thumb:hover {
-    transform: scale(1.12);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
   .volume-slider::-moz-range-track {
@@ -486,43 +731,57 @@
     border: none;
   }
 
+  .toggle-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    cursor: pointer;
+  }
+
+  .toggle-row input[type='checkbox'] {
+    margin-top: 0.2rem;
+    accent-color: var(--color-primary);
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+
+  .toggle-text {
+    display: grid;
+    gap: 0.125rem;
+  }
+
+  .toggle-label {
+    font-weight: 500;
+    font-size: var(--text-md);
+    color: var(--color-on-surface);
+  }
+
+  .toggle-description {
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+    line-height: 1.4;
+  }
+
   .pubkey-row {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-2);
     align-items: center;
   }
 
   .pubkey-input {
     flex: 1;
-    padding: 0.65rem 0.85rem;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-surface-outline);
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
+    min-width: 0;
     color: var(--color-muted);
-    font-family: 'Courier New', Courier, monospace;
-    font-size: var(--text-sm);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
     cursor: text;
     user-select: all;
   }
 
   .copy-btn {
-    flex-shrink: 0;
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    border: 1px solid transparent;
-    border-radius: var(--radius-sm);
-    color: var(--color-secondary);
-    cursor: pointer;
-    padding: 0.55rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: var(--transition);
-  }
-
-  .copy-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-xs);
-    border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
+    border: 1px solid var(--color-surface-outline);
   }
 
   .select-container {
@@ -531,44 +790,24 @@
 
   .device-select {
     width: 100%;
-    padding: 0.75rem 1rem;
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-surface-outline);
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
-    color: var(--color-on-surface);
     appearance: none;
+    padding-right: var(--space-6);
+    border-radius: var(--radius-md);
   }
 
   .select-arrow {
     position: absolute;
-    right: 0.9rem;
+    right: var(--space-3);
     top: 50%;
     transform: translateY(-50%);
     pointer-events: none;
     color: var(--color-muted);
-  }
-
-  .ptt-key-button,
-  .update-btn,
-  .primary-btn {
-    border-radius: var(--radius-sm);
-    font-weight: 600;
-    padding: 0.75rem 1.1rem;
-    border: 1px solid transparent;
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    color: var(--color-secondary);
-    cursor: pointer;
-    transition: var(--transition);
+    display: inline-flex;
   }
 
   .ptt-key-button.capturing {
-    background: color-mix(in srgb, var(--color-warning) 26%, transparent);
-    color: var(--color-on-surface);
-  }
-
-  .ptt-key-button:disabled {
-    opacity: 0.6;
-    cursor: wait;
+    border-color: var(--color-warning);
+    color: var(--color-warning);
   }
 
   .update-btn {
@@ -588,22 +827,8 @@
     color: var(--color-warning);
   }
 
-  .primary-btn {
-    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
-    color: var(--color-on-primary);
-    border: none;
-    padding-inline: 1.5rem;
-  }
-
-  .ptt-key-button:hover,
-  .update-btn:hover,
-  .primary-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-xs);
-  }
-
   .modal-footer {
-    padding: clamp(1rem, 3vw, 1.5rem);
+    padding: var(--space-4) var(--space-5);
     border-top: 1px solid var(--color-surface-outline);
     display: flex;
     justify-content: flex-end;
@@ -620,7 +845,7 @@
 
   @keyframes slideIn {
     from {
-      transform: translateY(12px);
+      transform: translateY(8px);
       opacity: 0;
     }
     to {
@@ -629,4 +854,3 @@
     }
   }
 </style>
-

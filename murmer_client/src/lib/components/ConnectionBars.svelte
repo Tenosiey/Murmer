@@ -33,7 +33,7 @@
   }
 
   .bar {
-    width: 4px;
+    width: 3px;
     border-radius: var(--radius-pill);
     background: color-mix(in srgb, var(--color-on-surface-variant) 20%, transparent);
     opacity: 0.35;
@@ -51,15 +51,14 @@
   }
 
   .bar-excellent.active {
-    background: linear-gradient(180deg, var(--color-success), color-mix(in srgb, var(--color-success) 85%, #000));
-    box-shadow: 0 0 4px color-mix(in srgb, var(--color-success) 40%, transparent);
+    background: var(--color-success);
   }
 
   .bar-good.active {
-    background: linear-gradient(180deg, var(--color-warning), color-mix(in srgb, var(--color-warning) 85%, #000));
+    background: var(--color-warning);
   }
 
   .bar-poor.active {
-    background: linear-gradient(180deg, var(--color-error), color-mix(in srgb, var(--color-error) 85%, #000));
+    background: var(--color-error);
   }
 </style>

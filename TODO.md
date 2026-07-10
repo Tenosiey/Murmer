@@ -10,21 +10,21 @@ Use the checkboxes to track progress.
 ### 🗨️ Chat Features
 
 - [ ] Bot integration/webhooks (basic REST bot API exists, no webhooks)
-- [ ] Channel categories in the client UI (server-side already done)
-- [ ] Channel description/topics (client-only, no server persistence)
-- [ ] Channel permissions and moderation (basic role-gating exists, no ban/kick/mute)
+- [x] Channel categories in the client UI (grouping, collapse, context-menu management)
+- [x] Channel description/topics (persisted on the server, synced to all clients)
+- [x] Channel permissions and moderation (role-gated kick/ban/mute with persistence)
 - [ ] Custom server emojis
-- [ ] Direct messages between users
-- [ ] Edit sent messages
-- [ ] File sharing beyond images
-- [ ] Link previews (OpenGraph embeds)
-- [ ] Message threading/replies
-- [ ] Paste images from clipboard / drag & drop
-- [ ] Quote/reply to single messages (lightweight alternative to full threading)
-- [ ] Pin important messages in a channel (client-local only, no server persistence)
+- [x] Direct messages between users
+- [x] Edit sent messages
+- [x] File sharing beyond images
+- [x] Link previews (OpenGraph embeds)
+- [x] Message threading/replies
+- [x] Paste images from clipboard / drag & drop
+- [x] Quote/reply to single messages (lightweight alternative to full threading)
+- [x] Pin important messages in a channel (server-persisted, synced to all clients)
 - [ ] Text-to-speech
-- [ ] Typing indicators
-- [ ] Unread markers and per-channel unread badges
+- [x] Typing indicators
+- [x] Unread markers and per-channel unread badges
 - [ ] User nicknames per server
 - [ ] User profiles/avatars
 
@@ -36,7 +36,7 @@ Use the checkboxes to track progress.
 - [ ] Gesture recognition through webcam
 - [ ] Live polling during meetings
 - [ ] Meeting notes that auto-generate from voice
-- [ ] Noise suppression and echo cancellation
+- [x] Noise suppression and echo cancellation
 - [ ] Optional spatial/3D audio
 - [ ] Record and play back voice messages
 - [ ] Real-time transcription of voice to text
@@ -56,7 +56,7 @@ Use the checkboxes to track progress.
 - [ ] Backup & export of chat history and uploads
 - [ ] Decentralized/mesh networking option
 - [ ] End-to-end encryption for private channels
-- [ ] Implement auto updates
+- [x] Implement auto updates
 - [ ] SQLite mode as alternative to PostgreSQL (single-binary deploy)
 - [ ] Web client (browser build without Tauri, join via invite link)
 - [ ] Mini-games embedded in chat

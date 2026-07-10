@@ -1,6 +1,4 @@
-import { browser } from '$app/environment';
 import { get, writable } from 'svelte/store';
-import type { Message } from '../types';
 
 export interface PinnedEntry {
   id: number;
@@ -9,104 +7,52 @@ export interface PinnedEntry {
   image?: string;
   timestamp?: string;
   pinnedAt: string;
+  pinnedBy?: string;
 }
 
 type PinnedState = Record<number, PinnedEntry[]>;
 
-const STORAGE_KEY = 'murmer_pinned_messages';
-const MAX_PINS_PER_CHANNEL = 25;
-
-function loadInitialState(): PinnedState {
-  if (!browser) return {};
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, PinnedEntry[]>;
-    if (!parsed || typeof parsed !== 'object') return {};
-    const result: PinnedState = {};
-    for (const [key, entries] of Object.entries(parsed)) {
-      const channelId = Number(key);
-      if (Number.isNaN(channelId)) continue;
-      if (!Array.isArray(entries)) continue;
-      const safeEntries = entries
-        .filter(
-          (entry): entry is PinnedEntry =>
-            typeof entry === 'object' && entry !== null && typeof entry.id === 'number'
-        )
-        .map((entry) => ({
-          id: entry.id,
-          user: typeof entry.user === 'string' ? entry.user : undefined,
-          text: typeof entry.text === 'string' ? entry.text : undefined,
-          image: typeof entry.image === 'string' ? entry.image : undefined,
-          timestamp: typeof entry.timestamp === 'string' ? entry.timestamp : undefined,
-          pinnedAt: typeof entry.pinnedAt === 'string' ? entry.pinnedAt : new Date().toISOString()
-        }));
-      if (safeEntries.length > 0) {
-        result[channelId] = safeEntries.slice(0, MAX_PINS_PER_CHANNEL);
-      }
-    }
-    return result;
-  } catch (error) {
-    console.error('Failed to parse pinned messages from storage', error);
-    return {};
-  }
-}
-
-function persist(state: PinnedState) {
-  if (!browser) return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch (error) {
-    console.error('Failed to persist pinned messages', error);
-  }
-}
-
-function createSummary(message: Message): PinnedEntry {
-  const text = typeof message.text === 'string' ? message.text : undefined;
-  const image = typeof message.image === 'string' ? message.image : undefined;
-  const timestamp = typeof message.timestamp === 'string' ? message.timestamp : undefined;
+/**
+ * Pins are persisted on the server. This store mirrors the `pins` snapshots
+ * the server sends on channel join and after every pin/unpin; pin changes are
+ * requested through the chat store rather than applied locally.
+ */
+function parseEntry(raw: unknown): PinnedEntry | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const entry = raw as Record<string, unknown>;
+  if (typeof entry.id !== 'number') return null;
   return {
-    id: message.id as number,
-    user: typeof message.user === 'string' ? message.user : undefined,
-    text,
-    image,
-    timestamp,
-    pinnedAt: new Date().toISOString()
+    id: entry.id,
+    user: typeof entry.user === 'string' ? entry.user : undefined,
+    text: typeof entry.text === 'string' ? entry.text : undefined,
+    image: typeof entry.image === 'string' ? entry.image : undefined,
+    timestamp: typeof entry.timestamp === 'string' ? entry.timestamp : undefined,
+    pinnedAt: typeof entry.pinnedAt === 'string' ? entry.pinnedAt : new Date().toISOString(),
+    pinnedBy: typeof entry.pinnedBy === 'string' ? entry.pinnedBy : undefined
   };
 }
 
 function createPinnedStore() {
-  const store = writable<PinnedState>(loadInitialState());
-
-  store.subscribe((value) => {
-    persist(value);
-  });
+  const store = writable<PinnedState>({});
 
   return {
     subscribe: store.subscribe,
-    pin(channelId: number, message: Message) {
-      if (typeof message.id !== 'number') return;
-      const summary = createSummary(message);
+    /** Replace a channel's pins with a server snapshot. */
+    setChannelPins(channelId: number, entries: unknown[]) {
+      const parsed = entries
+        .map(parseEntry)
+        .filter((entry): entry is PinnedEntry => entry !== null);
       store.update((current) => {
-        const existing = current[channelId] ?? [];
-        const filtered = existing.filter((entry) => entry.id !== summary.id);
-        const nextEntries = [summary, ...filtered].slice(0, MAX_PINS_PER_CHANNEL);
-        return { ...current, [channelId]: nextEntries };
-      });
-    },
-    unpin(channelId: number, messageId: number) {
-      store.update((current) => {
-        const existing = current[channelId];
-        if (!existing) return current;
-        const nextEntries = existing.filter((entry) => entry.id !== messageId);
-        if (nextEntries.length === 0) {
+        if (parsed.length === 0) {
+          if (!(channelId in current)) return current;
           const next = { ...current };
           delete next[channelId];
           return next;
         }
-        return { ...current, [channelId]: nextEntries };
+        return { ...current, [channelId]: parsed };
       });
     },
+    /** Drop a deleted message's pin without waiting for a server snapshot. */
     removeMessage(channelId: number, messageId: number) {
       store.update((current) => {
         const existing = current[channelId];
@@ -121,10 +67,13 @@ function createPinnedStore() {
       });
     },
     isPinned(channelId: number, messageId: number): boolean {
-      const state = get(store);
-      const entries = state[channelId];
+      const entries = get(store)[channelId];
       if (!entries) return false;
       return entries.some((entry) => entry.id === messageId);
+    },
+    /** Drop all pins, e.g. when leaving a server. */
+    reset() {
+      store.set({});
     }
   };
 }

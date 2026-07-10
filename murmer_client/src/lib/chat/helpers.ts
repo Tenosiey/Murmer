@@ -1,10 +1,29 @@
 import type { Message, UserStatus, VoiceChannelInfo } from '../types';
 import { extractLinks } from '../link-preview';
-import { VOICE_QUALITY_PRESETS, DEFAULT_VOICE_PRESET } from './constants';
+import { VOICE_QUALITY_PRESETS } from './constants';
 
 export type MessageBlock =
   | { kind: 'separator'; label: string; key: string }
-  | { kind: 'message'; message: Message; key: string; links: string[] };
+  | { kind: 'unread'; key: string }
+  | {
+      kind: 'message';
+      message: Message;
+      key: string;
+      links: string[];
+      /** True when this message continues the previous author's group and
+       *  renders without its own avatar/username header. */
+      continuation: boolean;
+    };
+
+/** Messages from the same author within this window collapse into one group. */
+const GROUP_WINDOW_MS = 5 * 60 * 1000;
+
+export interface MessageBlockOptions {
+  /** Insert a "new messages" marker before the first foreign message with an id above this. */
+  unreadAfterId?: number;
+  /** The viewer's username; their own messages never count as unread. */
+  currentUser?: string | null;
+}
 
 export function pingToStrength(ms: number): number {
   return ms === 0 ? 5 : ms < 50 ? 5 : ms < 100 ? 4 : ms < 200 ? 3 : ms < 400 ? 2 : 1;
@@ -32,12 +51,45 @@ function formatDayHeading(date: Date): string {
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-export function buildMessageBlocks(messages: Message[]): MessageBlock[] {
+/* buildMessageBlocks runs on every chat-store update, so link extraction is
+   cached per message object to avoid re-running the URL regex over the whole
+   history each time. */
+const linkCache = new WeakMap<Message, string[]>();
+
+function linksFor(message: Message): string[] {
+  let links = linkCache.get(message);
+  if (!links) {
+    links = extractLinks(message.text);
+    linkCache.set(message, links);
+  }
+  return links;
+}
+
+export function buildMessageBlocks(
+  messages: Message[],
+  options: MessageBlockOptions = {}
+): MessageBlock[] {
   const blocks: MessageBlock[] = [];
   let lastDateKey: string | null = null;
+  let groupUser: string | null = null;
+  let groupTime: number | null = null;
+
+  const { unreadAfterId, currentUser } = options;
+  let unreadMarkerPlaced = unreadAfterId === undefined || unreadAfterId <= 0;
 
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
+
+    if (
+      !unreadMarkerPlaced &&
+      typeof message.id === 'number' &&
+      message.id > unreadAfterId! &&
+      message.user !== currentUser
+    ) {
+      blocks.push({ kind: 'unread', key: 'unread-marker' });
+      unreadMarkerPlaced = true;
+      groupUser = null;
+    }
     const timestamp = parseTimestampValue(message.timestamp);
     if (timestamp) {
       const currentKey = dateKey(timestamp);
@@ -48,15 +100,34 @@ export function buildMessageBlocks(messages: Message[]): MessageBlock[] {
           key: `separator-${currentKey}-${message.id ?? index}`
         });
         lastDateKey = currentKey;
+        groupUser = null;
       }
     }
 
-    const links = extractLinks(message.text);
+    /* A message continues the current group when it has the same author,
+       arrives within the grouping window and is not a reply (replies show
+       their quote and deserve a fresh header). */
+    const time = timestamp?.getTime() ?? null;
+    const continuation =
+      groupUser !== null &&
+      message.user === groupUser &&
+      !message.replyTo &&
+      groupTime !== null &&
+      time !== null &&
+      time - groupTime <= GROUP_WINDOW_MS;
+
+    if (!continuation) {
+      groupUser = message.user ?? null;
+      groupTime = time;
+    }
+
+    const links = linksFor(message);
     blocks.push({
       kind: 'message',
       message,
       key: `message-${message.id ?? `${index}-${message.time ?? ''}`}`,
-      links
+      links,
+      continuation
     });
   }
 
@@ -135,7 +206,19 @@ export function searchResultPreview(message: Message): string {
   if (typeof message.image === 'string' && message.image.trim().length > 0) {
     return '[Image]';
   }
+  if (message.attachment) {
+    return `[File] ${message.attachment.name}`;
+  }
   return 'Message';
+}
+
+export function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)} KB`;
+  const mb = kb / 1024;
+  return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
 }
 
 export function formatSearchTimestamp(message: Message): string {
@@ -151,17 +234,6 @@ export function formatVoiceQuality(info: VoiceChannelInfo): string {
   const bitrate = info.bitrate ?? preset?.bitrate ?? null;
   const label = preset ? preset.label : info.quality;
   return bitrate && bitrate > 0 ? `${label} (${Math.round(bitrate / 1000)} kbps)` : label;
-}
-
-export function promptVoicePreset(): { quality: string; bitrate: number | null } {
-  const input = prompt(
-    'Voice quality (low, standard, high, ultra, lossless)',
-    DEFAULT_VOICE_PRESET.quality
-  );
-  if (!input) return { quality: DEFAULT_VOICE_PRESET.quality, bitrate: DEFAULT_VOICE_PRESET.bitrate };
-  const normalized = input.trim().toLowerCase();
-  const preset = VOICE_QUALITY_PRESETS.find((p) => p.quality === normalized) ?? DEFAULT_VOICE_PRESET;
-  return { quality: preset.quality, bitrate: preset.bitrate };
 }
 
 export function reactionEntries(
@@ -181,13 +253,3 @@ export function ensureStatus(
   return (map[user] ?? fallback) as UserStatus;
 }
 
-export function notificationButtonIcon(value: string): string {
-  switch (value) {
-    case 'mentions':
-      return '@';
-    case 'mute':
-      return '🔕';
-    default:
-      return '🔔';
-  }
-}

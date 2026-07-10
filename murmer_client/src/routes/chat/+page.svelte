@@ -26,46 +26,56 @@
   import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
   import PinnedBar from '$lib/components/chat/PinnedBar.svelte';
   import UserList from '$lib/components/chat/UserList.svelte';
+  import MessageItem from '$lib/components/chat/MessageItem.svelte';
+  import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
+  import ConversationPanel from '$lib/components/chat/ConversationPanel.svelte';
+  import ConnectionOverlay from '$lib/components/chat/ConnectionOverlay.svelte';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { categories } from '$lib/stores/categories';
   import type { CategoryInfo } from '$lib/types';
-  import { leftSidebarWidth, rightSidebarWidth, focusMode } from '$lib/stores/layout';
+  import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
   import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
   import { pinned } from '$lib/stores/pins';
   import type { PinnedEntry } from '$lib/stores/pins';
+  import { typing } from '$lib/stores/typing';
+  import { unread } from '$lib/stores/unread';
+  import { threadData } from '$lib/stores/thread';
+  import { dm } from '$lib/stores/dm';
   import { screenSharePeers, viewScreenShare, leaveScreenShareAsViewer } from '$lib/stores/screenShare';
   import ScreenShareViewer from '$lib/components/ScreenShareViewer.svelte';
   import { loadKeyPair, sign } from '$lib/keypair';
-  import { renderMarkdown } from '$lib/markdown';
+  import { connection, connectionError } from '$lib/stores/connection';
+  import { describeServerError, isFatalConnectionError } from '$lib/errors';
   import type { Message, UserStatus, ScreenSharePeer } from '$lib/types';
   import {
     pingToStrength,
     buildMessageBlocks,
     describeDuration,
-    ephemeralInfo,
-    promptVoicePreset,
-    reactionEntries,
     type MessageBlock
   } from '$lib/chat/helpers';
+  import { dialogs } from '$lib/stores/dialogs';
+  import EmojiPicker from '$lib/components/EmojiPicker.svelte';
   import {
     MODERATOR_ROLES,
-    MESSAGE_INPUT_MAX_HEIGHT,
+    MAX_TOPIC_LENGTH,
     MIN_EPHEMERAL_SECONDS,
     MAX_EPHEMERAL_SECONDS,
-    VOICE_QUALITY_PRESETS
+    VOICE_QUALITY_PRESETS,
+    DEFAULT_VOICE_PRESET
   } from '$lib/chat/constants';
 
   let serverStrength = 0;
   $: serverStrength = pingToStrength($ping);
 
   let message = '';
-  let fileInput: HTMLInputElement;
-  let messageInput: HTMLTextAreaElement;
-  let inputScrollable = false;
+  let composer: MessageComposer;
   let previewUrl: string | null = null;
+  let pendingFile: File | null = null;
+  let dragDepth = 0;
+  $: dragActive = dragDepth > 0;
   let menuOpen = false;
   let menuX = 0;
   let menuY = 0;
@@ -95,6 +105,17 @@
 
   let channelMessages: Message[] = [];
   let messageBlocks: MessageBlock[] = [];
+
+  let replyingTo: Message | null = null;
+  let threadRootId: number | null = null;
+  const dmConversations = dm.conversations;
+  const dmActivePeer = dm.activePeer;
+  let threadMessages: Message[] = [];
+  let threadReplyCounts = new Map<number, number>();
+  /* Last-read message id captured when entering the channel; the "New"
+     divider stays anchored there until the user switches channels. */
+  let unreadMarkerAfterId = 0;
+  let typingLabel: string | null = null;
 
   function setCommandFeedback(message: string, type: 'info' | 'error' = 'info') {
     commandFeedback = message;
@@ -127,26 +148,48 @@
     helpOpen = false;
   }
 
-  function handleFileChange() {
-    const file = fileInput?.files?.[0];
+  function setPendingFile(file: File | null) {
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
       previewUrl = null;
     }
-    if (file) {
-      previewUrl = URL.createObjectURL(file);
+    pendingFile = file;
+    if (pendingFile && pendingFile.type.startsWith('image/')) {
+      previewUrl = URL.createObjectURL(pendingFile);
     }
   }
 
-  function autoResize() {
-    if (messageInput) {
-      messageInput.style.height = 'auto';
-      const h = Math.min(messageInput.scrollHeight, MESSAGE_INPUT_MAX_HEIGHT);
-      messageInput.style.height = h + 'px';
-      inputScrollable = messageInput.scrollHeight > h;
-    } else {
-      inputScrollable = false;
-    }
+  function clearPendingFile() {
+    setPendingFile(null);
+  }
+
+  function dragHasFiles(event: DragEvent): boolean {
+    return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+  }
+
+  function handleDragEnter(event: DragEvent) {
+    if (!dragHasFiles(event)) return;
+    event.preventDefault();
+    dragDepth += 1;
+  }
+
+  function handleDragOver(event: DragEvent) {
+    if (!dragHasFiles(event)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  }
+
+  function handleDragLeave(event: DragEvent) {
+    if (!dragHasFiles(event)) return;
+    dragDepth = Math.max(0, dragDepth - 1);
+  }
+
+  function handleDrop(event: DragEvent) {
+    if (!dragHasFiles(event)) return;
+    event.preventDefault();
+    dragDepth = 0;
+    const file = Array.from(event.dataTransfer?.files ?? [])[0] ?? null;
+    if (file) setPendingFile(file);
   }
 
   function toggleReaction(messageId: number | undefined, emoji: string, users: string[]) {
@@ -157,11 +200,27 @@
     chat.react(messageId, emoji, hasReaction ? 'remove' : 'add');
   }
 
-  function addReactionPrompt(messageId: number | undefined) {
+  let emojiPickerOpen = false;
+  let emojiPickerX = 0;
+  let emojiPickerY = 0;
+  let emojiPickerMessageId: number | null = null;
+
+  function openEmojiPicker(messageId: number | undefined, event: MouseEvent) {
     if (typeof messageId !== 'number') return;
-    const emoji = prompt('React with emoji')?.trim();
-    if (!emoji) return;
-    chat.react(messageId, emoji, 'add');
+    emojiPickerMessageId = messageId;
+    emojiPickerX = event.clientX;
+    emojiPickerY = event.clientY;
+    emojiPickerOpen = true;
+  }
+
+  function closeEmojiPicker() {
+    emojiPickerOpen = false;
+    emojiPickerMessageId = null;
+  }
+
+  function pickReaction(emoji: string) {
+    if (emojiPickerMessageId === null) return;
+    chat.react(emojiPickerMessageId, emoji, 'add');
   }
 
   $: statusMap = (() => {
@@ -187,7 +246,6 @@
     return MODERATOR_ROLES.some((role) => info.role?.toLowerCase() === role.toLowerCase());
   })();
 
-  $: autoResize();
   let inVoice = false;
   let settingsOpen = false;
   let currentChatChannelId: number = 0;
@@ -211,11 +269,16 @@
   }
 
   $: channelMessages = $chat.filter((m) => m.channelId === currentChatChannelId);
-  $: messageBlocks = buildMessageBlocks(channelMessages);
+  $: messageBlocks = buildMessageBlocks(channelMessages, {
+    unreadAfterId: unreadMarkerAfterId,
+    currentUser: $session.user
+  });
   $: pinnedEntries = $pinned[currentChatChannelId] ?? [];
 
   $: if ($channels.length && !$channels.some((c) => c.id === currentChatChannelId)) {
     currentChatChannelId = $channels[0].id;
+    unreadMarkerAfterId = unread.getLastRead(currentChatChannelId);
+    unread.setActive(currentChatChannelId);
     loadingHistory = false;
     if (initialChannelSet) {
       chat.sendRaw({ type: 'join', channelId: currentChatChannelId });
@@ -223,6 +286,58 @@
       initialChannelSet = true;
     }
   }
+
+  function latestMessageId(messages: Message[]): number | null {
+    let max: number | null = null;
+    for (const m of messages) {
+      if (typeof m.id === 'number' && (max === null || m.id > max)) max = m.id;
+    }
+    return max;
+  }
+
+  // Everything rendered in the active channel counts as read.
+  $: {
+    const latest = latestMessageId(channelMessages);
+    if (latest !== null) unread.markRead(currentChatChannelId, latest);
+  }
+
+  $: typingLabel = (() => {
+    const users = Object.entries($typing[currentChatChannelId] ?? {})
+      .filter(([user, expiry]) => user !== $session.user && expiry > now)
+      .map(([user]) => user);
+    if (users.length === 0) return null;
+    if (users.length === 1) return `${users[0]} is typing…`;
+    if (users.length === 2) return `${users[0]} and ${users[1]} are typing…`;
+    return 'Several people are typing…';
+  })();
+
+  $: threadReplyCounts = (() => {
+    const map = new Map<number, number>();
+    for (const m of channelMessages) {
+      if (typeof m.threadId === 'number') {
+        map.set(m.threadId, (map.get(m.threadId) ?? 0) + 1);
+      }
+    }
+    return map;
+  })();
+
+  /* The panel merges the server's thread snapshot with live messages from the
+     store, so replies arriving while the thread is open show up immediately. */
+  $: threadMessages = (() => {
+    if (threadRootId === null) return [];
+    const byId = new Map<number, Message>();
+    const data = $threadData;
+    if (data && data.rootId === threadRootId) {
+      for (const m of data.messages) {
+        if (typeof m.id === 'number') byId.set(m.id, m);
+      }
+    }
+    for (const m of channelMessages) {
+      if (typeof m.id !== 'number') continue;
+      if (m.id === threadRootId || m.threadId === threadRootId) byId.set(m.id, m);
+    }
+    return [...byId.values()].sort((a, b) => (a.id as number) - (b.id as number));
+  })();
 
   $: currentTopic = $channelTopics[currentChatChannelId] ?? '';
 
@@ -360,15 +475,7 @@
     };
   }
 
-  onMount(() => {
-    if (!get(session).user) {
-      goto('/login');
-      return;
-    }
-    roles.set({});
-    expiryTicker = window.setInterval(() => {
-      now = Date.now();
-    }, 1000);
+  function connectToServer() {
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
     const entry = servers.get(url);
     chat.connect(url, async () => {
@@ -389,14 +496,96 @@
       // so avoid sending an extra join message which would duplicate chat
       // history on initial connect. Joining is still handled when the
       // user switches channels.
+      if (currentChatChannelId > 0) {
+        // Reconnecting: the server placed us back in the default channel,
+        // so rejoin the channel the user was viewing.
+        chat.sendRaw({ type: 'join', channelId: currentChatChannelId });
+      }
       ping.start();
       await scrollBottom();
     });
+  }
+
+  function retryConnect() {
+    ping.stop();
+    connectToServer();
+  }
+
+  function leaveToServers(message: string | null = null) {
+    connectionError.set(message);
+    ping.stop();
+    chat.disconnect();
+    goto('/servers');
+  }
+
+  const handleServerError = (msg: Message) => {
+    const code = typeof msg.message === 'string' ? msg.message : '';
+    const description = describeServerError(code);
+    if (isFatalConnectionError(code)) {
+      // The server closes the connection after these errors; return to the
+      // server list and explain why there.
+      leaveToServers(description);
+      return;
+    }
+    setCommandFeedback(description, 'error');
+  };
+  chat.on('error', handleServerError);
+
+  const handleForceDisconnect = (msg: Message) => {
+    if (!msg.user || msg.user !== get(session).user) return;
+    const action = msg.action === 'banned' ? 'banned from' : 'kicked from';
+    const by = typeof msg.by === 'string' && msg.by ? ` by ${msg.by}` : '';
+    leaveToServers(`You were ${action} this server${by}.`);
+  };
+  chat.on('force-disconnect', handleForceDisconnect);
+
+  const handleUserMuted = (msg: Message) => {
+    if (typeof msg.user !== 'string') return;
+    if (msg.user === get(session).user) {
+      const until = typeof msg.until === 'string' ? ` until ${new Date(msg.until).toLocaleString()}` : '';
+      setCommandFeedback(`You have been muted${until}.`, 'error');
+      return;
+    }
+    setCommandFeedback(`${msg.user} has been muted.`);
+  };
+  chat.on('user-muted', handleUserMuted);
+
+  const handleUserUnmuted = (msg: Message) => {
+    if (typeof msg.user !== 'string') return;
+    if (msg.user === get(session).user) {
+      setCommandFeedback('You are no longer muted.');
+      return;
+    }
+    setCommandFeedback(`${msg.user} has been unmuted.`);
+  };
+  chat.on('user-unmuted', handleUserUnmuted);
+
+  const handleUserUnbanned = (msg: Message) => {
+    if (typeof msg.user !== 'string') return;
+    setCommandFeedback(`${msg.user} has been unbanned.`);
+  };
+  chat.on('user-unbanned', handleUserUnbanned);
+
+  onMount(() => {
+    if (!get(session).user) {
+      goto('/login');
+      return;
+    }
+    roles.set({});
+    expiryTicker = window.setInterval(() => {
+      now = Date.now();
+    }, 1000);
+    connectToServer();
   });
 
   onDestroy(() => {
     chat.off('history', handleHistory);
     chat.off('message-deleted', handleMessageDeleted);
+    chat.off('error', handleServerError);
+    chat.off('force-disconnect', handleForceDisconnect);
+    chat.off('user-muted', handleUserMuted);
+    chat.off('user-unmuted', handleUserUnmuted);
+    chat.off('user-unbanned', handleUserUnbanned);
     chat.disconnect();
     if (currentVoiceChannelId !== null) {
       voice.leave(currentVoiceChannelId);
@@ -423,19 +612,19 @@
     if (trimmed.startsWith('/')) {
       if (handleSlashCommand(trimmed)) {
         message = '';
-        autoResize();
         return;
       }
     }
-    chat.send($session.user ?? 'anon', message);
+    const replyTarget = typeof replyingTo?.id === 'number' ? replyingTo.id : undefined;
+    chat.send($session.user ?? 'anon', message, replyTarget);
+    replyingTo = null;
     message = '';
-    autoResize();
   }
 
-  async function sendImage() {
-    const file = fileInput?.files?.[0];
+  async function sendFile() {
+    const file = pendingFile;
     if (!file) {
-      if (import.meta.env.DEV) console.log('sendImage: no file selected');
+      if (import.meta.env.DEV) console.log('sendFile: no file selected');
       return;
     }
     const selected = get(selectedServer) ?? 'ws://localhost:3001/ws';
@@ -447,41 +636,59 @@
     const base = u.toString().replace(/\/$/, '');
     const form = new FormData();
     form.append('file', file);
-    if (import.meta.env.DEV) console.log('Uploading image to', base + '/upload', file);
+    if (import.meta.env.DEV) console.log('Uploading file to', base + '/upload', file);
     try {
       const res = await fetch(base + '/upload', { method: 'POST', body: form });
       if (import.meta.env.DEV) console.log('Upload response status:', res.status);
+      if (res.status === 415) {
+        setCommandFeedback('This file type is not allowed on the server.', 'error');
+        return;
+      }
+      if (res.status === 413) {
+        setCommandFeedback('File is too large to upload.', 'error');
+        return;
+      }
       if (!res.ok) {
         throw new Error(`upload failed with status ${res.status}`);
       }
       const data = await res.json();
       if (import.meta.env.DEV) console.log('Upload response data:', data);
       const url = data.url as string;
-      const img = url.startsWith('http') ? url : base + url;
+      const absolute = url.startsWith('http') ? url : base + url;
       const now = new Date();
-      chat.sendRaw({
-        type: 'chat',
-        user: $session.user ?? 'anon',
-        image: img,
-        time: now.toLocaleTimeString(),
-        timestamp: now.toISOString()
-      });
+      if (data.kind === 'image' || file.type.startsWith('image/')) {
+        chat.sendRaw({
+          type: 'chat',
+          user: $session.user ?? 'anon',
+          image: absolute,
+          time: now.toLocaleTimeString(),
+          timestamp: now.toISOString()
+        });
+      } else {
+        chat.sendRaw({
+          type: 'chat',
+          user: $session.user ?? 'anon',
+          attachment: {
+            url: absolute,
+            name: typeof data.name === 'string' ? data.name : file.name,
+            size: typeof data.size === 'number' ? data.size : file.size
+          },
+          time: now.toLocaleTimeString(),
+          timestamp: now.toISOString()
+        });
+      }
     } catch (e) {
       console.error('upload failed', e);
+      setCommandFeedback('File upload failed.', 'error');
     } finally {
-      if (fileInput) fileInput.value = '';
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-        previewUrl = null;
-      }
+      clearPendingFile();
     }
   }
 
   async function send() {
-    const file = fileInput?.files?.[0];
     const hasMessage = message.trim() !== '';
-    if (!file && !hasMessage) return;
-    if (file) await sendImage();
+    if (!pendingFile && !hasMessage) return;
+    if (pendingFile) await sendFile();
     if (hasMessage) sendText();
   }
 
@@ -510,12 +717,17 @@
         return true;
       }
       case 'shrug': {
-        const shrug = '¯\_(ツ)_/¯';
+        // Backslash-escaped so markdown doesn't italicize the face.
+        const shrug = '¯\\\\\\_(ツ)\\_/¯';
         const text = rest ? `${rest} ${shrug}` : shrug;
         chat.send(currentUser ?? 'anon', text);
         return true;
       }
       case 'topic': {
+        if (rest.length > MAX_TOPIC_LENGTH) {
+          setCommandFeedback(`Topics are limited to ${MAX_TOPIC_LENGTH} characters.`, 'error');
+          return true;
+        }
         channelTopics.setTopic(currentChatChannelId, rest);
         setCommandFeedback(rest ? 'Updated the channel topic.' : 'Cleared the channel topic.');
         return true;
@@ -536,12 +748,6 @@
             'error'
           );
         }
-        return true;
-      }
-      case 'focus': {
-        const active = get(focusMode);
-        focusMode.set(!active);
-        setCommandFeedback(active ? 'Focus mode disabled.' : 'Focus mode enabled.');
         return true;
       }
       case 'ephemeral':
@@ -624,10 +830,63 @@
   function joinChannel(id: number) {
     if (id === currentChatChannelId) return;
     currentChatChannelId = id;
+    unreadMarkerAfterId = unread.getLastRead(id);
+    unread.setActive(id);
+    replyingTo = null;
+    closeThread();
     loadingHistory = false;
     chat.clear();
     chat.sendRaw({ type: 'join', channelId: id });
     scrollBottom();
+  }
+
+  function startReply(msg: Message) {
+    if (typeof msg.id !== 'number') return;
+    replyingTo = msg;
+    composer?.focusInput();
+  }
+
+  function cancelReply() {
+    replyingTo = null;
+  }
+
+  function openThread(rootId: number) {
+    threadRootId = rootId;
+    chat.loadThread(rootId);
+  }
+
+  function closeThread() {
+    threadRootId = null;
+  }
+
+  function sendThreadReply(text: string) {
+    if (threadRootId === null) return;
+    chat.send($session.user ?? 'anon', text, threadRootId);
+  }
+
+  function openDm(user: string) {
+    if (user === $session.user) return;
+    closeThread();
+    dm.open(user);
+    chat.loadDmHistory(user);
+  }
+
+  function closeDm() {
+    dm.close();
+  }
+
+  function sendDmMessage(text: string) {
+    const peer = $dmActivePeer;
+    if (!peer) return;
+    chat.sendDm(peer, text);
+  }
+
+  $: dmMessages = $dmActivePeer ? ($dmConversations[$dmActivePeer] ?? []) : [];
+
+  function handleComposerInput() {
+    if (message.trim().length > 0) {
+      chat.sendTyping();
+    }
   }
 
 
@@ -646,7 +905,10 @@
   async function handleViewScreenShare(userId: string) {
     try {
       if (!$session.user || currentVoiceChannelId === null) {
-        alert('You must be in a voice channel to view screen shares');
+        await dialogs.alert({
+          title: 'Join a voice channel first',
+          message: 'You must be in a voice channel to view screen shares.'
+        });
         return;
       }
 
@@ -664,7 +926,10 @@
     } catch (error) {
       pendingScreenShareView = null;
       console.error('Failed to view screen share:', error);
-      alert('Failed to view screen share');
+      dialogs.alert({
+        title: 'Screen share unavailable',
+        message: 'Could not open this screen share. The stream may have ended.'
+      });
     }
   }
 
@@ -681,29 +946,65 @@
     goto('/servers');
   }
 
-  function createChannelPrompt() {
-    const name = prompt('New channel name');
-    if (name) channels.create(name);
+  async function createChannelPrompt(categoryId: number | null = null) {
+    const name = await dialogs.prompt({
+      title: 'Create text channel',
+      label: 'Channel name',
+      placeholder: 'e.g. general',
+      confirmLabel: 'Create'
+    });
+    if (name) channels.create(name.trim(), categoryId);
   }
 
-  function createVoiceChannelPrompt() {
-    const name = prompt('New voice channel name');
+  async function selectVoicePreset(): Promise<{ quality: string; bitrate: number | null } | null> {
+    const quality = await dialogs.select({
+      title: 'Voice quality',
+      options: VOICE_QUALITY_PRESETS.map((preset) => ({
+        value: preset.quality,
+        label: preset.label,
+        description:
+          preset.bitrate && preset.bitrate > 0
+            ? `${Math.round(preset.bitrate / 1000)} kbps`
+            : 'Uncompressed audio'
+      })),
+      initial: DEFAULT_VOICE_PRESET.quality,
+      confirmLabel: 'Apply'
+    });
+    if (quality === null) return null;
+    const preset = VOICE_QUALITY_PRESETS.find((p) => p.quality === quality) ?? DEFAULT_VOICE_PRESET;
+    return { quality: preset.quality, bitrate: preset.bitrate };
+  }
+
+  async function createVoiceChannelPrompt(categoryId: number | null = null) {
+    const name = await dialogs.prompt({
+      title: 'Create voice channel',
+      label: 'Channel name',
+      placeholder: 'e.g. Lounge',
+      confirmLabel: 'Next'
+    });
     if (!name) return;
-    const preset = promptVoicePreset();
-    voiceChannels.create(name, preset);
+    const preset = await selectVoicePreset();
+    if (!preset) return;
+    voiceChannels.create(name.trim(), preset, categoryId);
   }
 
-  function joinVoiceChannel(id: number) {
-    if ($session.user) {
-      if (inVoice && currentVoiceChannelId !== null) {
-        voice.leave(currentVoiceChannelId);
-      }
-      currentVoiceChannelId = id;
-      const info = $voiceChannels.find((vc) => vc.id === id);
-      voice.join($session.user, id, info);
-      inVoice = true;
-      scrollBottom();
+  async function joinVoiceChannel(id: number) {
+    if (!$session.user) return;
+    if (inVoice && currentVoiceChannelId !== null) {
+      voice.leave(currentVoiceChannelId);
     }
+    const info = $voiceChannels.find((vc) => vc.id === id);
+    try {
+      await voice.join($session.user, id, info);
+    } catch (error) {
+      console.error('Failed to join voice channel', error);
+      inVoice = false;
+      setCommandFeedback('Could not access your microphone. Check the permission and input device.', 'error');
+      return;
+    }
+    currentVoiceChannelId = id;
+    inVoice = true;
+    scrollBottom();
   }
 
   let menuChannelId: number | null = null;
@@ -726,6 +1027,21 @@
 
   const ASSIGNABLE_ROLES = ['Owner', 'Admin', 'Mod'] as const;
 
+  /** Mirror of the server's moderation ranking: requesters must strictly
+   *  outrank their target for kick/ban/mute to be allowed. */
+  function moderationRank(role: string | undefined): number {
+    switch (role?.toLowerCase()) {
+      case 'owner':
+        return 3;
+      case 'admin':
+        return 2;
+      case 'mod':
+        return 1;
+      default:
+        return 0;
+    }
+  }
+
   $: currentUserIsOwner = (() => {
     const user = $session.user;
     if (!user) return false;
@@ -733,8 +1049,16 @@
     return info?.role?.toLowerCase() === 'owner';
   })();
 
+  $: currentUserModerationRank = moderationRank(
+    $session.user ? $roles[$session.user]?.role : undefined
+  );
+
+  function canModerate(target: string): boolean {
+    if (target === $session.user) return false;
+    return currentUserModerationRank > moderationRank($roles[target]?.role);
+  }
+
   function openUserRoleMenu(event: MouseEvent, user: string) {
-    if (!currentUserIsOwner) return;
     if (user === $session.user) return;
     event.preventDefault();
     event.stopPropagation();
@@ -752,17 +1076,60 @@
     chat.sendRaw({ type: 'remove-role', user });
   }
 
+  function kickUser(user: string) {
+    chat.sendRaw({ type: 'kick-user', user });
+  }
+
+  async function banUser(user: string) {
+    const confirmed = await dialogs.confirm({
+      title: `Ban ${user}?`,
+      message: 'They will be disconnected and unable to rejoin until unbanned.',
+      confirmLabel: 'Ban user',
+      danger: true
+    });
+    if (!confirmed) return;
+    chat.sendRaw({ type: 'ban-user', user });
+  }
+
+  function unbanUser(user: string) {
+    chat.sendRaw({ type: 'unban-user', user });
+  }
+
+  function muteUser(user: string, durationSeconds?: number) {
+    const payload: Record<string, unknown> = { type: 'mute-user', user };
+    if (typeof durationSeconds === 'number') payload.durationSeconds = durationSeconds;
+    chat.sendRaw(payload);
+  }
+
+  function unmuteUser(user: string) {
+    chat.sendRaw({ type: 'unmute-user', user });
+  }
+
   $: userRoleMenuItems = (() => {
     if (!userRoleMenuTarget) return [];
     const target = userRoleMenuTarget;
     const currentRole = $roles[target]?.role;
     const items: { label: string; action: () => void; danger?: boolean; icon?: string }[] = [];
-    for (const role of ASSIGNABLE_ROLES) {
-      if (currentRole?.toLowerCase() === role.toLowerCase()) continue;
-      items.push({ label: `Set as ${role}`, action: () => assignRole(target, role) });
+    items.push({ label: 'Send Message', action: () => openDm(target) });
+    if (currentUserIsOwner) {
+      for (const role of ASSIGNABLE_ROLES) {
+        if (currentRole?.toLowerCase() === role.toLowerCase()) continue;
+        items.push({ label: `Set as ${role}`, action: () => assignRole(target, role) });
+      }
+      if (currentRole) {
+        items.push({ label: 'Remove Role', action: () => removeRole(target), danger: true });
+      }
     }
-    if (currentRole) {
-      items.push({ label: 'Remove Role', action: () => removeRole(target), danger: true });
+    if (canModerate(target)) {
+      items.push({ label: 'Mute (10 min)', action: () => muteUser(target, 600) });
+      items.push({ label: 'Mute (1 hour)', action: () => muteUser(target, 3600) });
+      items.push({ label: 'Mute (until lifted)', action: () => muteUser(target) });
+      items.push({ label: 'Unmute', action: () => unmuteUser(target) });
+      if ($onlineUsers.includes(target)) {
+        items.push({ label: 'Kick User', danger: true, action: () => kickUser(target) });
+      }
+      items.push({ label: 'Ban User', danger: true, action: () => banUser(target) });
+      items.push({ label: 'Unban User', action: () => unbanUser(target) });
     }
     return items;
   })();
@@ -815,13 +1182,17 @@
     settingsOpen = false;
   }
 
-  function toggleFocusMode() {
-    focusMode.update((v) => !v);
-  }
-
-  function editTopic() {
+  async function editTopic() {
     const existing = $channelTopics[currentChatChannelId] ?? '';
-    const input = prompt('Set channel topic', existing);
+    const input = await dialogs.prompt({
+      title: 'Channel topic',
+      message: 'Shown next to the channel name. Leave empty to clear the topic.',
+      initial: existing,
+      placeholder: 'What is this channel about?',
+      maxLength: MAX_TOPIC_LENGTH,
+      confirmLabel: 'Save',
+      required: false
+    });
     if (input === null) return;
     channelTopics.setTopic(currentChatChannelId, input);
   }
@@ -831,6 +1202,27 @@
     if (!current || typeof msg.id !== 'number') return false;
     if (msg.user === current) return true;
     return currentUserCanModerate;
+  }
+
+  function canEditMessage(msg: Message): boolean {
+    const current = $session.user;
+    if (!current || typeof msg.id !== 'number') return false;
+    if (typeof msg.text !== 'string' || msg.text.trim() === '') return false;
+    return msg.user === current;
+  }
+
+  async function editChatMessage(msg: Message) {
+    if (typeof msg.id !== 'number' || typeof msg.text !== 'string') return;
+    const input = await dialogs.prompt({
+      title: 'Edit message',
+      initial: msg.text,
+      multiline: true,
+      confirmLabel: 'Save'
+    });
+    if (input === null) return;
+    const trimmed = input.trim();
+    if (trimmed === '' || input === msg.text) return;
+    chat.edit(msg.id, input);
   }
 
   function canPinMessage(msg: Message): boolean {
@@ -844,17 +1236,23 @@
 
   function togglePinMessage(msg: Message) {
     if (typeof msg.id !== 'number') return;
+    // Pins live on the server; the resulting `pins` broadcast updates the store.
     if (isMessagePinned(msg)) {
-      pinned.unpin(currentChatChannelId, msg.id);
+      chat.sendRaw({ type: 'unpin-message', messageId: msg.id });
     } else {
-      pinned.pin(currentChatChannelId, msg);
+      chat.sendRaw({ type: 'pin-message', messageId: msg.id });
     }
   }
 
   async function deleteChatMessage(msg: Message) {
     if (typeof msg.id !== 'number') return;
-    const confirmation = await Promise.resolve(confirm('Delete this message?') as boolean | Promise<boolean>);
-    if (!confirmation) return;
+    const confirmed = await dialogs.confirm({
+      title: 'Delete message?',
+      message: 'This removes the message for everyone. This cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true
+    });
+    if (!confirmed) return;
     chat.delete(msg.id);
   }
 
@@ -898,10 +1296,6 @@
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
 
     switch (key) {
-      case 'f':
-        event.preventDefault();
-        toggleFocusMode();
-        break;
       case 'm':
         event.preventDefault();
         toggleMicrophone();
@@ -930,15 +1324,25 @@
     }
   }
 
-  function createCategoryPrompt() {
-    const name = prompt('New category name');
-    if (name) categories.create(name);
+  async function createCategoryPrompt() {
+    const name = await dialogs.prompt({
+      title: 'Create category',
+      label: 'Category name',
+      placeholder: 'e.g. Projects',
+      confirmLabel: 'Create'
+    });
+    if (name) categories.create(name.trim());
   }
 
-  function renameCategoryPrompt(id: number) {
+  async function renameCategoryPrompt(id: number) {
     const cat = $categories.find((c) => c.id === id);
-    const name = prompt('Rename category', cat?.name ?? '');
-    if (name) categories.rename(id, name);
+    const name = await dialogs.prompt({
+      title: 'Rename category',
+      label: 'Category name',
+      initial: cat?.name ?? '',
+      confirmLabel: 'Rename'
+    });
+    if (name) categories.rename(id, name.trim());
   }
 
   function buildMoveToItems(channelId: number, voice: boolean): Array<{ label: string; action: () => void }> {
@@ -968,8 +1372,8 @@
   }
 
   $: channelMenuItems = [
-    { label: 'Create Text Channel', action: createChannelPrompt },
-    { label: 'Create Voice Channel', action: createVoiceChannelPrompt },
+    { label: 'Create Text Channel', action: () => createChannelPrompt() },
+    { label: 'Create Voice Channel', action: () => createVoiceChannelPrompt() },
     { label: 'Create Category', action: createCategoryPrompt },
     ...(menuChannelId != null
       ? [
@@ -996,6 +1400,8 @@
       : []),
     ...(menuCategoryId != null
       ? [
+          { label: 'Create Text Channel Here', action: () => createChannelPrompt(menuCategoryId) },
+          { label: 'Create Voice Channel Here', action: () => createVoiceChannelPrompt(menuCategoryId) },
           { label: 'Rename Category', action: () => renameCategoryPrompt(menuCategoryId!) },
           { label: 'Delete Category', action: () => categories.remove(menuCategoryId!), danger: true }
         ]
@@ -1133,7 +1539,7 @@
   });
 </script>
 
-  <div class="page" class:focus={$focusMode}>
+  <div class="page">
     <ChannelSidebar
       {currentChatChannelId}
       {currentVoiceChannelId}
@@ -1151,7 +1557,19 @@
     />
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="resizer" role="separator" aria-label="Resize channel list" on:mousedown={startLeftResize}></div>
-    <div class="chat">
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <div
+      class="chat"
+      on:dragenter={handleDragEnter}
+      on:dragover={handleDragOver}
+      on:dragleave={handleDragLeave}
+      on:drop={handleDrop}
+    >
+      {#if dragActive}
+        <div class="drop-overlay" aria-hidden="true">
+          <span>Drop file to upload</span>
+        </div>
+      {/if}
       <ChatHeader
         channelId={currentChatChannelId}
         channelName={currentChatChannelName}
@@ -1175,7 +1593,6 @@
         {now}
       />
       <PinnedBar
-        channelId={currentChatChannelId}
         entries={pinnedEntries}
         messages={channelMessages}
         onFocusMessage={focusMessage}
@@ -1187,176 +1604,82 @@
               <div class="day-separator" role="separator" aria-label={`Messages from ${block.label}`}>
                 <span>{block.label}</span>
               </div>
-            {:else if block.kind === 'message'}
-              <div
-                class="message"
-                data-message-id={typeof block.message.id === 'number' ? block.message.id : undefined}
-                class:highlighted={highlightedMessageId === block.message.id}
-              >
-                <span class="timestamp">{block.message.time}</span>
-                <span class="username">{block.message.user}</span>
-                {#if block.message.bot}
-                  <span class="bot-badge">BOT</span>
-                {/if}
-                {#if block.message.user && $roles[block.message.user]}
-                  <span
-                    class="role"
-                    style={$roles[block.message.user].color ? `color: ${$roles[block.message.user].color}` : ''}
-                  >
-                    {$roles[block.message.user].role}
-                  </span>
-                {/if}
-                <div class="content-wrapper">
-                  <span class="content">
-                  {#if block.message.text}
-                    {@html renderMarkdown(block.message.text)}
-                  {/if}
-                  {#if block.links.length > 0}
-                    <div class="link-previews">
-                      {#each block.links as link (link)}
-                        <LinkPreview url={link} />
-                      {/each}
-                    </div>
-                  {/if}
-                  {#if block.message.image}
-                    <img src={block.message.image as string} alt="" />
-                  {/if}
-                  {#if block.message.ephemeral}
-                    {@const eInfo = ephemeralInfo(block.message, now)}
-                    {#if eInfo}
-                      <span
-                        class="ephemeral-badge"
-                        title={eInfo.absolute ?? undefined}
-                      >
-                        {eInfo.label}
-                      </span>
-                    {/if}
-                  {/if}
-                </span>
-                  {#if typeof block.message.id === 'number' && (canPinMessage(block.message) || canDeleteMessage(block.message))}
-                    <div class="message-actions">
-                      {#if canPinMessage(block.message)}
-                        <button
-                          type="button"
-                          class="message-action"
-                          class:active={isMessagePinned(block.message)}
-                          on:click={() => togglePinMessage(block.message)}
-                          title={isMessagePinned(block.message) ? 'Unpin message' : 'Pin message'}
-                        >
-                          📌
-                        </button>
-                      {/if}
-                      {#if canDeleteMessage(block.message)}
-                        <button
-                          type="button"
-                          class="message-action danger"
-                          on:click={() => deleteChatMessage(block.message)}
-                          title="Delete message"
-                        >
-                          🗑️
-                        </button>
-                      {/if}
-                    </div>
-                  {/if}
-                </div>
-                {#if typeof block.message.id === 'number'}
-                  <div class="reactions">
-                    {#each reactionEntries(block.message) as reaction (reaction.emoji)}
-                      <button
-                        class="reaction-chip"
-                        class:active={reaction.users.includes($session.user ?? '')}
-                        on:click={() =>
-                          toggleReaction(block.message.id as number, reaction.emoji, reaction.users)}
-                        title={reaction.users.join(', ')}
-                      >
-                        <span class="emoji">{reaction.emoji}</span>
-                        <span class="count">{reaction.users.length}</span>
-                      </button>
-                    {/each}
-                    <button class="reaction-chip add" on:click={() => addReactionPrompt(block.message.id as number)}>
-                      +
-                    </button>
-                  </div>
-                {/if}
+            {:else if block.kind === 'unread'}
+              <div class="unread-divider" role="separator" aria-label="New messages">
+                <span>New</span>
               </div>
+            {:else if block.kind === 'message'}
+              <MessageItem
+                message={block.message}
+                links={block.links}
+                continuation={block.continuation}
+                {now}
+                highlighted={highlightedMessageId === block.message.id}
+                pinned={isMessagePinned(block.message)}
+                replyCount={typeof block.message.id === 'number'
+                  ? (threadReplyCounts.get(block.message.id) ?? 0)
+                  : 0}
+                canEdit={canEditMessage(block.message)}
+                canDelete={canDeleteMessage(block.message)}
+                canPin={canPinMessage(block.message)}
+                onFocusMessage={focusMessage}
+                onReply={startReply}
+                onEdit={editChatMessage}
+                onTogglePin={togglePinMessage}
+                onDelete={deleteChatMessage}
+                onOpenEmojiPicker={openEmojiPicker}
+                onToggleReaction={toggleReaction}
+                onOpenThread={openThread}
+              />
             {/if}
+          {:else}
+            <div class="channel-empty">
+              <h3>Welcome to #{currentChatChannelName}</h3>
+              <p>This is the beginning of the channel. Say hi!</p>
+            </div>
           {/each}
         </div>
       </div>
-      <div class="input-row">
-        {#if commandFeedback}
-          <div class={`command-feedback ${commandFeedbackType}`}>{commandFeedback}</div>
-        {/if}
-        <textarea
-          class:scrollable={inputScrollable}
-          bind:value={message}
-          bind:this={messageInput}
-          rows="1"
-          placeholder="Message"
-          on:input={autoResize}
-          on:keydown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        ></textarea>
-        <input
-          id="fileInputElem"
-          type="file"
-          class="file-input"
-          bind:this={fileInput}
-          accept="image/*"
-          on:change={handleFileChange}
+      <MessageComposer
+        bind:this={composer}
+        bind:value={message}
+        {replyingTo}
+        {typingLabel}
+        {commandFeedback}
+        {commandFeedbackType}
+        {pendingFile}
+        {previewUrl}
+        onSend={send}
+        onInput={handleComposerInput}
+        onCancelReply={cancelReply}
+        onFileSelected={setPendingFile}
+      />
+
+      {#if threadRootId !== null}
+        <ConversationPanel
+          kind="thread"
+          title="Thread"
+          messages={threadMessages}
+          emptyText="Loading thread…"
+          placeholder="Reply in thread…"
+          onSend={sendThreadReply}
+          onClose={closeThread}
+          emphasize={(msg) => msg.id === threadRootId}
         />
-        <div class="controls">
-          {#if previewUrl}
-            <div class="preview-container">
-              <img src={previewUrl} alt="preview" class="preview" />
-              <button class="preview-remove" on:click={() => { fileInput.value = ''; if (previewUrl) URL.revokeObjectURL(previewUrl); previewUrl = null; }} aria-label="Remove image">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
-            </div>
-          {/if}
-          <div class="input-controls">
-            <button
-              type="button"
-              class="file-button"
-              title="Upload image"
-              aria-label="Upload image"
-              on:click={() => fileInput.click()}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke-width="1.5"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
-                />
-              </svg>
-            </button>
-            <button class="send" on:click={send} title="Send message" aria-label="Send message">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
+      {/if}
+
+      {#if $dmActivePeer}
+        <ConversationPanel
+          kind="dm"
+          title={$dmActivePeer}
+          messages={dmMessages}
+          emptyText="No messages yet. Say hi!"
+          placeholder={`Message ${$dmActivePeer}…`}
+          onSend={sendDmMessage}
+          onClose={closeDm}
+          emphasize={(msg) => msg.from === $session.user}
+        />
+      {/if}
 
       {#each $voice as peer (peer.id)}
         <audio autoplay use:stream={{ stream: peer.stream, userId: peer.id }}></audio>
@@ -1366,8 +1689,8 @@
     <div class="resizer" role="separator" aria-label="Resize user list" on:mousedown={startRightResize}></div>
     <UserList
       {statusMap}
-      {currentUserIsOwner}
       onUserContextMenu={openUserRoleMenu}
+      onOpenDm={openDm}
     />
 </div>
 
@@ -1382,71 +1705,87 @@
   onClose={closeVolumeMenu}
 />
 
+<EmojiPicker
+  open={emojiPickerOpen}
+  x={emojiPickerX}
+  y={emojiPickerY}
+  onPick={pickReaction}
+  onClose={closeEmojiPicker}
+/>
+
 {#if viewingScreenShare}
   <ScreenShareViewer peer={viewingScreenShare} onClose={closeScreenShareViewer} />
 {/if}
 
+{#if $connection === 'connecting' || $connection === 'disconnected' || $connection === 'failed'}
+  <ConnectionOverlay
+    state={$connection}
+    server={$selectedServer}
+    onRetry={retryConnect}
+    onBack={() => leaveToServers()}
+  />
+{/if}
+
 <style>
+  /* App shell: three full-height panes separated by 1px borders. The
+     sidebars sit on --color-bg, the chat pane on --color-surface. */
   .page {
     display: flex;
     height: 100vh;
-    padding: clamp(1.25rem, 2.5vw, 1.75rem);
-    gap: clamp(0.75rem, 2vw, 1rem);
-    backdrop-filter: blur(0.5px);
-  }
-
-  .page.focus {
-    padding-inline: clamp(1.5rem, 4vw, 3rem);
-  }
-
-  /* .channels/.sidebar are the root elements of ChannelSidebar/UserList;
-     :global escapes Svelte's per-component style scoping. */
-  .page.focus :global(.channels),
-  .page.focus :global(.sidebar),
-  .page.focus .resizer {
-    display: none;
-  }
-
-  .page.focus .chat {
-    max-width: 1080px;
-    margin: 0 auto;
+    background: var(--color-bg);
+    overflow: hidden;
   }
 
   .resizer {
-    width: 6px;
+    width: 5px;
+    margin: 0 -2px;
     cursor: col-resize;
     position: relative;
     flex-shrink: 0;
+    z-index: 5;
   }
 
-  .resizer::after {
-    content: '';
-    position: absolute;
-    inset: calc(50% - 18px) auto;
-    left: 50%;
-    width: 2px;
-    height: 36px;
-    border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-on-surface) 12%, transparent);
-    transform: translateX(-50%);
+  .resizer:hover {
+    background: color-mix(in srgb, var(--color-primary) 35%, transparent);
   }
 
   .chat {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 0.9rem;
     min-width: 0;
+    position: relative;
+    background: var(--color-surface);
+    border-left: 1px solid var(--color-surface-outline);
+    border-right: 1px solid var(--color-surface-outline);
+  }
+
+  /* pointer-events: none keeps drag events flowing to .chat underneath. */
+  .drop-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed var(--color-primary);
+    background: color-mix(in srgb, var(--color-surface) 80%, transparent);
+    pointer-events: none;
+  }
+
+  .drop-overlay span {
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-elevated);
+    border: 1px solid var(--color-surface-outline);
+    color: var(--color-on-surface);
+    font-weight: 600;
+    font-size: var(--text-md);
   }
 
   .messages-shell {
     flex: 1;
     min-height: 0;
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-raised) 90%, transparent);
-    border: 1px solid var(--color-surface-outline);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    overflow: hidden;
     display: flex;
   }
 
@@ -1456,418 +1795,79 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 0.8rem;
-    padding: clamp(0.9rem, 2vw, 1.25rem);
+    padding: var(--space-4) 0;
   }
 
   .day-separator {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
+    margin: var(--space-4) var(--space-4) var(--space-2);
     color: var(--color-muted);
-    font-size: var(--text-sm);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    font-size: var(--text-xs);
+    font-weight: 600;
   }
 
   .day-separator::before,
   .day-separator::after {
     content: '';
     flex: 1;
-    border-top: 1px solid color-mix(in srgb, var(--color-surface-outline) 70%, transparent);
-    opacity: 0.7;
+    border-top: 1px solid var(--color-surface-outline);
   }
 
-  .day-separator span {
-    padding: 0.2rem 0.75rem;
-    border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-surface-elevated) 78%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    color: var(--color-muted);
-    font-weight: 600;
-  }
-
-  .message {
-    display: grid;
-    grid-template-columns: auto auto 1fr;
-    column-gap: 0.55rem;
-    row-gap: 0.3rem;
-    align-items: baseline;
-    padding: 0.65rem 0.9rem;
-    border-radius: var(--radius-md);
-    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
-    transition: transform var(--transition), box-shadow var(--transition);
-  }
-
-  .message:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-xs);
-  }
-
-  .message.highlighted {
-    border-color: color-mix(in srgb, var(--color-secondary) 45%, transparent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-secondary) 28%, transparent);
-  }
-
-  .message .timestamp {
-    font-size: var(--text-xs);
-    color: var(--color-muted);
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    opacity: 0.7;
-  }
-
-  .message .username {
-    font-weight: 600;
-    color: var(--color-on-surface);
-  }
-
-  .message .role {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    align-self: center;
-  }
-
-  .bot-badge {
-    display: inline-flex;
+  .unread-divider {
+    display: flex;
     align-items: center;
-    justify-self: start;
-    padding: 0.1rem 0.4rem;
-    border-radius: var(--radius-xs, 4px);
+    gap: var(--space-3);
+    margin: var(--space-2) var(--space-4);
+    color: var(--color-error);
     font-size: var(--text-xs);
-    font-weight: 700;
+    font-weight: 600;
+    text-transform: uppercase;
     letter-spacing: 0.06em;
-    text-transform: uppercase;
-    background: color-mix(in srgb, var(--color-primary) 22%, transparent);
-    color: var(--color-primary);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
-    align-self: center;
-    line-height: 1.3;
   }
 
-  .content-wrapper {
-    grid-column: 1 / -1;
-    display: flex;
-    gap: 0.75rem;
-    align-items: flex-start;
-  }
-
-  .message .content {
+  .unread-divider::before,
+  .unread-divider::after {
+    content: '';
     flex: 1;
-    color: var(--color-on-surface);
-    line-height: 1.65;
+    border-top: 1px solid color-mix(in srgb, var(--color-error) 55%, transparent);
   }
 
-  .ephemeral-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    margin-top: 0.5rem;
-    padding: 0.2rem 0.6rem;
-    border-radius: var(--radius-pill);
-    font-size: var(--text-xs);
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    background: color-mix(in srgb, var(--color-warning) 15%, transparent);
-    color: color-mix(in srgb, var(--color-warning) 80%, var(--color-on-surface) 20%);
-    width: fit-content;
-  }
-
-  .message-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-  }
-
-  .message-action {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.25rem 0.45rem;
-    border-radius: var(--radius-sm);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
-    color: var(--color-on-surface);
-    cursor: pointer;
-    font-size: var(--text-sm);
-    transition: background var(--transition), border-color var(--transition), transform var(--transition);
-  }
-
-  .message-action:hover,
-  .message-action.active {
-    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
-    border-color: color-mix(in srgb, var(--color-primary) 36%, transparent);
-    transform: translateY(-1px);
-  }
-
-  .message-action.danger {
-    color: color-mix(in srgb, var(--color-error) 80%, var(--color-on-surface));
-  }
-
-  .message-action.danger:hover {
-    background: color-mix(in srgb, var(--color-error) 18%, transparent);
-    border-color: color-mix(in srgb, var(--color-error) 32%, transparent);
-  }
-
-  .link-previews {
+  .channel-empty {
+    margin: auto;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    margin-top: 0.65rem;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-6);
+    text-align: center;
   }
 
-  .message .content :global(code) {
-    background: color-mix(in srgb, var(--color-primary) 25%, transparent);
-    padding: 0.15rem 0.35rem;
-    border-radius: 6px;
-    font-size: 0.9em;
+  .channel-empty h3 {
+    font-size: var(--text-xl);
   }
 
-  .message .content :global(pre) {
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
-    border-radius: var(--radius-sm);
-    padding: 0.9rem;
-    overflow-x: auto;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-  }
-
-  .message .content :global(pre code) {
-    display: block;
-    padding: 0;
+  .channel-empty p {
     margin: 0;
-    background: transparent;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
-    font-size: 0.9em;
+    color: var(--color-muted);
   }
 
-  .message .content :global(.hljs) {
-    color: var(--color-on-surface);
-  }
-
-  .message .content :global(.hljs-comment),
-  .message .content :global(.hljs-quote) {
-    color: color-mix(in srgb, var(--color-muted) 92%, transparent);
-    font-style: italic;
-  }
-
-  .message .content :global(.hljs-keyword),
-  .message .content :global(.hljs-selector-tag),
-  .message .content :global(.hljs-subst) {
-    color: color-mix(in srgb, var(--color-secondary) 80%, var(--color-on-surface) 20%);
-  }
-
-  .message .content :global(.hljs-string),
-  .message .content :global(.hljs-doctag),
-  .message .content :global(.hljs-regexp) {
-    color: color-mix(in srgb, var(--color-tertiary) 80%, var(--color-on-surface) 20%);
-  }
-
-  .message .content :global(.hljs-title),
-  .message .content :global(.hljs-section),
-  .message .content :global(.hljs-function),
-  .message .content :global(.hljs-name) {
-    color: color-mix(in srgb, var(--color-primary) 78%, var(--color-on-surface) 22%);
-  }
-
-  .message .content :global(.hljs-number),
-  .message .content :global(.hljs-literal),
-  .message .content :global(.hljs-symbol),
-  .message .content :global(.hljs-bullet) {
-    color: color-mix(in srgb, var(--color-warning) 75%, var(--color-on-surface) 25%);
-  }
-
-  .message .content :global(.hljs-attr),
-  .message .content :global(.hljs-attribute),
-  .message .content :global(.hljs-variable),
-  .message .content :global(.hljs-template-variable) {
-    color: color-mix(in srgb, var(--color-success) 75%, var(--color-on-surface) 25%);
-  }
-
-  .message .content :global(.hljs-meta),
-  .message .content :global(.hljs-meta .hljs-string) {
-    color: color-mix(in srgb, var(--color-primary) 65%, var(--color-on-surface) 35%);
-  }
-
-  .message img {
-    max-width: min(420px, 100%);
-    border-radius: var(--radius-md);
-    margin-top: 0.65rem;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
-    box-shadow: var(--shadow-xs);
-  }
-
-  .reactions {
-    grid-column: 1 / -1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    margin-top: 0.15rem;
-  }
-
-  .reaction-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    border-radius: var(--radius-pill);
-    padding: 0.3rem 0.65rem;
-    font-size: var(--text-sm);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    color: var(--color-on-surface);
-  }
-
-  .reaction-chip.active {
-    background: color-mix(in srgb, var(--color-primary) 32%, transparent);
-    border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
-  }
-
-  .reaction-chip.add {
-    font-weight: 700;
-  }
-
-  .input-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 1rem;
-    align-items: end;
-    padding: clamp(1rem, 2vw, 1.35rem);
-    border-radius: var(--radius-lg);
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
-    border: 1px solid var(--color-surface-outline);
-    box-shadow: var(--shadow-sm);
-  }
-
-  .command-feedback {
-    grid-column: 1 / -1;
-    padding: 0.45rem 0.75rem;
-    border-radius: var(--radius-md);
-    font-size: var(--text-md);
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    border: 1px solid color-mix(in srgb, var(--color-success) 25%, transparent);
-    background: color-mix(in srgb, var(--color-success) 12%, transparent);
-    color: color-mix(in srgb, var(--color-success) 80%, var(--color-on-surface) 20%);
-  }
-
-  .command-feedback.error {
-    border-color: color-mix(in srgb, var(--color-error) 32%, transparent);
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
-    color: color-mix(in srgb, var(--color-error) 85%, var(--color-on-surface) 15%);
-  }
-
-  textarea {
-    width: 100%;
-    min-height: 3rem;
-    max-height: 360px;
-    resize: none;
-    overflow-y: hidden;
-    overflow-x: hidden;
-    border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 14%, transparent);
-    background: color-mix(in srgb, var(--color-surface-raised) 84%, transparent);
-    color: var(--color-on-surface);
-    padding: 0.85rem 1rem;
-    line-height: 1.5;
-  }
-
-  textarea.scrollable {
-    overflow-y: auto;
-  }
-
-  .controls {
-    display: flex;
-    align-items: flex-end;
-    gap: 0.9rem;
-  }
-
-  .input-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-  }
-
-  .preview-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.4rem;
-    background: color-mix(in srgb, var(--color-secondary) 12%, transparent);
-    padding: 0.55rem;
-    border-radius: var(--radius-md);
-    border: 1px dashed color-mix(in srgb, var(--color-secondary) 32%, transparent);
-  }
-
-  .preview-container img {
-    max-width: 120px;
-    max-height: 120px;
-    border-radius: var(--radius-sm);
-  }
-
-  .preview-remove {
-    background: transparent;
-    color: var(--color-secondary);
-    border: none;
-    font-size: var(--text-sm);
-  }
-
-  .file-input {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  .file-button,
-  .send {
-    width: 2.75rem;
-    height: 2.75rem;
-    border-radius: 0.9rem;
-    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
-    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-    color: var(--color-secondary);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-  }
-
-  .file-button svg,
-  .send svg {
-    width: 1.2rem;
-    height: 1.2rem;
-  }
-
-  .file-button:hover,
-  .send:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-xs);
-  }
-
-  .send {
-    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
-    color: var(--color-on-primary);
-    border-color: transparent;
-  }
-
-  @media (max-width: 1280px) {
+  /* Responsive: stack panes on narrow windows. */
+  @media (max-width: 1100px) {
     .page {
       flex-direction: column;
       height: auto;
       min-height: 100vh;
+      overflow: visible;
     }
 
     .page :global(.channels),
     .page :global(.sidebar) {
-      width: 100%;
+      width: 100% !important;
+      max-height: 40vh;
       order: 0;
+      border-bottom: 1px solid var(--color-surface-outline);
     }
 
     .resizer {
@@ -1876,25 +1876,15 @@
 
     .chat {
       order: 1;
+      border-left: none;
+      border-right: none;
+      min-height: 60vh;
     }
 
     .page :global(.sidebar) {
       order: 2;
-    }
-  }
-
-  @media (max-width: 768px) {
-    .page {
-      padding: clamp(1rem, 4vw, 1.5rem);
-    }
-
-    .input-row {
-      grid-template-columns: 1fr;
-    }
-
-    .controls {
-      justify-content: flex-end;
+      border-bottom: none;
+      border-top: 1px solid var(--color-surface-outline);
     }
   }
 </style>
-

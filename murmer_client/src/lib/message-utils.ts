@@ -2,7 +2,7 @@
  * Utility functions for message processing and validation.
  */
 
-import type { Message } from './types';
+import type { AttachmentInfo, Message, ReplyInfo } from './types';
 
 /**
  * Normalize reactions object to ensure consistent structure.
@@ -22,6 +22,43 @@ export function normalizeReactions(value: unknown): Record<string, string[]> {
     }
   }
   return result;
+}
+
+/**
+ * Validate an attachment payload from the server. Only http(s) URLs pass so a
+ * crafted message cannot smuggle javascript: or data: links into the UI.
+ * @param value - Raw attachment data
+ * @returns A safe attachment descriptor, or undefined if invalid
+ */
+export function normalizeAttachment(value: unknown): AttachmentInfo | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.url !== 'string' || typeof raw.name !== 'string') return undefined;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw.url);
+  } catch {
+    return undefined;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined;
+  const name = raw.name.trim();
+  if (!name) return undefined;
+  const size = typeof raw.size === 'number' && Number.isFinite(raw.size) && raw.size >= 0 ? raw.size : 0;
+  return { url: raw.url, name, size };
+}
+
+/**
+ * Validate the reply metadata attached to a message by the server.
+ * @param value - Raw replyTo data
+ * @returns A safe reply descriptor, or undefined if invalid
+ */
+export function normalizeReplyTo(value: unknown): ReplyInfo | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.id !== 'number' || !Number.isFinite(raw.id)) return undefined;
+  const user = typeof raw.user === 'string' ? raw.user : '';
+  const text = typeof raw.text === 'string' ? raw.text : '';
+  return { id: raw.id, user, text };
 }
 
 /**
@@ -55,6 +92,25 @@ export function prepareMessage(raw: Message): Message {
 
   // Normalize reactions
   msg.reactions = normalizeReactions(raw.reactions);
+
+  // Normalize attachment
+  const attachment = normalizeAttachment(raw.attachment);
+  if (attachment) {
+    msg.attachment = attachment;
+  } else {
+    delete (msg as any).attachment;
+  }
+
+  // Normalize reply metadata
+  const replyTo = normalizeReplyTo(raw.replyTo);
+  if (replyTo) {
+    msg.replyTo = replyTo;
+  } else {
+    delete (msg as any).replyTo;
+  }
+  if (typeof raw.threadId !== 'number' || !Number.isFinite(raw.threadId)) {
+    delete (msg as any).threadId;
+  }
 
   // Normalize expiry
   let normalizedExpiry: string | undefined;

@@ -21,7 +21,9 @@
       </div>
       <div class="volume-menu-content">
         <div class="volume-control-row">
-          <span class="volume-icon">🔊</span>
+          <span class="volume-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+          </span>
           <input
             class="volume-menu-slider"
             type="range"
@@ -52,71 +54,76 @@
   .volume-menu-overlay {
     position: fixed;
     inset: 0;
-    background: var(--color-overlay);
-    display: flex;
-    align-items: center;
-    justify-content: center;
     z-index: var(--z-dropdown);
   }
 
   .volume-menu {
     position: absolute;
-    width: min(320px, 90vw);
-    background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
-    border-radius: var(--radius-lg);
+    width: min(300px, 90vw);
+    background: var(--color-surface-elevated);
+    border-radius: var(--radius-md);
     border: 1px solid var(--color-surface-outline);
     box-shadow: var(--shadow-md);
-    padding: 1.25rem;
+    padding: var(--space-4);
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-3);
   }
 
   .volume-menu-header {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .volume-menu-user {
     font-weight: 600;
+    font-size: var(--text-md);
   }
 
   .volume-menu-title {
-    font-size: var(--text-sm);
+    font-size: var(--text-xs);
     color: var(--color-muted);
   }
 
   .volume-menu-content {
     display: grid;
-    gap: 1.1rem;
+    gap: var(--space-3);
   }
 
   .volume-control-row {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .volume-icon {
-    font-size: 1.2rem;
+    display: inline-flex;
+    color: var(--color-muted);
+    flex-shrink: 0;
   }
 
   .volume-menu-slider {
     flex: 1;
     -webkit-appearance: none;
     appearance: none;
-    height: 0.45rem;
+    height: 4px;
+    min-height: 0;
+    padding: 0;
     border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-surface-raised) 88%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+    background: var(--color-surface-raised);
+    border: none;
     outline: none;
   }
 
   .volume-menu-slider:focus {
-    border-color: color-mix(in srgb, var(--color-secondary) 32%, transparent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary) 18%, transparent);
+    box-shadow: none;
+  }
+
+  .volume-menu-slider:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
   }
 
   .volume-menu-slider::-webkit-slider-thumb {
@@ -125,41 +132,45 @@
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: var(--color-surface);
-    border: 2px solid color-mix(in srgb, var(--color-secondary) 60%, transparent);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-    margin-top: -7px;
+    background: var(--color-on-surface);
+    border: 2px solid var(--color-primary);
+    margin-top: -6px;
   }
 
   .volume-menu-slider::-moz-range-thumb {
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: var(--color-surface);
-    border: 2px solid color-mix(in srgb, var(--color-secondary) 60%, transparent);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    background: var(--color-on-surface);
+    border: 2px solid var(--color-primary);
   }
 
   .volume-percentage {
     font-size: var(--text-sm);
+    font-family: var(--font-mono);
     color: var(--color-muted);
+    min-width: 2.75rem;
+    text-align: right;
   }
 
   .volume-presets {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .preset-btn {
     flex: 1;
-    padding: 0.55rem 0.75rem;
+    min-height: 2rem;
+    padding: 0 var(--space-2);
     border-radius: var(--radius-sm);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
-    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-    color: var(--color-secondary);
+    border: 1px solid var(--color-surface-outline);
+    background: var(--color-surface-raised);
+    color: var(--color-on-surface-variant);
+    font-size: var(--text-sm);
   }
 
   .preset-btn:hover {
-    border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
+    border-color: var(--color-outline-strong);
+    color: var(--color-on-surface);
   }
 </style>

@@ -4,11 +4,17 @@
 //! submodules to keep each file focused:
 //! - [`auth`] – user and bot authentication
 //! - [`channels`] – text/voice channel and category management
-//! - [`messages`] – chat, history, search and reactions
+//! - [`dms`] – direct messages between two users
+//! - [`messages`] – chat, history, threads, typing, search and reactions
+//! - [`moderation`] – kick, ban and mute actions
+//! - [`pins`] – shared, persisted message pins
 
 mod auth;
 mod channels;
+mod dms;
 mod messages;
+mod moderation;
+mod pins;
 
 use super::{errors, helpers::*, validation::*};
 use crate::{db, roles::RoleInfo, AppState};
@@ -21,6 +27,7 @@ use axum::{
 };
 use futures::{stream::SplitSink, SinkExt, StreamExt};
 use serde_json::Value;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, instrument};
@@ -47,6 +54,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
     let mut user_name: Option<String> = None;
     let mut voice_channel: Option<i32> = None;
     let mut authenticated = state.password.is_none();
+    let mut last_typing_broadcast: Option<std::time::Instant> = None;
 
     loop {
         tokio::select! {
@@ -65,7 +73,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                         }
 
                         if !authenticated && t != "presence" && t != "bot-presence" {
-                            let _ = sender.send(Message::Text(errors::UNAUTHENTICATED.to_string().into())).await;
+                            send_error(&mut sender, errors::UNAUTHENTICATED).await;
                             break;
                         }
 
@@ -86,6 +94,24 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "load-history" => {
                                 messages::handle_load_history(&state, &mut sender, &v, channel_id).await;
                             }
+                            "load-thread" => {
+                                messages::handle_load_thread(&state, &mut sender, &v, channel_id).await;
+                            }
+                            "pin-message" => {
+                                pins::handle_pin_message(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "unpin-message" => {
+                                pins::handle_unpin_message(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "dm" => {
+                                dms::handle_dm(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "load-dm-history" => {
+                                dms::handle_load_dm_history(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "typing" => {
+                                messages::handle_typing(&state, channel_id, &user_name, &mut last_typing_broadcast).await;
+                            }
                             "search-history" => {
                                 messages::handle_search_history(&state, &mut sender, &v, channel_id, &user_name).await;
                             }
@@ -99,6 +125,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "move-channel" => {
                                 channels::handle_move_channel(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "set-channel-topic" => {
+                                channels::handle_set_channel_topic(&state, &mut sender, &v, &user_name).await;
                             }
                             "create-category" => {
                                 channels::handle_create_category(&state, &mut sender, &v, &user_name).await;
@@ -124,6 +153,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "delete-message" => {
                                 messages::handle_delete_message(&state, &mut sender, &v, channel_id, &user_name).await;
                             }
+                            "edit-message" => {
+                                messages::handle_edit_message(&state, &mut sender, &v, channel_id, &user_name).await;
+                            }
                             "react" => {
                                 messages::handle_react(&state, &mut sender, &v, &user_name).await;
                             }
@@ -133,25 +165,59 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "ping" => {
                                 handle_ping(&mut sender, &v).await;
                             }
+                            "get-server-info" => {
+                                handle_get_server_info(&state, &mut sender, &user_name).await;
+                            }
                             "voice-join" => {
                                 handle_voice_join(&state, &mut sender, &v, &mut voice_channel, &user_name).await;
                             }
                             "voice-leave" => {
                                 handle_voice_leave(&state, &v, &mut voice_channel, &user_name).await;
                             }
+                            // WebRTC signaling frames are relayed verbatim, so make sure a
+                            // client can only speak for itself before rebroadcasting.
                             "voice-offer" | "voice-answer" | "voice-candidate" => {
-                                let _ = state.tx.send(text.to_string());
+                                if claims_own_user(&v, &user_name) {
+                                    let _ = state.tx.send(text.to_string());
+                                }
                             }
                             "screenshare-start" => {
-                                handle_screenshare_start(&state, &v).await;
-                                let _ = state.tx.send(text.to_string());
+                                if claims_own_user(&v, &user_name) {
+                                    handle_screenshare_start(&state, &v).await;
+                                    let _ = state.tx.send(text.to_string());
+                                }
                             }
                             "screenshare-stop" => {
-                                handle_screenshare_stop(&state, &v).await;
-                                let _ = state.tx.send(text.to_string());
+                                if claims_own_user(&v, &user_name) {
+                                    handle_screenshare_stop(&state, &v).await;
+                                    let _ = state.tx.send(text.to_string());
+                                }
                             }
                             "screenshare-offer" | "screenshare-answer" | "screenshare-candidate" => {
-                                let _ = state.tx.send(text.to_string());
+                                if claims_own_user(&v, &user_name) {
+                                    let _ = state.tx.send(text.to_string());
+                                }
+                            }
+                            "voice-mute" => {
+                                if claims_own_user(&v, &user_name) {
+                                    handle_voice_mute(&state, &v).await;
+                                    let _ = state.tx.send(text.to_string());
+                                }
+                            }
+                            "kick-user" => {
+                                moderation::handle_kick_user(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "ban-user" => {
+                                moderation::handle_ban_user(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "unban-user" => {
+                                moderation::handle_unban_user(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "mute-user" => {
+                                moderation::handle_mute_user(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "unmute-user" => {
+                                moderation::handle_unmute_user(&state, &mut sender, &v, &user_name).await;
                             }
                             "set-role" => {
                                 handle_set_role(&state, &mut sender, &v, &user_name).await;
@@ -180,7 +246,30 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
             result = global_rx.recv() => {
                 match result {
                     Ok(msg) => {
+                        // Direct messages travel over the shared broadcast but
+                        // must only reach their two participants. The cheap
+                        // substring check avoids parsing every frame; escaped
+                        // quotes inside message text cannot produce it.
+                        if msg.contains("\"type\":\"dm\"") {
+                            let private = serde_json::from_str::<Value>(&msg).ok().is_some_and(|v| {
+                                v.get("type").and_then(|t| t.as_str()) == Some("dm")
+                                    && !dm_involves(&v, user_name.as_deref())
+                            });
+                            if private { continue; }
+                        }
+                        // A force-disconnect broadcast targeting this user
+                        // (kick/ban) is forwarded so the client learns why,
+                        // then the connection is closed.
+                        let targets_this_user = msg.contains("force-disconnect")
+                            && serde_json::from_str::<Value>(&msg).ok().is_some_and(|v| {
+                                v.get("type").and_then(|t| t.as_str()) == Some("force-disconnect")
+                                    && v.get("user").and_then(|u| u.as_str()) == user_name.as_deref()
+                            });
                         if sender.send(Message::Text(msg.into())).await.is_err() { break; }
+                        if targets_this_user {
+                            info!("Closing connection after force-disconnect");
+                            break;
+                        }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(_) => break,
@@ -195,6 +284,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
 
 // ── Small handlers kept here to avoid creating very tiny files ──────────────
 
+/// Whether a relayed frame's `user` field names the connection's own
+/// authenticated user. Prevents spoofing other users in signaling frames.
+fn claims_own_user(v: &Value, user_name: &Option<String>) -> bool {
+    match user_name.as_deref() {
+        Some(name) => v.get("user").and_then(|u| u.as_str()) == Some(name),
+        None => false,
+    }
+}
+
 /// Handle status update request.
 async fn handle_status_update(
     state: &Arc<AppState>,
@@ -205,33 +303,18 @@ async fn handle_status_update(
     let user = match user_name.clone() {
         Some(name) => name,
         None => {
-            let msg = serde_json::json!({
-                "type": "error",
-                "message": "not-authenticated",
-            })
-            .to_string();
-            let _ = sender.send(Message::Text(msg.into())).await;
+            send_error(sender, errors::NOT_AUTHENTICATED).await;
             return;
         }
     };
 
     let Some(raw_status) = v.get("status").and_then(|s| s.as_str()) else {
-        let msg = serde_json::json!({
-            "type": "error",
-            "message": "invalid-status",
-        })
-        .to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::INVALID_STATUS).await;
         return;
     };
 
     let Some(status) = normalize_status(raw_status) else {
-        let msg = serde_json::json!({
-            "type": "error",
-            "message": "invalid-status",
-        })
-        .to_string();
-        let _ = sender.send(Message::Text(msg.into())).await;
+        send_error(sender, errors::INVALID_STATUS).await;
         return;
     };
 
@@ -247,6 +330,33 @@ async fn handle_status_update(
 async fn handle_ping(sender: &mut SplitSink<WebSocket, Message>, v: &Value) {
     let id = v.get("id").cloned().unwrap_or(Value::Null);
     let msg = serde_json::json!({ "type": "pong", "id": id });
+    let _ = sender.send(Message::Text(msg.to_string().into())).await;
+}
+
+/// Handle a request for server details (currently the running version).
+/// Only answered for users whose role is in `SERVER_INFO_ROLES`; the check
+/// runs against the server-side role map, so clients cannot spoof access.
+/// Unauthorised requests are dropped without an error frame: clients send
+/// this automatically based on their (possibly stale) view of their own
+/// role, so a denial must not surface as a user-facing error.
+async fn handle_get_server_info(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    user_name: &Option<String>,
+) {
+    let Some(requester) = user_name.as_deref() else {
+        return;
+    };
+
+    if !can_view_server_info(state, requester).await {
+        info!(requester, "Denied server info request");
+        return;
+    }
+
+    let msg = serde_json::json!({
+        "type": "server-info",
+        "version": env!("CARGO_PKG_VERSION"),
+    });
     let _ = sender.send(Message::Text(msg.to_string().into())).await;
 }
 
@@ -281,6 +391,7 @@ async fn handle_voice_join(
         let _ = state.tx.send(msg.to_string());
 
         send_active_screen_shares(state, sender, ch_id).await;
+        send_voice_mutes(state, sender, ch_id).await;
     }
 }
 
@@ -301,6 +412,7 @@ async fn handle_voice_leave(
             info.users.remove(u);
         }
         drop(map);
+        state.voice_mutes.lock().await.remove(u);
         broadcast_voice(state, ch_id).await;
         if *voice_channel == Some(ch_id) {
             *voice_channel = None;
@@ -349,6 +461,65 @@ async fn handle_screenshare_stop(state: &Arc<AppState>, v: &Value) {
     }
 }
 
+/// Record a user's current voice mute state (microphone / output).
+async fn handle_voice_mute(state: &Arc<AppState>, v: &Value) {
+    let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
+        return;
+    };
+    let mic_muted = v.get("micMuted").and_then(|m| m.as_bool()).unwrap_or(false);
+    let output_muted = v
+        .get("outputMuted")
+        .and_then(|m| m.as_bool())
+        .unwrap_or(false);
+    state
+        .voice_mutes
+        .lock()
+        .await
+        .insert(user.to_string(), (mic_muted, output_muted));
+}
+
+/// Send the current mute states of everyone in a voice channel to a single client.
+async fn send_voice_mutes(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    channel_id: i32,
+) {
+    let members: HashSet<String> = {
+        let channels = state.voice_channels.lock().await;
+        channels
+            .get(&channel_id)
+            .map(|info| info.users.clone())
+            .unwrap_or_default()
+    };
+    if members.is_empty() {
+        return;
+    }
+    let states: serde_json::Map<String, Value> = {
+        let mutes = state.voice_mutes.lock().await;
+        members
+            .iter()
+            .filter_map(|user| {
+                mutes.get(user).map(|(mic, output)| {
+                    (
+                        user.clone(),
+                        serde_json::json!({ "micMuted": mic, "outputMuted": output }),
+                    )
+                })
+            })
+            .collect()
+    };
+    if states.is_empty() {
+        return;
+    }
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "voice-mute-active",
+        "channelId": channel_id,
+        "states": states,
+    })) {
+        let _ = sender.send(Message::Text(msg.into())).await;
+    }
+}
+
 /// Send active screen shares for a voice channel to a single client.
 async fn send_active_screen_shares(
     state: &Arc<AppState>,
@@ -384,37 +555,23 @@ async fn handle_set_role(
     let requester = match user_name.as_deref() {
         Some(name) => name,
         None => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::ROLE_PERMISSION_DENIED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::ROLE_PERMISSION_DENIED).await;
             return;
         }
     };
 
     if !can_manage_roles(state, requester).await {
-        let _ = sender
-            .send(Message::Text(
-                errors::ROLE_PERMISSION_DENIED.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::ROLE_PERMISSION_DENIED).await;
         return;
     }
 
     let Some(target_user) = v.get("user").and_then(|u| u.as_str()) else {
-        let _ = sender
-            .send(Message::Text(
-                errors::ROLE_TARGET_NOT_FOUND.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
         return;
     };
 
     let Some(role) = v.get("role").and_then(|r| r.as_str()) else {
-        let _ = sender
-            .send(Message::Text(errors::ROLE_UPDATE_FAILED.to_string().into()))
-            .await;
+        send_error(sender, errors::ROLE_UPDATE_FAILED).await;
         return;
     };
 
@@ -424,11 +581,7 @@ async fn handle_set_role(
     };
 
     let Some(key) = target_key else {
-        let _ = sender
-            .send(Message::Text(
-                errors::ROLE_TARGET_NOT_FOUND.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
         return;
     };
 
@@ -440,9 +593,7 @@ async fn handle_set_role(
 
     if let Err(e) = db::set_role(&state.db, &key, role, color.as_deref()).await {
         error!("Failed to set role for {target_user} (key {key}): {e}");
-        let _ = sender
-            .send(Message::Text(errors::ROLE_UPDATE_FAILED.to_string().into()))
-            .await;
+        send_error(sender, errors::ROLE_UPDATE_FAILED).await;
         return;
     }
 
@@ -469,30 +620,18 @@ async fn handle_remove_role(
     let requester = match user_name.as_deref() {
         Some(name) => name,
         None => {
-            let _ = sender
-                .send(Message::Text(
-                    errors::ROLE_PERMISSION_DENIED.to_string().into(),
-                ))
-                .await;
+            send_error(sender, errors::ROLE_PERMISSION_DENIED).await;
             return;
         }
     };
 
     if !can_manage_roles(state, requester).await {
-        let _ = sender
-            .send(Message::Text(
-                errors::ROLE_PERMISSION_DENIED.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::ROLE_PERMISSION_DENIED).await;
         return;
     }
 
     let Some(target_user) = v.get("user").and_then(|u| u.as_str()) else {
-        let _ = sender
-            .send(Message::Text(
-                errors::ROLE_TARGET_NOT_FOUND.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
         return;
     };
 
@@ -502,19 +641,13 @@ async fn handle_remove_role(
     };
 
     let Some(key) = target_key else {
-        let _ = sender
-            .send(Message::Text(
-                errors::ROLE_TARGET_NOT_FOUND.to_string().into(),
-            ))
-            .await;
+        send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
         return;
     };
 
     if let Err(e) = db::remove_role(&state.db, &key).await {
         error!("Failed to remove role for {target_user} (key {key}): {e}");
-        let _ = sender
-            .send(Message::Text(errors::ROLE_UPDATE_FAILED.to_string().into()))
-            .await;
+        send_error(sender, errors::ROLE_UPDATE_FAILED).await;
         return;
     }
 
@@ -548,6 +681,8 @@ async fn handle_disconnect(state: &Arc<AppState>, user_name: Option<String>) {
         if let Some(ch_id) = ch_to_broadcast {
             broadcast_voice(state, ch_id).await;
         }
+
+        state.voice_mutes.lock().await.remove(&name);
 
         // Clean up any active screen shares owned by the disconnecting user.
         {

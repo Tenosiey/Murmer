@@ -7,6 +7,7 @@ pub mod admin;
 pub mod bot;
 pub mod config;
 pub mod db;
+pub mod link_preview;
 pub mod roles;
 pub mod security;
 pub mod upload;
@@ -71,8 +72,12 @@ pub struct AppState {
     pub roles: Arc<Mutex<HashMap<String, RoleInfo>>>,
     pub statuses: Arc<Mutex<HashMap<String, String>>>,
     pub user_keys: Arc<Mutex<HashMap<String, String>>>,
+    /// Active mutes keyed by public key; `None` means muted indefinitely.
+    pub mutes: Arc<Mutex<HashMap<String, Option<chrono::DateTime<chrono::Utc>>>>>,
     /// Active screen shares per voice channel: channel_id -> set of usernames sharing.
     pub active_screen_shares: Arc<Mutex<HashMap<i32, HashSet<String>>>>,
+    /// Voice mute state per user: username -> (microphone_muted, output_muted).
+    pub voice_mutes: Arc<Mutex<HashMap<String, (bool, bool)>>>,
     pub upload_dir: PathBuf,
     pub password: Option<String>,
     pub admin_token: Option<String>,

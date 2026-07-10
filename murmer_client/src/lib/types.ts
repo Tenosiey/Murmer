@@ -1,7 +1,20 @@
+export interface AttachmentInfo {
+  url: string;
+  name: string;
+  size: number;
+}
+
+export interface ReplyInfo {
+  id: number;
+  user: string;
+  text: string;
+}
+
 export interface Message {
   type: string;
   user?: string;
   text?: string;
+  attachment?: AttachmentInfo;
   time?: string;
   timestamp?: string;
   channelId?: number;
@@ -10,6 +23,10 @@ export interface Message {
   reactions?: Record<string, string[]>;
   ephemeral?: boolean;
   expiresAt?: string;
+  edited?: boolean;
+  editedAt?: string;
+  replyTo?: ReplyInfo;
+  threadId?: number;
   [key: string]: unknown;
 }
 

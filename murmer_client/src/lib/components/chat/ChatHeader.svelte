@@ -1,6 +1,6 @@
 <!--
   Chat page header: channel name/topic, own status menu, connection info,
-  theme/focus/notification toggles and the search/settings/leave/logout actions.
+  theme/notification toggles and the search/settings/leave/logout actions.
 -->
 <script lang="ts">
   import PingDot from '$lib/components/PingDot.svelte';
@@ -8,11 +8,10 @@
   import { ping } from '$lib/stores/ping';
   import { session } from '$lib/stores/session';
   import { theme } from '$lib/stores/theme';
-  import { focusMode } from '$lib/stores/layout';
-  import { statuses, STATUS_LABELS, STATUS_EMOJIS, USER_STATUS_VALUES } from '$lib/stores/status';
+  import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
   import { channelNotifications, type ChannelNotificationPreference } from '$lib/stores/channelNotifications';
   import { NOTIFICATION_OPTIONS } from '$lib/chat/constants';
-  import { ensureStatus, notificationButtonIcon } from '$lib/chat/helpers';
+  import { ensureStatus } from '$lib/chat/helpers';
   import type { UserStatus } from '$lib/types';
 
   export let channelId: number;
@@ -26,11 +25,10 @@
   export let onLeaveServer: () => void;
   export let onLogout: () => void;
 
-  const statusOptions: Array<{ value: UserStatus; label: string; emoji: string }> =
+  const statusOptions: Array<{ value: UserStatus; label: string }> =
     USER_STATUS_VALUES.map((value) => ({
       value,
-      label: STATUS_LABELS[value],
-      emoji: STATUS_EMOJIS[value]
+      label: STATUS_LABELS[value]
     }));
 
   let statusMenuOpen = false;
@@ -115,10 +113,6 @@
       event.preventDefault();
     }
   }
-
-  function toggleFocusMode() {
-    focusMode.update((v) => !v);
-  }
 </script>
 
 <svelte:window on:click={handleMenuOutside} />
@@ -137,7 +131,7 @@
       <div class="user">{$session.user}</div>
       <div class="status-control">
       <button
-        class="action-button status-button"
+        class="btn btn-ghost status-button"
         bind:this={statusMenuButton}
         aria-haspopup="true"
         aria-expanded={statusMenuOpen}
@@ -178,7 +172,6 @@
             >
               <span class={`status ${option.value}`}></span>
               <span class="status-option-label">{option.label}</span>
-              <span class="status-option-emoji" aria-hidden="true">{option.emoji}</span>
             </button>
           {/each}
         </div>
@@ -191,7 +184,7 @@
     </div>
     <div class="action-group">
     <button
-      class="action-button"
+      class="icon-btn"
       on:click={() => theme.toggle()}
       title={$theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
       aria-pressed={$theme === 'light'}
@@ -236,7 +229,7 @@
         <span class="sr-only">Switch to dark theme</span>
       {/if}
     </button>
-    <button class="action-button" on:click={onEditTopic} title="Edit channel topic">
+    <button class="icon-btn" on:click={onEditTopic} title="Edit channel topic">
       <svg
         width="20"
         height="20"
@@ -255,62 +248,24 @@
       </svg>
       <span class="sr-only">Edit channel topic</span>
     </button>
-    <button
-      class="action-button focus-toggle"
-      class:focusActive={$focusMode}
-      aria-pressed={$focusMode}
-      on:click={toggleFocusMode}
-      title={$focusMode ? 'Exit focus mode' : 'Enter focus mode'}
-    >
-      {#if $focusMode}
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M15 3h6v6" />
-          <path d="m21 3-7 7" />
-          <path d="m3 21 7-7" />
-          <path d="M9 21H3v-6" />
-        </svg>
-        <span>Restore</span>
-      {:else}
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <circle cx="12" cy="12" r="3" />
-          <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-          <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-          <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-          <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-        </svg>
-        <span>Focus</span>
-      {/if}
-    </button>
     <div class="notification-control">
       <button
-        class="action-button"
+        class="icon-btn"
         bind:this={notificationMenuButton}
         aria-haspopup="true"
         aria-expanded={notificationMenuOpen}
         on:click={toggleNotificationMenu}
         title={`Channel notifications: ${notificationMenuLabel}`}
       >
-        <span class="notification-icon">{notificationButtonIcon(currentNotificationPreference)}</span>
+        <span class="notification-icon" aria-hidden="true">
+          {#if currentNotificationPreference === 'mute'}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.7 3A6 6 0 0 1 18 8c0 4.5 1.8 5.3 2 6"/><path d="M17 17H4c-.3 0-.6-.1-.7-.4-.2-.2-.3-.5-.2-.8.5-1 1.9-2.7 1.9-7.8"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+          {:else if currentNotificationPreference === 'mentions'}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>
+          {:else}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          {/if}
+        </span>
         <span class="sr-only">Configure channel notifications</span>
       </button>
       {#if notificationMenuOpen}
@@ -341,7 +296,7 @@
     </div>
     </div>
     <div class="action-group">
-    <button class="action-button" on:click={onOpenSearch} title="Search messages">
+    <button class="icon-btn" on:click={onOpenSearch} title="Search messages">
       <svg
         width="20"
         height="20"
@@ -358,7 +313,7 @@
       </svg>
       <span class="sr-only">Search messages</span>
     </button>
-    <button class="action-button" on:click={onOpenSettings} title="Settings">
+    <button class="icon-btn" on:click={onOpenSettings} title="Settings">
       <svg
         width="20"
         height="20"
@@ -377,7 +332,7 @@
       </svg>
       <span class="sr-only">Open settings</span>
     </button>
-    <button class="action-button" on:click={onLeaveServer} title="Leave Server">
+    <button class="icon-btn" on:click={onLeaveServer} title="Leave Server">
       <svg
         width="20"
         height="20"
@@ -397,7 +352,7 @@
     </button>
     </div>
     <div class="action-group">
-    <button class="action-button danger" on:click={onLogout} title="Logout">
+    <button class="icon-btn danger" on:click={onLogout} title="Logout">
       <svg
         width="20"
         height="20"
@@ -419,91 +374,83 @@
 </div>
 
 <style>
+  /* Compact toolbar: channel identity left, grouped actions right. */
   .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: clamp(1rem, 2vw, 1.35rem) clamp(1rem, 3vw, 1.5rem);
-    border-radius: var(--radius-lg);
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--color-primary) 18%, var(--color-surface-raised)),
-      color-mix(in srgb, var(--color-tertiary) 12%, var(--color-surface-raised))
-    );
-    border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
-    box-shadow: var(--shadow-sm);
-    gap: 1rem;
+    gap: var(--space-4);
+    min-height: 3.5rem;
+    padding: var(--space-2) var(--space-4);
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-surface-outline);
     flex-wrap: wrap;
   }
 
   .title {
     display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
+    align-items: baseline;
+    gap: var(--space-3);
     min-width: 0;
   }
 
   .title h1 {
-    margin: 0;
-    font-size: clamp(1.25rem, 2.5vw, 1.7rem);
-    letter-spacing: -0.01em;
+    font-size: var(--text-lg);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .title h1::before {
+    content: '#';
+    margin-right: var(--space-1);
+    color: var(--color-muted);
+    font-weight: 500;
   }
 
   .topic {
     margin: 0;
-    font-size: var(--text-md);
-    color: color-mix(in srgb, var(--color-on-primary) 82%, transparent);
-    max-width: min(40rem, 60vw);
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+    max-width: min(32rem, 40vw);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    border-left: 1px solid var(--color-surface-outline);
+    padding-left: var(--space-3);
   }
 
   .topic.empty {
     font-style: italic;
-    opacity: 0.7;
+    opacity: 0.8;
   }
 
   .actions {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: var(--space-1);
     flex-wrap: wrap;
   }
 
   .action-group {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    padding-inline: 0.2rem;
+    gap: var(--space-1);
     position: relative;
   }
 
-  .action-group + .action-group::before {
-    content: '';
-    position: absolute;
-    left: -0.1rem;
-    top: 20%;
-    bottom: 20%;
-    width: 1px;
-    background: color-mix(in srgb, var(--color-on-surface) 12%, transparent);
-    border-radius: var(--radius-pill);
+  .action-group + .action-group {
+    margin-left: var(--space-2);
+    padding-left: var(--space-2);
+    border-left: 1px solid var(--color-surface-outline);
   }
 
   .user {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.45rem 0.9rem;
-    border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-on-primary) 15%, transparent);
-    color: var(--color-on-primary);
+    padding: 0 var(--space-2);
+    color: var(--color-on-surface-variant);
     font-weight: 600;
-    letter-spacing: 0.01em;
-  }
-
-  .user::before {
-    content: '🧑‍🚀';
+    font-size: var(--text-sm);
   }
 
   .status-control {
@@ -511,19 +458,10 @@
   }
 
   .status-button {
-    width: auto;
-    height: auto;
-    min-width: 0;
-    padding: 0.4rem 0.85rem;
-    gap: 0.45rem;
-    font-weight: 600;
+    min-height: var(--control-height);
+    padding: 0 var(--space-3);
     font-size: var(--text-sm);
-    justify-content: flex-start;
     white-space: nowrap;
-  }
-
-  .status-button svg {
-    margin-left: 0.35rem;
   }
 
   .status-button-label {
@@ -532,29 +470,28 @@
 
   .status-menu {
     position: absolute;
-    top: calc(100% + 0.4rem);
+    top: calc(100% + var(--space-1));
     right: 0;
-    min-width: 12rem;
-    background: color-mix(in srgb, var(--color-surface-elevated) 95%, transparent);
+    min-width: 11rem;
+    background: var(--color-surface-elevated);
     border: 1px solid var(--color-surface-outline);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-lg);
-    padding: 0.35rem;
+    box-shadow: var(--shadow-md);
+    padding: var(--space-1);
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
     z-index: var(--z-dropdown);
   }
 
   .status-menu button {
     display: flex;
     align-items: center;
-    gap: 0.6rem;
+    gap: var(--space-2);
     border: none;
     background: transparent;
     color: inherit;
-    border-radius: var(--radius-sm);
-    padding: 0.45rem 0.6rem;
+    border-radius: var(--radius-xs);
+    padding: var(--space-2) var(--space-3);
     text-align: left;
     font-size: var(--text-md);
     cursor: pointer;
@@ -563,13 +500,13 @@
   .status-menu button:hover,
   .status-menu button:focus-visible,
   .status-menu button.active {
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    background: var(--color-surface-raised);
     outline: none;
   }
 
   .status-menu .status {
-    width: 0.6rem;
-    height: 0.6rem;
+    width: 0.5rem;
+    height: 0.5rem;
   }
 
   .status-menu button.active {
@@ -581,77 +518,11 @@
     text-transform: capitalize;
   }
 
-  .status-option-emoji {
-    font-size: 1rem;
-  }
-
   .connection-info {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.8rem;
-    border-radius: var(--radius-pill);
-    background: color-mix(in srgb, var(--color-on-primary) 12%, transparent);
-  }
-
-  .action-button {
-    min-width: 2.5rem;
-    width: auto;
-    min-height: 2.5rem;
-    height: auto;
-    border-radius: 0.85rem;
-    border: 1px solid color-mix(in srgb, var(--color-outline-strong) 70%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
-    color: color-mix(in srgb, var(--color-on-surface) 92%, var(--color-muted) 8%);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.35rem;
-    padding: 0.55rem;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  }
-
-  .action-button svg {
-    width: 1.1rem;
-    height: 1.1rem;
-  }
-
-  .action-button:hover {
-    border-color: color-mix(in srgb, var(--color-outline-strong) 90%, transparent);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-xs);
-  }
-
-  .action-button.danger {
-    color: var(--color-error);
-    border-color: color-mix(in srgb, var(--color-error) 40%, transparent);
-    background: color-mix(in srgb, var(--color-error) 12%, transparent);
-  }
-
-  .action-button.danger:hover {
-    border-color: color-mix(in srgb, var(--color-error) 55%, transparent);
-    background: color-mix(in srgb, var(--color-error) 18%, transparent);
-  }
-
-  .action-button.focus-toggle {
-    padding-inline: 0.9rem;
-    width: auto;
-    font-size: var(--text-md);
-  }
-
-  .action-button.focus-toggle svg {
-    width: 1.05rem;
-    height: 1.05rem;
-  }
-
-  .action-button.focus-toggle span {
-    font-weight: 600;
-    font-size: var(--text-sm);
-  }
-
-  .action-button.focus-toggle.focusActive {
-    background: color-mix(in srgb, var(--color-secondary) 20%, var(--color-surface-elevated) 80%);
-    color: var(--color-on-surface);
+    gap: var(--space-2);
+    padding: 0 var(--space-2);
   }
 
   .notification-control {
@@ -659,68 +530,66 @@
   }
 
   .notification-icon {
-    font-size: var(--text-lg);
+    display: inline-flex;
     line-height: 1;
   }
 
   .notification-menu {
     position: absolute;
-    top: calc(100% + 0.4rem);
+    top: calc(100% + var(--space-1));
     right: 0;
     min-width: 16rem;
-    padding: 0.5rem;
+    padding: var(--space-1);
     border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 16%, transparent);
-    background: color-mix(in srgb, var(--color-surface-elevated) 95%, transparent);
-    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--color-surface-outline);
+    background: var(--color-surface-elevated);
+    box-shadow: var(--shadow-md);
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
     z-index: var(--z-dropdown);
   }
 
   .notification-menu button {
     display: flex;
-    gap: 0.65rem;
+    gap: var(--space-3);
     align-items: center;
-    padding: 0.5rem 0.65rem;
-    border-radius: var(--radius-sm);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-xs);
     border: none;
     background: transparent;
     color: var(--color-on-surface);
     cursor: pointer;
     text-align: left;
-    transition: background var(--transition), transform var(--transition);
   }
 
   .notification-menu button:hover,
   .notification-menu button.active {
-    background: color-mix(in srgb, var(--color-primary) 15%, transparent);
-    transform: translateY(-1px);
+    background: var(--color-surface-raised);
   }
 
   .notification-option-icon {
-    font-size: 1rem;
+    font-size: var(--text-md);
   }
 
   .notification-option-text {
     display: flex;
     flex-direction: column;
-    gap: 0.1rem;
+    gap: 0.125rem;
   }
 
   .notification-option-text .label {
-    font-weight: 600;
+    font-weight: 500;
+    font-size: var(--text-md);
   }
 
   .notification-option-text .description {
-    font-size: var(--text-sm);
-    color: color-mix(in srgb, var(--color-on-surface) 70%, transparent);
+    font-size: var(--text-xs);
+    color: var(--color-muted);
   }
 
   .status {
-    width: 0.75rem;
-    height: 0.75rem;
+    width: 0.625rem;
+    height: 0.625rem;
     border-radius: 50%;
     flex-shrink: 0;
   }
@@ -738,7 +607,7 @@
   }
 
   .status.offline {
-    background: color-mix(in srgb, var(--color-muted) 40%, transparent);
+    background: var(--color-outline-strong);
   }
 
   @media (max-width: 768px) {
@@ -749,6 +618,10 @@
 
     .actions {
       justify-content: flex-start;
+    }
+
+    .topic {
+      max-width: 100%;
     }
   }
 </style>

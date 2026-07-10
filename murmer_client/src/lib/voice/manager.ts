@@ -10,11 +10,15 @@ import {
   volume,
   inputDeviceId,
   microphoneMuted,
+  outputMuted,
   voiceMode,
   vadSensitivity,
   pttKey,
   isPttActive,
-  voiceActivity
+  voiceActivity,
+  echoCancellation,
+  noiseSuppression,
+  autoGainControl
 } from '../stores/settings';
 import { resetRemoteSpeaking } from '../stores/voiceSpeaking';
 import { get } from 'svelte/store';
@@ -44,6 +48,8 @@ export class VoiceManager {
 
   private joinSound = new Audio('/sounds/user_join_voice_sound.mp3');
   private leaveSound = new Audio('/sounds/user_leave_voice_sound.mp3');
+  private muteSound = new Audio('/sounds/mute_sound.wav');
+  private unmuteSound = new Audio('/sounds/unmute_sound.wav');
 
   private config: RTCConfiguration = {
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -55,10 +61,31 @@ export class VoiceManager {
     volume.subscribe((v) => {
       this.joinSound.volume = v;
       this.leaveSound.volume = v;
+      this.muteSound.volume = v;
+      this.unmuteSound.volume = v;
     });
 
-    microphoneMuted.subscribe(() => {
+    // Skip the first (synchronous) subscribe call so the persisted mute state
+    // restored on startup doesn't trigger a blip.
+    let micInitialized = false;
+    microphoneMuted.subscribe((muted) => {
       this.updateTransmissionState();
+      this.broadcastMuteState();
+      if (!micInitialized) {
+        micInitialized = true;
+        return;
+      }
+      this.playMuteSound(muted);
+    });
+
+    let outputInitialized = false;
+    outputMuted.subscribe((muted) => {
+      this.broadcastMuteState();
+      if (!outputInitialized) {
+        outputInitialized = true;
+        return;
+      }
+      this.playMuteSound(muted);
     });
 
     this.vad = new VoiceActivityDetector();
@@ -66,6 +93,9 @@ export class VoiceManager {
 
     voiceMode.subscribe(() => this.updateTransmissionMode());
     vadSensitivity.subscribe(() => this.updateVadSensitivity());
+    echoCancellation.subscribe(() => this.applyMicProcessing());
+    noiseSuppression.subscribe(() => this.applyMicProcessing());
+    autoGainControl.subscribe(() => this.applyMicProcessing());
     pttKey.subscribe((key) => {
       if (this.ptt) {
         this.ptt.setKey(key);
@@ -129,6 +159,48 @@ export class VoiceManager {
     if (get(voiceMode) === 'vad' && this.vad) {
       this.vad.updateSensitivity(get(vadSensitivity));
     }
+  }
+
+  private micProcessingConstraints(): MediaTrackConstraints {
+    return {
+      echoCancellation: get(echoCancellation),
+      noiseSuppression: get(noiseSuppression),
+      autoGainControl: get(autoGainControl)
+    };
+  }
+
+  /** Re-apply the mic processing settings to the live capture track. */
+  private applyMicProcessing() {
+    const track = this.rawStream?.getAudioTracks()[0];
+    if (!track) return;
+    track.applyConstraints(this.micProcessingConstraints()).catch((error) => {
+      console.warn('Failed to apply microphone processing constraints:', error);
+    });
+  }
+
+  /**
+   * Tell the other clients in the channel whether our microphone and/or
+   * speaker are muted so they can show an indicator beside our name. No-op
+   * while not connected to a voice channel.
+   */
+  private broadcastMuteState() {
+    if (!this.userName || this.channelId === null) return;
+    chat.sendRaw({
+      type: 'voice-mute',
+      user: this.userName,
+      channelId: this.channelId,
+      micMuted: get(microphoneMuted),
+      outputMuted: get(outputMuted)
+    });
+  }
+
+  /** Play the short mute/unmute feedback blip. */
+  private playMuteSound(muted: boolean) {
+    const sound = muted ? this.muteSound : this.unmuteSound;
+    try {
+      sound.currentTime = 0;
+      sound.play().catch(() => {});
+    } catch {}
   }
 
   private updateTransmissionState() {
@@ -354,9 +426,21 @@ export class VoiceManager {
 
   /**
    * Join a voice channel and start streaming the local microphone.
+   *
+   * Rejects (without changing any state) when microphone access fails, so a
+   * denied permission prompt doesn't leave the manager stuck in a half-joined
+   * state that blocks all future joins.
    */
   async join(user: string, channelId: number, peersList: RemotePeer[], info?: VoiceChannelInfo) {
     if (this.userName) return;
+
+    // Acquire the microphone before touching any state: this is the only
+    // step that can fail.
+    const device = get(inputDeviceId);
+    const audio: MediaTrackConstraints = this.micProcessingConstraints();
+    if (device) audio.deviceId = { exact: device };
+    const rawStream = await navigator.mediaDevices.getUserMedia({ audio });
+
     this.userName = user;
     this.channelId = channelId;
     this.channelConfig = info
@@ -380,16 +464,12 @@ export class VoiceManager {
     chat.on('voice-answer', (m) => this.handleAnswer(m));
     chat.on('voice-candidate', (m) => this.handleCandidate(m));
     chat.on('voice-leave', (m) => this.handleLeave(m, peersList));
-    const device = get(inputDeviceId);
-    const constraints: MediaStreamConstraints = device
-      ? { audio: { deviceId: { exact: device } } }
-      : { audio: true };
-    const rawStream = await navigator.mediaDevices.getUserMedia(constraints);
 
     this.localStream = await this.setupAudioProcessing(rawStream);
     this.updateTransmissionMode(rawStream);
 
     chat.sendRaw({ type: 'voice-join', user, channelId });
+    this.broadcastMuteState();
   }
 
   /**

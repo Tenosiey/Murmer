@@ -3,6 +3,7 @@ import type { ChannelNotificationPreference } from '../stores/channelNotificatio
 export const MODERATOR_ROLES = ['Admin', 'Mod', 'Owner'] as const;
 
 export const MESSAGE_INPUT_MAX_HEIGHT = 360;
+export const MAX_TOPIC_LENGTH = 256;
 export const PIN_PREVIEW_LIMIT = 120;
 export const MIN_EPHEMERAL_SECONDS = 5;
 export const MAX_EPHEMERAL_SECONDS = 86_400;
@@ -55,13 +56,13 @@ export const HELP_COMMANDS: Array<{
   },
   {
     usage: '/topic <text>',
-    description: 'Update the current channel topic or clear it when run without text.'
+    description:
+      'Update the channel topic for everyone on the server or clear it when run without text.'
   },
   {
     usage: '/status <online|away|busy|offline>',
     description: 'Change your presence indicator across all connected clients.'
   },
-  { usage: '/focus', description: 'Toggle focus mode for a distraction-free chat view.' },
   {
     usage: '/ephemeral <seconds> <message>',
     description:

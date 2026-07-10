@@ -1,8 +1,11 @@
-//! Endpoint for storing uploaded images on disk.
+//! Endpoint for storing uploaded files on disk.
 //!
-//! Files are sanitized and saved under the `UPLOAD_DIR` directory. The returned
-//! JSON contains a relative URL that clients can combine with the server URL to
-//! fetch the image later.
+//! Files are sanitized and saved under the `UPLOAD_DIR` directory. Images are
+//! validated by magic bytes; other attachments are restricted to a safe-list
+//! of extensions so active content (HTML, SVG, scripts) can never be served
+//! back from `/files` and executed in a browser context. The returned JSON
+//! contains a relative URL that clients can combine with the server URL to
+//! fetch the file later.
 
 use axum::{
     extract::{Multipart, State},
@@ -19,11 +22,23 @@ use crate::AppState;
 /// Maximum file size in bytes (10MB)
 pub const MAX_FILE_SIZE: usize = 10 * 1024 * 1024;
 
-/// Allowed MIME types for uploads
+/// Allowed MIME types for image uploads
 static ALLOWED_IMAGE_TYPES: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
 
-/// Allowed file extensions (backup validation)
-static ALLOWED_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];
+/// Allowed image file extensions (backup validation)
+static ALLOWED_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];
+
+/// Allowed extensions for non-image attachments. Deliberately excludes
+/// anything a browser might interpret as active content when served from
+/// `/files` (html, svg, xml, js, css, ...).
+static ALLOWED_ATTACHMENT_EXTENSIONS: &[&str] = &[
+    // documents and plain text
+    "pdf", "txt", "md", "log", "csv", "json", "toml", "yaml", "yml", "rtf", "doc", "docx", "xls",
+    "xlsx", "ppt", "pptx", "odt", "ods", "odp", // archives
+    "zip", "gz", "tar", "bz2", "xz", "7z", "rar", // audio
+    "mp3", "wav", "ogg", "flac", "m4a", "opus", // video
+    "mp4", "webm", "mkv", "mov", "avi",
+];
 
 /// Detect file type by magic bytes
 fn detect_file_type(data: &[u8]) -> Option<&'static str> {
@@ -40,12 +55,29 @@ fn detect_file_type(data: &[u8]) -> Option<&'static str> {
     }
 }
 
-/// Validate file extension
-fn has_valid_extension(filename: &str) -> bool {
-    if let Some(ext) = filename.rsplit('.').next() {
-        ALLOWED_EXTENSIONS.contains(&ext.to_lowercase().as_str())
+/// Extract the lowercase extension from a filename, if any.
+fn file_extension(filename: &str) -> Option<String> {
+    let (stem, ext) = filename.rsplit_once('.')?;
+    if stem.is_empty() {
+        return None;
+    }
+    Some(ext.to_lowercase())
+}
+
+/// Classification of an upload derived from its file extension.
+enum UploadKind {
+    Image,
+    Attachment,
+}
+
+fn classify_extension(filename: &str) -> Option<UploadKind> {
+    let ext = file_extension(filename)?;
+    if ALLOWED_IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+        Some(UploadKind::Image)
+    } else if ALLOWED_ATTACHMENT_EXTENSIONS.contains(&ext.as_str()) {
+        Some(UploadKind::Attachment)
     } else {
-        false
+        None
     }
 }
 
@@ -69,10 +101,10 @@ pub async fn upload(State(state): State<Arc<AppState>>, mut multipart: Multipart
         filename = "upload".to_string();
     }
 
-    if !has_valid_extension(&filename) {
+    let Some(kind) = classify_extension(&filename) else {
         warn!("Rejected upload with invalid extension: {}", filename);
         return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
-    }
+    };
 
     let data = match field.bytes().await {
         Ok(bytes) => bytes,
@@ -87,7 +119,16 @@ pub async fn upload(State(state): State<Arc<AppState>>, mut multipart: Multipart
         return StatusCode::PAYLOAD_TOO_LARGE.into_response();
     }
 
-    if !detect_file_type(&data).is_some_and(|t| ALLOWED_IMAGE_TYPES.contains(&t)) {
+    if data.is_empty() {
+        warn!("Rejected empty upload: {}", filename);
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+
+    // Image extensions must also pass magic-byte validation so a mislabelled
+    // file cannot masquerade as an image.
+    if matches!(kind, UploadKind::Image)
+        && !detect_file_type(&data).is_some_and(|t| ALLOWED_IMAGE_TYPES.contains(&t))
+    {
         warn!("Rejected upload with invalid file type for: {}", filename);
         return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
     }
@@ -100,7 +141,16 @@ pub async fn upload(State(state): State<Arc<AppState>>, mut multipart: Multipart
         Ok(_) => match tokio::fs::rename(temp_path.as_path(), &path).await {
             Ok(_) => {
                 let url = format!("/files/{}", key);
-                Json(serde_json::json!({"url": url})).into_response()
+                Json(serde_json::json!({
+                    "url": url,
+                    "name": filename,
+                    "size": data.len(),
+                    "kind": match kind {
+                        UploadKind::Image => "image",
+                        UploadKind::Attachment => "file",
+                    },
+                }))
+                .into_response()
             }
             Err(e) => {
                 error!("Failed to move uploaded file: {}", e);
