@@ -19,8 +19,15 @@
   import { theme, accent, DEFAULT_ACCENT } from '$lib/stores/theme';
   import ThemeWheel from '$lib/components/ThemeWheel.svelte';
   import { loadKeyPair } from '$lib/keypair';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { PushToTalkManager } from '$lib/voice/ptt';
+  import {
+    hotkeys,
+    HOTKEY_ACTIONS,
+    eventToCombo,
+    formatCombo,
+    type HotkeyActionId
+  } from '$lib/stores/hotkeys';
   import { check } from '@tauri-apps/plugin-updater';
   import { relaunch } from '@tauri-apps/plugin-process';
   import { dialogs } from '$lib/stores/dialogs';
@@ -42,6 +49,7 @@
     { id: 'audio', label: 'Audio' },
     { id: 'microphone', label: 'Microphone' },
     { id: 'voice', label: 'Voice' },
+    { id: 'hotkeys', label: 'Hotkeys' },
     { id: 'identity', label: 'Identity' },
     { id: 'updates', label: 'Updates' },
     { id: 'server', label: 'Server', ownerOnly: true }
@@ -156,6 +164,49 @@
       capturingPttKey = false;
     }
   }
+
+  // ── Hotkey capture ─────────────────────────────────────────────────────
+  let capturingHotkeyId: HotkeyActionId | null = null;
+  let hotkeyCaptureCleanup: (() => void) | null = null;
+
+  function stopHotkeyCapture() {
+    hotkeyCaptureCleanup?.();
+    hotkeyCaptureCleanup = null;
+    capturingHotkeyId = null;
+  }
+
+  /**
+   * Grab the next full key combination and bind it to the action. Runs in
+   * the capture phase so the press can't leak into the app (e.g. Escape
+   * closing the modal); modifier-only presses keep the capture open,
+   * Escape cancels it.
+   */
+  function captureHotkey(id: HotkeyActionId) {
+    if (capturingHotkeyId === id) {
+      stopHotkeyCapture();
+      return;
+    }
+    stopHotkeyCapture();
+    capturingHotkeyId = id;
+    const handler = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === 'Escape') {
+        stopHotkeyCapture();
+        return;
+      }
+      const combo = eventToCombo(event);
+      if (!combo) return;
+      hotkeys.bind(id, combo);
+      stopHotkeyCapture();
+    };
+    document.addEventListener('keydown', handler, true);
+    hotkeyCaptureCleanup = () => document.removeEventListener('keydown', handler, true);
+  }
+
+  // Never leave a dangling capture when the modal closes or unmounts.
+  $: if (!open && capturingHotkeyId !== null) stopHotkeyCapture();
+  onDestroy(stopHotkeyCapture);
 </script>
 
 {#if open}
@@ -403,6 +454,61 @@
               </div>
             </div>
           {/if}
+        </div>
+        {/if}
+
+        {#if activeTab === 'hotkeys'}
+        <div class="settings-section">
+          <h3 class="section-title">Hotkeys</h3>
+
+          <div class="setting-group">
+            {#each HOTKEY_ACTIONS as action (action.id)}
+              <div class="hotkey-row">
+                <span class="toggle-text">
+                  <span class="toggle-label">{action.label}</span>
+                  <span class="toggle-description">{action.description}</span>
+                </span>
+                <div class="hotkey-controls">
+                  <button
+                    class="btn hotkey-btn"
+                    class:capturing={capturingHotkeyId === action.id}
+                    class:unset={!$hotkeys[action.id] && capturingHotkeyId !== action.id}
+                    on:click={() => captureHotkey(action.id)}
+                    title="Click, then press the new key combination"
+                  >
+                    {#if capturingHotkeyId === action.id}
+                      Press keys…
+                    {:else}
+                      {formatCombo($hotkeys[action.id])}
+                    {/if}
+                  </button>
+                  <button
+                    class="icon-btn hotkey-clear"
+                    on:click={() => hotkeys.unbind(action.id)}
+                    disabled={!$hotkeys[action.id]}
+                    title="Remove hotkey"
+                    aria-label={`Remove hotkey for ${action.label}`}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            {/each}
+
+            <div class="setting-description">
+              Click a hotkey and press the new key combination — Esc cancels, and assigning a
+              combination that is already in use moves it to the new action. Hotkeys without
+              Ctrl, Alt or a function key stay inactive while you are typing a message. The
+              push-to-talk key is configured in the Voice tab.
+            </div>
+
+            <button class="btn reset-hotkeys" on:click={() => hotkeys.resetAll()}>
+              Reset to defaults
+            </button>
+          </div>
         </div>
         {/if}
 
@@ -808,6 +914,51 @@
   .ptt-key-button.capturing {
     border-color: var(--color-warning);
     color: var(--color-warning);
+  }
+
+  .hotkey-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+  }
+
+  .hotkey-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+  }
+
+  .hotkey-btn {
+    min-width: 9.5rem;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+  }
+
+  .hotkey-btn.capturing {
+    border-color: var(--color-warning);
+    color: var(--color-warning);
+  }
+
+  .hotkey-btn.unset {
+    color: var(--color-muted);
+    font-style: italic;
+    font-family: inherit;
+  }
+
+  .hotkey-clear {
+    border: 1px solid var(--color-surface-outline);
+  }
+
+  .hotkey-clear:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  .reset-hotkeys {
+    justify-self: start;
   }
 
   .update-btn {

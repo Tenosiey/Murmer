@@ -57,6 +57,13 @@
     type MessageBlock
   } from '$lib/chat/helpers';
   import { dialogs } from '$lib/stores/dialogs';
+  import {
+    hotkeys,
+    eventToCombo,
+    firesWhileTyping,
+    isTextInputTarget,
+    type HotkeyActionId
+  } from '$lib/stores/hotkeys';
   import EmojiPicker from '$lib/components/EmojiPicker.svelte';
   import {
     MODERATOR_ROLES,
@@ -1290,26 +1297,27 @@
 
   function handleGlobalShortcut(event: KeyboardEvent) {
     if (event.defaultPrevented) return;
-    const isModifier = event.ctrlKey || event.metaKey;
-    if (!isModifier || !event.shiftKey || event.altKey) return;
+    const combo = eventToCombo(event);
+    if (!combo) return;
 
-    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+    const action = (Object.entries($hotkeys) as Array<[HotkeyActionId, string | null]>).find(
+      ([, bound]) => bound === combo
+    )?.[0];
+    if (!action) return;
 
-    switch (key) {
-      case 'm':
-        event.preventDefault();
+    // A binding without a real modifier (e.g. plain "M") must not fire while
+    // the user is typing a message.
+    if (isTextInputTarget(event.target) && !firesWhileTyping(combo)) return;
+
+    event.preventDefault();
+    switch (action) {
+      case 'toggleMic':
         toggleMicrophone();
         break;
-      case 'o':
-        event.preventDefault();
+      case 'toggleDeafen':
         toggleOutput();
         break;
-      case 's':
-        event.preventDefault();
-        openSettings();
-        break;
-      case 'v':
-        event.preventDefault();
+      case 'toggleVoice':
         if (inVoice) {
           leaveVoice();
         } else {
@@ -1319,8 +1327,15 @@
           }
         }
         break;
-      default:
-        return;
+      case 'openSearch':
+        openSearch();
+        break;
+      case 'openSettings':
+        openSettings();
+        break;
+      case 'openHelp':
+        openHelp();
+        break;
     }
   }
 
