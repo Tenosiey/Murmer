@@ -64,6 +64,10 @@
     isTextInputTarget,
     type HotkeyActionId
   } from '$lib/stores/hotkeys';
+  import {
+    setGlobalHotkeyActions,
+    clearGlobalHotkeyActions
+  } from '$lib/stores/globalHotkeys';
   import EmojiPicker from '$lib/components/EmojiPicker.svelte';
   import {
     MODERATOR_ROLES,
@@ -583,6 +587,13 @@
       now = Date.now();
     }, 1000);
     connectToServer();
+    // Voice hotkeys also fire as OS-level global shortcuts while another
+    // window has focus (Tauri shell only; a no-op in the plain browser).
+    setGlobalHotkeyActions({
+      toggleMic: toggleMicrophone,
+      toggleDeafen: toggleOutput,
+      toggleVoice: toggleVoiceChannel
+    });
   });
 
   onDestroy(() => {
@@ -611,6 +622,7 @@
       window.clearInterval(expiryTicker);
       expiryTicker = null;
     }
+    clearGlobalHotkeyActions();
   });
 
   function sendText() {
@@ -1295,6 +1307,18 @@
     outputMuted.update(muted => !muted);
   }
 
+  /** Leave the current voice channel, or join the last/first one. */
+  function toggleVoiceChannel() {
+    if (inVoice) {
+      leaveVoice();
+    } else {
+      const channels = $voiceChannels;
+      if (channels.length) {
+        joinVoiceChannel(currentVoiceChannelId ?? channels[0].id);
+      }
+    }
+  }
+
   function handleGlobalShortcut(event: KeyboardEvent) {
     if (event.defaultPrevented) return;
     const combo = eventToCombo(event);
@@ -1318,14 +1342,7 @@
         toggleOutput();
         break;
       case 'toggleVoice':
-        if (inVoice) {
-          leaveVoice();
-        } else {
-          const channels = $voiceChannels;
-          if (channels.length) {
-            joinVoiceChannel(currentVoiceChannelId ?? channels[0].id);
-          }
-        }
+        toggleVoiceChannel();
         break;
       case 'openSearch':
         openSearch();

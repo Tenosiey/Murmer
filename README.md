@@ -24,7 +24,8 @@ small team can deploy a private chat space quickly.
 - Link previews with server-side OpenGraph fetching (client IPs stay hidden from linked sites)
 - Configurable noise suppression, echo cancellation and automatic gain control
 - Customizable hotkeys (mute, deafen, join/leave voice, search, settings, help)
-  under Settings → Hotkeys
+  under Settings → Hotkeys; the voice hotkeys also work system-wide while the
+  app is in the background (can be disabled)
 - Ephemeral messaging, message search, server-synced pinned messages and message editing
 - Message replies with quoted previews and lightweight threads
 - Typing indicators and per-channel unread badges with new-message markers

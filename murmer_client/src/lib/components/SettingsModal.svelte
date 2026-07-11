@@ -24,10 +24,12 @@
   import {
     hotkeys,
     HOTKEY_ACTIONS,
+    globalHotkeysEnabled,
     eventToCombo,
     formatCombo,
     type HotkeyActionId
   } from '$lib/stores/hotkeys';
+  import { suspendGlobalHotkeys, resumeGlobalHotkeys } from '$lib/stores/globalHotkeys';
   import { check } from '@tauri-apps/plugin-updater';
   import { relaunch } from '@tauri-apps/plugin-process';
   import { dialogs } from '$lib/stores/dialogs';
@@ -172,7 +174,10 @@
   function stopHotkeyCapture() {
     hotkeyCaptureCleanup?.();
     hotkeyCaptureCleanup = null;
-    capturingHotkeyId = null;
+    if (capturingHotkeyId !== null) {
+      capturingHotkeyId = null;
+      resumeGlobalHotkeys();
+    }
   }
 
   /**
@@ -188,6 +193,9 @@
     }
     stopHotkeyCapture();
     capturingHotkeyId = id;
+    // Release OS-level shortcuts while capturing: a registered combo would
+    // be consumed by the OS and could never be captured (or re-assigned).
+    suspendGlobalHotkeys();
     const handler = (event: KeyboardEvent) => {
       event.preventDefault();
       event.stopPropagation();
@@ -465,7 +473,12 @@
             {#each HOTKEY_ACTIONS as action (action.id)}
               <div class="hotkey-row">
                 <span class="toggle-text">
-                  <span class="toggle-label">{action.label}</span>
+                  <span class="toggle-label">
+                    {action.label}
+                    {#if action.global}
+                      <span class="global-badge" title="Also works while another app is focused">system-wide</span>
+                    {/if}
+                  </span>
                   <span class="toggle-description">{action.description}</span>
                 </span>
                 <div class="hotkey-controls">
@@ -504,6 +517,18 @@
               Ctrl, Alt or a function key stay inactive while you are typing a message. The
               push-to-talk key is configured in the Voice tab.
             </div>
+
+            <label class="toggle-row">
+              <input type="checkbox" bind:checked={$globalHotkeysEnabled} />
+              <span class="toggle-text">
+                <span class="toggle-label">System-wide voice hotkeys</span>
+                <span class="toggle-description">
+                  Keep the hotkeys marked "system-wide" working while another application is
+                  focused, e.g. to mute your microphone during a game. Note that Murmer then
+                  reserves those key combinations for itself while it is running.
+                </span>
+              </span>
+            </label>
 
             <button class="btn reset-hotkeys" on:click={() => hotkeys.resetAll()}>
               Reset to defaults
@@ -955,6 +980,18 @@
   .hotkey-clear:disabled {
     opacity: 0.4;
     cursor: default;
+  }
+
+  .global-badge {
+    margin-left: var(--space-2);
+    padding: 0.0625rem var(--space-2);
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-surface-outline);
+    background: var(--color-surface-raised);
+    color: var(--color-muted);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    vertical-align: middle;
   }
 
   .reset-hotkeys {

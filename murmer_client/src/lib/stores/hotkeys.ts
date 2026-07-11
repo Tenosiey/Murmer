@@ -22,6 +22,13 @@ export interface HotkeyAction {
   label: string;
   description: string;
   default: string;
+  /**
+   * Voice actions are additionally registered as OS-level global shortcuts
+   * so they keep working while another application is focused (see
+   * stores/globalHotkeys.ts). UI actions stay in-app only — grabbing e.g.
+   * Ctrl+F system-wide would break it in every other program.
+   */
+  global?: boolean;
 }
 
 export const HOTKEY_ACTIONS: HotkeyAction[] = [
@@ -29,19 +36,22 @@ export const HOTKEY_ACTIONS: HotkeyAction[] = [
     id: 'toggleMic',
     label: 'Toggle microphone',
     description: 'Mute or unmute your microphone',
-    default: 'Ctrl+Shift+M'
+    default: 'Ctrl+Shift+M',
+    global: true
   },
   {
     id: 'toggleDeafen',
     label: 'Toggle speakers',
     description: 'Mute or unmute all incoming voice audio',
-    default: 'Ctrl+Shift+O'
+    default: 'Ctrl+Shift+O',
+    global: true
   },
   {
     id: 'toggleVoice',
     label: 'Join / leave voice',
     description: 'Join the last voice channel or leave the current one',
-    default: 'Ctrl+Shift+V'
+    default: 'Ctrl+Shift+V',
+    global: true
   },
   {
     id: 'openSearch',
@@ -129,6 +139,20 @@ function createHotkeyStore() {
 }
 
 export const hotkeys = createHotkeyStore();
+
+// Whether voice hotkeys are registered system-wide (OS global shortcuts).
+const GLOBAL_ENABLED_KEY = 'murmer_global_hotkeys';
+
+const initialGlobalEnabled = browser
+  ? localStorage.getItem(GLOBAL_ENABLED_KEY) !== 'false'
+  : true;
+
+/** Voice hotkeys keep working while another application has focus. */
+export const globalHotkeysEnabled = writable<boolean>(initialGlobalEnabled);
+
+globalHotkeysEnabled.subscribe((value) => {
+  if (browser) localStorage.setItem(GLOBAL_ENABLED_KEY, String(value));
+});
 
 const MODIFIER_KEYS = new Set(['Control', 'Alt', 'Shift', 'Meta']);
 
