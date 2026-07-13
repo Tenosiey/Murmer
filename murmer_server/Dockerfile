@@ -18,14 +18,16 @@ LABEL org.opencontainers.image.source="https://github.com/murmer/murmer"
 LABEL org.opencontainers.image.description="Murmer WebSocket server"
 WORKDIR /app
 
+# sqlite3 is included so operators can inspect the database from inside the
+# container: docker compose exec server sqlite3 /app/data/murmer.db
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates curl \
+    && apt-get install --no-install-recommends -y ca-certificates curl sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --system --home /app --shell /usr/sbin/nologin murmer
 COPY --from=builder /app/target/release/murmer_server /usr/local/bin/murmer_server
 RUN chown murmer:murmer /usr/local/bin/murmer_server \
-    && mkdir -p /app/uploads \
+    && mkdir -p /app/uploads /app/data \
     && chown -R murmer:murmer /app
 
 USER murmer

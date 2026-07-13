@@ -72,11 +72,7 @@ async fn verify_bot(state: &AppState, token: &str) -> Option<BotRecord> {
         .filter(|b| b.active)
 }
 
-async fn format_messages(
-    db: &tokio_postgres::Client,
-    rows: Vec<(i64, String)>,
-    channel_id: i32,
-) -> Vec<Value> {
+async fn format_messages(db: &db::Db, rows: Vec<(i64, String)>, channel_id: i32) -> Vec<Value> {
     let ids32: Vec<i32> = rows
         .iter()
         .filter_map(|(id, _)| i32::try_from(*id).ok())
@@ -437,22 +433,13 @@ async fn send_message(
     }
 
     let content = msg.to_string();
-    let row = match state
-        .db
-        .query_one(
-            "INSERT INTO messages (channel_id, content) VALUES ($1, $2) RETURNING id::bigint",
-            &[&channel_id, &content],
-        )
-        .await
-    {
-        Ok(row) => row,
+    let id = match db::insert_message(&state.db, channel_id, &content).await {
+        Ok(id) => id,
         Err(e) => {
             error!("Failed to insert bot message: {e}");
             return json_error(StatusCode::INTERNAL_SERVER_ERROR, "message-insert-failed");
         }
     };
-
-    let id: i64 = row.get(0);
     msg["id"] = serde_json::json!(id);
 
     let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
