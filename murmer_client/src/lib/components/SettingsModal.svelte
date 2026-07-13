@@ -62,7 +62,8 @@
   const ABOUT_LINKS = [
     { label: 'GitHub repository', url: REPO_URL },
     { label: 'Report an issue', url: `${REPO_URL}/issues` },
-    { label: 'Releases & changelog', url: `${REPO_URL}/releases` }
+    { label: 'Releases & changelog', url: `${REPO_URL}/releases` },
+    { label: 'License', url: `${REPO_URL}/blob/main/LICENSE` }
   ];
   $: visibleTabs = TABS.filter((tab) => !('ownerOnly' in tab && tab.ownerOnly) || $serverInfo);
   // If the active tab disappears (e.g. server info clears), fall back to the first.
@@ -620,7 +621,7 @@
 
           <div class="setting-group">
             <div class="setting-description">
-              Built with Tauri, SvelteKit and Rust (Axum).
+              Built with Tauri, SvelteKit and Rust (Axum). Released under the MIT License.
             </div>
           </div>
         </div>
