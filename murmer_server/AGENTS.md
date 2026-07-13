@@ -1,6 +1,6 @@
 # Murmer Server Guide
 
-This crate implements the Murmer WebSocket/HTTP server using **Axum 0.7**.
+This crate implements the Murmer WebSocket/HTTP server using **Axum 0.8**.
 Authentication is based on Ed25519 signatures and PostgreSQL is used for
 persistence.
 
@@ -22,6 +22,8 @@ launches the server in one step: `docker compose up --build`.
 - `bot/` – REST API for bots (see `BOT_API.md`)
 - `upload.rs` – multipart file upload endpoint with extension/MIME validation
 - `admin.rs` – `/role` endpoint guarded by a bearer token
+- `roles.rs` – role definitions and default role color helpers
+- `link_preview.rs` – `/link-preview` endpoint returning OpenGraph metadata
 - `security.rs` – rate limiting, replay protection and validation utilities
 
 Each module starts with a short doc comment describing its responsibilities.
@@ -32,6 +34,7 @@ Required environment variables:
 - `DATABASE_URL` – PostgreSQL connection string
 
 Optional environment variables:
+- `BIND_ADDRESS` – socket address to bind to (`0.0.0.0:3001` by default)
 - `UPLOAD_DIR` – directory for uploaded files (`uploads/` by default)
 - `SERVER_PASSWORD` – shared secret required during presence/auth flows
 - `ADMIN_TOKEN` – enables the `/role` endpoint and channel management controls
