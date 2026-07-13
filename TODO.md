@@ -17,6 +17,7 @@ Use the checkboxes to track progress.
 - [x] Direct messages between users
 - [x] Edit sent messages
 - [x] File sharing beyond images
+- [ ] Full-text message search via SQLite FTS5 (current search is an unindexed LIKE scan)
 - [x] Link previews (OpenGraph embeds)
 - [x] Message threading/replies
 - [x] Paste images from clipboard / drag & drop
@@ -57,7 +58,7 @@ Use the checkboxes to track progress.
 - [ ] Decentralized/mesh networking option
 - [ ] End-to-end encryption for private channels
 - [x] Implement auto updates
-- [ ] SQLite mode as alternative to PostgreSQL (single-binary deploy)
+- [x] SQLite mode as alternative to PostgreSQL (single-binary deploy; SQLite is now the only backend)
 - [ ] Web client (browser build without Tauri, join via invite link)
 - [ ] Mini-games embedded in chat
 - [ ] Music streaming from local files
@@ -65,6 +66,7 @@ Use the checkboxes to track progress.
 - [ ] Real-time collaborative code editing
 - [ ] Scheduled voice events / calendar integration
 - [ ] Translation services for international teams
+- [ ] Widen message IDs from i32 to i64 throughout the server (SQLite rowids are 64-bit)
 
 ---
 

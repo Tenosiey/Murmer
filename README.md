@@ -7,7 +7,7 @@ small team can deploy a private chat space quickly.
 
 ## Features
 
-- Persistent text chat stored in PostgreSQL
+- Persistent text chat stored in an embedded SQLite database
 - WebRTC voice rooms with presence tracking
 - Ed25519 signature authentication with nonce-based replay protection
 - Rate limiting on authentication and chat events
@@ -39,7 +39,7 @@ small team can deploy a private chat space quickly.
 ```
 murmer_client/   Tauri + SvelteKit desktop client (TypeScript)
 murmer_server/   Axum-based WebSocket server (Rust)
-docker-compose.yml   boots the server together with PostgreSQL
+docker-compose.yml   boots the server (database is embedded)
 ```
 
 Key documentation for contributors:
@@ -122,7 +122,7 @@ Environment variables recognised by the server:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `DATABASE_PATH` | No | Path to the SQLite database file (defaults to `murmer.db`) |
 | `UPLOAD_DIR` | No | Directory for stored uploads (defaults to `uploads/`) |
 | `SERVER_PASSWORD` | No | Shared secret required during presence/auth |
 | `ADMIN_TOKEN` | No | Enables the administrative `/role` endpoint |

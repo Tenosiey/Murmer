@@ -1,17 +1,17 @@
 # Murmer Server Guide
 
 This crate implements the Murmer WebSocket/HTTP server using **Axum 0.8**.
-Authentication is based on Ed25519 signatures and PostgreSQL is used for
-persistence.
+Authentication is based on Ed25519 signatures and an embedded SQLite database
+is used for persistence.
 
 ## Development commands
 - `cargo check` – compile-time validation
 - `cargo fmt` – format Rust sources
 - `cargo clippy -- -D warnings` (optional but recommended)
-- `cargo run` – launch the server locally (requires `DATABASE_URL`)
+- `cargo run` – launch the server locally (creates `murmer.db` by default)
 
-The repository includes a `docker-compose.yml` that provisions PostgreSQL and
-launches the server in one step: `docker compose up --build`.
+The repository includes a `docker-compose.yml` that launches the server (the
+SQLite database lives on a named volume): `docker compose up --build`.
 
 ## Key modules
 - `main.rs` – sets up the Axum router, middleware and shared state
@@ -30,10 +30,8 @@ Each module starts with a short doc comment describing its responsibilities.
 Expand these comments when adding new behaviour.
 
 ## Configuration
-Required environment variables:
-- `DATABASE_URL` – PostgreSQL connection string
-
 Optional environment variables:
+- `DATABASE_PATH` – path to the SQLite database file (`murmer.db` by default)
 - `BIND_ADDRESS` – socket address to bind to (`0.0.0.0:3001` by default)
 - `UPLOAD_DIR` – directory for uploaded files (`uploads/` by default)
 - `SERVER_PASSWORD` – shared secret required during presence/auth flows

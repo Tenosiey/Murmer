@@ -1,13 +1,4 @@
 services:
-  db:
-    image: postgres:17
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: murmer
-      POSTGRES_PASSWORD: murmer
-      POSTGRES_DB: murmer
-    volumes:
-      - db_data:/var/lib/postgresql/data
   server:
     build: ./murmer_server
     restart: unless-stopped
@@ -15,7 +6,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgres://murmer:murmer@db:5432/murmer
+      DATABASE_PATH: /app/data/murmer.db
       UPLOAD_DIR: /app/uploads
       # Uncomment to require a password for WebSocket connections
       # SERVER_PASSWORD: changeme
@@ -25,11 +16,10 @@ services:
       NONCE_EXPIRY_SECONDS: 300
       # Allow the desktop client dev server to access the HTTP endpoints during development
       CORS_ALLOW_ORIGINS: http://localhost:1420
-    depends_on:
-      - db
     ports:
       - "3001:3001"
     volumes:
+      - db_data:/app/data
       - uploads:/app/uploads
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/"]

@@ -4,55 +4,65 @@
 //! participants duplicated into indexed columns so conversations can be
 //! queried without parsing the payload.
 
-use tokio_postgres::Client;
+use rusqlite::params;
+
+use super::{Db, DbCall, DbError};
 
 /// Insert a direct message and return its id.
 pub async fn insert_direct_message(
-    db: &Client,
+    db: &Db,
     sender: &str,
     recipient: &str,
     content: &str,
-) -> Result<i64, tokio_postgres::Error> {
-    let row = db
-        .query_one(
-            "INSERT INTO direct_messages (sender, recipient, content) VALUES ($1, $2, $3) RETURNING id::bigint",
-            &[&sender, &recipient, &content],
-        )
-        .await?;
-    Ok(row.get(0))
+) -> Result<i64, DbError> {
+    let sender = sender.to_owned();
+    let recipient = recipient.to_owned();
+    let content = content.to_owned();
+    db.call_db(move |conn| {
+        let id = conn.query_row(
+            "INSERT INTO direct_messages (sender, recipient, content) VALUES (?1, ?2, ?3) RETURNING id",
+            params![sender, recipient, content],
+            |row| row.get(0),
+        )?;
+        Ok(id)
+    })
+    .await
 }
 
 /// Fetch messages exchanged between two users, newest first.
 pub async fn fetch_dm_history(
-    db: &Client,
+    db: &Db,
     user_a: &str,
     user_b: &str,
     before: Option<i64>,
     limit: i64,
-) -> Result<Vec<(i64, String)>, tokio_postgres::Error> {
-    let rows = if let Some(before) = before {
-        let before32 = match i32::try_from(before) {
-            Ok(value) => value,
-            Err(_) => return Ok(Vec::new()),
+) -> Result<Vec<(i64, String)>, DbError> {
+    let user_a = user_a.to_owned();
+    let user_b = user_b.to_owned();
+    db.call_db(move |conn| {
+        let map = |row: &rusqlite::Row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?));
+        let rows = if let Some(before) = before {
+            let mut stmt = conn.prepare(
+                "SELECT id, content FROM direct_messages \
+                 WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) \
+                 AND id < ?3 ORDER BY id DESC LIMIT ?4",
+            )?;
+            let rows = stmt
+                .query_map(params![user_a, user_b, before, limit], map)?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        } else {
+            let mut stmt = conn.prepare(
+                "SELECT id, content FROM direct_messages \
+                 WHERE (sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1) \
+                 ORDER BY id DESC LIMIT ?3",
+            )?;
+            let rows = stmt
+                .query_map(params![user_a, user_b, limit], map)?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
         };
-        db.query(
-            "SELECT id::bigint, content FROM direct_messages \
-             WHERE ((sender = $1 AND recipient = $2) OR (sender = $2 AND recipient = $1)) \
-             AND id < $3 ORDER BY id DESC LIMIT $4",
-            &[&user_a, &user_b, &before32, &limit],
-        )
-        .await?
-    } else {
-        db.query(
-            "SELECT id::bigint, content FROM direct_messages \
-             WHERE (sender = $1 AND recipient = $2) OR (sender = $2 AND recipient = $1) \
-             ORDER BY id DESC LIMIT $3",
-            &[&user_a, &user_b, &limit],
-        )
-        .await?
-    };
-    Ok(rows
-        .into_iter()
-        .map(|row| (row.get::<_, i64>(0), row.get(1)))
-        .collect())
+        Ok(rows)
+    })
+    .await
 }
