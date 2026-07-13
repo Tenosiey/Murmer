@@ -26,9 +26,9 @@
     "@tauri-apps/plugin-notification": "^2.3.1",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.1",
-    "dompurify": "^3.2.7",
+    "dompurify": "^3.4.12",
     "highlight.js": "^11.11.1",
-    "marked": "^18.0.5",
+    "marked": "^18.0.6",
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
