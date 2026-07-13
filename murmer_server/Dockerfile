@@ -13,7 +13,7 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs \
 COPY src ./src
 RUN cargo build --release --locked
 
-FROM docker.io/library/debian:bookworm-slim@sha256:78d2f66e0fec9e5a39fb2c72ea5e052b548df75602b5215ed01a17171529f706
+FROM docker.io/library/debian:bookworm-slim@sha256:60eac759739651111db372c07be67863818726f754804b8707c90979bda511df
 LABEL org.opencontainers.image.source="https://github.com/murmer/murmer"
 LABEL org.opencontainers.image.description="Murmer WebSocket server"
 WORKDIR /app
