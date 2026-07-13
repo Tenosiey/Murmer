@@ -29,6 +29,11 @@ SQLite database lives on a named volume): `docker compose up --build`.
 Each module starts with a short doc comment describing its responsibilities.
 Expand these comments when adding new behaviour.
 
+## Versioning
+The crate version in `Cargo.toml` is bumped in lockstep with the client by
+`npm run bump` in `murmer_client/` (which also syncs `Cargo.lock`). Never bump
+it by hand — see the Versioning section in the repository root `AGENTS.md`.
+
 ## Configuration
 Optional environment variables:
 - `DATABASE_PATH` – path to the SQLite database file (`murmer.db` by default)

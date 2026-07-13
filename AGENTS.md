@@ -35,21 +35,24 @@ specifics.
 - Production deployments should keep CORS disabled unless explicitly required.
 
 ## Versioning
-Client releases use the date-based scheme `YYYY.MDD.N` (year, month+day,
-counter for multiple releases on the same day), e.g. `2026.710.0` for the
-first release on 2026-07-10. The scheme stays semver-ordered, which the Tauri
-updater requires. When asked to bump versions:
+Releases use the date-based scheme `YYYY.MDD.N` (year, month+day, counter for
+multiple releases on the same day), e.g. `2026.710.0` for the first release on
+2026-07-10. The scheme stays semver-ordered, which the Tauri updater requires.
+**Client and server share one version** and are bumped in lockstep — the
+server crate (`murmer_server/Cargo.toml`) must not be bumped by hand or
+skipped. When asked to bump versions:
 
 1. Run `npm run bump` inside `murmer_client/`. The script
    (`scripts/bump-version.mjs`) computes the next version and writes it into
-   `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`.
+   all six versioned files: the client's `package.json`,
+   `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and
+   `src-tauri/Cargo.lock`, plus the server's `Cargo.toml` and `Cargo.lock`
+   (the lock files matter: `--locked` builds fail when they disagree).
 2. Commit with `Release v<version>` and create a matching `v<version>` git
    tag. Pushing the tag triggers the GitHub Actions release workflow, which
    builds the installers and updater manifest.
 
-The server crate (`murmer_server/Cargo.toml`) is versioned independently and
-is not touched by the bump script. See `README.md` for the full release
-process.
+See `README.md` for the full release process.
 
 ## Validation checklist
 - Ensure CI-equivalent commands above pass before opening a pull request.
