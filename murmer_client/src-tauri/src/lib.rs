@@ -54,6 +54,7 @@ pub fn run() -> tauri::Result<()> {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             // create tray menu
             let open = MenuItemBuilder::with_id("open", "Open").build(app)?;
@@ -83,4 +84,35 @@ pub fn run() -> tauri::Result<()> {
         .run(tauri::generate_context!())?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+    use tauri_plugin_global_shortcut::Shortcut;
+
+    /// The web client registers its hotkey combos (see
+    /// `src/lib/stores/hotkeys.ts`) verbatim as global shortcuts, so the
+    /// combo format must stay parseable by the global-shortcut plugin.
+    #[test]
+    fn client_hotkey_combos_parse_as_shortcuts() {
+        // "Super+…" is what the client's comboToAccelerator produces for
+        // "Meta+…" combos; the plugin does not accept the token "Meta".
+        for combo in [
+            "Ctrl+Shift+M",
+            "Ctrl+Shift+O",
+            "Ctrl+Shift+V",
+            "Ctrl+F",
+            "F1",
+            "Ctrl+Alt+K",
+            "Super+Enter",
+            "Alt+Space",
+            "Ctrl+ArrowUp",
+        ] {
+            assert!(
+                Shortcut::from_str(combo).is_ok(),
+                "combo '{combo}' does not parse as a global shortcut"
+            );
+        }
+    }
 }

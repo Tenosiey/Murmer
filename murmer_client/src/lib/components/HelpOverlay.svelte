@@ -1,6 +1,9 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { HELP_COMMANDS } from '$lib/chat/constants';
+  import { hotkeys, HOTKEY_ACTIONS, formatCombo } from '$lib/stores/hotkeys';
+
+  $: boundActions = HOTKEY_ACTIONS.filter((action) => $hotkeys[action.id]);
 
   export let open: boolean;
   export let onClose: () => void;
@@ -66,6 +69,20 @@
           </li>
         {/each}
       </ul>
+      {#if boundActions.length > 0}
+        <div class="help-header">
+          <h2>Hotkeys</h2>
+          <p class="help-description">Customizable under Settings → Hotkeys.</p>
+        </div>
+        <ul class="help-command-list help-hotkey-list">
+          {#each boundActions as action (action.id)}
+            <li class="help-hotkey">
+              <code class="help-command-usage">{formatCombo($hotkeys[action.id])}</code>
+              <span class="help-command-description">{action.label}</span>
+            </li>
+          {/each}
+        </ul>
+      {/if}
       <button type="button" class="btn help-close" on:click={onClose} bind:this={closeButton}>
         Close
       </button>
@@ -159,6 +176,21 @@
     margin: 0;
     color: var(--color-muted);
     font-size: var(--text-sm);
+  }
+
+  .help-hotkey-list {
+    flex-shrink: 0;
+  }
+
+  .help-hotkey {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+  }
+
+  .help-hotkey + .help-hotkey {
+    border-top: 1px solid var(--color-surface-outline);
   }
 
   .help-close {

@@ -116,6 +116,7 @@ async fn main() -> Result<()> {
         mutes: Arc::new(Mutex::new(existing_mutes.into_iter().collect())),
         active_screen_shares: Arc::new(Mutex::new(HashMap::new())),
         voice_mutes: Arc::new(Mutex::new(HashMap::new())),
+        connection_stats: Arc::new(Mutex::new(HashMap::new())),
         upload_dir: config.upload_dir.clone(),
         password: config.password.clone(),
         admin_token: config.admin_token.clone(),

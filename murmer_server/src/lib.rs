@@ -49,6 +49,23 @@ impl Default for RateLimiter {
     }
 }
 
+/// A user's latest self-reported connection quality numbers (see the
+/// `connection-stats` WebSocket message). Held in memory only and removed on
+/// disconnect — never persisted — because the data is only useful for live
+/// troubleshooting and must not become a long-term activity record.
+#[derive(Clone)]
+pub struct ConnectionStatsEntry {
+    /// WebSocket round-trip time to this server in milliseconds.
+    pub ping_ms: Option<f64>,
+    /// Worst peer-to-peer voice round-trip time in milliseconds.
+    pub voice_rtt_ms: Option<f64>,
+    /// Worst voice jitter in milliseconds.
+    pub voice_jitter_ms: Option<f64>,
+    /// Worst voice packet loss in percent (0–100).
+    pub voice_loss_percent: Option<f64>,
+    pub updated_at: Instant,
+}
+
 /// Snapshot of connected users within a voice channel.
 #[derive(Clone)]
 pub struct VoiceChannelState {
@@ -78,6 +95,8 @@ pub struct AppState {
     pub active_screen_shares: Arc<Mutex<HashMap<i32, HashSet<String>>>>,
     /// Voice mute state per user: username -> (microphone_muted, output_muted).
     pub voice_mutes: Arc<Mutex<HashMap<String, (bool, bool)>>>,
+    /// Latest self-reported connection stats per user (in-memory only).
+    pub connection_stats: Arc<Mutex<HashMap<String, ConnectionStatsEntry>>>,
     pub upload_dir: PathBuf,
     pub password: Option<String>,
     pub admin_token: Option<String>,

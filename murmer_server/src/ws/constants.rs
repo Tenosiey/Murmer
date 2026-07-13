@@ -9,6 +9,12 @@ pub const ROLE_MANAGE_ROLES: &[&str] = &["Owner"];
 /// Roles that are allowed to query server details such as the running version.
 pub const SERVER_INFO_ROLES: &[&str] = &["Owner", "Admin"];
 
+/// Roles that are allowed to view other users' self-reported connection stats.
+pub const CONNECTION_STATS_ROLES: &[&str] = &["Owner", "Admin"];
+
+/// Upper bound accepted for reported latency/jitter values in milliseconds.
+pub const MAX_REPORTED_STAT_MS: f64 = 60_000.0;
+
 /// Maximum duration in seconds for a timed mute (30 days).
 pub const MAX_MUTE_SECONDS: i64 = 30 * 24 * 60 * 60;
 
