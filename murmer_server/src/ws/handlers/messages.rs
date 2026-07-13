@@ -283,16 +283,8 @@ pub(super) async fn handle_chat(
     ensure_time(v, &timestamp);
 
     let out = serde_json::to_string(&v).unwrap_or_else(|_| v.to_string());
-    match state
-        .db
-        .query_one(
-            "INSERT INTO messages (channel_id, content) VALUES ($1, $2) RETURNING id::bigint",
-            &[&channel_id, &out],
-        )
-        .await
-    {
-        Ok(row) => {
-            let id: i64 = row.get(0);
+    match db::insert_message(&state.db, channel_id, &out).await {
+        Ok(id) => {
             v["id"] = Value::from(id);
             let out_with_id = serde_json::to_string(&v).unwrap_or_else(|_| out.clone());
             let chan_tx = get_or_create_channel(state, channel_id).await;

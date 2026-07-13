@@ -12,8 +12,8 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 pub struct Config {
     /// Socket address to bind the server to.
     pub bind_addr: SocketAddr,
-    /// PostgreSQL connection string.
-    pub database_url: String,
+    /// Path to the SQLite database file.
+    pub database_path: String,
     /// Directory for storing uploaded files.
     pub upload_dir: PathBuf,
     /// Optional server password for authentication.
@@ -29,15 +29,14 @@ impl Config {
     ///
     /// # Environment Variables
     ///
-    /// - `DATABASE_URL` (required): PostgreSQL connection string
+    /// - `DATABASE_PATH` (optional): Path to the SQLite database file (default: `murmer.db`)
     /// - `BIND_ADDRESS` (optional): Socket address to bind to (default: `0.0.0.0:3001`)
     /// - `UPLOAD_DIR` (optional): Directory for uploads (default: `uploads`)
     /// - `SERVER_PASSWORD` (optional): Password required for client authentication
     /// - `ADMIN_TOKEN` (optional): Token for administrative operations
     /// - `CORS_ALLOW_ORIGINS` (optional): Comma-separated list of allowed origins
     pub fn from_env() -> Result<Self> {
-        let database_url = env::var("DATABASE_URL")
-            .map_err(|_| anyhow::anyhow!("DATABASE_URL environment variable is required"))?;
+        let database_path = env::var("DATABASE_PATH").unwrap_or_else(|_| "murmer.db".to_string());
 
         let bind_addr = env::var("BIND_ADDRESS")
             .unwrap_or_else(|_| "0.0.0.0:3001".to_string())
@@ -55,7 +54,7 @@ impl Config {
 
         Ok(Self {
             bind_addr,
-            database_url,
+            database_path,
             upload_dir,
             password,
             admin_token,

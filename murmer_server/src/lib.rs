@@ -81,7 +81,7 @@ pub struct AppState {
     pub tx: broadcast::Sender<String>,
     /// Per-text-channel broadcast senders, keyed by channel ID.
     pub channels: Arc<Mutex<HashMap<i32, broadcast::Sender<String>>>>,
-    pub db: Arc<tokio_postgres::Client>,
+    pub db: db::Db,
     pub users: Arc<Mutex<HashSet<String>>>,
     pub known_users: Arc<Mutex<HashSet<String>>>,
     /// Voice channel state, keyed by voice channel ID.

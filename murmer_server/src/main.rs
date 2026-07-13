@@ -1,4 +1,4 @@
-//! Murmer WebSocket server: provides text and voice chat over WebSocket with Postgres persistence.
+//! Murmer WebSocket server: provides text and voice chat over WebSocket with SQLite persistence.
 //!
 //! - `/ws`: WebSocket endpoint for chat and voice events.
 //! - `/upload`: HTTP endpoint for uploading files.
@@ -6,7 +6,7 @@
 //! - `/role`: HTTP endpoint for managing user roles (requires `ADMIN_TOKEN`).
 //!
 //! Configuration via environment variables:
-//! - `DATABASE_URL`: Postgres connection string (required).
+//! - `DATABASE_PATH`: path to the SQLite database file (default: `murmer.db`).
 //! - `UPLOAD_DIR`: directory for storing uploads (default: `uploads`).
 //! - `SERVER_PASSWORD`: optional password for client authentication.
 //! - `ADMIN_TOKEN`: token for admin role management.
@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
 
     let (tx, _rx) = broadcast::channel::<String>(100);
 
-    let db_client = db::init(&config.database_url)
+    let db_client = db::init(&config.database_path)
         .await
         .context("failed to initialise database connection")?;
 
@@ -91,7 +91,7 @@ async fn main() -> Result<()> {
     let state = Arc::new(AppState {
         tx: tx.clone(),
         channels: Arc::new(Mutex::new(HashMap::new())),
-        db: Arc::new(db_client),
+        db: db_client,
         users: Arc::new(Mutex::new(HashSet::new())),
         known_users: Arc::new(Mutex::new(HashSet::new())),
         voice_channels: Arc::new(Mutex::new({
@@ -211,9 +211,8 @@ async fn cli_set_role(args: &[String]) -> Result<()> {
         .cloned()
         .or_else(|| murmer_server::roles::default_color(role));
 
-    let db_url = std::env::var("DATABASE_URL")
-        .map_err(|_| anyhow::anyhow!("DATABASE_URL environment variable is required"))?;
-    let client = db::init(&db_url)
+    let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "murmer.db".to_string());
+    let client = db::init(&db_path)
         .await
         .context("failed to connect to database")?;
 
