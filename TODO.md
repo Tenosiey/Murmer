@@ -32,6 +32,29 @@ Use the checkboxes to track progress.
 - [ ] User nicknames per server
 - [ ] User profiles/avatars
 
+### 📚 Channel Wiki
+
+Every channel can host a Markdown-based wiki with multiple pages. Pages are
+identified by a slug that is unique per channel and addressed as
+`channel/page-slug`. Wiki links use `[[page]]` for pages in the same channel
+and `[[channel/page]]` for pages in other channels; links to missing pages
+render as "create page" stubs. Content is stored server-side in SQLite and
+synced to clients; editing is role-gated like other channel management.
+
+- [ ] Server: `wiki_pages` table (channel id, slug, title, Markdown body, author, updated_at, revision counter) with per-channel slug uniqueness
+- [ ] Server: `wiki_revisions` table storing previous versions for history/rollback
+- [ ] Server: CRUD API (list pages of a channel, get, create, update, delete, rename) over the existing WS protocol, with validation and size limits on page content
+- [ ] Server: role-gated write permissions (reuse channel moderation roles); read access for everyone who can see the channel
+- [ ] Server: resolve endpoint for `[[channel/page]]` links (existence check for stub rendering) and cleanup when a channel is deleted
+- [ ] Server: index wiki pages in the FTS5 full-text search alongside messages
+- [ ] Client: wiki panel/tab in the chat view with a per-channel page list and page viewer
+- [ ] Client: Markdown editor with live preview (reuse `src/lib/markdown.ts`), save/cancel and conflict warning on concurrent edits
+- [ ] Client: `[[...]]` wiki-link syntax in the Markdown renderer — same-channel and cross-channel navigation, red/stub styling for missing pages
+- [ ] Client: create/rename/delete pages via context menu, honoring server-side permissions
+- [ ] Client: revision history view with diff and restore
+- [ ] Client: wiki pages included in the search UI results
+- [ ] Sanitize rendered wiki HTML (same hardening as chat Markdown, no active content)
+
 ### 🎤 Voice Features
 
 - [ ] Breakout rooms
