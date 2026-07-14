@@ -98,6 +98,60 @@ const LIGHT_SHAPE: PaletteShape = {
 
 const THEMED_TOKENS = Object.keys(DARK_SHAPE);
 
+/* The wheel only carries hue and saturation, so an accent is rendered as a
+   hex code at a fixed 50% lightness — the same level the preset swatches
+   use. A hex typed by the user is read back the same way: its hue and
+   saturation are kept, its lightness is dropped, because the palette above
+   supplies the lightness for every token. */
+const HEX_LIGHTNESS = 50;
+
+/** Renders a wheel position as `#rrggbb`. */
+export function accentToHex({ hue, saturation }: Accent): string {
+  const s = saturation / 100;
+  const l = HEX_LIGHTNESS / 100;
+  const chroma = (1 - Math.abs(2 * l - 1)) * s;
+  const channel = (n: number) => {
+    const k = (n + hue / 30) % 12;
+    const value = l - (chroma / 2) * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(value * 255)
+      .toString(16)
+      .padStart(2, '0');
+  };
+  return `#${channel(0)}${channel(8)}${channel(4)}`;
+}
+
+/**
+ * Parses `#rgb`/`#rrggbb` (with or without the hash) into a wheel position.
+ * Returns null for anything else so callers can reject invalid input
+ * instead of applying a garbage palette.
+ */
+export function hexToAccent(input: string): Accent | null {
+  const raw = input.trim().replace(/^#/, '');
+  const expanded =
+    raw.length === 3
+      ? raw
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : raw;
+  if (!/^[0-9a-fA-F]{6}$/.test(expanded)) return null;
+  const r = parseInt(expanded.slice(0, 2), 16) / 255;
+  const g = parseInt(expanded.slice(2, 4), 16) / 255;
+  const b = parseInt(expanded.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  const l = (max + min) / 2;
+  if (delta === 0) return { hue: 0, saturation: 0 };
+  const saturation = delta / (1 - Math.abs(2 * l - 1));
+  let hue: number;
+  if (max === r) hue = ((g - b) / delta) % 6;
+  else if (max === g) hue = (b - r) / delta + 2;
+  else hue = (r - g) / delta + 4;
+  hue = (hue * 60 + 360) % 360;
+  return { hue: Math.round(hue), saturation: Math.round(Math.min(1, saturation) * 100) };
+}
+
 function applyAccent(mode: Theme, value: Accent | null) {
   if (typeof document === 'undefined') return;
   const style = document.documentElement.style;
