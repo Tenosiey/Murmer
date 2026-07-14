@@ -16,7 +16,7 @@
   } from '$lib/stores/settings';
   import { APP_VERSION } from '$lib/version';
   import { serverInfo } from '$lib/stores/serverInfo';
-  import { theme, accent, DEFAULT_ACCENT } from '$lib/stores/theme';
+  import { theme, accent, DEFAULT_ACCENT, accentToHex, hexToAccent, type Accent } from '$lib/stores/theme';
   import ThemeWheel from '$lib/components/ThemeWheel.svelte';
   import { loadKeyPair } from '$lib/keypair';
   import { onMount, onDestroy } from 'svelte';
@@ -80,6 +80,50 @@
     { name: 'Ember', hue: 22, saturation: 80 },
     { name: 'Moss', hue: 150, saturation: 55 }
   ];
+
+  // The hex field mirrors the wheel. Edits only take effect on Enter or on
+  // blur, so a half-typed code never repaints the whole app.
+  let hexInput = accentToHex(DEFAULT_ACCENT);
+  let hexInvalid = false;
+  $: syncHexField($accent);
+
+  function syncHexField(value: Accent | null) {
+    hexInput = accentToHex(value ?? DEFAULT_ACCENT);
+    hexInvalid = false;
+  }
+
+  function commitHex() {
+    const parsed = hexToAccent(hexInput);
+    if (!parsed) {
+      hexInvalid = true;
+      return;
+    }
+    const current = $accent ?? DEFAULT_ACCENT;
+    if (parsed.hue === current.hue && parsed.saturation === current.saturation) {
+      // Unchanged: leaving the field must not pin the default palette to a
+      // wheel position, which would enable "Reset to default" out of nowhere.
+      hexInvalid = false;
+      return;
+    }
+    accent.set(parsed);
+    // Re-render from the stored position: the wheel drops the hex's
+    // lightness, so the field must show the color that was actually applied.
+    syncHexField(parsed);
+  }
+
+  /**
+   * The overlay closes the modal on Enter/Space, so keys typed here must not
+   * bubble that far — committing a color would otherwise dismiss settings.
+   * Escape still passes through to close the modal.
+   */
+  function handleHexKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') return;
+    event.stopPropagation();
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commitHex();
+    }
+  }
 
   onMount(async () => {
     try {
@@ -299,6 +343,23 @@
                     ></button>
                   {/each}
                 </div>
+                <label class="field hex-field">
+                  <span>Hex code</span>
+                  <input
+                    class="hex-input"
+                    class:invalid={hexInvalid}
+                    type="text"
+                    maxlength="7"
+                    spellcheck="false"
+                    autocomplete="off"
+                    placeholder="#27c0e8"
+                    aria-invalid={hexInvalid}
+                    bind:value={hexInput}
+                    on:input={() => (hexInvalid = false)}
+                    on:blur={commitHex}
+                    on:keydown={handleHexKeydown}
+                  />
+                </label>
                 <button class="btn reset-accent" on:click={() => accent.reset()} disabled={$accent === null}>
                   Reset to default
                 </button>
@@ -306,6 +367,7 @@
             </div>
             <div class="setting-description">
               Drag the dot to recolor the whole app — the angle picks the color, the distance from the center picks how strong it is.
+              You can also type a hex code; its brightness is set by the theme, so only the color and its strength are taken from it.
             </div>
           </div>
         </div>
@@ -822,6 +884,21 @@
     box-shadow:
       0 0 0 2px var(--color-surface-elevated),
       0 0 0 4px var(--color-primary);
+  }
+
+  .hex-field {
+    gap: var(--space-1);
+  }
+
+  .hex-input {
+    width: 7rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+  }
+
+  .hex-input.invalid {
+    border-color: var(--color-warning);
+    box-shadow: 0 0 0 1px var(--color-warning);
   }
 
   .reset-accent {

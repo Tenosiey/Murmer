@@ -34,7 +34,7 @@
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { categories } from '$lib/stores/categories';
-  import type { CategoryInfo } from '$lib/types';
+  import type { CategoryInfo, ChannelInfo } from '$lib/types';
   import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
   import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
@@ -75,7 +75,8 @@
     MIN_EPHEMERAL_SECONDS,
     MAX_EPHEMERAL_SECONDS,
     VOICE_QUALITY_PRESETS,
-    DEFAULT_VOICE_PRESET
+    DEFAULT_VOICE_PRESET,
+    DEFAULT_CHANNEL_NAME
   } from '$lib/chat/constants';
 
   let serverStrength = 0;
@@ -286,8 +287,16 @@
   });
   $: pinnedEntries = $pinned[currentChatChannelId] ?? [];
 
+  /* The server drops every connection into "general" and sends its history with
+     the presence response, so the initial pick has to be "general" too — the
+     channel list arrives sorted by name, which puts anything sorting ahead of
+     it at index 0. The fallback only covers servers seeded without "general". */
+  function defaultChannel(list: ChannelInfo[]): ChannelInfo {
+    return list.find((c) => c.name === DEFAULT_CHANNEL_NAME) ?? list[0];
+  }
+
   $: if ($channels.length && !$channels.some((c) => c.id === currentChatChannelId)) {
-    currentChatChannelId = $channels[0].id;
+    currentChatChannelId = defaultChannel($channels).id;
     unreadMarkerAfterId = unread.getLastRead(currentChatChannelId);
     unread.setActive(currentChatChannelId);
     loadingHistory = false;

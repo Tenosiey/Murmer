@@ -60,7 +60,15 @@ pub fn run() -> tauri::Result<()> {
             let open = MenuItemBuilder::with_id("open", "Open").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "Close").build(app)?;
             let tray_menu = MenuBuilder::new(app).item(&open).item(&quit).build()?;
-            TrayIconBuilder::new().menu(&tray_menu).build(app)?;
+            // The tray icon is built here instead of being declared via
+            // `app.trayIcon` in tauri.conf.json: that config makes Tauri create
+            // its own menu-less tray icon on top of this one, leaving two
+            // entries in the notification area.
+            let mut tray = TrayIconBuilder::new().menu(&tray_menu).tooltip("Murmer");
+            if let Some(icon) = app.default_window_icon() {
+                tray = tray.icon(icon.clone());
+            }
+            tray.build(app)?;
             Ok(())
         })
         .on_menu_event(|app, event| match event.id().as_ref() {
