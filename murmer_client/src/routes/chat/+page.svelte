@@ -34,7 +34,7 @@
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { categories } from '$lib/stores/categories';
-  import type { CategoryInfo, ChannelInfo } from '$lib/types';
+  import type { CategoryInfo, ChannelInfo, ContextMenuItem } from '$lib/types';
   import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
   import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
@@ -1137,15 +1137,17 @@
     if (!userRoleMenuTarget) return [];
     const target = userRoleMenuTarget;
     const currentRole = $roles[target]?.role;
-    const items: { label: string; action: () => void; danger?: boolean; icon?: string }[] = [];
+    const items: ContextMenuItem[] = [];
     items.push({ label: 'Send Message', action: () => openDm(target) });
     if (currentUserIsOwner) {
-      for (const role of ASSIGNABLE_ROLES) {
-        if (currentRole?.toLowerCase() === role.toLowerCase()) continue;
-        items.push({ label: `Set as ${role}`, action: () => assignRole(target, role) });
-      }
+      const roleItems: ContextMenuItem[] = ASSIGNABLE_ROLES.filter(
+        (role) => currentRole?.toLowerCase() !== role.toLowerCase()
+      ).map((role) => ({ label: role, action: () => assignRole(target, role) }));
       if (currentRole) {
-        items.push({ label: 'Remove Role', action: () => removeRole(target), danger: true });
+        roleItems.push({ label: 'Remove Role', action: () => removeRole(target), danger: true });
+      }
+      if (roleItems.length) {
+        items.push({ label: 'Set Role', children: roleItems });
       }
     }
     if (canModerate(target)) {

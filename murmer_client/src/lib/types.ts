@@ -96,3 +96,13 @@ export interface ScreenShareActive {
   userId: string;
   channelId: number;
 }
+
+/** Entry of a right-click menu. Items with `children` open a submenu instead
+ *  of running an action. */
+export interface ContextMenuItem {
+  label: string;
+  action?: () => void;
+  danger?: boolean;
+  icon?: string;
+  children?: ContextMenuItem[];
+}
