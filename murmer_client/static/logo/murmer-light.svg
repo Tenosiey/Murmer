@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Murmer">
+  <rect width="128" height="128" rx="30" fill="#f7faee" />
+  <path
+    transform="translate(24 24) scale(0.8)"
+    d="M 18 82 L 18 18 L 38 18 L 50 44 L 62 18 L 82 18 L 82 82 L 62 82 L 62 56 L 50 78 L 38 56 L 38 82 Z"
+    fill="#84b800"
+  />
+</svg>

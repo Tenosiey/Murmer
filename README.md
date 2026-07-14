@@ -1,4 +1,11 @@
-# Murmer
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="murmer_client/static/logo/murmer-dark.svg">
+    <img src="murmer_client/static/logo/murmer-light.svg" alt="Murmer" width="96" height="96">
+  </picture>
+</p>
+
+<h1 align="center">Murmer</h1>
 
 Murmer is a self-hostable voice and text chat prototype. The project is split
 into a Rust WebSocket server and a cross-platform desktop client powered by
@@ -49,6 +56,39 @@ Key documentation for contributors:
 - `murmer_server/AGENTS.md` – server-specific tips
 - `murmer_server/BOT_API.md` – REST API reference for bots
 - `CONTRIBUTING.md` – code style and PR guidelines
+
+## Brand
+
+The logo is an "M" cut as negative space out of a rounded tile. It ships in two
+variants that follow the app's theme: a lime tile with a dark mark for dark
+mode, and a near-white tile with a green mark for light mode.
+
+| | Tile | Mark |
+| --- | --- | --- |
+| Dark | `#c8ff3e` | `#141a05` |
+| Light | `#f7faee` | `#84b800` |
+
+Both variants sit on the same hue, which is also the app's default theme color —
+picking any other color on the theme wheel re-tints the UI but never the logo.
+
+Where the assets live:
+
+- `murmer_client/static/logo/murmer-{dark,light}.svg` – favicon and README
+- `murmer_client/src/lib/components/MurmerLogo.svelte` – in-app logo; reads the
+  `--color-brand-*` tokens, so it switches with the theme on its own
+- `murmer_client/src-tauri/icons/` – installer, window and tray icons
+
+The window/installer icons are generated from the SVG rather than hand-edited.
+After changing the artwork, regenerate them from `murmer_client/`:
+
+```bash
+npx tauri icon static/logo/murmer-dark.svg -o src-tauri/icons
+```
+
+That command also emits `android/`, `ios/` and `64x64.png`, which this
+desktop-only project does not bundle — delete them again. The tray PNGs
+(`icons/tray-{dark,light}.png`) are separate; regenerate each with
+`npx tauri icon static/logo/murmer-<variant>.svg -o <tmp> -p 64`.
 
 ## Requirements
 
