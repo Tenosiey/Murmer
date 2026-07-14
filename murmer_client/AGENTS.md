@@ -33,6 +33,14 @@ uses Inter (`--font-sans`); JetBrains Mono (`--font-mono`) is reserved for
 code, timestamps and server addresses. Icons are inline stroke SVGs
 (1.8 stroke width) — no emoji as icons.
 
+The app logo is `src/lib/components/MurmerLogo.svelte` — reuse it instead of
+inlining the artwork. It draws itself from the fixed `--color-brand-tile` /
+`--color-brand-mark` tokens, which the light/dark theme switches; those two are
+deliberately exempt from the accent re-tinting that `--color-*` gets. The same
+artwork is duplicated in `static/logo/` (favicon) and `src-tauri/icons/`
+(installer/tray) because those are consumed outside the DOM — keep all three in
+sync, see the Brand section in `README.md`.
+
 ## Security considerations
 - Key pairs are stored in `localStorage`; treat this as acceptable for the
   prototype but evaluate more secure storage for production.

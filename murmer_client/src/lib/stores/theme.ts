@@ -1,14 +1,44 @@
 import { writable, get } from 'svelte/store';
+import { assets } from '$app/paths';
 
 export type Theme = 'dark' | 'light';
 
 const STORAGE_KEY = 'murmer-theme';
 const ACCENT_KEY = 'murmer-accent';
 
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+/**
+ * Points the favicon at the matching logo variant. The in-app logo
+ * (`MurmerLogo.svelte`) needs no help here — it reads the `--color-brand-*`
+ * tokens, which the `data-theme` attribute below already switches. Only the
+ * favicon is outside the document's styling reach.
+ */
+function applyFavicon(value: Theme) {
+  if (typeof document === 'undefined') return;
+  const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  // `assets` mirrors the `%sveltekit.assets%` prefix app.html uses for the
+  // initial href, so both agree if a base path is ever configured.
+  if (link) link.href = `${assets}/logo/murmer-${value}.svg`;
+}
+
+/**
+ * Swaps the system tray icon to match. No-op outside the Tauri shell, and
+ * failures are non-fatal: a stale tray icon must never break theming.
+ */
+function applyTrayIcon(value: Theme) {
+  if (!isTauri) return;
+  import('@tauri-apps/api/core')
+    .then(({ invoke }) => invoke('set_tray_theme', { theme: value }))
+    .catch((e) => console.error('Failed to update tray icon', e));
+}
+
 function applyTheme(value: Theme) {
   if (typeof document !== 'undefined') {
     document.documentElement.dataset.theme = value;
   }
+  applyFavicon(value);
+  applyTrayIcon(value);
 }
 
 function createThemeStore() {
@@ -57,8 +87,10 @@ export interface Accent {
   saturation: number;
 }
 
-/** Wheel position matching the built-in cyan accent (#27c0e8). */
-export const DEFAULT_ACCENT: Accent = { hue: 193, saturation: 78 };
+/** Wheel position matching the built-in lime accent from the logo (#b0e52a).
+    The built-in palette in +layout.svelte is this position rendered through
+    the shape tables below, so picking it changes nothing — keep them in sync. */
+export const DEFAULT_ACCENT: Accent = { hue: 77, saturation: 78 };
 
 /* Saturation/lightness pairs mirroring the handcrafted palettes in
    +layout.svelte. The saturation column is the value at the default accent

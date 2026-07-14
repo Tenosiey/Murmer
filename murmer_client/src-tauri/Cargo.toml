@@ -15,7 +15,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.5", features = [] }
 
 [dependencies]
-tauri = { version = "2.10", features = ["tray-icon"] }
+# "image-png" lets the tray swap between the bundled light/dark logo PNGs at
+# runtime (see `set_tray_theme` in src/lib.rs).
+tauri = { version = "2.10", features = ["tray-icon", "image-png"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"

@@ -2,6 +2,35 @@
 //!
 //! Sets up the system tray and window event handlers before running the app.
 
+/// Id the tray is registered under so `set_tray_theme` can look it back up.
+const TRAY_ID: &str = "main";
+
+/// The two logo variants, baked into the binary so the tray can switch between
+/// them without touching the filesystem at runtime.
+const TRAY_ICON_DARK: &[u8] = include_bytes!("../icons/tray-dark.png");
+const TRAY_ICON_LIGHT: &[u8] = include_bytes!("../icons/tray-light.png");
+
+fn tray_icon(theme: &str) -> tauri::Result<tauri::image::Image<'static>> {
+    let bytes = if theme == "light" {
+        TRAY_ICON_LIGHT
+    } else {
+        TRAY_ICON_DARK
+    };
+    tauri::image::Image::from_bytes(bytes)
+}
+
+/// Switches the tray icon to the light or dark logo. Called by the client
+/// whenever the theme store changes (see `src/lib/stores/theme.ts`); any value
+/// other than "light" falls back to the dark logo.
+#[tauri::command]
+fn set_tray_theme(app: tauri::AppHandle, theme: String) -> Result<(), String> {
+    let tray = app
+        .tray_by_id(TRAY_ID)
+        .ok_or_else(|| "tray icon not found".to_string())?;
+    let icon = tray_icon(&theme).map_err(|e| e.to_string())?;
+    tray.set_icon(Some(icon)).map_err(|e| e.to_string())
+}
+
 /// WebKitGTK's DMA-BUF renderer is known to glitch or fall back to software
 /// rendering on the proprietary NVIDIA driver (tauri-apps/tauri#9304).
 /// Disable it there unless the user already chose a setting themselves.
@@ -55,6 +84,7 @@ pub fn run() -> tauri::Result<()> {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![set_tray_theme])
         .setup(|app| {
             // create tray menu
             let open = MenuItemBuilder::with_id("open", "Open").build(app)?;
@@ -64,11 +94,15 @@ pub fn run() -> tauri::Result<()> {
             // `app.trayIcon` in tauri.conf.json: that config makes Tauri create
             // its own menu-less tray icon on top of this one, leaving two
             // entries in the notification area.
-            let mut tray = TrayIconBuilder::new().menu(&tray_menu).tooltip("Murmer");
-            if let Some(icon) = app.default_window_icon() {
-                tray = tray.icon(icon.clone());
-            }
-            tray.build(app)?;
+            //
+            // Starts on the dark logo to match the theme store's default; the
+            // client calls `set_tray_theme` on startup to correct it when the
+            // user is on the light theme.
+            TrayIconBuilder::with_id(TRAY_ID)
+                .menu(&tray_menu)
+                .tooltip("Murmer")
+                .icon(tray_icon("dark")?)
+                .build(app)?;
             Ok(())
         })
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -96,8 +130,34 @@ pub fn run() -> tauri::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::tray_icon;
     use std::str::FromStr;
     use tauri_plugin_global_shortcut::Shortcut;
+
+    /// Both logo variants are baked in with `include_bytes!` and only decoded
+    /// when the theme changes, so a truncated file or a missing "image-png"
+    /// feature would otherwise stay hidden until a user toggles the theme.
+    #[test]
+    fn tray_icons_decode_for_both_themes() {
+        for theme in ["dark", "light"] {
+            let icon = tray_icon(theme).unwrap_or_else(|e| panic!("{theme} tray icon: {e}"));
+            assert_eq!(
+                (icon.width(), icon.height()),
+                (64, 64),
+                "{theme} tray icon has an unexpected size"
+            );
+        }
+    }
+
+    /// The client only ever sends "dark"/"light", but the command takes a
+    /// free-form string over IPC — anything else must degrade to the dark
+    /// logo instead of leaving the tray blank.
+    #[test]
+    fn unknown_theme_falls_back_to_the_dark_icon() {
+        let fallback = tray_icon("wat").expect("fallback icon");
+        let dark = tray_icon("dark").expect("dark icon");
+        assert_eq!(fallback.rgba(), dark.rgba());
+    }
 
     /// The web client registers its hotkey combos (see
     /// `src/lib/stores/hotkeys.ts`) verbatim as global shortcuts, so the

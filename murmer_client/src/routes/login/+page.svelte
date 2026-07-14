@@ -8,6 +8,7 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
+  import MurmerLogo from '$lib/components/MurmerLogo.svelte';
   let username = '';
 
   onMount(() => {
@@ -25,6 +26,10 @@
 
 <main class="login-page">
   <div class="login-column">
+    <div class="brand">
+      <MurmerLogo size={48} wordmark />
+    </div>
+
     <header class="login-intro">
       <div class="eyebrow">Welcome back</div>
       <h1>Sign in to Murmer</h1>
@@ -78,6 +83,11 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-5);
+  }
+
+  .brand {
+    display: flex;
+    justify-content: center;
   }
 
   .login-intro {

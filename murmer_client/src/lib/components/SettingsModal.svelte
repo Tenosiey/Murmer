@@ -18,6 +18,7 @@
   import { serverInfo } from '$lib/stores/serverInfo';
   import { theme, accent, DEFAULT_ACCENT, accentToHex, hexToAccent, type Accent } from '$lib/stores/theme';
   import ThemeWheel from '$lib/components/ThemeWheel.svelte';
+  import MurmerLogo from '$lib/components/MurmerLogo.svelte';
   import { loadKeyPair } from '$lib/keypair';
   import { onMount, onDestroy } from 'svelte';
   import { PushToTalkManager } from '$lib/voice/ptt';
@@ -72,7 +73,11 @@
   }
 
   // Preset theme colors shown next to the wheel; each is a wheel position.
+  // "Lime" is the brand color and the default — both logo variants (#c8ff3e
+  // and #84b800) sit on this hue and differ only in lightness, which the
+  // wheel does not carry.
   const ACCENT_PRESETS = [
+    { name: 'Lime', hue: DEFAULT_ACCENT.hue, saturation: DEFAULT_ACCENT.saturation },
     { name: 'Sky', hue: 215, saturation: 78 },
     { name: 'Indigo', hue: 250, saturation: 68 },
     { name: 'Violet', hue: 285, saturation: 68 },
@@ -646,6 +651,7 @@
 
           <div class="setting-group">
             <div class="about-header">
+              <MurmerLogo size={32} />
               <span class="about-name">Murmer</span>
               <span class="setting-value">v{APP_VERSION}</span>
             </div>
@@ -1123,7 +1129,7 @@
 
   .about-header {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: var(--space-3);
   }
 

@@ -37,26 +37,37 @@
     --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, 'Menlo', monospace;
 
-    /* Color system: dark blue-gray surfaces with a single cyan accent.
-       Magenta/pink is reserved for errors and destructive actions. */
-    --color-bg: #0b0e14;
-    --color-surface: #11151d;
-    --color-surface-elevated: #171c26;
-    --color-surface-raised: #1f2531;
-    --color-surface-outline: #262d3b;
-    --color-outline-strong: #374052;
-    --color-on-surface: #e8ecf4;
-    --color-on-surface-variant: #b4bccc;
-    --color-muted: #8a94a8;
-    --color-primary: #27c0e8;
-    --color-on-primary: #06222c;
-    --color-primary-container: #0d3d4d;
+    /* Color system: dark olive surfaces with the brand's lime accent.
+       Magenta/pink is reserved for errors and destructive actions.
+       These values are the DARK_SHAPE table in `stores/theme.ts` rendered at
+       the brand hue (77) — i.e. exactly what picking DEFAULT_ACCENT on the
+       theme wheel produces. Keep the two in sync: the wheel's "reset to
+       default" drops back to this palette. */
+    --color-bg: #11140b;
+    --color-surface: #1a1d11;
+    --color-surface-elevated: #222617;
+    --color-surface-raised: #2d3220;
+    --color-surface-outline: #353b26;
+    --color-outline-strong: #4b5337;
+    --color-on-surface: #f0f3e7;
+    --color-on-surface-variant: #c4cbb3;
+    --color-muted: #a0a88a;
+    --color-primary: #b0e52a;
+    --color-on-primary: #222d06;
+    --color-primary-container: #3c4e0d;
     --color-secondary: var(--color-primary);
     --color-error: #f0517d;
     --color-tertiary: var(--color-error);
     --color-success: #3ecf8e;
     --color-warning: #e8a33d;
-    --color-overlay: rgba(6, 9, 15, 0.66);
+    --color-overlay: rgba(9, 11, 6, 0.66);
+
+    /* Brand: the logo's own colors, taken straight from the design. Kept out
+       of the accent-themed tokens above on purpose — re-tinting the UI must
+       not repaint the logo. `MurmerLogo.svelte` reads these, so the mark
+       follows the light/dark theme without any scripting. */
+    --color-brand-tile: #c8ff3e;
+    --color-brand-mark: #141a05;
 
     /* Spacing scale (4px base). Use these for all padding, margin and gap. */
     --space-1: 0.25rem;
@@ -107,28 +118,33 @@
     --z-top: 10000;
   }
 
+  /* LIGHT_SHAPE from `stores/theme.ts` at the brand hue — see the note above. */
   :global(html[data-theme='light']) {
     color-scheme: light;
-    --color-bg: #eef1f6;
-    --color-surface: #f7f9fc;
+    --color-bg: #f4f6ee;
+    --color-surface: #fbfcf8;
     --color-surface-elevated: #ffffff;
-    --color-surface-raised: #eaeef5;
-    --color-surface-outline: #d7dde8;
-    --color-outline-strong: #b9c2d2;
-    --color-on-surface: #171c26;
-    --color-on-surface-variant: #3d4658;
-    --color-muted: #5c6678;
-    --color-primary: #0b7ea3;
+    --color-surface-raised: #f2f5ea;
+    --color-surface-outline: #e4e9d8;
+    --color-outline-strong: #cad1b7;
+    --color-on-surface: #222617;
+    --color-on-surface-variant: #50573d;
+    --color-muted: #71795d;
+    --color-primary: #77a20b;
     --color-on-primary: #ffffff;
-    --color-primary-container: #d0eef8;
+    --color-primary-container: #ecf8ce;
     --color-error: #c22a5b;
     --color-success: #0d8f56;
     --color-warning: #a36b0a;
-    --color-overlay: rgba(23, 28, 38, 0.4);
-    --shadow-xs: 0 1px 2px rgba(23, 28, 38, 0.08);
-    --shadow-sm: 0 2px 8px rgba(23, 28, 38, 0.1);
-    --shadow-md: 0 8px 24px rgba(23, 28, 38, 0.14);
-    --shadow-lg: 0 16px 48px rgba(23, 28, 38, 0.18);
+    --color-overlay: rgba(34, 38, 23, 0.4);
+    --shadow-xs: 0 1px 2px rgba(34, 38, 23, 0.08);
+    --shadow-sm: 0 2px 8px rgba(34, 38, 23, 0.1);
+    --shadow-md: 0 8px 24px rgba(34, 38, 23, 0.14);
+    --shadow-lg: 0 16px 48px rgba(34, 38, 23, 0.18);
+
+    /* Light-mode logo: green M on the near-white tile. */
+    --color-brand-tile: #f7faee;
+    --color-brand-mark: #84b800;
   }
 
   :global(html),
