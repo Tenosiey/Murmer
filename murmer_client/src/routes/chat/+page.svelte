@@ -1151,10 +1151,15 @@
       }
     }
     if (canModerate(target)) {
-      items.push({ label: 'Mute (10 min)', action: () => muteUser(target, 600) });
-      items.push({ label: 'Mute (1 hour)', action: () => muteUser(target, 3600) });
-      items.push({ label: 'Mute (until lifted)', action: () => muteUser(target) });
-      items.push({ label: 'Unmute', action: () => unmuteUser(target) });
+      items.push({
+        label: 'Mute',
+        children: [
+          { label: '10 minutes', action: () => muteUser(target, 600) },
+          { label: '1 hour', action: () => muteUser(target, 3600) },
+          { label: 'Until lifted', action: () => muteUser(target) },
+          { label: 'Unmute', action: () => unmuteUser(target) }
+        ]
+      });
       if ($onlineUsers.includes(target)) {
         items.push({ label: 'Kick User', danger: true, action: () => kickUser(target) });
       }
