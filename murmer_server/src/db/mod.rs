@@ -16,6 +16,7 @@
 //! - [`pins`] – persisted message pins per channel
 //! - [`reactions`] – emoji reaction operations
 //! - [`roles`] – user role persistence
+//! - [`users`] – user name to public key bindings
 
 mod channels;
 mod direct_messages;
@@ -24,6 +25,7 @@ mod moderation;
 mod pins;
 mod reactions;
 mod roles;
+mod users;
 
 pub use channels::*;
 pub use direct_messages::*;
@@ -32,6 +34,7 @@ pub use moderation::*;
 pub use pins::*;
 pub use reactions::*;
 pub use roles::*;
+pub use users::*;
 
 use std::path::Path;
 use tracing::error;
@@ -87,7 +90,23 @@ pub async fn init(db_path: &str) -> Result<Db, DbError> {
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        Ok(())
+    })
+    .await?;
 
+    run_schema(&conn).await.map_err(|e| {
+        error!("Failed to initialize database schema: {e}");
+        e
+    })?;
+
+    Ok(conn)
+}
+
+/// Create any missing tables, indexes and triggers, and backfill the
+/// full-text index. Idempotent; runs on every startup so schema additions
+/// apply to existing databases.
+pub async fn run_schema(db: &Db) -> Result<(), DbError> {
+    db.call_db(|conn| {
         conn.execute_batch(&format!(
             r#"CREATE TABLE IF NOT EXISTS categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,6 +142,11 @@ CREATE TABLE IF NOT EXISTS roles (
     public_key TEXT PRIMARY KEY,
     role TEXT NOT NULL,
     color TEXT
+);
+CREATE TABLE IF NOT EXISTS user_keys (
+    user_name TEXT PRIMARY KEY,
+    public_key TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT ({NOW_UTC})
 );
 CREATE TABLE IF NOT EXISTS bans (
     public_key TEXT PRIMARY KEY,
@@ -166,13 +190,33 @@ CREATE TABLE IF NOT EXISTS bots (
 INSERT OR IGNORE INTO channels (name) VALUES ('general');
 "#
         ))?;
+
+        // Full-text index over the `text` field of the message JSON, kept in
+        // sync by triggers. The backfill covers databases created before the
+        // index existed (and is a no-op afterwards). `json_valid` guards the
+        // triggers because a malformed row would otherwise abort the write.
+        conn.execute_batch(
+            r#"CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(text);
+CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
+    INSERT INTO messages_fts (rowid, text)
+    VALUES (new.id, CASE WHEN json_valid(new.content)
+        THEN coalesce(json_extract(new.content, '$.text'), '') ELSE '' END);
+END;
+CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE OF content ON messages BEGIN
+    UPDATE messages_fts SET text = CASE WHEN json_valid(new.content)
+        THEN coalesce(json_extract(new.content, '$.text'), '') ELSE '' END
+    WHERE rowid = new.id;
+END;
+CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+    DELETE FROM messages_fts WHERE rowid = old.id;
+END;
+INSERT INTO messages_fts (rowid, text)
+SELECT id, CASE WHEN json_valid(content)
+    THEN coalesce(json_extract(content, '$.text'), '') ELSE '' END
+FROM messages WHERE id NOT IN (SELECT rowid FROM messages_fts);
+"#,
+        )?;
         Ok(())
     })
     .await
-    .map_err(|e| {
-        error!("Failed to initialize database schema: {e}");
-        e
-    })?;
-
-    Ok(conn)
 }

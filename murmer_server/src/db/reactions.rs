@@ -8,8 +8,8 @@ use super::{Db, DbCall, DbError};
 /// Retrieve reactions for a set of message IDs, grouped by message and emoji.
 pub async fn get_reactions_for_messages(
     db: &Db,
-    ids: &[i32],
-) -> Result<HashMap<i32, HashMap<String, Vec<String>>>, DbError> {
+    ids: &[i64],
+) -> Result<HashMap<i64, HashMap<String, Vec<String>>>, DbError> {
     if ids.is_empty() {
         return Ok(HashMap::new());
     }
@@ -27,7 +27,7 @@ pub async fn get_reactions_for_messages(
             let rows = stmt
                 .query_map(rusqlite::params_from_iter(ids.iter()), |row| {
                     Ok((
-                        row.get::<_, i32>(0)?,
+                        row.get::<_, i64>(0)?,
                         row.get::<_, String>(1)?,
                         row.get::<_, String>(2)?,
                     ))
@@ -37,7 +37,7 @@ pub async fn get_reactions_for_messages(
         })
         .await?;
 
-    let mut map: HashMap<i32, HashMap<String, Vec<String>>> = HashMap::new();
+    let mut map: HashMap<i64, HashMap<String, Vec<String>>> = HashMap::new();
     for (message_id, emoji, user) in rows {
         let emoji_map = map.entry(message_id).or_default();
         let users = emoji_map.entry(emoji).or_default();
@@ -57,7 +57,7 @@ pub async fn get_reactions_for_messages(
 /// Retrieve all reactions for a single message, grouped by emoji.
 pub async fn get_reaction_summary(
     db: &Db,
-    message_id: i32,
+    message_id: i64,
 ) -> Result<HashMap<String, Vec<String>>, DbError> {
     let mut map = get_reactions_for_messages(db, &[message_id]).await?;
     Ok(map.remove(&message_id).unwrap_or_default())
@@ -66,7 +66,7 @@ pub async fn get_reaction_summary(
 /// Add a reaction to a message. Duplicate reactions by the same user are ignored.
 pub async fn add_reaction(
     db: &Db,
-    message_id: i32,
+    message_id: i64,
     user: &str,
     emoji: &str,
 ) -> Result<(), DbError> {
@@ -85,7 +85,7 @@ pub async fn add_reaction(
 /// Remove a reaction from a message.
 pub async fn remove_reaction(
     db: &Db,
-    message_id: i32,
+    message_id: i64,
     user: &str,
     emoji: &str,
 ) -> Result<(), DbError> {

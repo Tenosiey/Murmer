@@ -1,5 +1,5 @@
 # Builds, signs and publishes a Windows release (NSIS installer + updater
-# artifacts + latest.json) whenever a version tag like v2026.3.10-alpha.2 is
+# artifacts + latest.json) whenever a version tag like v2026.710.0 is
 # pushed. The in-app updater reads latest.json from the latest GitHub release.
 name: Release
 

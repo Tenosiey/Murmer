@@ -9,15 +9,18 @@ Use the checkboxes to track progress.
 
 ### 🗨️ Chat Features
 
+- [ ] Ban user via the user context menu (kick exists there already)
 - [ ] Bot integration/webhooks (basic REST bot API exists, no webhooks)
 - [x] Channel categories in the client UI (grouping, collapse, context-menu management)
 - [x] Channel description/topics (persisted on the server, synced to all clients)
 - [x] Channel permissions and moderation (role-gated kick/ban/mute with persistence)
 - [ ] Custom server emojis
+- [ ] Custom sort order for channels and categories
 - [x] Direct messages between users
+- [ ] Drag & drop channels into categories
 - [x] Edit sent messages
 - [x] File sharing beyond images
-- [ ] Full-text message search via SQLite FTS5 (current search is an unindexed LIKE scan)
+- [x] Full-text message search via SQLite FTS5 (indexed over message text, kept in sync by triggers)
 - [x] Link previews (OpenGraph embeds)
 - [x] Message threading/replies
 - [x] Paste images from clipboard / drag & drop
@@ -66,7 +69,7 @@ Use the checkboxes to track progress.
 - [ ] Real-time collaborative code editing
 - [ ] Scheduled voice events / calendar integration
 - [ ] Translation services for international teams
-- [ ] Widen message IDs from i32 to i64 throughout the server (SQLite rowids are 64-bit)
+- [x] Widen message IDs from i32 to i64 throughout the server (SQLite rowids are 64-bit)
 
 ---
 

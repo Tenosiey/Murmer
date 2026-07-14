@@ -15,6 +15,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-key-length': 'Authentication failed: invalid key.',
   'invalid-encoding': 'Authentication failed: invalid key encoding.',
   'invalid-username': 'That username is not allowed on this server.',
+  'username-taken': 'That username is already in use by someone else on this server.',
   banned: 'You are banned from this server.',
   'invalid-channel-name': 'That channel name is not allowed.',
   'channel-permission-denied': 'You do not have permission to manage channels on this server.',
@@ -84,6 +85,7 @@ const FATAL_CONNECTION_ERRORS = new Set([
   'invalid-key-length',
   'invalid-encoding',
   'invalid-username',
+  'username-taken',
   'banned'
 ]);
 

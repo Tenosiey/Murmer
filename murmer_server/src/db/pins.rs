@@ -13,7 +13,7 @@ use super::{Db, DbCall, DbError};
 /// Returns `false` when the channel already carries `max_per_channel` pins.
 pub async fn add_pin(
     db: &Db,
-    message_id: i32,
+    message_id: i64,
     channel_id: i32,
     pinned_by: &str,
     max_per_channel: i64,
@@ -51,7 +51,7 @@ pub async fn add_pin(
 }
 
 /// Unpin a message. Returns the channel it was pinned in, if it was pinned.
-pub async fn remove_pin(db: &Db, message_id: i32) -> Result<Option<i32>, DbError> {
+pub async fn remove_pin(db: &Db, message_id: i64) -> Result<Option<i32>, DbError> {
     db.call_db(move |conn| {
         let channel_id = conn
             .query_row(

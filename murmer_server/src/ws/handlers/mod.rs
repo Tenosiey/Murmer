@@ -455,11 +455,18 @@ async fn handle_voice_join(
         for info in map.values_mut() {
             info.users.remove(u);
         }
-        if let Some(entry) = map.get_mut(&ch_id) {
-            entry.users.insert(u.to_string());
-            *voice_channel = Some(ch_id);
-        }
+        let joined = match map.get_mut(&ch_id) {
+            Some(entry) => {
+                entry.users.insert(u.to_string());
+                *voice_channel = Some(ch_id);
+                true
+            }
+            None => false,
+        };
         drop(map);
+        if !joined {
+            return;
+        }
         broadcast_voice(state, ch_id).await;
         let msg = serde_json::json!({
             "type": "voice-join",
@@ -653,12 +660,7 @@ async fn handle_set_role(
         return;
     };
 
-    let target_key = {
-        let keys = state.user_keys.lock().await;
-        keys.get(target_user).cloned()
-    };
-
-    let Some(key) = target_key else {
+    let Some(key) = lookup_user_key(state, target_user).await else {
         send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
         return;
     };
@@ -713,12 +715,7 @@ async fn handle_remove_role(
         return;
     };
 
-    let target_key = {
-        let keys = state.user_keys.lock().await;
-        keys.get(target_user).cloned()
-    };
-
-    let Some(key) = target_key else {
+    let Some(key) = lookup_user_key(state, target_user).await else {
         send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
         return;
     };

@@ -167,6 +167,17 @@ immediately for all connected clients.
 The `POST /role` endpoint (guarded by `ADMIN_TOKEN`) still works for scripted or
 external integrations. See the configuration table above for details.
 
+### Releasing a claimed user name
+
+A user name is permanently bound to the first Ed25519 key that authenticates
+with it, so nobody can impersonate an offline user. If someone loses their
+keypair (e.g. after a reinstall), release the name so their new key can claim
+it:
+
+```bash
+docker exec <server-container> murmer_server unbind-name <user_name>
+```
+
 ## Windows build instructions
 
 1. Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
@@ -261,6 +272,10 @@ must not be marked as pre-release — the updater endpoint
 - Authentication uses Ed25519 signatures; timestamps are validated and bound to
   per-user nonces. A claimed public key is always verified — also on servers
   without a password — so roles and moderation identity cannot be spoofed.
+- A user name stays permanently bound to the public key that first used it
+  (persisted in the database), so another client cannot take over an offline
+  user's name and inherit their role. The `unbind-name` CLI subcommand
+  releases a name when a user loses their keypair.
 - IP-based rate limiting protects authentication and chat message throughput.
 - Filenames are sanitised, uploads are limited to a safe-list of extensions and image contents are inspected before saving.
 - Admin token and server password checks use constant-time comparisons to

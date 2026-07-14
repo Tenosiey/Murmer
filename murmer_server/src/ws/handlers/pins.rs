@@ -50,11 +50,8 @@ async fn broadcast_pins(state: &Arc<AppState>, channel_id: i32) {
 }
 
 /// Extract the target message id or reply with a pin error.
-async fn require_message_id(sender: &mut SplitSink<WebSocket, Message>, v: &Value) -> Option<i32> {
-    let id = v
-        .get("messageId")
-        .and_then(|m| m.as_i64())
-        .and_then(|m| i32::try_from(m).ok());
+async fn require_message_id(sender: &mut SplitSink<WebSocket, Message>, v: &Value) -> Option<i64> {
+    let id = v.get("messageId").and_then(|m| m.as_i64());
     if id.is_none() {
         send_error(sender, errors::PIN_TARGET_NOT_FOUND).await;
     }
