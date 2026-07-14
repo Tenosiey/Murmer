@@ -2,6 +2,10 @@ import type { ChannelNotificationPreference } from '../stores/channelNotificatio
 
 export const MODERATOR_ROLES = ['Admin', 'Mod', 'Owner'] as const;
 
+/* The channel every server is seeded with. The server places new connections
+   into it and refuses to delete it, so the client can rely on it existing. */
+export const DEFAULT_CHANNEL_NAME = 'general';
+
 export const MESSAGE_INPUT_MAX_HEIGHT = 360;
 export const MAX_TOPIC_LENGTH = 256;
 export const PIN_PREVIEW_LIMIT = 120;
