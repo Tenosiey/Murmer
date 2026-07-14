@@ -42,7 +42,17 @@
     voiceChannels: VoiceChannelInfo[];
   }
 
+  interface DraggedChannel {
+    id: number;
+    voice: boolean;
+    categoryId: number | null;
+  }
+
   const COLLAPSED_KEY = 'murmer_collapsed_categories';
+  const UNCATEGORIZED_KEY = '__uncategorized';
+  /* Custom MIME type so the chat page's file-drop zone (which only reacts to
+     dragged files) never mistakes a channel drag for an upload. */
+  const CHANNEL_DRAG_MIME = 'application/x-murmer-channel';
 
   function loadCollapsed(): Set<number> {
     if (!browser) return new Set();
@@ -65,6 +75,72 @@
     if (browser) {
       localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsedCategories]));
     }
+  }
+
+  /* Channel drag & drop. The dragged channel is kept in component state (a drag
+     never leaves this component) while the DataTransfer payload only exists so
+     the browser reports a valid drag type during `dragover`. Permission to move
+     a channel is enforced by the server, mirroring the "Move to" context menu. */
+  let draggedChannel: DraggedChannel | null = null;
+  let dragOverKey: string | null = null;
+
+  function groupKey(group: CategoryGroup): string {
+    return group.category ? String(group.category.id) : UNCATEGORIZED_KEY;
+  }
+
+  function handleChannelDragStart(
+    event: DragEvent,
+    channel: ChannelInfo | VoiceChannelInfo,
+    voice: boolean
+  ) {
+    draggedChannel = { id: channel.id, voice, categoryId: channel.categoryId ?? null };
+    if (!event.dataTransfer) return;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData(CHANNEL_DRAG_MIME, String(channel.id));
+  }
+
+  function handleChannelDragEnd() {
+    draggedChannel = null;
+    dragOverKey = null;
+  }
+
+  /** A channel can only be dropped on a category it is not already in. */
+  function canDropOn(group: CategoryGroup, dragged: DraggedChannel | null): boolean {
+    return dragged !== null && dragged.categoryId !== (group.category?.id ?? null);
+  }
+
+  function handleGroupDragOver(event: DragEvent, group: CategoryGroup) {
+    if (!canDropOn(group, draggedChannel)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    dragOverKey = groupKey(group);
+  }
+
+  function handleGroupDragLeave(event: DragEvent, group: CategoryGroup) {
+    // Ignore moves between descendants of the same group.
+    const related = event.relatedTarget;
+    const current = event.currentTarget;
+    if (related instanceof Node && current instanceof Node && current.contains(related)) return;
+    if (dragOverKey === groupKey(group)) dragOverKey = null;
+  }
+
+  function handleGroupDrop(event: DragEvent, group: CategoryGroup) {
+    const dragged = draggedChannel;
+    dragOverKey = null;
+    if (!canDropOn(group, dragged) || !dragged) return;
+    event.preventDefault();
+    const categoryId = group.category?.id ?? null;
+    channels.move(dragged.id, categoryId, dragged.voice);
+    // Reveal the channel in its new home rather than dropping it out of sight.
+    if (categoryId !== null && collapsedCategories.has(categoryId)) toggleCategory(categoryId);
+    draggedChannel = null;
+  }
+
+  /** The empty "no category" group stays hidden unless it is a valid drop target. */
+  function isGroupVisible(group: CategoryGroup, dragged: DraggedChannel | null): boolean {
+    if (group.category) return true;
+    if (group.textChannels.length || group.voiceChannels.length) return true;
+    return canDropOn(group, dragged);
   }
 
   $: categoryGroups = (() => {
@@ -95,140 +171,166 @@
       }
     }
 
-    if (uncategorized.textChannels.length || uncategorized.voiceChannels.length) {
-      groups.unshift(uncategorized);
-    }
+    // Always present so a channel can be dragged back out of a category; the
+    // markup hides it while it is empty and no drag is in progress.
+    groups.unshift(uncategorized);
 
     return groups;
   })();
 </script>
 
 <div class="channels" role="navigation" on:contextmenu={(e) => onOpenChannelMenu(e)} style="width: {$leftSidebarWidth}px">
-  {#each categoryGroups as group (group.category?.id ?? '__uncategorized')}
-    {#if group.category}
-      <!-- svelte-ignore a11y-click-events-have-key-events -->
-      <!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
-      <h3
-        class="section category-header"
-        role="button"
-        tabindex="0"
-        on:click={() => toggleCategory(group.category?.id ?? 0)}
-        on:contextmenu={(e) => { if (group.category) onOpenCategoryMenu(e, group.category); }}
+  {#each categoryGroups as group (groupKey(group))}
+    {#if isGroupVisible(group, draggedChannel)}
+      <div
+        class="category-group"
+        class:drop-target={dragOverKey === groupKey(group)}
+        role="group"
+        aria-label={group.category?.name ?? 'Uncategorized channels'}
+        on:dragover={(e) => handleGroupDragOver(e, group)}
+        on:dragleave={(e) => handleGroupDragLeave(e, group)}
+        on:drop={(e) => handleGroupDrop(e, group)}
       >
-        <span class="category-chevron" class:collapsed={collapsedCategories.has(group.category?.id ?? 0)}>&#9662;</span>
-        {group.category?.name ?? ''}
-      </h3>
-    {:else}
-      {#if group.textChannels.length}
-        <h3 class="section">Channels</h3>
-      {/if}
-    {/if}
-    {#if !group.category || !collapsedCategories.has(group.category.id)}
-      {#each group.textChannels as ch (ch.id)}
-        <button
-          class:active={ch.id === currentChatChannelId}
-          class:unread={ch.id !== currentChatChannelId && ($unread[ch.id]?.count ?? 0) > 0}
-          on:click={() => onJoinChannel(ch.id)}
-          on:contextmenu={(e) => onOpenChannelMenu(e, ch.id)}
-        >
-          <span class="chan-icon">#</span>
-          <span class="chan-name">{ch.name}</span>
-          {#if ch.id !== currentChatChannelId && ($unread[ch.id]?.count ?? 0) > 0}
-            <span
-              class="unread-badge"
-              class:mention={($unread[ch.id]?.mentions ?? 0) > 0}
-              title={`${$unread[ch.id].count} unread message${$unread[ch.id].count === 1 ? '' : 's'}`}
-            >
-              {$unread[ch.id].count > 99 ? '99+' : $unread[ch.id].count}
-            </span>
+        {#if group.category}
+          <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
+          <h3
+            class="section category-header"
+            role="button"
+            tabindex="0"
+            on:click={() => toggleCategory(group.category?.id ?? 0)}
+            on:contextmenu={(e) => { if (group.category) onOpenCategoryMenu(e, group.category); }}
+          >
+            <span class="category-chevron" class:collapsed={collapsedCategories.has(group.category?.id ?? 0)}>&#9662;</span>
+            {group.category?.name ?? ''}
+          </h3>
+        {:else}
+          {#if group.textChannels.length}
+            <h3 class="section">Channels</h3>
           {/if}
-        </button>
-      {/each}
-      {#if group.voiceChannels.length}
-        {#if !group.category && !group.textChannels.length}
-          <h3 class="section">Voice Channels</h3>
         {/if}
-      {/if}
-      {#each group.voiceChannels as ch (ch.id)}
-        <div class="voice-group">
-          <button on:click={() => onJoinVoiceChannel(ch.id)} on:contextmenu={(e) => onOpenChannelMenu(e, ch.id, true)}>
-            <span class="chan-icon">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
-            </span>
-            <span class="voice-channel-name">{ch.name}</span>
-            <span class="voice-channel-quality">{formatVoiceQuality(ch)}</span>
-          </button>
-          {#if $voiceUsers[ch.id]?.length}
-            <ul class="voice-user-list">
-              {#each $voiceUsers[ch.id] as user}
-                {@const mute =
-                  user === $session.user
-                    ? { micMuted: $microphoneMuted, outputMuted: $outputMuted }
-                    : ($voiceMuteStates[user] ?? { micMuted: false, outputMuted: false })}
-                <li
-                  on:contextmenu={(e) => user !== $session.user && onOpenUserVolumeMenu(e, user)}
-                  class:clickable={user !== $session.user}
-                  class:talking={
-                    user === $session.user
-                      ? !$microphoneMuted && $voiceActivity
-                      : Boolean($remoteSpeaking[user])
-                  }
+        {#if !group.textChannels.length && !group.voiceChannels.length && !group.category}
+          <p class="drop-hint">Drop here to remove from category</p>
+        {/if}
+        {#if !group.category || !collapsedCategories.has(group.category.id)}
+          {#each group.textChannels as ch (ch.id)}
+            <button
+              class:active={ch.id === currentChatChannelId}
+              class:unread={ch.id !== currentChatChannelId && ($unread[ch.id]?.count ?? 0) > 0}
+              class:dragging={draggedChannel?.id === ch.id && !draggedChannel.voice}
+              draggable="true"
+              on:dragstart={(e) => handleChannelDragStart(e, ch, false)}
+              on:dragend={handleChannelDragEnd}
+              on:click={() => onJoinChannel(ch.id)}
+              on:contextmenu={(e) => onOpenChannelMenu(e, ch.id)}
+            >
+              <span class="chan-icon">#</span>
+              <span class="chan-name">{ch.name}</span>
+              {#if ch.id !== currentChatChannelId && ($unread[ch.id]?.count ?? 0) > 0}
+                <span
+                  class="unread-badge"
+                  class:mention={($unread[ch.id]?.mentions ?? 0) > 0}
+                  title={`${$unread[ch.id].count} unread message${$unread[ch.id].count === 1 ? '' : 's'}`}
                 >
-                  <span
-                    class="status voice"
-                    class:talking={
-                      user === $session.user
-                        ? !$microphoneMuted && $voiceActivity
-                        : Boolean($remoteSpeaking[user])
-                    }
-                  ></span>
-                  <span
-                    class="username"
-                    style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
-                    >{user}</span
-                  >
-                  {#if $roles[user]}
-                    <span
-                      class="role"
-                      style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
-                      >{$roles[user].role}</span
-                    >
-                  {/if}
-                  {#if mute.micMuted || mute.outputMuted}
-                    <span class="mute-icons">
-                      {#if mute.micMuted}
-                        <span class="mute-icon" title="Microphone muted" aria-label="Microphone muted">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="2" y1="2" x2="22" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
-                        </span>
-                      {/if}
-                      {#if mute.outputMuted}
-                        <span class="mute-icon" title="Speaker muted" aria-label="Speaker muted">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>
-                        </span>
-                      {/if}
-                    </span>
-                  {/if}
-                  {#if $activeScreenShares[ch.id]?.includes(user) && user !== $session.user}
-                    <button
-                      class="screenshare-indicator"
-                      on:click={() => onViewScreenShare(user)}
-                      title="View {user}'s screen"
-                      aria-label="View {user}'s screen share"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
-                      </svg>
-                    </button>
-                  {/if}
-                  <ConnectionBars
-                    strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)}
-                  />
-                </li>
-              {/each}
-            </ul>
+                  {$unread[ch.id].count > 99 ? '99+' : $unread[ch.id].count}
+                </span>
+              {/if}
+            </button>
+          {/each}
+          {#if group.voiceChannels.length}
+            {#if !group.category && !group.textChannels.length}
+              <h3 class="section">Voice Channels</h3>
+            {/if}
           {/if}
-        </div>
-      {/each}
+          {#each group.voiceChannels as ch (ch.id)}
+            <div class="voice-group">
+              <button
+                class:dragging={draggedChannel?.id === ch.id && draggedChannel.voice}
+                draggable="true"
+                on:dragstart={(e) => handleChannelDragStart(e, ch, true)}
+                on:dragend={handleChannelDragEnd}
+                on:click={() => onJoinVoiceChannel(ch.id)}
+                on:contextmenu={(e) => onOpenChannelMenu(e, ch.id, true)}
+              >
+                <span class="chan-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                </span>
+                <span class="voice-channel-name">{ch.name}</span>
+                <span class="voice-channel-quality">{formatVoiceQuality(ch)}</span>
+              </button>
+              {#if $voiceUsers[ch.id]?.length}
+                <ul class="voice-user-list">
+                  {#each $voiceUsers[ch.id] as user}
+                    {@const mute =
+                      user === $session.user
+                        ? { micMuted: $microphoneMuted, outputMuted: $outputMuted }
+                        : ($voiceMuteStates[user] ?? { micMuted: false, outputMuted: false })}
+                    <li
+                      on:contextmenu={(e) => user !== $session.user && onOpenUserVolumeMenu(e, user)}
+                      class:clickable={user !== $session.user}
+                      class:talking={
+                        user === $session.user
+                          ? !$microphoneMuted && $voiceActivity
+                          : Boolean($remoteSpeaking[user])
+                      }
+                    >
+                      <span
+                        class="status voice"
+                        class:talking={
+                          user === $session.user
+                            ? !$microphoneMuted && $voiceActivity
+                            : Boolean($remoteSpeaking[user])
+                        }
+                      ></span>
+                      <span
+                        class="username"
+                        style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
+                        >{user}</span
+                      >
+                      {#if $roles[user]}
+                        <span
+                          class="role"
+                          style={$roles[user].color ? `color: ${$roles[user].color}` : ''}
+                          >{$roles[user].role}</span
+                        >
+                      {/if}
+                      {#if mute.micMuted || mute.outputMuted}
+                        <span class="mute-icons">
+                          {#if mute.micMuted}
+                            <span class="mute-icon" title="Microphone muted" aria-label="Microphone muted">
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="2" y1="2" x2="22" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                            </span>
+                          {/if}
+                          {#if mute.outputMuted}
+                            <span class="mute-icon" title="Speaker muted" aria-label="Speaker muted">
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>
+                            </span>
+                          {/if}
+                        </span>
+                      {/if}
+                      {#if $activeScreenShares[ch.id]?.includes(user) && user !== $session.user}
+                        <button
+                          class="screenshare-indicator"
+                          on:click={() => onViewScreenShare(user)}
+                          title="View {user}'s screen"
+                          aria-label="View {user}'s screen share"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
+                          </svg>
+                        </button>
+                      {/if}
+                      <ConnectionBars
+                        strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)}
+                      />
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
+          {/each}
+        {/if}
+      </div>
     {/if}
   {/each}
 
@@ -327,8 +429,34 @@
     color: var(--color-muted);
   }
 
-  .channels .section:first-child {
+  /* Scoped to the first group so every later group keeps its top spacing. */
+  .channels > .category-group:first-child .section {
     margin-top: 0;
+  }
+
+  .category-group {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    border-radius: var(--radius-sm);
+    border: 1px dashed transparent;
+  }
+
+  .category-group.drop-target {
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+    border-color: var(--color-primary);
+  }
+
+  .drop-hint {
+    margin: 0;
+    padding: var(--space-2);
+    text-align: center;
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+  }
+
+  .channels button.dragging {
+    opacity: 0.5;
   }
 
   .category-header {

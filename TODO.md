@@ -17,7 +17,7 @@ Use the checkboxes to track progress.
 - [ ] Custom server emojis
 - [ ] Custom sort order for channels and categories
 - [x] Direct messages between users
-- [ ] Drag & drop channels into categories
+- [x] Drag & drop channels into categories (text and voice, with a drop zone for removing a channel from its category)
 - [x] Edit sent messages
 - [x] File sharing beyond images
 - [x] Full-text message search via SQLite FTS5 (indexed over message text, kept in sync by triggers)
