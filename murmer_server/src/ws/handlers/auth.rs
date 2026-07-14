@@ -144,6 +144,21 @@ pub(super) async fn handle_presence(
                 return Err(());
             }
 
+            // A user name stays bound to the public key that first used it
+            // for as long as the server runs. Reconnecting with the same key
+            // is fine, but any other key — or no key at all — may not take
+            // the name over: in-memory roles are keyed by name, so a
+            // takeover would let the new connection inherit the previous
+            // owner's privileges.
+            let bound_key = state.user_keys.lock().await.get(u).cloned();
+            if let Some(bound) = bound_key {
+                if verified_key.as_deref() != Some(bound.as_str()) {
+                    error!("Rejected presence for {u}: name is bound to another key");
+                    send_error(sender, errors::USERNAME_TAKEN).await;
+                    return Err(());
+                }
+            }
+
             // Reject banned users before they are registered as present.
             match db::is_banned(&state.db, verified_key.as_deref(), u).await {
                 Ok(true) => {
@@ -183,6 +198,16 @@ pub(super) async fn handle_presence(
                     };
                     state.roles.lock().await.insert(u.to_string(), info.clone());
                     broadcast_role(state, u, &info.role, info.color.as_deref()).await;
+                } else if state.roles.lock().await.remove(u).is_some() {
+                    // The role was revoked (e.g. via the CLI) while the user
+                    // was offline; drop the stale in-memory entry so it does
+                    // not keep granting privileges.
+                    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+                        "type": "role-remove",
+                        "user": u,
+                    })) {
+                        let _ = state.tx.send(msg);
+                    }
                 }
             }
 

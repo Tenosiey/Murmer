@@ -39,6 +39,9 @@ pub const INVALID_ENCODING: &str = r#"{"type":"error","message":"invalid-encodin
 /// Username validation failed.
 pub const INVALID_USERNAME: &str = r#"{"type":"error","message":"invalid-username"}"#;
 
+/// Username is bound to a different public key for this server session.
+pub const USERNAME_TAKEN: &str = r#"{"type":"error","message":"username-taken"}"#;
+
 /// Channel name validation failed.
 pub const INVALID_CHANNEL_NAME: &str = r#"{"type":"error","message":"invalid-channel-name"}"#;
 

@@ -193,6 +193,25 @@ pub async fn fetch_thread(
         .collect())
 }
 
+/// List messages flagged as ephemeral, as `(id, channel_id, content)` rows.
+///
+/// Rows are prefiltered with LIKE on the serialized JSON; callers must verify
+/// the parsed `ephemeral` field (the pattern also matches the text appearing
+/// inside a message body).
+pub async fn get_ephemeral_messages(db: &Db) -> Result<Vec<(i64, i32, String)>, DbError> {
+    db.call_db(|conn| {
+        let mut stmt = conn.prepare(
+            "SELECT id, channel_id, content FROM messages \
+             WHERE content LIKE '%\"ephemeral\":true%'",
+        )?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })
+    .await
+}
+
 /// Return the channel ID a message belongs to, if it exists.
 pub async fn get_message_channel_id(db: &Db, message_id: i32) -> Result<Option<i32>, DbError> {
     db.call_db(move |conn| {

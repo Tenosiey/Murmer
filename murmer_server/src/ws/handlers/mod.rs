@@ -455,11 +455,18 @@ async fn handle_voice_join(
         for info in map.values_mut() {
             info.users.remove(u);
         }
-        if let Some(entry) = map.get_mut(&ch_id) {
-            entry.users.insert(u.to_string());
-            *voice_channel = Some(ch_id);
-        }
+        let joined = match map.get_mut(&ch_id) {
+            Some(entry) => {
+                entry.users.insert(u.to_string());
+                *voice_channel = Some(ch_id);
+                true
+            }
+            None => false,
+        };
         drop(map);
+        if !joined {
+            return;
+        }
         broadcast_voice(state, ch_id).await;
         let msg = serde_json::json!({
             "type": "voice-join",

@@ -445,36 +445,19 @@ async fn send_message(
     let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
     let _ = chan_tx.send(msg.to_string());
 
+    // Announce the message globally so clients viewing other channels can
+    // update unread counts, mirroring the WebSocket chat handler.
+    let notify = serde_json::json!({
+        "type": "message-notify",
+        "channelId": channel_id,
+        "id": id,
+        "user": bot.name,
+        "text": text,
+    });
+    let _ = state.tx.send(notify.to_string());
+
     if let Some(expiry) = ephemeral_expiry {
-        let state_clone = Arc::clone(&state);
-        let ch_id = channel_id;
-        tokio::spawn(async move {
-            let mut delay = expiry.signed_duration_since(Utc::now());
-            if delay < ChronoDuration::zero() {
-                delay = ChronoDuration::zero();
-            }
-            if delay > ChronoDuration::seconds(MAX_EPHEMERAL_SECONDS) {
-                delay = ChronoDuration::seconds(MAX_EPHEMERAL_SECONDS);
-            }
-            if let Ok(duration) = delay.to_std() {
-                tokio::time::sleep(duration).await;
-            }
-            if let Ok(id32) = i32::try_from(id) {
-                match db::delete_message(&state_clone.db, id32).await {
-                    Ok(true) => {
-                        let payload = serde_json::json!({
-                            "type": "message-deleted",
-                            "id": id,
-                            "channelId": ch_id,
-                        });
-                        let chan = ws::helpers::get_or_create_channel(&state_clone, ch_id).await;
-                        let _ = chan.send(payload.to_string());
-                    }
-                    Ok(false) => {}
-                    Err(e) => error!("failed to delete ephemeral bot message {id}: {e}"),
-                }
-            }
-        });
+        ws::helpers::schedule_ephemeral_deletion(Arc::clone(&state), id, channel_id, expiry);
     }
 
     (StatusCode::CREATED, Json(serde_json::json!({"data": msg}))).into_response()

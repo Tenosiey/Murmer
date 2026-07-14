@@ -123,6 +123,10 @@ async fn main() -> Result<()> {
         rate_limiter: RateLimiter::default(),
     });
 
+    // Ephemeral deletion timers only live in memory; re-arm any that were
+    // lost to a restart (expired ones are deleted immediately).
+    ws::helpers::resume_ephemeral_deletions(&state).await;
+
     let mut router = Router::new()
         .route(
             "/",

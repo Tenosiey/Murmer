@@ -1,13 +1,14 @@
 //! Helper functions for WebSocket message handling.
 
-use crate::{AppState, VoiceChannelState};
+use crate::{db, AppState, VoiceChannelState};
 use axum::extract::ws::{Message, WebSocket};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use futures::stream::SplitSink;
 use futures::SinkExt;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tracing::error;
 
 /// Send a pre-serialized error frame (see [`crate::ws::errors`]) to one client.
 /// Send failures are ignored; the socket loop notices a dead connection itself.
@@ -359,9 +360,9 @@ pub async fn broadcast_channel_move(
 
 /// Determine whether a user is authorised to manage channel state.
 ///
-/// When the server is running without an `ADMIN_TOKEN` every authenticated user
-/// is allowed to manage channels for backwards compatibility. Once an admin
-/// token is configured we restrict the action to privileged roles only.
+/// Without an `ADMIN_TOKEN` configured every authenticated user may manage
+/// channels, so a small unadministered server stays fully usable. Once an
+/// admin token is configured the action is restricted to privileged roles.
 pub async fn can_manage_channels(state: &Arc<AppState>, user: &str) -> bool {
     if state.admin_token.is_none() {
         return true;
@@ -435,6 +436,74 @@ pub async fn can_manage_roles(state: &Arc<AppState>, user: &str) -> bool {
                 .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
         })
         .unwrap_or(false)
+}
+
+/// Delete an ephemeral message once its expiry passes and announce the
+/// deletion to the message's channel. Runs as a background task; the delay is
+/// clamped to the ephemeral maximum so a corrupted expiry cannot schedule a
+/// task years into the future.
+pub fn schedule_ephemeral_deletion(
+    state: Arc<AppState>,
+    message_id: i64,
+    channel_id: i32,
+    expiry: DateTime<Utc>,
+) {
+    tokio::spawn(async move {
+        let delay = expiry.signed_duration_since(Utc::now()).clamp(
+            ChronoDuration::zero(),
+            ChronoDuration::seconds(super::constants::MAX_EPHEMERAL_SECONDS),
+        );
+        if let Ok(duration) = delay.to_std() {
+            tokio::time::sleep(duration).await;
+        }
+        let Ok(id32) = i32::try_from(message_id) else {
+            return;
+        };
+        match db::delete_message(&state.db, id32).await {
+            Ok(true) => {
+                let payload = serde_json::json!({
+                    "type": "message-deleted",
+                    "id": message_id,
+                    "channelId": channel_id,
+                });
+                let chan_tx = get_or_create_channel(&state, channel_id).await;
+                let _ = chan_tx.send(payload.to_string());
+            }
+            // Already gone (deleted manually or by an earlier run).
+            Ok(false) => {}
+            Err(e) => error!("failed to delete ephemeral message {message_id}: {e}"),
+        }
+    });
+}
+
+/// Re-schedule the deletion of ephemeral messages found in the database at
+/// startup. Deletion timers only live in memory, so without this sweep an
+/// ephemeral message whose timer was lost to a server restart would never be
+/// removed.
+pub async fn resume_ephemeral_deletions(state: &Arc<AppState>) {
+    let rows = match db::get_ephemeral_messages(&state.db).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            error!("failed to scan for leftover ephemeral messages: {e}");
+            return;
+        }
+    };
+    for (id, channel_id, content) in rows {
+        let Ok(parsed) = serde_json::from_str::<Value>(&content) else {
+            continue;
+        };
+        if parsed.get("ephemeral").and_then(|e| e.as_bool()) != Some(true) {
+            continue;
+        }
+        let expiry = parsed
+            .get("expiresAt")
+            .and_then(|e| e.as_str())
+            .and_then(|raw| DateTime::parse_from_rfc3339(raw).ok())
+            .map(|dt| dt.with_timezone(&Utc))
+            // No parseable expiry on an ephemeral message: delete right away.
+            .unwrap_or_else(Utc::now);
+        schedule_ephemeral_deletion(Arc::clone(state), id, channel_id, expiry);
+    }
 }
 
 /// Retrieve the broadcast channel for the given channel ID, creating it if necessary.

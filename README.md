@@ -261,6 +261,9 @@ must not be marked as pre-release — the updater endpoint
 - Authentication uses Ed25519 signatures; timestamps are validated and bound to
   per-user nonces. A claimed public key is always verified — also on servers
   without a password — so roles and moderation identity cannot be spoofed.
+- While the server runs, a user name stays bound to the public key that first
+  used it, so another client cannot take over an offline user's name and
+  inherit their role.
 - IP-based rate limiting protects authentication and chat message throughput.
 - Filenames are sanitised, uploads are limited to a safe-list of extensions and image contents are inspected before saving.
 - Admin token and server password checks use constant-time comparisons to
