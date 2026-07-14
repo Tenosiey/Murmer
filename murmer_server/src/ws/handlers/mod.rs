@@ -660,12 +660,7 @@ async fn handle_set_role(
         return;
     };
 
-    let target_key = {
-        let keys = state.user_keys.lock().await;
-        keys.get(target_user).cloned()
-    };
-
-    let Some(key) = target_key else {
+    let Some(key) = lookup_user_key(state, target_user).await else {
         send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
         return;
     };
@@ -720,12 +715,7 @@ async fn handle_remove_role(
         return;
     };
 
-    let target_key = {
-        let keys = state.user_keys.lock().await;
-        keys.get(target_user).cloned()
-    };
-
-    let Some(key) = target_key else {
+    let Some(key) = lookup_user_key(state, target_user).await else {
         send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
         return;
     };

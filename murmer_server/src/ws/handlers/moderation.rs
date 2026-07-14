@@ -67,16 +67,14 @@ async fn require_target(sender: &mut SplitSink<WebSocket, Message>, v: &Value) -
     }
 }
 
-/// Look up the public key of a target user, replying with an error if unknown.
+/// Look up the public key of a target user (connected or via the persisted
+/// name binding), replying with an error if unknown.
 async fn resolve_target_key(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
     target: &str,
 ) -> Option<String> {
-    let key = {
-        let keys = state.user_keys.lock().await;
-        keys.get(target).cloned()
-    };
+    let key = lookup_user_key(state, target).await;
     if key.is_none() {
         send_error(sender, errors::MODERATION_TARGET_NOT_FOUND).await;
     }

@@ -98,13 +98,7 @@ pub(super) async fn handle_search_history(
 
     match db::search_messages(&state.db, channel_to_search, trimmed_query, limit).await {
         Ok(rows) => {
-            let mut ids = Vec::new();
-            for (id, _) in &rows {
-                if let Ok(value) = i32::try_from(*id) {
-                    ids.push(value);
-                }
-            }
-
+            let ids: Vec<i64> = rows.iter().map(|(id, _)| *id).collect();
             let reaction_map = if ids.is_empty() {
                 std::collections::HashMap::new()
             } else {
@@ -126,12 +120,9 @@ pub(super) async fn handle_search_history(
                     if value.get("channelId").is_none() {
                         value["channelId"] = Value::from(channel_to_search);
                     }
-                    #[allow(clippy::collapsible_if)]
-                    if let Ok(id32) = i32::try_from(id) {
-                        if let Some(reactions) = reaction_map.get(&id32) {
-                            if let Ok(reaction_value) = serde_json::to_value(reactions) {
-                                value["reactions"] = reaction_value;
-                            }
+                    if let Some(reactions) = reaction_map.get(&id) {
+                        if let Ok(reaction_value) = serde_json::to_value(reactions) {
+                            value["reactions"] = reaction_value;
                         }
                     }
                     if value.get("reactions").is_none() {
@@ -215,43 +206,41 @@ pub(super) async fn handle_chat(
         map.remove("threadId");
     }
     if let Some(target_id) = reply_target {
-        if let Ok(target_id32) = i32::try_from(target_id) {
-            match db::get_message_record(&state.db, target_id32).await {
-                Ok(Some(record)) if record.channel_id == channel_id => {
-                    let quoted_user = record
+        match db::get_message_record(&state.db, target_id).await {
+            Ok(Some(record)) if record.channel_id == channel_id => {
+                let quoted_user = record
+                    .content
+                    .get("user")
+                    .and_then(|u| u.as_str())
+                    .unwrap_or("");
+                let quoted_text = reply_preview(
+                    record
                         .content
-                        .get("user")
-                        .and_then(|u| u.as_str())
-                        .unwrap_or("");
-                    let quoted_text = reply_preview(
-                        record
-                            .content
-                            .get("text")
-                            .and_then(|t| t.as_str())
-                            .unwrap_or(""),
-                        MAX_REPLY_PREVIEW_CHARS,
-                    );
-                    v["replyTo"] = serde_json::json!({
-                        "id": target_id,
-                        "user": quoted_user,
-                        "text": quoted_text,
-                    });
-                    // Replying to a reply joins the existing thread instead of
-                    // starting a nested one.
-                    let thread_root = record
-                        .content
-                        .get("threadId")
-                        .and_then(|t| t.as_i64())
-                        .unwrap_or(target_id);
-                    v["threadId"] = Value::from(thread_root);
-                }
-                Ok(_) => {
-                    send_error(sender, errors::REPLY_TARGET_NOT_FOUND).await;
-                    return;
-                }
-                Err(error) => {
-                    error!("failed to load reply target {target_id}: {error}");
-                }
+                        .get("text")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or(""),
+                    MAX_REPLY_PREVIEW_CHARS,
+                );
+                v["replyTo"] = serde_json::json!({
+                    "id": target_id,
+                    "user": quoted_user,
+                    "text": quoted_text,
+                });
+                // Replying to a reply joins the existing thread instead of
+                // starting a nested one.
+                let thread_root = record
+                    .content
+                    .get("threadId")
+                    .and_then(|t| t.as_i64())
+                    .unwrap_or(target_id);
+                v["threadId"] = Value::from(thread_root);
+            }
+            Ok(_) => {
+                send_error(sender, errors::REPLY_TARGET_NOT_FOUND).await;
+                return;
+            }
+            Err(error) => {
+                error!("failed to load reply target {target_id}: {error}");
             }
         }
     }
@@ -327,27 +316,19 @@ pub(super) async fn handle_delete_message(
         }
     };
 
-    let Some(raw_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
+    let Some(message_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
         send_error(sender, errors::INVALID_MESSAGE_ID).await;
         return;
     };
 
-    let message_id32 = match i32::try_from(raw_id) {
-        Ok(id) => id,
-        Err(_) => {
-            send_error(sender, errors::INVALID_MESSAGE_ID).await;
-            return;
-        }
-    };
-
-    let record = match db::get_message_record(&state.db, message_id32).await {
+    let record = match db::get_message_record(&state.db, message_id).await {
         Ok(Some(record)) => record,
         Ok(None) => {
             send_error(sender, errors::MESSAGE_NOT_FOUND).await;
             return;
         }
         Err(error) => {
-            error!("failed to load message {raw_id} for deletion: {error}");
+            error!("failed to load message {message_id} for deletion: {error}");
             send_error(sender, errors::MESSAGE_DELETE_FAILED).await;
             return;
         }
@@ -374,11 +355,11 @@ pub(super) async fn handle_delete_message(
         return;
     }
 
-    match db::delete_message(&state.db, message_id32).await {
+    match db::delete_message(&state.db, message_id).await {
         Ok(true) => {
             let payload = serde_json::json!({
                 "type": "message-deleted",
-                "id": raw_id,
+                "id": message_id,
                 "channelId": record.channel_id,
             });
             let chan_sender = get_or_create_channel(state, record.channel_id).await;
@@ -388,7 +369,7 @@ pub(super) async fn handle_delete_message(
             send_error(sender, errors::MESSAGE_NOT_FOUND).await;
         }
         Err(error) => {
-            error!("failed to delete message {raw_id}: {error}");
+            error!("failed to delete message {message_id}: {error}");
             send_error(sender, errors::MESSAGE_DELETE_FAILED).await;
         }
     }
@@ -410,17 +391,9 @@ pub(super) async fn handle_edit_message(
         }
     };
 
-    let Some(raw_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
+    let Some(message_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
         send_error(sender, errors::INVALID_MESSAGE_ID).await;
         return;
-    };
-
-    let message_id32 = match i32::try_from(raw_id) {
-        Ok(id) => id,
-        Err(_) => {
-            send_error(sender, errors::INVALID_MESSAGE_ID).await;
-            return;
-        }
     };
 
     let Some(new_text) = v.get("text").and_then(|t| t.as_str()) else {
@@ -433,14 +406,14 @@ pub(super) async fn handle_edit_message(
         return;
     }
 
-    let record = match db::get_message_record(&state.db, message_id32).await {
+    let record = match db::get_message_record(&state.db, message_id).await {
         Ok(Some(record)) => record,
         Ok(None) => {
             send_error(sender, errors::MESSAGE_NOT_FOUND).await;
             return;
         }
         Err(error) => {
-            error!("failed to load message {raw_id} for edit: {error}");
+            error!("failed to load message {message_id} for edit: {error}");
             send_error(sender, errors::MESSAGE_EDIT_FAILED).await;
             return;
         }
@@ -473,17 +446,17 @@ pub(super) async fn handle_edit_message(
     let serialized = match serde_json::to_string(&content) {
         Ok(out) => out,
         Err(error) => {
-            error!("failed to serialize edited message {raw_id}: {error}");
+            error!("failed to serialize edited message {message_id}: {error}");
             send_error(sender, errors::MESSAGE_EDIT_FAILED).await;
             return;
         }
     };
 
-    match db::update_message_content(&state.db, message_id32, &serialized).await {
+    match db::update_message_content(&state.db, message_id, &serialized).await {
         Ok(true) => {
             let payload = serde_json::json!({
                 "type": "message-edited",
-                "id": raw_id,
+                "id": message_id,
                 "channelId": record.channel_id,
                 "text": new_text,
                 "editedAt": edited_at,
@@ -495,7 +468,7 @@ pub(super) async fn handle_edit_message(
             send_error(sender, errors::MESSAGE_NOT_FOUND).await;
         }
         Err(error) => {
-            error!("failed to edit message {raw_id}: {error}");
+            error!("failed to edit message {message_id}: {error}");
             send_error(sender, errors::MESSAGE_EDIT_FAILED).await;
         }
     }
@@ -509,11 +482,7 @@ pub(super) async fn handle_load_thread(
     v: &Value,
     channel_id: i32,
 ) {
-    let root_id32 = match v
-        .get("rootId")
-        .and_then(|r| r.as_i64())
-        .and_then(|id| i32::try_from(id).ok())
-    {
+    let root_id = match v.get("rootId").and_then(|r| r.as_i64()) {
         Some(id) => id,
         None => {
             send_error(sender, errors::INVALID_MESSAGE_ID).await;
@@ -521,22 +490,16 @@ pub(super) async fn handle_load_thread(
         }
     };
 
-    match db::fetch_thread(&state.db, channel_id, root_id32, MAX_THREAD_MESSAGES).await {
+    match db::fetch_thread(&state.db, channel_id, root_id, MAX_THREAD_MESSAGES).await {
         Ok(rows) => {
-            let mut ids = Vec::new();
-            for (id, _) in &rows {
-                if let Ok(value) = i32::try_from(*id) {
-                    ids.push(value);
-                }
-            }
-
+            let ids: Vec<i64> = rows.iter().map(|(id, _)| *id).collect();
             let reaction_map = if ids.is_empty() {
                 std::collections::HashMap::new()
             } else {
                 match db::get_reactions_for_messages(&state.db, &ids).await {
                     Ok(map) => map,
                     Err(error) => {
-                        error!("Failed to load reactions for thread {root_id32}: {error}");
+                        error!("Failed to load reactions for thread {root_id}: {error}");
                         std::collections::HashMap::new()
                     }
                 }
@@ -546,12 +509,9 @@ pub(super) async fn handle_load_thread(
             for (id, content) in rows {
                 if let Ok(mut value) = serde_json::from_str::<Value>(&content) {
                     value["id"] = Value::from(id);
-                    #[allow(clippy::collapsible_if)]
-                    if let Ok(id32) = i32::try_from(id) {
-                        if let Some(reactions) = reaction_map.get(&id32) {
-                            if let Ok(reaction_value) = serde_json::to_value(reactions) {
-                                value["reactions"] = reaction_value;
-                            }
+                    if let Some(reactions) = reaction_map.get(&id) {
+                        if let Ok(reaction_value) = serde_json::to_value(reactions) {
+                            value["reactions"] = reaction_value;
                         }
                     }
                     messages.push(value);
@@ -560,14 +520,14 @@ pub(super) async fn handle_load_thread(
 
             let payload = serde_json::json!({
                 "type": "thread",
-                "rootId": root_id32,
+                "rootId": root_id,
                 "channelId": channel_id,
                 "messages": messages,
             });
             let _ = sender.send(Message::Text(payload.to_string().into())).await;
         }
         Err(error) => {
-            error!("failed to load thread {root_id32}: {error}");
+            error!("failed to load thread {root_id}: {error}");
             send_error(sender, errors::THREAD_LOAD_FAILED).await;
         }
     }
@@ -642,15 +602,7 @@ pub(super) async fn handle_react(
         return;
     }
 
-    let message_id32 = match i32::try_from(message_id) {
-        Ok(val) => val,
-        Err(_) => {
-            send_error(sender, errors::INVALID_MESSAGE_ID).await;
-            return;
-        }
-    };
-
-    let target_channel_id = match db::get_message_channel_id(&state.db, message_id32).await {
+    let target_channel_id = match db::get_message_channel_id(&state.db, message_id).await {
         Ok(Some(ch)) => ch,
         Ok(None) => {
             send_error(sender, errors::MESSAGE_NOT_FOUND).await;
@@ -664,8 +616,8 @@ pub(super) async fn handle_react(
     };
 
     let result = match action {
-        "add" => db::add_reaction(&state.db, message_id32, &user, emoji).await,
-        "remove" => db::remove_reaction(&state.db, message_id32, &user, emoji).await,
+        "add" => db::add_reaction(&state.db, message_id, &user, emoji).await,
+        "remove" => db::remove_reaction(&state.db, message_id, &user, emoji).await,
         _ => {
             send_error(sender, errors::INVALID_REACTION_ACTION).await;
             return;
@@ -678,7 +630,7 @@ pub(super) async fn handle_react(
         return;
     }
 
-    let reactions = match db::get_reaction_summary(&state.db, message_id32).await {
+    let reactions = match db::get_reaction_summary(&state.db, message_id).await {
         Ok(map) => map,
         Err(e) => {
             error!("db reaction summary error: {e}");

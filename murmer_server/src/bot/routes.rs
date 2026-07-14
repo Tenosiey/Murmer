@@ -73,15 +73,12 @@ async fn verify_bot(state: &AppState, token: &str) -> Option<BotRecord> {
 }
 
 async fn format_messages(db: &db::Db, rows: Vec<(i64, String)>, channel_id: i32) -> Vec<Value> {
-    let ids32: Vec<i32> = rows
-        .iter()
-        .filter_map(|(id, _)| i32::try_from(*id).ok())
-        .collect();
+    let ids: Vec<i64> = rows.iter().map(|(id, _)| *id).collect();
 
-    let reaction_map = if ids32.is_empty() {
+    let reaction_map = if ids.is_empty() {
         HashMap::new()
     } else {
-        db::get_reactions_for_messages(db, &ids32)
+        db::get_reactions_for_messages(db, &ids)
             .await
             .unwrap_or_default()
     };
@@ -93,11 +90,9 @@ async fn format_messages(db: &db::Db, rows: Vec<(i64, String)>, channel_id: i32)
             if msg.get("channelId").is_none() {
                 msg["channelId"] = Value::from(channel_id);
             }
-            if let Ok(id32) = i32::try_from(id) {
-                if let Some(reactions) = reaction_map.get(&id32) {
-                    if let Ok(val) = serde_json::to_value(reactions) {
-                        msg["reactions"] = val;
-                    }
+            if let Some(reactions) = reaction_map.get(&id) {
+                if let Ok(val) = serde_json::to_value(reactions) {
+                    msg["reactions"] = val;
                 }
             }
             if msg.get("reactions").is_none() {
@@ -475,12 +470,7 @@ async fn delete_message_handler(
 
     let perms = BotPermissions(bot.permissions);
 
-    let message_id32 = match i32::try_from(message_id) {
-        Ok(v) => v,
-        Err(_) => return json_error(StatusCode::BAD_REQUEST, "invalid-message-id"),
-    };
-
-    let record = match db::get_message_record(&state.db, message_id32).await {
+    let record = match db::get_message_record(&state.db, message_id).await {
         Ok(Some(r)) => r,
         Ok(None) => return json_error(StatusCode::NOT_FOUND, "message-not-found"),
         Err(e) => {
@@ -506,7 +496,7 @@ async fn delete_message_handler(
         return json_error(StatusCode::FORBIDDEN, "missing-permission:manage_messages");
     }
 
-    match db::delete_message(&state.db, message_id32).await {
+    match db::delete_message(&state.db, message_id).await {
         Ok(true) => {
             let payload = serde_json::json!({
                 "type": "message-deleted",
@@ -548,12 +538,7 @@ async fn add_reaction_handler(
         return json_error(StatusCode::BAD_REQUEST, "invalid-emoji");
     }
 
-    let message_id32 = match i32::try_from(message_id) {
-        Ok(v) => v,
-        Err(_) => return json_error(StatusCode::BAD_REQUEST, "invalid-message-id"),
-    };
-
-    let target_channel_id = match db::get_message_channel_id(&state.db, message_id32).await {
+    let target_channel_id = match db::get_message_channel_id(&state.db, message_id).await {
         Ok(Some(ch)) => ch,
         Ok(None) => return json_error(StatusCode::NOT_FOUND, "message-not-found"),
         Err(e) => {
@@ -566,12 +551,12 @@ async fn add_reaction_handler(
         return json_error(StatusCode::NOT_FOUND, "message-not-found");
     }
 
-    if let Err(e) = db::add_reaction(&state.db, message_id32, &bot.name, emoji).await {
+    if let Err(e) = db::add_reaction(&state.db, message_id, &bot.name, emoji).await {
         error!("db reaction error: {e}");
         return json_error(StatusCode::INTERNAL_SERVER_ERROR, "reaction-failed");
     }
 
-    let reactions = match db::get_reaction_summary(&state.db, message_id32).await {
+    let reactions = match db::get_reaction_summary(&state.db, message_id).await {
         Ok(map) => map,
         Err(e) => {
             error!("db reaction summary error: {e}");
@@ -606,12 +591,7 @@ async fn remove_reaction_handler(
         return json_error(StatusCode::FORBIDDEN, "missing-permission:add_reactions");
     }
 
-    let message_id32 = match i32::try_from(message_id) {
-        Ok(v) => v,
-        Err(_) => return json_error(StatusCode::BAD_REQUEST, "invalid-message-id"),
-    };
-
-    let target_channel_id = match db::get_message_channel_id(&state.db, message_id32).await {
+    let target_channel_id = match db::get_message_channel_id(&state.db, message_id).await {
         Ok(Some(ch)) => ch,
         Ok(None) => return json_error(StatusCode::NOT_FOUND, "message-not-found"),
         Err(e) => {
@@ -624,12 +604,12 @@ async fn remove_reaction_handler(
         return json_error(StatusCode::NOT_FOUND, "message-not-found");
     }
 
-    if let Err(e) = db::remove_reaction(&state.db, message_id32, &bot.name, &emoji).await {
+    if let Err(e) = db::remove_reaction(&state.db, message_id, &bot.name, &emoji).await {
         error!("db reaction removal error: {e}");
         return json_error(StatusCode::INTERNAL_SERVER_ERROR, "reaction-failed");
     }
 
-    let reactions = match db::get_reaction_summary(&state.db, message_id32).await {
+    let reactions = match db::get_reaction_summary(&state.db, message_id).await {
         Ok(map) => map,
         Err(e) => {
             error!("db reaction summary error: {e}");

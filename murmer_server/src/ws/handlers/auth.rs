@@ -144,18 +144,22 @@ pub(super) async fn handle_presence(
                 return Err(());
             }
 
-            // A user name stays bound to the public key that first used it
-            // for as long as the server runs. Reconnecting with the same key
-            // is fine, but any other key — or no key at all — may not take
-            // the name over: in-memory roles are keyed by name, so a
-            // takeover would let the new connection inherit the previous
-            // owner's privileges.
-            let bound_key = state.user_keys.lock().await.get(u).cloned();
-            if let Some(bound) = bound_key {
-                if verified_key.as_deref() != Some(bound.as_str()) {
+            // A user name stays permanently bound to the first verified
+            // public key that used it (persisted in the database).
+            // Reconnecting with the same key is fine, but any other key — or
+            // no key at all — may not take the name over: roles attach to
+            // names in memory, so a takeover would let the new connection
+            // inherit the previous owner's privileges. The operator can
+            // release a binding with the `unbind-name` CLI subcommand.
+            match db::get_user_key(&state.db, u).await {
+                Ok(Some(bound)) if verified_key.as_deref() != Some(bound.as_str()) => {
                     error!("Rejected presence for {u}: name is bound to another key");
                     send_error(sender, errors::USERNAME_TAKEN).await;
                     return Err(());
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    error!("Failed to check name binding for {u}: {e}");
                 }
             }
 
@@ -169,6 +173,13 @@ pub(super) async fn handle_presence(
                 Ok(false) => {}
                 Err(e) => {
                     error!("Failed to check ban state for {u}: {e}");
+                }
+            }
+
+            // Claim the name for this key (no-op when already bound).
+            if let Some(pk) = verified_key.as_deref() {
+                if let Err(e) = db::bind_user_key(&state.db, u, pk).await {
+                    error!("Failed to persist name binding for {u}: {e}");
                 }
             }
 

@@ -438,6 +438,22 @@ pub async fn can_manage_roles(state: &Arc<AppState>, user: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Resolve a user's public key: currently connected users first (in-memory
+/// map), then the persisted name binding, so moderation and role changes
+/// also reach users who are offline.
+pub async fn lookup_user_key(state: &Arc<AppState>, user: &str) -> Option<String> {
+    if let Some(key) = state.user_keys.lock().await.get(user).cloned() {
+        return Some(key);
+    }
+    match db::get_user_key(&state.db, user).await {
+        Ok(key) => key,
+        Err(e) => {
+            error!("Failed to look up key binding for {user}: {e}");
+            None
+        }
+    }
+}
+
 /// Delete an ephemeral message once its expiry passes and announce the
 /// deletion to the message's channel. Runs as a background task; the delay is
 /// clamped to the ephemeral maximum so a corrupted expiry cannot schedule a
@@ -456,10 +472,7 @@ pub fn schedule_ephemeral_deletion(
         if let Ok(duration) = delay.to_std() {
             tokio::time::sleep(duration).await;
         }
-        let Ok(id32) = i32::try_from(message_id) else {
-            return;
-        };
-        match db::delete_message(&state.db, id32).await {
+        match db::delete_message(&state.db, message_id).await {
             Ok(true) => {
                 let payload = serde_json::json!({
                     "type": "message-deleted",

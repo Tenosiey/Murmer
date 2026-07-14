@@ -8,7 +8,8 @@ bot REST API see [BOT_API.md](BOT_API.md).
 
 ```
 src/
-  main.rs          entry point: router, middleware, CLI `set-role` subcommand
+  main.rs          entry point: router, middleware, CLI subcommands
+                   (`set-role`, `unbind-name`)
   lib.rs           shared state (AppState, RateLimiter) and module re-exports
   config.rs        environment variable parsing and CORS setup
   ws/              WebSocket endpoint

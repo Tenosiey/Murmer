@@ -64,6 +64,9 @@ async fn main() -> Result<()> {
     if args.len() >= 2 && args[1] == "set-role" {
         return cli_set_role(&args[2..]).await;
     }
+    if args.len() >= 2 && args[1] == "unbind-name" {
+        return cli_unbind_name(&args[2..]).await;
+    }
 
     init_tracing();
 
@@ -227,6 +230,36 @@ async fn cli_set_role(args: &[String]) -> Result<()> {
     println!("Role '{role}' assigned to key {key}");
     if let Some(c) = &color {
         println!("Color: {c}");
+    }
+    Ok(())
+}
+
+/// CLI subcommand: release the persisted binding between a user name and its
+/// public key.
+///
+/// Usage: `murmer_server unbind-name <user_name>`
+///
+/// A name is claimed permanently by the first key that authenticates with
+/// it; run this when a user lost their keypair and needs to reclaim their
+/// name with a new one.
+async fn cli_unbind_name(args: &[String]) -> Result<()> {
+    let Some(name) = args.first() else {
+        eprintln!("Usage: murmer_server unbind-name <user_name>");
+        std::process::exit(1);
+    };
+
+    let db_path = std::env::var("DATABASE_PATH").unwrap_or_else(|_| "murmer.db".to_string());
+    let client = db::init(&db_path)
+        .await
+        .context("failed to connect to database")?;
+
+    if db::unbind_user_name(&client, name)
+        .await
+        .context("failed to remove name binding")?
+    {
+        println!("Name '{name}' released; the next key to authenticate with it claims it.");
+    } else {
+        println!("No binding found for name '{name}'.");
     }
     Ok(())
 }

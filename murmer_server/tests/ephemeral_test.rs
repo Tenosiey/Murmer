@@ -41,9 +41,7 @@ async fn ephemeral_scan_returns_only_flagged_messages() {
     assert_eq!(rows[0].0, ephemeral_id);
     assert_eq!(rows[0].1, channel);
 
-    let removed = db::delete_message(&db, ephemeral_id as i32)
-        .await
-        .expect("delete");
+    let removed = db::delete_message(&db, ephemeral_id).await.expect("delete");
     assert!(removed);
     assert!(db::get_ephemeral_messages(&db)
         .await
