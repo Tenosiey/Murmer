@@ -11,6 +11,7 @@
   import { session } from '$lib/stores/session';
   import { renderMarkdown } from '$lib/markdown';
   import { ephemeralInfo, formatFileSize, reactionEntries } from '$lib/chat/helpers';
+  import { giphyGifUrl } from '$lib/link-preview';
   import LinkPreview from '$lib/components/LinkPreview.svelte';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
 
@@ -39,6 +40,13 @@
   $: reactions = reactionEntries(message);
   $: eInfo = message.ephemeral ? ephemeralInfo(message, now) : null;
   $: hasActions = messageId !== null && (canPin || canDelete);
+  /* A message that is nothing but a Giphy link renders as the GIF alone;
+     the raw URL text would just duplicate it. */
+  $: textIsOnlyGif =
+    links.length === 1 &&
+    giphyGifUrl(links[0]) !== null &&
+    typeof message.text === 'string' &&
+    /^https?:\/\/\S+$/.test(message.text.trim());
 </script>
 
 <div
@@ -86,7 +94,7 @@
     {/if}
 
     <span class="content">
-      {#if message.text}
+      {#if message.text && !textIsOnlyGif}
         {@html renderMarkdown(message.text)}
       {/if}
       {#if message.edited}
