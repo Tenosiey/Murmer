@@ -190,11 +190,17 @@ pub async fn move_channel(db: &Db, id: i32, category_id: Option<i32>) -> Result<
     .await
 }
 
-/// Delete a channel and all its messages by ID.
+/// Delete a channel together with its messages and wiki pages by ID.
+/// There is no FK cascade from `channels`, so dependent rows are removed
+/// explicitly; the transaction keeps a partial delete from surviving a crash.
 pub async fn remove_channel(db: &Db, id: i32) -> Result<(), DbError> {
     db.call_db(move |conn| {
-        conn.execute("DELETE FROM messages WHERE channel_id = ?1", params![id])?;
-        conn.execute("DELETE FROM channels WHERE id = ?1", params![id])?;
+        let tx = conn.transaction()?;
+        // Wiki revisions cascade from wiki_pages; FTS rows go via triggers.
+        tx.execute("DELETE FROM wiki_pages WHERE channel_id = ?1", params![id])?;
+        tx.execute("DELETE FROM messages WHERE channel_id = ?1", params![id])?;
+        tx.execute("DELETE FROM channels WHERE id = ?1", params![id])?;
+        tx.commit()?;
         Ok(())
     })
     .await

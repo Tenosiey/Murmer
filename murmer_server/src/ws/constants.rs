@@ -86,3 +86,21 @@ pub const MAX_PINS_PER_CHANNEL: i64 = 25;
 
 /// Default number of messages to load when no limit is specified.
 pub const DEFAULT_HISTORY_LIMIT: i64 = 50;
+
+/// Maximum length in bytes for a wiki page slug.
+pub const MAX_WIKI_SLUG_LENGTH: usize = 64;
+
+/// Maximum length in characters for a wiki page title.
+pub const MAX_WIKI_TITLE_LENGTH: usize = 100;
+
+/// Maximum length in bytes for a wiki page's Markdown body.
+pub const MAX_WIKI_BODY_BYTES: usize = 100_000;
+
+/// Maximum number of wiki pages per channel.
+pub const MAX_WIKI_PAGES_PER_CHANNEL: i64 = 100;
+
+/// Number of revisions kept per wiki page; older ones are pruned on save.
+pub const MAX_WIKI_REVISIONS_KEPT: i64 = 50;
+
+/// Maximum number of links accepted in a single wiki-resolve request.
+pub const MAX_WIKI_RESOLVE_LINKS: usize = 50;
