@@ -295,6 +295,9 @@ pub(super) async fn handle_chat(
             if let Some(expiry) = ephemeral_expiry {
                 schedule_ephemeral_deletion(Arc::clone(state), id, channel_id, expiry);
             }
+
+            // Lifetime stats (no-op unless server and user both opted in).
+            super::stats::record(state, user, super::stats::chat_message_deltas(v)).await;
         }
         Err(e) => error!("db insert error: {e}"),
     }
@@ -364,6 +367,12 @@ pub(super) async fn handle_delete_message(
             });
             let chan_sender = get_or_create_channel(state, record.channel_id).await;
             let _ = chan_sender.send(payload.to_string());
+
+            // Only deleting one's own message counts towards the stat;
+            // moderator deletions say nothing about the requester's habits.
+            if owner.as_deref() == Some(requester.as_str()) {
+                super::stats::record(state, &requester, vec![(db::Stat::MessagesDeleted, 1)]).await;
+            }
         }
         Ok(false) => {
             send_error(sender, errors::MESSAGE_NOT_FOUND).await;
@@ -463,6 +472,8 @@ pub(super) async fn handle_edit_message(
             });
             let chan_sender = get_or_create_channel(state, record.channel_id).await;
             let _ = chan_sender.send(payload.to_string());
+
+            super::stats::record(state, &requester, vec![(db::Stat::MessagesEdited, 1)]).await;
         }
         Ok(false) => {
             send_error(sender, errors::MESSAGE_NOT_FOUND).await;
@@ -624,18 +635,21 @@ pub(super) async fn handle_react(
         }
     }
 
-    let target_channel_id = match db::get_message_channel_id(&state.db, message_id).await {
-        Ok(Some(ch)) => ch,
+    // The full record is loaded (not just the channel) so reaction stats can
+    // credit the message author with a received reaction.
+    let target_record = match db::get_message_record(&state.db, message_id).await {
+        Ok(Some(record)) => record,
         Ok(None) => {
             send_error(sender, errors::MESSAGE_NOT_FOUND).await;
             return;
         }
         Err(e) => {
-            error!("failed to lookup message channel for reaction: {e}");
+            error!("failed to lookup message for reaction: {e}");
             send_error(sender, errors::REACTION_FAILED).await;
             return;
         }
     };
+    let target_channel_id = target_record.channel_id;
 
     let result = match action {
         "add" => db::add_reaction(&state.db, message_id, &user, emoji).await,
@@ -650,6 +664,13 @@ pub(super) async fn handle_react(
         error!("db reaction error: {e}");
         send_error(sender, errors::REACTION_FAILED).await;
         return;
+    }
+
+    if action == "add" {
+        // Lifetime totals only count additions; taking a reaction back does
+        // not subtract. Both sides are gated by their own opt-in.
+        let author = target_record.content.get("user").and_then(|u| u.as_str());
+        super::stats::record_reaction_added(state, &user, author, emoji).await;
     }
 
     let reactions = match db::get_reaction_summary(&state.db, message_id).await {

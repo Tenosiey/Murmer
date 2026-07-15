@@ -9,6 +9,7 @@
 //! - [`messages`] – chat, history, threads, typing, search and reactions
 //! - [`moderation`] – kick, ban and mute actions
 //! - [`pins`] – shared, persisted message pins
+//! - [`stats`] – lifetime user statistics (double opt-in gated)
 
 mod auth;
 mod channels;
@@ -17,6 +18,7 @@ mod emojis;
 mod messages;
 mod moderation;
 mod pins;
+mod stats;
 
 use super::{errors, helpers::*, validation::*};
 use crate::{db, roles::RoleInfo, AppState};
@@ -176,6 +178,21 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "get-connection-stats" => {
                                 handle_get_connection_stats(&state, &mut sender, &user_name).await;
                             }
+                            "get-stats-config" => {
+                                stats::handle_get_stats_config(&state, &mut sender, &user_name).await;
+                            }
+                            "set-stats-opt-in" => {
+                                stats::handle_set_stats_opt_in(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "set-stats-enabled" => {
+                                stats::handle_set_stats_enabled(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "get-user-stats" => {
+                                stats::handle_get_user_stats(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "reset-stats" => {
+                                stats::handle_reset_stats(&state, &mut sender, &user_name).await;
+                            }
                             "voice-join" => {
                                 handle_voice_join(&state, &mut sender, &v, &mut voice_channel, &user_name).await;
                             }
@@ -192,12 +209,18 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "screenshare-start" => {
                                 if claims_own_user(&v, &user_name) {
                                     handle_screenshare_start(&state, &v).await;
+                                    if let Some(u) = user_name.as_deref() {
+                                        stats::note_screenshare_start(&state, u).await;
+                                    }
                                     let _ = state.tx.send(text.to_string());
                                 }
                             }
                             "screenshare-stop" => {
                                 if claims_own_user(&v, &user_name) {
                                     handle_screenshare_stop(&state, &v).await;
+                                    if let Some(u) = user_name.as_deref() {
+                                        stats::flush_screenshare_session(&state, u).await;
+                                    }
                                     let _ = state.tx.send(text.to_string());
                                 }
                             }
@@ -475,6 +498,7 @@ async fn handle_voice_join(
         if !joined {
             return;
         }
+        stats::note_voice_join(state, u).await;
         broadcast_voice(state, ch_id).await;
         let msg = serde_json::json!({
             "type": "voice-join",
@@ -506,6 +530,8 @@ async fn handle_voice_leave(
         }
         drop(map);
         state.voice_mutes.lock().await.remove(u);
+        stats::flush_voice_session(state, u).await;
+        stats::flush_screenshare_session(state, u).await;
         broadcast_voice(state, ch_id).await;
         if *voice_channel == Some(ch_id) {
             *voice_channel = None;
@@ -750,6 +776,11 @@ async fn handle_disconnect(state: &Arc<AppState>, user_name: Option<String>) {
     if let Some(name) = user_name {
         state.users.lock().await.remove(&name);
         broadcast_users(state).await;
+
+        // Bank any running voice/screen-share session time before the
+        // in-memory session markers are dropped.
+        stats::flush_voice_session(state, &name).await;
+        stats::flush_screenshare_session(state, &name).await;
 
         let mut map = state.voice_channels.lock().await;
         let mut ch_to_broadcast = None;

@@ -120,6 +120,8 @@ async fn main() -> Result<()> {
         active_screen_shares: Arc::new(Mutex::new(HashMap::new())),
         voice_mutes: Arc::new(Mutex::new(HashMap::new())),
         connection_stats: Arc::new(Mutex::new(HashMap::new())),
+        voice_session_starts: Arc::new(Mutex::new(HashMap::new())),
+        screenshare_session_starts: Arc::new(Mutex::new(HashMap::new())),
         upload_dir: config.upload_dir.clone(),
         password: config.password.clone(),
         admin_token: config.admin_token.clone(),

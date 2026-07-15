@@ -80,6 +80,7 @@
     roleRank
   } from '$lib/chat/constants';
   import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
+  import UserStatsModal from '$lib/components/UserStatsModal.svelte';
 
   let serverStrength = 0;
   $: serverStrength = pingToStrength($ping);
@@ -1127,6 +1128,7 @@
     const currentRole = $roles[target]?.role;
     const items: ContextMenuItem[] = [];
     items.push({ label: 'Send Message', action: () => openDm(target) });
+    items.push({ label: 'View Stats', action: () => openUserStats(target) });
     if (currentUserIsOwner) {
       const roleItems: ContextMenuItem[] = ASSIGNABLE_ROLES.filter(
         (role) => currentRole?.toLowerCase() !== role.toLowerCase()
@@ -1213,6 +1215,16 @@
 
   function closeServerDashboard() {
     serverDashboardOpen = false;
+  }
+
+  let statsUser: string | null = null;
+
+  function openUserStats(user: string) {
+    statsUser = user;
+  }
+
+  function closeUserStats() {
+    statsUser = null;
   }
 
   async function editTopic() {
@@ -1642,6 +1654,7 @@
         close={closeServerDashboard}
         rank={currentUserModerationRank}
       />
+      <UserStatsModal open={statsUser !== null} user={statsUser} close={closeUserStats} />
       <HelpOverlay bind:this={helpOverlay} open={helpOpen} onClose={closeHelp} />
       <SearchOverlay
         bind:this={searchOverlay}

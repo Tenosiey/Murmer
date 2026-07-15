@@ -97,6 +97,11 @@ pub struct AppState {
     pub voice_mutes: Arc<Mutex<HashMap<String, (bool, bool)>>>,
     /// Latest self-reported connection stats per user (in-memory only).
     pub connection_stats: Arc<Mutex<HashMap<String, ConnectionStatsEntry>>>,
+    /// When each user joined a voice channel; used to accumulate lifetime
+    /// voice minutes when they leave (only if stat tracking is enabled).
+    pub voice_session_starts: Arc<Mutex<HashMap<String, Instant>>>,
+    /// When each user started screen sharing; mirrors `voice_session_starts`.
+    pub screenshare_session_starts: Arc<Mutex<HashMap<String, Instant>>>,
     pub upload_dir: PathBuf,
     pub password: Option<String>,
     pub admin_token: Option<String>,
