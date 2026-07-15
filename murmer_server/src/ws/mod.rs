@@ -11,6 +11,6 @@ mod constants;
 mod errors;
 mod handlers;
 pub mod helpers;
-mod validation;
+pub mod validation;
 
 pub use handlers::ws_handler;

@@ -1,6 +1,9 @@
 //! Validation helpers for WebSocket message parameters.
 
-use super::constants::{MAX_ALLOWED_VOICE_BITRATE, MAX_TOPIC_LENGTH, USER_STATUSES};
+use super::constants::{
+    MAX_ALLOWED_VOICE_BITRATE, MAX_EMOJI_NAME_LEN, MAX_TOPIC_LENGTH, MIN_EMOJI_NAME_LEN,
+    USER_STATUSES,
+};
 
 /// Normalize a user status string to a valid status value.
 ///
@@ -31,6 +34,24 @@ pub fn validate_voice_quality(value: &str) -> bool {
 /// limit and must not contain control characters.
 pub fn validate_channel_topic(value: &str) -> bool {
     value.len() <= MAX_TOPIC_LENGTH && !value.chars().any(char::is_control)
+}
+
+/// Validate a custom emoji name: lowercase alphanumerics and underscores,
+/// 2 to 32 characters (`^[a-z0-9_]{2,32}$` without a regex dependency).
+pub fn validate_emoji_name(value: &str) -> bool {
+    value.len() >= MIN_EMOJI_NAME_LEN
+        && value.len() <= MAX_EMOJI_NAME_LEN
+        && value
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
+/// Whether a reaction key is a custom emoji shortcode of the form `:name:`.
+pub fn is_emoji_shortcode(value: &str) -> bool {
+    value
+        .strip_prefix(':')
+        .and_then(|rest| rest.strip_suffix(':'))
+        .is_some_and(validate_emoji_name)
 }
 
 /// Validate and convert a bitrate value to i32.

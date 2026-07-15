@@ -5,6 +5,7 @@
 //! - [`auth`] – user and bot authentication
 //! - [`channels`] – text/voice channel and category management
 //! - [`dms`] – direct messages between two users
+//! - [`emojis`] – custom server emoji management
 //! - [`messages`] – chat, history, threads, typing, search and reactions
 //! - [`moderation`] – kick, ban and mute actions
 //! - [`pins`] – shared, persisted message pins
@@ -12,6 +13,7 @@
 mod auth;
 mod channels;
 mod dms;
+mod emojis;
 mod messages;
 mod moderation;
 mod pins;
@@ -227,6 +229,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "set-role" => {
                                 handle_set_role(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "add-emoji" => {
+                                emojis::handle_add_emoji(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "remove-emoji" => {
+                                emojis::handle_remove_emoji(&state, &mut sender, &v, &user_name).await;
                             }
                             "remove-role" => {
                                 handle_remove_role(&state, &mut sender, &v, &user_name).await;

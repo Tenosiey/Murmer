@@ -7,6 +7,10 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
+  import { customEmojiList } from '$lib/stores/customEmojis';
+  import { selectedServer } from '$lib/stores/servers';
+  import { httpBaseFromWs } from '$lib/server-url';
+  import { unicodeFromShortcode } from '$lib/emoji';
 
   export let open = false;
   export let x = 0;
@@ -24,6 +28,8 @@
   let adjustedX = 0;
   let adjustedY = 0;
 
+  $: httpBase = $selectedServer ? httpBaseFromWs($selectedServer) : '';
+
   $: if (open) {
     adjustedX = x;
     adjustedY = y;
@@ -40,7 +46,9 @@
   function pick(emoji: string) {
     const trimmed = emoji.trim();
     if (!trimmed) return;
-    onPick(trimmed);
+    // Typed shortcodes for common emojis (`:+1:`) become the unicode char;
+    // anything else (including custom emoji shortcodes) passes through.
+    onPick(unicodeFromShortcode(trimmed) ?? trimmed);
     onClose();
   }
 
@@ -82,12 +90,27 @@
         </button>
       {/each}
     </div>
+    {#if $customEmojiList.length > 0}
+      <span class="section-label">Server emojis</span>
+      <div class="grid">
+        {#each $customEmojiList as emoji (emoji.name)}
+          <button
+            type="button"
+            class="emoji"
+            on:click={() => pick(`:${emoji.name}:`)}
+            title={`:${emoji.name}:`}
+          >
+            <img src={httpBase + emoji.url} alt={`:${emoji.name}:`} loading="lazy" />
+          </button>
+        {/each}
+      </div>
+    {/if}
     <form class="custom" on:submit|preventDefault={() => pick(custom)}>
       <input
         bind:value={custom}
         type="text"
-        placeholder="Custom emoji…"
-        maxlength="8"
+        placeholder="Emoji or :shortcode:…"
+        maxlength="34"
         aria-label="Custom emoji"
       />
     </form>
@@ -127,6 +150,21 @@
 
   .emoji:hover {
     background: var(--color-surface-raised);
+  }
+
+  .emoji img {
+    width: 1.375rem;
+    height: 1.375rem;
+    object-fit: contain;
+  }
+
+  .section-label {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    padding: 0 var(--space-1);
   }
 
   .custom input {

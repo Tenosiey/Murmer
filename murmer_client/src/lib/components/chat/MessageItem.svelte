@@ -10,8 +10,12 @@
   import { roles } from '$lib/stores/roles';
   import { session } from '$lib/stores/session';
   import { renderMarkdown } from '$lib/markdown';
+  import { emojifyHtml } from '$lib/emoji';
   import { ephemeralInfo, formatFileSize, reactionEntries } from '$lib/chat/helpers';
   import { giphyGifUrl } from '$lib/link-preview';
+  import { customEmojis, shortcodeToEmoji } from '$lib/stores/customEmojis';
+  import { selectedServer } from '$lib/stores/servers';
+  import { httpBaseFromWs } from '$lib/server-url';
   import LinkPreview from '$lib/components/LinkPreview.svelte';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
 
@@ -47,6 +51,8 @@
     giphyGifUrl(links[0]) !== null &&
     typeof message.text === 'string' &&
     /^https?:\/\/\S+$/.test(message.text.trim());
+
+  $: httpBase = $selectedServer ? httpBaseFromWs($selectedServer) : '';
 </script>
 
 <div
@@ -95,7 +101,7 @@
 
     <span class="content">
       {#if message.text && !textIsOnlyGif}
-        {@html renderMarkdown(message.text)}
+        {@html emojifyHtml(renderMarkdown(message.text), $customEmojis, httpBase)}
       {/if}
       {#if message.edited}
         <span
@@ -142,13 +148,18 @@
     {#if messageId !== null && reactions.length > 0}
       <div class="reactions">
         {#each reactions as reaction (reaction.emoji)}
+          {@const customEmoji = shortcodeToEmoji(reaction.emoji, $customEmojis)}
           <button
             class="reaction-chip"
             class:active={reaction.users.includes($session.user ?? '')}
             on:click={() => onToggleReaction(messageId, reaction.emoji, reaction.users)}
             title={reaction.users.join(', ')}
           >
-            <span class="emoji">{reaction.emoji}</span>
+            {#if customEmoji}
+              <img class="custom-emoji" src={httpBase + customEmoji.url} alt={reaction.emoji} loading="lazy" />
+            {:else}
+              <span class="emoji">{reaction.emoji}</span>
+            {/if}
             <span class="count">{reaction.users.length}</span>
           </button>
         {/each}
@@ -369,6 +380,13 @@
     margin: 0;
   }
 
+  .content :global(img.inline-emoji) {
+    width: 1.375rem;
+    height: 1.375rem;
+    object-fit: contain;
+    vertical-align: -0.3em;
+  }
+
   .edited-badge {
     margin-left: var(--space-1);
     font-size: var(--text-xs);
@@ -543,6 +561,13 @@
 
   .reaction-chip:hover {
     border-color: var(--color-outline-strong);
+  }
+
+  .reaction-chip .custom-emoji {
+    width: 1.125rem;
+    height: 1.125rem;
+    object-fit: contain;
+    vertical-align: middle;
   }
 
   .reaction-chip.active {

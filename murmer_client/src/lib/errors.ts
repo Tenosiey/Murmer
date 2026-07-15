@@ -66,7 +66,15 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'pin-limit-reached': 'This channel already has the maximum number of pinned messages.',
   'pin-failed': 'The server could not update the pinned messages.',
   'reply-target-not-found': 'The message you are replying to no longer exists.',
-  'thread-load-failed': 'The server could not load that thread. Please try again.'
+  'thread-load-failed': 'The server could not load that thread. Please try again.',
+  'emoji-permission-denied': 'You do not have permission to manage emojis on this server.',
+  'invalid-emoji-name':
+    'That emoji name is not allowed. Use 2-32 lowercase letters, digits or underscores.',
+  'invalid-emoji-url': 'The uploaded emoji image could not be used. Please try again.',
+  'emoji-name-taken': 'An emoji with that name already exists on this server.',
+  'emoji-limit-reached': 'This server has reached its custom emoji limit.',
+  'emoji-update-failed': 'The server could not update the emoji list. Please try again.',
+  'emoji-not-found': 'That emoji no longer exists.'
 };
 
 /**

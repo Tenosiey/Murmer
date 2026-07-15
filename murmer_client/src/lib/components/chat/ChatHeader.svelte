@@ -23,6 +23,8 @@
   export let onEditTopic: () => void;
   export let onOpenSearch: () => void;
   export let onOpenSettings: () => void;
+  export let showServerDashboard = false;
+  export let onOpenServerDashboard: () => void = () => {};
   export let onLeaveServer: () => void;
   export let onLogout: () => void;
 
@@ -361,6 +363,25 @@
       </svg>
       <span class="sr-only">Search messages</span>
     </button>
+    {#if showServerDashboard}
+      <button class="icon-btn" on:click={onOpenServerDashboard} title="Server dashboard">
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
+          <path d="M9.5 12l1.8 1.8 3.2-3.6" />
+        </svg>
+        <span class="sr-only">Open server dashboard</span>
+      </button>
+    {/if}
     <button class="icon-btn" on:click={onOpenSettings} title="Settings">
       <svg
         width="20"

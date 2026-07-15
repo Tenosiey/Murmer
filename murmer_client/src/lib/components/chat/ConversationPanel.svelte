@@ -9,6 +9,10 @@
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { renderMarkdown } from '$lib/markdown';
+  import { emojifyHtml } from '$lib/emoji';
+  import { customEmojis } from '$lib/stores/customEmojis';
+  import { selectedServer } from '$lib/stores/servers';
+  import { httpBaseFromWs } from '$lib/server-url';
 
   export let title: string;
   export let kind: 'thread' | 'dm' = 'thread';
@@ -20,6 +24,8 @@
   export let emphasize: (msg: Message) => boolean = () => false;
 
   let draft = '';
+
+  $: httpBase = $selectedServer ? httpBaseFromWs($selectedServer) : '';
 
   function submit() {
     const trimmed = draft.trim();
@@ -57,7 +63,7 @@
         </div>
         <div class="entry-text">
           {#if msg.text}
-            {@html renderMarkdown(msg.text)}
+            {@html emojifyHtml(renderMarkdown(msg.text), $customEmojis, httpBase)}
           {:else if msg.image}
             <img src={msg.image as string} alt="" loading="lazy" />
           {:else if msg.attachment}
@@ -165,6 +171,14 @@
 
   .entry-text :global(p) {
     margin: 0;
+  }
+
+  .entry-text :global(img.inline-emoji) {
+    width: 1.25rem;
+    height: 1.25rem;
+    object-fit: contain;
+    vertical-align: -0.3em;
+    margin-top: 0;
   }
 
   .entry-text img {
