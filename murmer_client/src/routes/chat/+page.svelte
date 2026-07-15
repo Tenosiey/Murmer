@@ -80,6 +80,7 @@
     roleRank
   } from '$lib/chat/constants';
   import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
+  import UserStatsModal from '$lib/components/UserStatsModal.svelte';
 
   let serverStrength = 0;
   $: serverStrength = pingToStrength($ping);
@@ -1127,6 +1128,7 @@
     const currentRole = $roles[target]?.role;
     const items: ContextMenuItem[] = [];
     items.push({ label: 'Send Message', action: () => openDm(target) });
+    items.push({ label: 'View Stats', action: () => openUserStats(target) });
     if (currentUserIsOwner) {
       const roleItems: ContextMenuItem[] = ASSIGNABLE_ROLES.filter(
         (role) => currentRole?.toLowerCase() !== role.toLowerCase()
@@ -1213,6 +1215,16 @@
 
   function closeServerDashboard() {
     serverDashboardOpen = false;
+  }
+
+  let statsUser: string | null = null;
+
+  function openUserStats(user: string) {
+    statsUser = user;
+  }
+
+  function closeUserStats() {
+    statsUser = null;
   }
 
   async function editTopic() {
@@ -1391,36 +1403,42 @@
     if (name) categories.rename(id, name.trim());
   }
 
-  function buildMoveToItems(channelId: number, voice: boolean): Array<{ label: string; action: () => void }> {
-    const items: Array<{ label: string; action: () => void }> = [];
+  /** Builds the "Move to" submenu; empty when there is nowhere to move to. */
+  function buildMoveToItems(channelId: number, voice: boolean): ContextMenuItem[] {
+    const targets: ContextMenuItem[] = [];
     const currentCh = voice
       ? $voiceChannels.find((c) => c.id === channelId)
       : $channels.find((c) => c.id === channelId);
     const currentCatId = currentCh?.categoryId ?? null;
 
     if (currentCatId !== null) {
-      items.push({
-        label: 'Move to: (no category)',
+      targets.push({
+        label: '(no category)',
         action: () => channels.move(channelId, null, voice)
       });
     }
 
     for (const cat of $categories) {
       if (cat.id !== currentCatId) {
-        items.push({
-          label: `Move to: ${cat.name}`,
+        targets.push({
+          label: cat.name,
           action: () => channels.move(channelId, cat.id, voice)
         });
       }
     }
 
-    return items;
+    return targets.length ? [{ label: 'Move to', children: targets }] : [];
   }
 
   $: channelMenuItems = [
-    { label: 'Create Text Channel', action: () => createChannelPrompt() },
-    { label: 'Create Voice Channel', action: () => createVoiceChannelPrompt() },
-    { label: 'Create Category', action: createCategoryPrompt },
+    {
+      label: 'Create',
+      children: [
+        { label: 'Text Channel', action: () => createChannelPrompt() },
+        { label: 'Voice Channel', action: () => createVoiceChannelPrompt() },
+        { label: 'Category', action: createCategoryPrompt }
+      ]
+    },
     ...(menuChannelId != null
       ? [
           ...buildMoveToItems(menuChannelId, false),
@@ -1636,6 +1654,7 @@
         close={closeServerDashboard}
         rank={currentUserModerationRank}
       />
+      <UserStatsModal open={statsUser !== null} user={statsUser} close={closeUserStats} />
       <HelpOverlay bind:this={helpOverlay} open={helpOpen} onClose={closeHelp} />
       <SearchOverlay
         bind:this={searchOverlay}

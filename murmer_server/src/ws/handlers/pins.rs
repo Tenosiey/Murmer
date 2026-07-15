@@ -86,6 +86,7 @@ pub(super) async fn handle_pin_message(
                 Ok(true) => {
                     broadcast_pins(state, record.channel_id).await;
                     info!(user, message_id, "Message pinned");
+                    super::stats::record(state, &user, vec![(db::Stat::PinsAdded, 1)]).await;
                 }
                 Ok(false) => {
                     send_error(sender, errors::PIN_LIMIT_REACHED).await;

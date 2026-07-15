@@ -230,6 +230,7 @@ pub(super) async fn handle_presence(
             send_voice_channels(state, sender).await;
             send_users(state, sender).await;
             send_all_voice(state, sender).await;
+            super::stats::send_stats_config(state, sender, u).await;
             db::send_history(
                 &state.db,
                 sender,

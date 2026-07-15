@@ -74,7 +74,10 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'emoji-name-taken': 'An emoji with that name already exists on this server.',
   'emoji-limit-reached': 'This server has reached its custom emoji limit.',
   'emoji-update-failed': 'The server could not update the emoji list. Please try again.',
-  'emoji-not-found': 'That emoji no longer exists.'
+  'emoji-not-found': 'That emoji no longer exists.',
+  'stats-permission-denied': 'You do not have permission to change stat tracking on this server.',
+  'stats-not-available': "That user's stats are not available.",
+  'stats-update-failed': 'The server could not update stat tracking. Please try again.'
 };
 
 /**

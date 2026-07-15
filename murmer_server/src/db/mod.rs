@@ -17,6 +17,7 @@
 //! - [`pins`] – persisted message pins per channel
 //! - [`reactions`] – emoji reaction operations
 //! - [`roles`] – user role persistence
+//! - [`stats`] – lifetime user statistics (double opt-in gated)
 //! - [`users`] – user name to public key bindings
 
 mod channels;
@@ -27,6 +28,7 @@ mod moderation;
 mod pins;
 mod reactions;
 mod roles;
+mod stats;
 mod users;
 
 pub use channels::*;
@@ -37,6 +39,7 @@ pub use moderation::*;
 pub use pins::*;
 pub use reactions::*;
 pub use roles::*;
+pub use stats::*;
 pub use users::*;
 
 use std::path::Path;
@@ -199,6 +202,8 @@ CREATE TABLE IF NOT EXISTS bots (
 INSERT OR IGNORE INTO channels (name) VALUES ('general');
 "#
         ))?;
+
+        conn.execute_batch(&stats::stats_schema())?;
 
         // Full-text index over the `text` field of the message JSON, kept in
         // sync by triggers. The backfill covers databases created before the
