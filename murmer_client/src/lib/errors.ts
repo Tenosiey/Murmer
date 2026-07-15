@@ -77,7 +77,15 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'emoji-not-found': 'That emoji no longer exists.',
   'stats-permission-denied': 'You do not have permission to change stat tracking on this server.',
   'stats-not-available': "That user's stats are not available.",
-  'stats-update-failed': 'The server could not update stat tracking. Please try again.'
+  'stats-update-failed': 'The server could not update stat tracking. Please try again.',
+  'invalid-wiki-slug':
+    'That page name is not allowed. Use lowercase letters, digits and single dashes.',
+  'invalid-wiki-title': 'That page title is not allowed.',
+  'wiki-body-too-large': 'That wiki page is too large to save.',
+  'wiki-slug-taken': 'A wiki page with that name already exists in this channel.',
+  'wiki-page-not-found': 'That wiki page no longer exists.',
+  'wiki-page-limit-reached': 'This channel has reached its wiki page limit.',
+  'wiki-save-failed': 'The server could not update the wiki. Please try again.'
 };
 
 /**

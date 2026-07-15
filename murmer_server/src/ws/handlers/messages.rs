@@ -24,6 +24,7 @@ pub(super) async fn handle_join(
         *chan_rx = chan_tx.subscribe();
         db::send_history(&state.db, sender, *channel_id, None, DEFAULT_HISTORY_LIMIT).await;
         super::pins::send_pins(state, sender, *channel_id).await;
+        super::wiki::send_wiki_index(state, sender, *channel_id).await;
     }
 }
 

@@ -2,6 +2,7 @@ import { marked } from 'marked';
 import type { Tokens } from 'marked';
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
+import { parseWikiTarget } from './wiki/slug';
 
 const renderer = new marked.Renderer();
 const defaultCodeRenderer = renderer.code.bind(renderer);
@@ -41,7 +42,50 @@ renderer.code = ({ text, lang, escaped }: Tokens.Code) => {
   });
 };
 
-marked.use({ renderer });
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Inline extension for `[[page]]` / `[[channel/page]]` / `[[target|label]]`
+ * wiki links. Emits anchors carrying the target in data attributes; click
+ * handling and missing-page styling are applied by the `wikilinks` action
+ * (`src/lib/wiki/links.ts`) after rendering, so the render cache never holds
+ * stale existence state. Runs at the inline level, so code spans and fenced
+ * blocks are unaffected.
+ */
+const wikilinkExtension = {
+  name: 'wikilink',
+  level: 'inline' as const,
+  start(src: string) {
+    const index = src.indexOf('[[');
+    return index === -1 ? undefined : index;
+  },
+  tokenizer(src: string) {
+    const match = /^\[\[([^[\]|]+?)(?:\|([^[\]]+?))?\]\]/.exec(src);
+    if (!match) return undefined;
+    const target = parseWikiTarget(match[1], match[2]);
+    if (!target) return undefined;
+    return {
+      type: 'wikilink',
+      raw: match[0],
+      channel: target.channel ?? '',
+      slug: target.slug,
+      label: target.label
+    };
+  },
+  renderer(token: { channel: string; slug: string; label: string }) {
+    const channel = escapeHtml(token.channel);
+    const slug = escapeHtml(token.slug);
+    return `<a class="wikilink" href="#" data-wiki-channel="${channel}" data-wiki-slug="${slug}">${escapeHtml(token.label)}</a>`;
+  }
+};
+
+marked.use({ renderer, extensions: [wikilinkExtension as any] });
 
 /* Rendering is memoised because the chat view re-evaluates message bodies
    whenever the message list updates; parsing + sanitising + highlighting the
@@ -66,7 +110,11 @@ export function renderMarkdown(text: string): string {
     ? marked.parse(text) as string
     : marked.parseInline(text) as string;
 
-  const sanitized = DOMPurify.sanitize(html);
+  // Keep the wikilink target attributes; DOMPurify strips unknown
+  // data-* attributes by default.
+  const sanitized = DOMPurify.sanitize(html, {
+    ADD_ATTR: ['data-wiki-channel', 'data-wiki-slug']
+  });
 
   if (renderCache.size >= MAX_RENDER_CACHE_ENTRIES) {
     const oldest = renderCache.keys().next().value;

@@ -81,6 +81,8 @@
   } from '$lib/chat/constants';
   import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
   import UserStatsModal from '$lib/components/UserStatsModal.svelte';
+  import WikiView from '$lib/components/wiki/WikiView.svelte';
+  import { wikilinks } from '$lib/wiki/links';
 
   let serverStrength = 0;
   $: serverStrength = pingToStrength($ping);
@@ -108,6 +110,10 @@
 
   let searchOpen = false;
   let searchOverlay: SearchOverlay;
+
+  let wikiOpen = false;
+  /** Page a wikilink asked to open; consumed by WikiView on mount. */
+  let wikiInitialSlug: string | null = null;
 
   let helpOpen = false;
   let helpOverlay: HelpOverlay;
@@ -860,6 +866,7 @@
 
   function joinChannel(id: number) {
     if (id === currentChatChannelId) return;
+    wikiInitialSlug = null;
     currentChatChannelId = id;
     unreadMarkerAfterId = unread.getLastRead(id);
     unread.setActive(id);
@@ -869,6 +876,36 @@
     chat.clear();
     chat.sendRaw({ type: 'join', channelId: id });
     scrollBottom();
+  }
+
+  function toggleWiki() {
+    if (wikiOpen) {
+      wikiOpen = false;
+      wikiInitialSlug = null;
+    } else {
+      wikiOpen = true;
+    }
+  }
+
+  /**
+   * Open the wiki at a page, switching channels first for
+   * `[[channel/page]]` links. Called from wikilinks in chat messages and
+   * from cross-channel links inside the wiki view.
+   */
+  function openWikiPage(channelName: string | null, slug: string) {
+    if (channelName && channelName !== currentChatChannelName) {
+      const target = $channels.find((c) => c.name === channelName);
+      if (!target) {
+        void dialogs.alert({
+          title: 'Wiki',
+          message: `Channel "${channelName}" was not found on this server.`
+        });
+        return;
+      }
+      joinChannel(target.id);
+    }
+    wikiInitialSlug = slug;
+    wikiOpen = true;
   }
 
   function startReply(msg: Message) {
@@ -1643,6 +1680,8 @@
         onEditTopic={editTopic}
         onOpenSearch={() => openSearch()}
         onOpenSettings={openSettings}
+        {wikiOpen}
+        onToggleWiki={toggleWiki}
         showServerDashboard={currentUserModerationRank >= 1}
         onOpenServerDashboard={openServerDashboard}
         onLeaveServer={leaveServer}
@@ -1664,13 +1703,34 @@
         onFocusResult={handleSearchResult}
         {now}
       />
+      {#if wikiOpen}
+        <!-- Edit affordances are shown to everyone; the server enforces the
+             channel-management gate, same as channel/topic management. -->
+        {#key currentChatChannelId}
+          <WikiView
+            channelId={currentChatChannelId}
+            channelName={currentChatChannelName}
+            canEdit={true}
+            initialSlug={wikiInitialSlug}
+            onCrossChannel={openWikiPage}
+          />
+        {/key}
+      {:else}
       <PinnedBar
         entries={pinnedEntries}
         messages={channelMessages}
         onFocusMessage={focusMessage}
       />
       <div class="messages-shell">
-        <div class="messages" bind:this={messagesContainer} on:scroll={onScroll}>
+        <div
+          class="messages"
+          bind:this={messagesContainer}
+          on:scroll={onScroll}
+          use:wikilinks={{
+            channelName: currentChatChannelName,
+            onNavigate: (nav) => openWikiPage(nav.channel, nav.slug)
+          }}
+        >
           {#each messageBlocks as block (block.key)}
             {#if block.kind === 'separator'}
               <div class="day-separator" role="separator" aria-label={`Messages from ${block.label}`}>
@@ -1726,6 +1786,7 @@
         onCancelReply={cancelReply}
         onFileSelected={setPendingFile}
       />
+      {/if}
 
       {#if threadRootId !== null}
         <ConversationPanel

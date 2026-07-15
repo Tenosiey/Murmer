@@ -238,3 +238,24 @@ pub const STATS_NOT_AVAILABLE: &str = r#"{"type":"error","message":"stats-not-av
 
 /// Failed to persist or load stat tracking data.
 pub const STATS_UPDATE_FAILED: &str = r#"{"type":"error","message":"stats-update-failed"}"#;
+
+/// Wiki page slug failed validation.
+pub const INVALID_WIKI_SLUG: &str = r#"{"type":"error","message":"invalid-wiki-slug"}"#;
+
+/// Wiki page title failed validation.
+pub const INVALID_WIKI_TITLE: &str = r#"{"type":"error","message":"invalid-wiki-title"}"#;
+
+/// Wiki page body exceeds the maximum allowed size.
+pub const WIKI_BODY_TOO_LARGE: &str = r#"{"type":"error","message":"wiki-body-too-large"}"#;
+
+/// A wiki page with this slug already exists in the channel.
+pub const WIKI_SLUG_TAKEN: &str = r#"{"type":"error","message":"wiki-slug-taken"}"#;
+
+/// The referenced wiki page does not exist.
+pub const WIKI_PAGE_NOT_FOUND: &str = r#"{"type":"error","message":"wiki-page-not-found"}"#;
+
+/// The channel has reached its wiki page limit.
+pub const WIKI_PAGE_LIMIT_REACHED: &str = r#"{"type":"error","message":"wiki-page-limit-reached"}"#;
+
+/// Failed to persist or load wiki data.
+pub const WIKI_SAVE_FAILED: &str = r#"{"type":"error","message":"wiki-save-failed"}"#;
