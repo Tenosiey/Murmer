@@ -9,6 +9,21 @@ pub const ROLE_MANAGE_ROLES: &[&str] = &["Owner"];
 /// Roles that are allowed to query server details such as the running version.
 pub const SERVER_INFO_ROLES: &[&str] = &["Owner", "Admin"];
 
+/// Roles that are allowed to add or remove custom server emojis.
+pub const EMOJI_MANAGE_ROLES: &[&str] = &["Owner", "Admin", "Mod"];
+
+/// Maximum number of custom emojis a server may register.
+pub const MAX_CUSTOM_EMOJIS: i64 = 200;
+
+/// Maximum file size in bytes for a custom emoji image.
+pub const MAX_EMOJI_FILE_BYTES: u64 = 512 * 1024;
+
+/// Minimum length of a custom emoji name.
+pub const MIN_EMOJI_NAME_LEN: usize = 2;
+
+/// Maximum length of a custom emoji name.
+pub const MAX_EMOJI_NAME_LEN: usize = 32;
+
 /// Roles that are allowed to view other users' self-reported connection stats.
 pub const CONNECTION_STATS_ROLES: &[&str] = &["Owner", "Admin"];
 

@@ -1,6 +1,6 @@
 //! Handlers for chat messages, message deletion, editing, reactions, history and search.
 
-use crate::ws::{constants::*, errors, helpers::*};
+use crate::ws::{constants::*, errors, helpers::*, validation::is_emoji_shortcode};
 use crate::{db, security, AppState};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -594,12 +594,34 @@ pub(super) async fn handle_react(
     };
 
     let emoji = raw_emoji.trim();
-    if emoji.is_empty()
-        || emoji.len() > 16
-        || emoji.chars().any(|c| c.is_control() || c.is_whitespace())
+    // Custom emoji shortcodes (`:name:`) may exceed the 16-byte cap that
+    // bounds regular unicode reactions.
+    let shortcode = is_emoji_shortcode(emoji);
+    if !shortcode
+        && (emoji.is_empty()
+            || emoji.len() > 16
+            || emoji.chars().any(|c| c.is_control() || c.is_whitespace()))
     {
         send_error(sender, errors::INVALID_EMOJI).await;
         return;
+    }
+
+    // Adding a shortcode reaction requires the emoji to actually exist so
+    // junk shortcodes cannot be planted; removal stays permissive so
+    // reactions of since-deleted emojis remain removable.
+    if shortcode && action == "add" {
+        match db::emoji_exists(&state.db, emoji.trim_matches(':')).await {
+            Ok(true) => {}
+            Ok(false) => {
+                send_error(sender, errors::INVALID_EMOJI).await;
+                return;
+            }
+            Err(e) => {
+                error!("db emoji lookup error: {e}");
+                send_error(sender, errors::REACTION_FAILED).await;
+                return;
+            }
+        }
     }
 
     let target_channel_id = match db::get_message_channel_id(&state.db, message_id).await {

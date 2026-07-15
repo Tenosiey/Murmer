@@ -411,6 +411,63 @@ pub async fn can_view_server_info(state: &Arc<AppState>, user: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Determine whether a user is authorised to manage custom server emojis.
+/// Always restricted to Mod/Admin/Owner, even when no `ADMIN_TOKEN` is set:
+/// emojis are server-wide state, so unlike channel management there is no
+/// lenient fallback for unadministered servers.
+pub async fn can_manage_emojis(state: &Arc<AppState>, user: &str) -> bool {
+    let roles = state.roles.lock().await;
+    roles
+        .get(user)
+        .map(|info| {
+            super::constants::EMOJI_MANAGE_ROLES
+                .iter()
+                .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
+        })
+        .unwrap_or(false)
+}
+
+/// Serialize the current custom emoji list as an `emoji-list` frame.
+async fn emoji_list_frame(state: &Arc<AppState>) -> Option<String> {
+    let emojis = match db::get_emojis(&state.db).await {
+        Ok(list) => list,
+        Err(e) => {
+            error!("Failed to load custom emojis: {e}");
+            return None;
+        }
+    };
+    let entries: Vec<Value> = emojis
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "name": e.name,
+                "url": e.url,
+                "uploadedBy": e.uploaded_by,
+                "createdAt": e.created_at,
+            })
+        })
+        .collect();
+    serde_json::to_string(&serde_json::json!({
+        "type": "emoji-list",
+        "emojis": entries,
+    }))
+    .ok()
+}
+
+/// Send the current custom emoji list to a single client.
+pub async fn send_emojis(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    if let Some(msg) = emoji_list_frame(state).await {
+        let _ = sender.send(Message::Text(msg.into())).await;
+    }
+}
+
+/// Broadcast the current custom emoji list to all connected clients.
+pub async fn broadcast_emojis(state: &Arc<AppState>) {
+    if let Some(msg) = emoji_list_frame(state).await {
+        let _ = state.tx.send(msg);
+    }
+}
+
 /// Determine whether a user is authorised to view other users' self-reported
 /// connection stats. Restricted to Owner and Admin roles.
 pub async fn can_view_connection_stats(state: &Arc<AppState>, user: &str) -> bool {

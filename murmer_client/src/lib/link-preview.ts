@@ -53,6 +53,32 @@ export function fetchLinkPreview(url: string): Promise<LinkPreviewData | null> {
   return promise;
 }
 
+/**
+ * Resolve a Giphy link to a directly embeddable .gif URL, or null when the
+ * link is not a Giphy GIF. Only giphy.com hosts are accepted so this path
+ * can't be used to inline arbitrary third-party images.
+ */
+export function giphyGifUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    const host = parsed.hostname.toLowerCase();
+    if (host !== 'giphy.com' && !host.endsWith('.giphy.com')) return null;
+    // Direct media links, e.g. https://media2.giphy.com/media/<path>/giphy.gif
+    if (host !== 'giphy.com' && /\.gif$/i.test(parsed.pathname)) {
+      return parsed.toString();
+    }
+    // Share/page links, e.g. https://giphy.com/gifs/reaction-slug-RK51HqhhEx2bYAjjti
+    const match = parsed.pathname.match(/^\/(?:gifs|stickers)\/(?:[\w-]*-)?(\w+)\/?$/);
+    if (match) {
+      return `https://media.giphy.com/media/${match[1]}/giphy.gif`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function extractLinks(text: string | undefined | null): string[] {
   if (!text) return [];
   const urlPattern = /https?:\/\/[\w.-]+(?:\/[\w\-./?%&=+#@~:,;!]*)?/gi;

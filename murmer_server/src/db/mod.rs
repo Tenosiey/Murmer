@@ -11,6 +11,7 @@
 //! Submodules group queries by domain:
 //! - [`channels`] – text channels, voice channels and categories
 //! - [`direct_messages`] – private messages between two users
+//! - [`emojis`] – custom server emoji registrations
 //! - [`messages`] – message CRUD and history retrieval
 //! - [`moderation`] – ban and mute persistence
 //! - [`pins`] – persisted message pins per channel
@@ -20,6 +21,7 @@
 
 mod channels;
 mod direct_messages;
+mod emojis;
 mod messages;
 mod moderation;
 mod pins;
@@ -29,6 +31,7 @@ mod users;
 
 pub use channels::*;
 pub use direct_messages::*;
+pub use emojis::*;
 pub use messages::*;
 pub use moderation::*;
 pub use pins::*;
@@ -177,6 +180,12 @@ CREATE TABLE IF NOT EXISTS pins (
     pinned_at TEXT NOT NULL DEFAULT ({NOW_UTC})
 );
 CREATE INDEX IF NOT EXISTS idx_pins_channel_id ON pins (channel_id);
+CREATE TABLE IF NOT EXISTS emojis (
+    name TEXT PRIMARY KEY,
+    url TEXT NOT NULL,
+    uploaded_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT ({NOW_UTC})
+);
 CREATE TABLE IF NOT EXISTS bots (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { browser } from '$app/environment';
-  import { fetchLinkPreview, type LinkPreviewData } from '$lib/link-preview';
+  import { fetchLinkPreview, giphyGifUrl, type LinkPreviewData } from '$lib/link-preview';
 
   export let url: string;
 
@@ -12,6 +12,8 @@
   let metadataTimeout: number | null = null;
   let metadataAbort: AbortController | null = null;
   let currentUrl = '';
+
+  let giphyGif: string | null = null;
 
   let youtubeId: string | null = null;
   let youtubeTitle = '';
@@ -114,8 +116,15 @@
     }
   }
 
+  /* When the GIF fails to load, fall back to the regular metadata card. */
+  function handleGiphyError() {
+    giphyGif = null;
+    if (browser && safeUrl) loadPreview(currentUrl);
+  }
+
   function setupPreview() {
-    youtubeId = extractYouTubeId(safeUrl);
+    giphyGif = safeUrl ? giphyGifUrl(currentUrl) : null;
+    youtubeId = giphyGif ? null : extractYouTubeId(safeUrl);
     youtubeTitle = '';
     youtubeAuthor = '';
     youtubeError = false;
@@ -130,6 +139,7 @@
       metadataAbort = null;
     }
     if (!browser || !safeUrl) return;
+    if (giphyGif) return;
     if (youtubeId) {
       loadYoutubeMetadata(youtubeId, currentUrl);
     } else {
@@ -144,7 +154,18 @@
 </script>
 
 {#if safeUrl}
-  {#if youtubeId}
+  {#if giphyGif}
+    <a
+      class="link-preview giphy"
+      href={currentUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`Open GIF on ${displayHost}`}
+    >
+      <img src={giphyGif} alt="GIF" loading="lazy" on:error={handleGiphyError} />
+      <span class="giphy-badge" aria-hidden="true">GIF</span>
+    </a>
+  {:else if youtubeId}
     <div class="link-preview youtube">
       <a href={currentUrl} target="_blank" rel="noopener noreferrer" class="youtube-thumb" aria-label={`Open video on ${displayHost}`}>
         {#if youtubeThumbnail}
@@ -271,6 +292,39 @@
     object-fit: cover;
     border-radius: var(--radius-sm);
     flex-shrink: 0;
+  }
+
+  .giphy {
+    position: relative;
+    display: block;
+    max-width: 320px;
+  }
+
+  .giphy img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .giphy-badge {
+    position: absolute;
+    bottom: var(--space-2);
+    left: var(--space-2);
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-xs);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1rem;
+    background: rgba(0, 0, 0, 0.65);
+    color: white;
+    opacity: 0;
+    transition: opacity var(--motion-duration-short) var(--motion-easing-standard);
+  }
+
+  .giphy:hover .giphy-badge,
+  .giphy:focus-visible .giphy-badge {
+    opacity: 1;
   }
 
   .youtube {

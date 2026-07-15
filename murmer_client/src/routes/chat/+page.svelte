@@ -76,8 +76,10 @@
     MAX_EPHEMERAL_SECONDS,
     VOICE_QUALITY_PRESETS,
     DEFAULT_VOICE_PRESET,
-    DEFAULT_CHANNEL_NAME
+    DEFAULT_CHANNEL_NAME,
+    roleRank
   } from '$lib/chat/constants';
+  import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
 
   let serverStrength = 0;
   $: serverStrength = pingToStrength($ping);
@@ -1055,21 +1057,6 @@
 
   const ASSIGNABLE_ROLES = ['Owner', 'Admin', 'Mod'] as const;
 
-  /** Mirror of the server's moderation ranking: requesters must strictly
-   *  outrank their target for kick/ban/mute to be allowed. */
-  function moderationRank(role: string | undefined): number {
-    switch (role?.toLowerCase()) {
-      case 'owner':
-        return 3;
-      case 'admin':
-        return 2;
-      case 'mod':
-        return 1;
-      default:
-        return 0;
-    }
-  }
-
   $: currentUserIsOwner = (() => {
     const user = $session.user;
     if (!user) return false;
@@ -1077,13 +1064,14 @@
     return info?.role?.toLowerCase() === 'owner';
   })();
 
-  $: currentUserModerationRank = moderationRank(
+  // Requesters must strictly outrank their target for kick/ban/mute.
+  $: currentUserModerationRank = roleRank(
     $session.user ? $roles[$session.user]?.role : undefined
   );
 
   function canModerate(target: string): boolean {
     if (target === $session.user) return false;
-    return currentUserModerationRank > moderationRank($roles[target]?.role);
+    return currentUserModerationRank > roleRank($roles[target]?.role);
   }
 
   function openUserRoleMenu(event: MouseEvent, user: string) {
@@ -1151,10 +1139,15 @@
       }
     }
     if (canModerate(target)) {
-      items.push({ label: 'Mute (10 min)', action: () => muteUser(target, 600) });
-      items.push({ label: 'Mute (1 hour)', action: () => muteUser(target, 3600) });
-      items.push({ label: 'Mute (until lifted)', action: () => muteUser(target) });
-      items.push({ label: 'Unmute', action: () => unmuteUser(target) });
+      items.push({
+        label: 'Mute',
+        children: [
+          { label: '10 minutes', action: () => muteUser(target, 600) },
+          { label: '1 hour', action: () => muteUser(target, 3600) },
+          { label: 'Until lifted', action: () => muteUser(target) },
+          { label: 'Unmute', action: () => unmuteUser(target) }
+        ]
+      });
       if ($onlineUsers.includes(target)) {
         items.push({ label: 'Kick User', danger: true, action: () => kickUser(target) });
       }
@@ -1210,6 +1203,16 @@
 
   function closeSettings() {
     settingsOpen = false;
+  }
+
+  let serverDashboardOpen = false;
+
+  function openServerDashboard() {
+    serverDashboardOpen = true;
+  }
+
+  function closeServerDashboard() {
+    serverDashboardOpen = false;
   }
 
   async function editTopic() {
@@ -1622,10 +1625,17 @@
         onEditTopic={editTopic}
         onOpenSearch={() => openSearch()}
         onOpenSettings={openSettings}
+        showServerDashboard={currentUserModerationRank >= 1}
+        onOpenServerDashboard={openServerDashboard}
         onLeaveServer={leaveServer}
         onLogout={logout}
       />
       <SettingsModal open={settingsOpen} close={closeSettings} />
+      <ServerDashboardModal
+        open={serverDashboardOpen}
+        close={closeServerDashboard}
+        rank={currentUserModerationRank}
+      />
       <HelpOverlay bind:this={helpOverlay} open={helpOpen} onClose={closeHelp} />
       <SearchOverlay
         bind:this={searchOverlay}

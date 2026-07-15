@@ -203,6 +203,27 @@ pub const REPLY_TARGET_NOT_FOUND: &str = r#"{"type":"error","message":"reply-tar
 /// Failed to load a thread.
 pub const THREAD_LOAD_FAILED: &str = r#"{"type":"error","message":"thread-load-failed"}"#;
 
+/// User lacks permission to manage custom server emojis.
+pub const EMOJI_PERMISSION_DENIED: &str = r#"{"type":"error","message":"emoji-permission-denied"}"#;
+
+/// Custom emoji name failed validation.
+pub const INVALID_EMOJI_NAME: &str = r#"{"type":"error","message":"invalid-emoji-name"}"#;
+
+/// Custom emoji URL does not point at a valid uploaded image.
+pub const INVALID_EMOJI_URL: &str = r#"{"type":"error","message":"invalid-emoji-url"}"#;
+
+/// A custom emoji with this name already exists.
+pub const EMOJI_NAME_TAKEN: &str = r#"{"type":"error","message":"emoji-name-taken"}"#;
+
+/// The server has reached its custom emoji limit.
+pub const EMOJI_LIMIT_REACHED: &str = r#"{"type":"error","message":"emoji-limit-reached"}"#;
+
+/// Failed to persist a custom emoji change.
+pub const EMOJI_UPDATE_FAILED: &str = r#"{"type":"error","message":"emoji-update-failed"}"#;
+
+/// The referenced custom emoji does not exist.
+pub const EMOJI_NOT_FOUND: &str = r#"{"type":"error","message":"emoji-not-found"}"#;
+
 /// Bot presence frame did not include a token.
 pub const MISSING_BOT_TOKEN: &str = r#"{"type":"error","message":"missing-bot-token"}"#;
 
