@@ -84,6 +84,10 @@ pub(super) async fn handle_dm(
             // Delivered via the global broadcast; the socket loop filters the
             // frame so only the two participants receive it.
             let _ = state.tx.send(out.to_string());
+
+            // Only the count is recorded — DM content and recipients stay
+            // out of the stats tables entirely.
+            super::stats::record(state, &from, vec![(crate::db::Stat::DmsSent, 1)]).await;
         }
         Err(e) => {
             error!("Failed to persist direct message from {from} to {to}: {e}");

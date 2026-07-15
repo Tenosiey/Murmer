@@ -32,6 +32,10 @@ specifics.
 - Rate limiting exists for both authentication and chat traffic.
 - File uploads are validated by size and an extension safe-list; images are additionally checked by magic bytes. Active content (HTML, SVG, scripts) is never accepted.
 - Channel management honours role assignments when `ADMIN_TOKEN` is configured.
+- Lifetime user stats are double opt-in: recording requires the server-wide
+  toggle (Owner/Admin) AND the user's own opt-in, enforced in
+  `murmer_server/src/db/stats.rs`. Only aggregate counters are stored — never
+  message contents or recipients.
 - Production deployments should keep CORS disabled unless explicitly required.
 
 ## Versioning

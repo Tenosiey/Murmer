@@ -27,6 +27,12 @@ pub const MAX_EMOJI_NAME_LEN: usize = 32;
 /// Roles that are allowed to view other users' self-reported connection stats.
 pub const CONNECTION_STATS_ROLES: &[&str] = &["Owner", "Admin"];
 
+/// Roles that are allowed to toggle the server-wide stat tracking switch.
+pub const STATS_ADMIN_ROLES: &[&str] = &["Owner", "Admin"];
+
+/// Maximum number of favorite reactions returned with a stats snapshot.
+pub const MAX_FAVORITE_REACTIONS: i64 = 5;
+
 /// Upper bound accepted for reported latency/jitter values in milliseconds.
 pub const MAX_REPORTED_STAT_MS: f64 = 60_000.0;
 

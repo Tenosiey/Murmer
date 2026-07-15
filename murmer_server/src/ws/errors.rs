@@ -229,3 +229,12 @@ pub const MISSING_BOT_TOKEN: &str = r#"{"type":"error","message":"missing-bot-to
 
 /// Bot token is unknown or the bot is deactivated.
 pub const INVALID_BOT_TOKEN: &str = r#"{"type":"error","message":"invalid-bot-token"}"#;
+
+/// User lacks permission to change the server-wide stats toggle.
+pub const STATS_PERMISSION_DENIED: &str = r#"{"type":"error","message":"stats-permission-denied"}"#;
+
+/// Requested stats are not available (tracking disabled or target not opted in).
+pub const STATS_NOT_AVAILABLE: &str = r#"{"type":"error","message":"stats-not-available"}"#;
+
+/// Failed to persist or load stat tracking data.
+pub const STATS_UPDATE_FAILED: &str = r#"{"type":"error","message":"stats-update-failed"}"#;

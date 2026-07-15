@@ -14,6 +14,7 @@
   import { describeServerError } from '$lib/errors';
   import { httpBaseFromWs } from '$lib/server-url';
   import { EMOJI_NAME_RE, MAX_EMOJI_FILE_BYTES } from '$lib/chat/constants';
+  import { stats, statsConfig } from '$lib/stores/stats';
   import type { Message } from '$lib/types';
 
   export let open: boolean;
@@ -27,6 +28,7 @@
     { id: 'overview', label: 'Overview', minRank: 2 },
     { id: 'emojis', label: 'Emojis', minRank: 1 },
     { id: 'moderation', label: 'Moderation', minRank: 1 },
+    { id: 'stats', label: 'Stats', minRank: 2 },
     { id: 'uploads', label: 'Files & Uploads', minRank: 2 },
     { id: 'voice', label: 'Voice', minRank: 2 },
     { id: 'roles', label: 'Roles', minRank: 3 },
@@ -125,6 +127,13 @@
     });
     if (!ok) return;
     chat.sendRaw({ type: 'remove-emoji', name });
+  }
+
+  function toggleServerStats(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    // Role-checked server-side; the confirmation arrives as a broadcast
+    // stats-config frame which updates the store (and this checkbox).
+    stats.setServerEnabled(input.checked);
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -300,6 +309,41 @@
               <span class="setting-label">Ban list <span class="badge">Coming soon</span></span>
               <div class="setting-description">
                 Review and lift bans from here. Until then, bans are managed via the user context menu.
+              </div>
+            </div>
+          </div>
+        {/if}
+
+        {#if activeTab === 'stats'}
+          <div class="settings-section">
+            <h3 class="section-title">Lifetime Stats</h3>
+            <div class="setting-group">
+              <label class="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={$statsConfig?.serverEnabled ?? false}
+                  disabled={$statsConfig === null}
+                  on:change={toggleServerStats}
+                />
+                <span class="toggle-text">
+                  <span class="toggle-label">Allow stat tracking on this server</span>
+                  <span class="toggle-description">
+                    Lets members record lifetime stats (messages sent, voice minutes, reactions, …)
+                    and unlock achievements. Tracking is double opt-in: even with this enabled,
+                    nothing is recorded for a member until they opt in themselves in their own
+                    settings. Only aggregate counters are stored — never message contents.
+                  </span>
+                </span>
+              </label>
+              {#if $statsConfig === null}
+                <div class="setting-description">Waiting for the server…</div>
+              {/if}
+            </div>
+            <div class="setting-group">
+              <div class="setting-description">
+                Turning this off stops all recording immediately. Already recorded stats are kept
+                but hidden until tracking is enabled again; each member can delete their own
+                recorded stats at any time from Settings → Stats &amp; Privacy.
               </div>
             </div>
           </div>
