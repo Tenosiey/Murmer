@@ -246,6 +246,120 @@
     text-decoration: underline;
   }
 
+  /* Rendered [[wikilinks]] — in chat messages and wiki pages alike. Missing
+     targets get the dashed "create page" stub styling via links.ts. */
+  :global(a.wikilink) {
+    cursor: pointer;
+  }
+
+  :global(a.wikilink.wikilink-missing) {
+    color: var(--color-error);
+    text-decoration: underline dashed;
+    text-underline-offset: 0.2em;
+  }
+
+  /* Markdown typography for wiki page bodies (viewer and editor preview). */
+  :global(.wiki-body h1) {
+    font-size: var(--text-xl);
+    margin: var(--space-4) 0 var(--space-2);
+  }
+
+  :global(.wiki-body h2) {
+    font-size: var(--text-lg);
+    margin: var(--space-4) 0 var(--space-2);
+  }
+
+  :global(.wiki-body h3),
+  :global(.wiki-body h4) {
+    font-size: var(--text-md);
+    margin: var(--space-3) 0 var(--space-2);
+  }
+
+  :global(.wiki-body p) {
+    margin: 0 0 var(--space-3);
+    line-height: 1.6;
+  }
+
+  :global(.wiki-body ul),
+  :global(.wiki-body ol) {
+    margin: 0 0 var(--space-3);
+    padding-left: var(--space-5);
+  }
+
+  :global(.wiki-body li) {
+    margin-bottom: var(--space-1);
+  }
+
+  :global(.wiki-body blockquote) {
+    margin: 0 0 var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-left: 3px solid var(--color-primary);
+    background: var(--color-surface-raised);
+    border-radius: var(--radius-xs);
+  }
+
+  :global(.wiki-body code) {
+    background: var(--color-surface-raised);
+    padding: 0.125rem var(--space-1);
+    border-radius: var(--radius-xs);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+  }
+
+  :global(.wiki-body pre) {
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    overflow-x: auto;
+    border: 1px solid var(--color-surface-outline);
+    margin: 0 0 var(--space-3);
+  }
+
+  :global(.wiki-body pre code) {
+    display: block;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    font-size: var(--text-sm);
+  }
+
+  :global(.wiki-body table) {
+    border-collapse: collapse;
+    margin: 0 0 var(--space-3);
+  }
+
+  :global(.wiki-body th),
+  :global(.wiki-body td) {
+    border: 1px solid var(--color-surface-outline);
+    padding: var(--space-1) var(--space-3);
+    text-align: left;
+  }
+
+  :global(.wiki-body th) {
+    background: var(--color-surface-raised);
+  }
+
+  :global(.wiki-body hr) {
+    border: none;
+    border-top: 1px solid var(--color-surface-outline);
+    margin: var(--space-4) 0;
+  }
+
+  :global(.wiki-body img) {
+    max-width: min(560px, 100%);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-surface-outline);
+  }
+
+  :global(.wiki-body img.inline-emoji) {
+    width: 1.375rem;
+    height: 1.375rem;
+    object-fit: contain;
+    vertical-align: -0.3em;
+    border: none;
+    border-radius: 0;
+  }
+
   :global(h1),
   :global(h2),
   :global(h3),

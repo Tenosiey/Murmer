@@ -239,6 +239,9 @@ pub(super) async fn handle_presence(
                 DEFAULT_HISTORY_LIMIT,
             )
             .await;
+            // The connection starts in the default channel without an
+            // explicit join, so its wiki snapshot has to be sent here.
+            super::wiki::send_wiki_index(state, sender, default_channel_id).await;
         }
     } else {
         send_error(sender, errors::INVALID_SIGNATURE).await;
@@ -304,6 +307,7 @@ pub(super) async fn handle_bot_presence(
         DEFAULT_HISTORY_LIMIT,
     )
     .await;
+    super::wiki::send_wiki_index(state, sender, default_channel_id).await;
 
     Ok(())
 }

@@ -19,6 +19,7 @@
 //! - [`roles`] – user role persistence
 //! - [`stats`] – lifetime user statistics (double opt-in gated)
 //! - [`users`] – user name to public key bindings
+//! - [`wiki`] – per-channel Markdown wiki pages with revision history
 
 mod channels;
 mod direct_messages;
@@ -30,6 +31,7 @@ mod reactions;
 mod roles;
 mod stats;
 mod users;
+mod wiki;
 
 pub use channels::*;
 pub use direct_messages::*;
@@ -41,6 +43,7 @@ pub use reactions::*;
 pub use roles::*;
 pub use stats::*;
 pub use users::*;
+pub use wiki::*;
 
 use std::path::Path;
 use tracing::error;
@@ -204,6 +207,7 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         ))?;
 
         conn.execute_batch(&stats::stats_schema())?;
+        conn.execute_batch(&wiki::wiki_schema())?;
 
         // Full-text index over the `text` field of the message JSON, kept in
         // sync by triggers. The backfill covers databases created before the

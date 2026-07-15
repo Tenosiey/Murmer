@@ -1,8 +1,8 @@
 //! Validation helpers for WebSocket message parameters.
 
 use super::constants::{
-    MAX_ALLOWED_VOICE_BITRATE, MAX_EMOJI_NAME_LEN, MAX_TOPIC_LENGTH, MIN_EMOJI_NAME_LEN,
-    USER_STATUSES,
+    MAX_ALLOWED_VOICE_BITRATE, MAX_EMOJI_NAME_LEN, MAX_TOPIC_LENGTH, MAX_WIKI_SLUG_LENGTH,
+    MAX_WIKI_TITLE_LENGTH, MIN_EMOJI_NAME_LEN, USER_STATUSES,
 };
 
 /// Normalize a user status string to a valid status value.
@@ -62,4 +62,60 @@ pub fn validate_bitrate(value: i64) -> Option<i32> {
         return None;
     }
     i32::try_from(value).ok()
+}
+
+/// Validate a wiki page slug: lowercase alphanumerics and single dashes,
+/// no leading/trailing/double dash, at most [`MAX_WIKI_SLUG_LENGTH`] bytes.
+/// Keeping slugs lowercase-canonical makes the per-channel UNIQUE constraint
+/// case-consistent and keeps `[[links]]` unambiguous.
+pub fn validate_wiki_slug(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_WIKI_SLUG_LENGTH
+        && !value.starts_with('-')
+        && !value.ends_with('-')
+        && !value.contains("--")
+        && value
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// Validate a wiki page title: non-empty after trimming, within the length
+/// limit and free of control characters.
+pub fn validate_wiki_title(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty()
+        && trimmed.chars().count() <= MAX_WIKI_TITLE_LENGTH
+        && !trimmed.chars().any(char::is_control)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wiki_slug_accepts_canonical_forms() {
+        assert!(validate_wiki_slug("getting-started"));
+        assert!(validate_wiki_slug("a"));
+        assert!(validate_wiki_slug("page-2"));
+    }
+
+    #[test]
+    fn wiki_slug_rejects_invalid_forms() {
+        assert!(!validate_wiki_slug(""));
+        assert!(!validate_wiki_slug("-leading"));
+        assert!(!validate_wiki_slug("trailing-"));
+        assert!(!validate_wiki_slug("double--dash"));
+        assert!(!validate_wiki_slug("Upper"));
+        assert!(!validate_wiki_slug("under_score"));
+        assert!(!validate_wiki_slug("spa ce"));
+        assert!(!validate_wiki_slug(&"a".repeat(MAX_WIKI_SLUG_LENGTH + 1)));
+    }
+
+    #[test]
+    fn wiki_title_limits() {
+        assert!(validate_wiki_title("Getting Started"));
+        assert!(!validate_wiki_title("   "));
+        assert!(!validate_wiki_title("bad\u{7}title"));
+        assert!(!validate_wiki_title(&"x".repeat(MAX_WIKI_TITLE_LENGTH + 1)));
+    }
 }

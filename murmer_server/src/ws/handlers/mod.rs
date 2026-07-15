@@ -10,6 +10,7 @@
 //! - [`moderation`] – kick, ban and mute actions
 //! - [`pins`] – shared, persisted message pins
 //! - [`stats`] – lifetime user statistics (double opt-in gated)
+//! - [`wiki`] – per-channel Markdown wiki pages
 
 mod auth;
 mod channels;
@@ -19,6 +20,7 @@ mod messages;
 mod moderation;
 mod pins;
 mod stats;
+mod wiki;
 
 use super::{errors, helpers::*, validation::*};
 use crate::{db, roles::RoleInfo, AppState};
@@ -106,6 +108,24 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "unpin-message" => {
                                 pins::handle_unpin_message(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "wiki-get" => {
+                                wiki::handle_wiki_get(&state, &mut sender, &v).await;
+                            }
+                            "wiki-resolve" => {
+                                wiki::handle_wiki_resolve(&state, &mut sender, &v).await;
+                            }
+                            "wiki-create" => {
+                                wiki::handle_wiki_create(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "wiki-update" => {
+                                wiki::handle_wiki_update(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "wiki-delete" => {
+                                wiki::handle_wiki_delete(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "wiki-rename" => {
+                                wiki::handle_wiki_rename(&state, &mut sender, &v, &user_name).await;
                             }
                             "dm" => {
                                 dms::handle_dm(&state, &mut sender, &v, &user_name).await;
