@@ -1,9 +1,10 @@
 # Murmer Bot API
 
 Murmer supports programmatic access through **bots** – lightweight accounts
-that authenticate with a token instead of an Ed25519 keypair. Bots can read
-and send messages, react to messages, list channels and users, and optionally
-manage channels.
+that authenticate with a token instead of an Ed25519 keypair. Bots can read,
+search, send, edit and delete messages, reply in threads, react with unicode
+or custom emojis, pin messages, show typing indicators, list channels and
+users, and optionally manage channels.
 
 Because Murmer has no central server, bots are created and managed per-server.
 Each Murmer instance maintains its own bot registry. A bot token is only valid
@@ -80,12 +81,12 @@ string list in the API:
 
 | Permission | Description |
 |---|---|
-| `read_messages` | Read message history in any channel |
-| `send_messages` | Send messages (and delete own messages) |
-| `manage_messages` | Delete any user's messages |
+| `read_messages` | Read message history, search, load threads, list pins |
+| `send_messages` | Send, edit and delete own messages; typing indicator |
+| `manage_messages` | Delete any user's messages; pin and unpin messages |
 | `add_reactions` | Add and remove emoji reactions |
 | `read_channels` | List available channels |
-| `manage_channels` | Create and delete channels (text & voice) |
+| `manage_channels` | Create and delete text channels, set channel topics |
 | `read_users` | List online users and their statuses |
 
 When creating a bot without specifying permissions, it defaults to
@@ -365,6 +366,7 @@ Authorization: Bearer <bot_token>
 | `text` | string | yes | Message content (1-4000 chars) |
 | `ephemeral` | boolean | no | Auto-delete after expiry (default: false) |
 | `expires_in_seconds` | integer | no | Seconds until auto-delete (5-86400, default: 60) |
+| `reply_to` | integer | no | Message ID to reply to (creates or joins a thread) |
 
 **Response:** `201 Created`
 
@@ -386,6 +388,33 @@ Authorization: Bearer <bot_token>
 The message is immediately broadcast to all connected WebSocket clients in the
 channel.
 
+When `reply_to` is set, the response additionally contains a `replyTo` object
+(`{"id", "user", "text"}` with a server-built quote snippet) and a `threadId`.
+The quoted snippet is always rebuilt from the stored target message, so bots
+cannot forge quotes. Replying to a message that is itself a reply joins the
+existing thread instead of nesting. Replying to a message in a different
+channel or a non-existent message returns `404 reply-target-not-found`.
+
+### Edit message
+
+```
+PATCH /api/v1/channels/:channel_id/messages/:message_id
+Authorization: Bearer <bot_token>
+```
+
+**Permission required:** `send_messages`
+
+**Body:**
+
+```json
+{"text": "updated content"}
+```
+
+Only messages the bot itself sent through the REST API can be edited —
+editing is never extended to other users' messages, not even with
+`manage_messages` (attempts return `403 not-message-author`). The updated
+message is returned and a `message-edited` event is broadcast to the channel.
+
 ### Delete message
 
 ```
@@ -397,6 +426,54 @@ Authorization: Bearer <bot_token>
 for other users' messages.
 
 **Response:** `204 No Content`
+
+### Search messages
+
+```
+GET /api/v1/channels/:channel_id/messages/search?q=<query>
+Authorization: Bearer <bot_token>
+```
+
+**Permission required:** `read_messages`
+
+**Query parameters:**
+
+| Param | Type | Default | Description |
+|---|---|---|---|
+| `q` | string | – | Full-text search query (required, word/prefix matching) |
+| `limit` | integer | 50 | Maximum results (1-200) |
+
+```json
+{
+  "data": {
+    "channelId": 1,
+    "query": "release",
+    "messages": [ ... ]
+  }
+}
+```
+
+### Load thread
+
+```
+GET /api/v1/channels/:channel_id/messages/:message_id/thread
+Authorization: Bearer <bot_token>
+```
+
+**Permission required:** `read_messages`
+
+Returns the root message and all replies belonging to its thread (up to 200
+messages, chronological order):
+
+```json
+{
+  "data": {
+    "channelId": 1,
+    "rootId": 42,
+    "messages": [ ... ]
+  }
+}
+```
 
 ### Add reaction
 
@@ -413,6 +490,11 @@ Authorization: Bearer <bot_token>
 {"emoji": "👍"}
 ```
 
+Both unicode emojis and custom emoji shortcodes (`:party_parrot:`) are
+accepted. Shortcodes must refer to a custom emoji registered on the server
+(see [List custom emojis](#list-custom-emojis)); unknown shortcodes return
+`400 invalid-emoji`.
+
 ### Remove reaction
 
 ```
@@ -424,6 +506,155 @@ Authorization: Bearer <bot_token>
 
 The emoji in the URL should be percent-encoded if it contains special
 characters.
+
+### List pinned messages
+
+```
+GET /api/v1/channels/:channel_id/pins
+Authorization: Bearer <bot_token>
+```
+
+**Permission required:** `read_messages`
+
+```json
+{
+  "data": {
+    "channelId": 1,
+    "pins": [
+      {
+        "id": 42,
+        "user": "Alice",
+        "text": "Important announcement",
+        "image": null,
+        "timestamp": "2026-03-10T12:00:00+00:00",
+        "pinnedAt": "2026-03-11T09:00:00+00:00",
+        "pinnedBy": "ModBot"
+      }
+    ]
+  }
+}
+```
+
+### Pin message
+
+```
+PUT /api/v1/channels/:channel_id/pins/:message_id
+Authorization: Bearer <bot_token>
+```
+
+**Permission required:** `manage_messages`
+
+**Response:** `204 No Content`. Channels hold at most 25 pins; exceeding the
+limit returns `409 pin-limit-reached`. All connected clients receive an
+updated pin snapshot.
+
+### Unpin message
+
+```
+DELETE /api/v1/channels/:channel_id/pins/:message_id
+Authorization: Bearer <bot_token>
+```
+
+**Permission required:** `manage_messages`
+
+**Response:** `204 No Content`, or `404 pin-not-found` if the message is not
+pinned.
+
+### Typing indicator
+
+```
+POST /api/v1/channels/:channel_id/typing
+Authorization: Bearer <bot_token>
+```
+
+**Permission required:** `send_messages`
+
+Broadcasts a transient "GreeterBot is typing…" indicator to everyone viewing
+the channel. Useful before slow operations (API calls, LLM responses) so the
+channel does not feel dead. Nothing is persisted. Typing requests have their
+own rate-limit window separate from message sending.
+
+**Response:** `204 No Content`
+
+### Create channel
+
+```
+POST /api/v1/channels
+Authorization: Bearer <bot_token>
+```
+
+**Permission required:** `manage_channels`
+
+**Body:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | yes | Channel name (same rules as the client) |
+| `category_id` | integer | no | Category to place the channel in |
+
+**Response:** `201 Created` with the new channel, or `409
+channel-already-exists` if the name is taken. The channel appears immediately
+for all connected clients.
+
+```json
+{
+  "data": {"id": 7, "name": "bot-reports", "categoryId": null, "topic": ""}
+}
+```
+
+### Update channel topic
+
+```
+PATCH /api/v1/channels/:channel_id
+Authorization: Bearer <bot_token>
+```
+
+**Permission required:** `manage_channels`
+
+**Body:**
+
+```json
+{"topic": "Daily build results — updated by CIBot"}
+```
+
+Topics may be up to 256 characters; an empty string clears the topic.
+
+### Delete channel
+
+```
+DELETE /api/v1/channels/:channel_id
+Authorization: Bearer <bot_token>
+```
+
+**Permission required:** `manage_channels`
+
+**Response:** `204 No Content`. The `general` channel cannot be deleted
+(`403 cannot-delete-general`).
+
+### List custom emojis
+
+```
+GET /api/v1/emojis
+Authorization: Bearer <bot_token>
+```
+
+Requires any valid bot token (no specific permission). Returns the custom
+emojis registered on the server, usable as `:name:` shortcodes in reactions:
+
+```json
+{
+  "data": {
+    "emojis": [
+      {
+        "name": "party_parrot",
+        "url": "/uploads/emojis/party_parrot.gif",
+        "uploadedBy": "Alice",
+        "createdAt": "2026-03-10T12:00:00Z"
+      }
+    ]
+  }
+}
+```
 
 ### List users
 
@@ -517,16 +748,25 @@ All errors follow a consistent format:
 |---|---|---|
 | 400 | `invalid-bot-name` | Bot name is empty, too long, or contains invalid characters |
 | 400 | `invalid-channel-name` | Channel name validation failed |
+| 400 | `invalid-channel-topic` | Topic exceeds 256 characters or contains control characters |
 | 400 | `invalid-message-text` | Message text is empty or exceeds 4000 characters |
 | 400 | `invalid-message-id` | Message ID is not a valid integer |
-| 400 | `invalid-emoji` | Emoji is empty, too long, or contains invalid characters |
+| 400 | `invalid-emoji` | Emoji is invalid, or the shortcode refers to no registered custom emoji |
+| 400 | `missing-query` | Search query is empty or missing |
+| 400 | `missing-topic` | Channel update body contains no topic |
 | 400 | `description-too-long` | Bot description exceeds 256 characters |
 | 401 | `invalid-admin-token` | The provided admin token is incorrect |
 | 401 | `invalid-bot-token` | The bot token is invalid or the bot is deactivated |
 | 403 | `missing-permission:*` | The bot lacks the required permission |
+| 403 | `not-message-author` | Only the bot's own messages can be edited |
+| 403 | `cannot-delete-general` | The default channel is protected |
 | 404 | `bot-not-found` | No bot with the given ID exists |
 | 404 | `channel-not-found` | No channel with the given ID exists |
 | 404 | `message-not-found` | No message with the given ID exists in that channel |
+| 404 | `reply-target-not-found` | The `reply_to` message does not exist in that channel |
+| 404 | `pin-not-found` | The message is not pinned |
+| 409 | `channel-already-exists` | A channel with that name already exists |
+| 409 | `pin-limit-reached` | The channel already has 25 pinned messages |
 | 429 | `rate-limit-exceeded` | Too many messages sent in the time window |
 | 500 | various | Internal server error |
 
@@ -603,6 +843,10 @@ while True:
   bot can reach the server and see which channels are available.
 - **Tag your messages.** The REST API automatically tags messages with
   `"bot": true` so clients can identify bot messages.
+- **Reply in threads.** Answer command messages with `reply_to` so the
+  conversation stays attached to the triggering message.
+- **Signal slow work.** Fire the typing endpoint before long-running
+  operations so users see the bot is working on a response.
 - **Respect the server.** Bots share rate limits with human users. Avoid
   spamming or flooding channels.
 

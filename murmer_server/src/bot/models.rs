@@ -152,6 +152,32 @@ pub struct SendMessageRequest {
     #[serde(default)]
     pub ephemeral: bool,
     pub expires_in_seconds: Option<i64>,
+    /// Message ID to reply to. The quoted snippet and thread root are
+    /// rebuilt server-side from the stored message, mirroring the WebSocket
+    /// chat handler, so bots cannot forge quotes.
+    pub reply_to: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EditMessageRequest {
+    pub text: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateChannelRequest {
+    pub name: String,
+    pub category_id: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateChannelRequest {
+    pub topic: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SearchQuery {
+    pub q: String,
+    pub limit: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
