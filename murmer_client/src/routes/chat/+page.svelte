@@ -1391,36 +1391,42 @@
     if (name) categories.rename(id, name.trim());
   }
 
-  function buildMoveToItems(channelId: number, voice: boolean): Array<{ label: string; action: () => void }> {
-    const items: Array<{ label: string; action: () => void }> = [];
+  /** Builds the "Move to" submenu; empty when there is nowhere to move to. */
+  function buildMoveToItems(channelId: number, voice: boolean): ContextMenuItem[] {
+    const targets: ContextMenuItem[] = [];
     const currentCh = voice
       ? $voiceChannels.find((c) => c.id === channelId)
       : $channels.find((c) => c.id === channelId);
     const currentCatId = currentCh?.categoryId ?? null;
 
     if (currentCatId !== null) {
-      items.push({
-        label: 'Move to: (no category)',
+      targets.push({
+        label: '(no category)',
         action: () => channels.move(channelId, null, voice)
       });
     }
 
     for (const cat of $categories) {
       if (cat.id !== currentCatId) {
-        items.push({
-          label: `Move to: ${cat.name}`,
+        targets.push({
+          label: cat.name,
           action: () => channels.move(channelId, cat.id, voice)
         });
       }
     }
 
-    return items;
+    return targets.length ? [{ label: 'Move to', children: targets }] : [];
   }
 
   $: channelMenuItems = [
-    { label: 'Create Text Channel', action: () => createChannelPrompt() },
-    { label: 'Create Voice Channel', action: () => createVoiceChannelPrompt() },
-    { label: 'Create Category', action: createCategoryPrompt },
+    {
+      label: 'Create',
+      children: [
+        { label: 'Text Channel', action: () => createChannelPrompt() },
+        { label: 'Voice Channel', action: () => createVoiceChannelPrompt() },
+        { label: 'Category', action: createCategoryPrompt }
+      ]
+    },
     ...(menuChannelId != null
       ? [
           ...buildMoveToItems(menuChannelId, false),
