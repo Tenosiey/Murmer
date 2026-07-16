@@ -3,7 +3,21 @@
 This monorepo hosts **Murmer**, a desktop chat prototype split into a
 Tauri/SvelteKit client (`murmer_client/`) and an Axum-based Rust server
 (`murmer_server/`). Each directory contains its own `AGENTS.md` with tooling
-specifics.
+specifics. Client and server communicate over one WebSocket (`/ws`, JSON
+frames with a `type` field) plus a few HTTP endpoints (`/upload`,
+`/link-preview`, `/role`, `/files`, bot REST API).
+
+## Hard constraints
+- **TypeScript stays on major 6.** Do not upgrade to 7 or merge dependabot
+  PRs that do.
+- **No backwards compatibility.** Only the latest versions of everything are
+  supported; never add compat shims, polyfills or legacy code paths.
+- **Rust is edition 2024**; the toolchain is pinned in `rust-toolchain.toml`.
+- **rusqlite is pinned by tokio-rusqlite** — bump it only when a new
+  tokio-rusqlite release allows it.
+- **Never bump versions by hand** — only via `npm run bump` (see Versioning).
+- **Svelte components use the classic (non-runes) syntax** (`export let`,
+  `$:`, stores). Match it; do not introduce `$state`/`$props` piecemeal.
 
 ## Workflow overview
 - Install the latest [Rust toolchain](https://www.rust-lang.org/tools/install)
@@ -13,8 +27,10 @@ specifics.
   with `cargo run` or `docker compose up --build`.
 
 ## Quality checks
-- Run `cargo check` inside `murmer_server/` and format with `cargo fmt`.
-- Run `npm run check` inside `murmer_client/` for Svelte + TypeScript diagnostics.
+- Server: `cargo fmt`, `cargo clippy --all-targets -- -D warnings` and
+  `cargo test` inside `murmer_server/` — all three pass clean; keep it that way.
+- Client: `npm run check` inside `murmer_client/` (0 errors, 0 warnings);
+  `cargo clippy` in `murmer_client/src-tauri/` for the shell.
 - Document complex security-sensitive logic with inline comments.
 - Sanitize or validate all user-supplied data before acting on it.
 
