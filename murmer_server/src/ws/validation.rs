@@ -1,8 +1,9 @@
 //! Validation helpers for WebSocket message parameters.
 
 use super::constants::{
-    MAX_ALLOWED_VOICE_BITRATE, MAX_EMOJI_NAME_LEN, MAX_TOPIC_LENGTH, MAX_WIKI_SLUG_LENGTH,
-    MAX_WIKI_TITLE_LENGTH, MIN_EMOJI_NAME_LEN, USER_STATUSES,
+    MAX_ALLOWED_VOICE_BITRATE, MAX_EMOJI_NAME_LEN, MAX_SERVER_DESCRIPTION_LENGTH,
+    MAX_SERVER_NAME_LENGTH, MAX_TOPIC_LENGTH, MAX_WELCOME_MESSAGE_LENGTH, MAX_WIKI_SLUG_LENGTH,
+    MAX_WIKI_TITLE_LENGTH, MIN_EMOJI_NAME_LEN, UPLOAD_IMAGE_EXTENSIONS, USER_STATUSES,
 };
 
 /// Normalize a user status string to a valid status value.
@@ -52,6 +53,47 @@ pub fn is_emoji_shortcode(value: &str) -> bool {
         .strip_prefix(':')
         .and_then(|rest| rest.strip_suffix(':'))
         .is_some_and(validate_emoji_name)
+}
+
+/// Validate the server display name: may be empty (unset), otherwise within
+/// the length limit and free of control characters.
+pub fn validate_server_name(value: &str) -> bool {
+    value.len() <= MAX_SERVER_NAME_LENGTH && !value.chars().any(char::is_control)
+}
+
+/// Validate the server description: may be empty (unset), within the length
+/// limit; newlines are allowed, other control characters are not.
+pub fn validate_server_description(value: &str) -> bool {
+    value.len() <= MAX_SERVER_DESCRIPTION_LENGTH
+        && !value.chars().any(|c| c.is_control() && c != '\n')
+}
+
+/// Validate the welcome message: may be empty (disabled), within the length
+/// limit; newlines are allowed, other control characters are not.
+pub fn validate_welcome_message(value: &str) -> bool {
+    value.len() <= MAX_WELCOME_MESSAGE_LENGTH && !value.chars().any(|c| c.is_control() && c != '\n')
+}
+
+/// Extract the file key from an uploaded-image URL of the form
+/// `/files/<key>`. Rejects anything that could escape the upload directory:
+/// the key must be a single non-empty path segment with an image extension
+/// from the [`UPLOAD_IMAGE_EXTENSIONS`] safe-list.
+pub fn upload_key_from_url(url: &str) -> Option<&str> {
+    let key = url.strip_prefix("/files/")?;
+    if key.is_empty()
+        || key.contains('/')
+        || key.contains('\\')
+        || key.contains("..")
+        || key.chars().any(char::is_control)
+    {
+        return None;
+    }
+    let (_, ext) = key.rsplit_once('.')?;
+    let ext = ext.to_ascii_lowercase();
+    if !UPLOAD_IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+        return None;
+    }
+    Some(key)
 }
 
 /// Validate and convert a bitrate value to i32.
@@ -109,6 +151,41 @@ mod tests {
         assert!(!validate_wiki_slug("under_score"));
         assert!(!validate_wiki_slug("spa ce"));
         assert!(!validate_wiki_slug(&"a".repeat(MAX_WIKI_SLUG_LENGTH + 1)));
+    }
+
+    #[test]
+    fn server_identity_text_limits() {
+        assert!(validate_server_name(""));
+        assert!(validate_server_name("My Murmer Server"));
+        assert!(!validate_server_name("bad\nname"));
+        assert!(!validate_server_name(
+            &"x".repeat(MAX_SERVER_NAME_LENGTH + 1)
+        ));
+
+        assert!(validate_server_description(
+            "What this server is about.\nSecond line."
+        ));
+        assert!(!validate_server_description("bad\u{7}description"));
+        assert!(!validate_server_description(
+            &"x".repeat(MAX_SERVER_DESCRIPTION_LENGTH + 1)
+        ));
+
+        assert!(validate_welcome_message("Welcome!\nEnjoy your stay."));
+        assert!(!validate_welcome_message("bad\u{7}welcome"));
+        assert!(!validate_welcome_message(
+            &"x".repeat(MAX_WELCOME_MESSAGE_LENGTH + 1)
+        ));
+    }
+
+    #[test]
+    fn upload_key_extraction() {
+        assert_eq!(upload_key_from_url("/files/icon.png"), Some("icon.png"));
+        assert_eq!(upload_key_from_url("/files/a.b.webp"), Some("a.b.webp"));
+        assert_eq!(upload_key_from_url("/files/../etc/passwd"), None);
+        assert_eq!(upload_key_from_url("/files/sub/dir.png"), None);
+        assert_eq!(upload_key_from_url("/files/script.svg"), None);
+        assert_eq!(upload_key_from_url("/files/"), None);
+        assert_eq!(upload_key_from_url("https://evil.example/x.png"), None);
     }
 
     #[test]

@@ -28,16 +28,18 @@ pub async fn get_user_key(db: &Db, user_name: &str) -> Result<Option<String>, Db
 }
 
 /// Bind a user name to a public key. An existing binding is left untouched:
-/// first key wins, later claims must match it.
-pub async fn bind_user_key(db: &Db, user_name: &str, public_key: &str) -> Result<(), DbError> {
+/// first key wins, later claims must match it. Returns `true` when the
+/// binding was newly created, i.e. this is the user's first connection —
+/// presence handling uses that to deliver the one-time welcome message.
+pub async fn bind_user_key(db: &Db, user_name: &str, public_key: &str) -> Result<bool, DbError> {
     let user_name = user_name.to_owned();
     let public_key = public_key.to_owned();
     db.call_db(move |conn| {
-        conn.execute(
+        let inserted = conn.execute(
             "INSERT OR IGNORE INTO user_keys (user_name, public_key) VALUES (?1, ?2)",
             params![user_name, public_key],
         )?;
-        Ok(())
+        Ok(inserted > 0)
     })
     .await
 }

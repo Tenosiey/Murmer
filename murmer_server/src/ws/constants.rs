@@ -24,6 +24,26 @@ pub const MIN_EMOJI_NAME_LEN: usize = 2;
 /// Maximum length of a custom emoji name.
 pub const MAX_EMOJI_NAME_LEN: usize = 32;
 
+/// Roles that are allowed to edit the server identity (name, description,
+/// welcome message and icon) shown in the dashboard's Overview tab.
+pub const SERVER_IDENTITY_ROLES: &[&str] = &["Owner", "Admin"];
+
+/// Maximum length in bytes for the server display name.
+pub const MAX_SERVER_NAME_LENGTH: usize = 64;
+
+/// Maximum length in bytes for the server description.
+pub const MAX_SERVER_DESCRIPTION_LENGTH: usize = 300;
+
+/// Maximum length in bytes for the welcome message.
+pub const MAX_WELCOME_MESSAGE_LENGTH: usize = 500;
+
+/// Maximum file size in bytes for the server icon image.
+pub const MAX_SERVER_ICON_BYTES: u64 = 1024 * 1024;
+
+/// File extensions accepted for image uploads referenced over the WebSocket
+/// (custom emojis, server icon). Subset of the upload endpoint's safe-list.
+pub const UPLOAD_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];
+
 /// Roles that are allowed to view other users' self-reported connection stats.
 pub const CONNECTION_STATS_ROLES: &[&str] = &["Owner", "Admin"];
 

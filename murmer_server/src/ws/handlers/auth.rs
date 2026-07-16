@@ -174,11 +174,16 @@ pub(super) async fn handle_presence(
                 }
             }
 
-            // Claim the name for this key (no-op when already bound).
-            if let Some(pk) = verified_key.as_deref()
-                && let Err(e) = db::bind_user_key(&state.db, u, pk).await
-            {
-                error!("Failed to persist name binding for {u}: {e}");
+            // Claim the name for this key (no-op when already bound). A newly
+            // created binding marks a first-time member, who receives the
+            // configured welcome message below. Anonymous connections (no
+            // key) have no persistent identity, so they never trigger it.
+            let mut first_connection = false;
+            if let Some(pk) = verified_key.as_deref() {
+                match db::bind_user_key(&state.db, u, pk).await {
+                    Ok(newly_bound) => first_connection = newly_bound,
+                    Err(e) => error!("Failed to persist name binding for {u}: {e}"),
+                }
             }
 
             state.users.lock().await.insert(u.to_string());
@@ -228,6 +233,10 @@ pub(super) async fn handle_presence(
             send_voice_channels(state, sender).await;
             send_users(state, sender).await;
             send_all_voice(state, sender).await;
+            super::identity::send_server_identity(state, sender).await;
+            if first_connection {
+                super::identity::send_welcome(state, sender).await;
+            }
             super::stats::send_stats_config(state, sender, u).await;
             db::send_history(
                 &state.db,
@@ -297,6 +306,7 @@ pub(super) async fn handle_bot_presence(
     send_voice_channels(state, sender).await;
     send_users(state, sender).await;
     send_all_voice(state, sender).await;
+    super::identity::send_server_identity(state, sender).await;
     db::send_history(
         &state.db,
         sender,
