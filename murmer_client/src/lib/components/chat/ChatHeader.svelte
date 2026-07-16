@@ -8,6 +8,9 @@
   import ConnectionStatsPanel from '$lib/components/ConnectionStatsPanel.svelte';
   import { ping } from '$lib/stores/ping';
   import { session } from '$lib/stores/session';
+  import { selectedServer } from '$lib/stores/servers';
+  import { serverIdentity } from '$lib/stores/serverIdentity';
+  import { httpBaseFromWs } from '$lib/server-url';
   import { theme } from '$lib/stores/theme';
   import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
   import { channelNotifications, type ChannelNotificationPreference } from '$lib/stores/channelNotifications';
@@ -48,6 +51,8 @@
     onLeaveServer,
     onLogout
   }: Props = $props();
+
+  let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
 
   const statusOptions: Array<{ value: UserStatus; label: string }> =
     USER_STATUS_VALUES.map((value) => ({
@@ -168,6 +173,16 @@
 
 <div class="header">
   <div class="title">
+    {#if $serverIdentity && ($serverIdentity.name || $serverIdentity.icon)}
+      <div class="server-identity" title={$serverIdentity.description || $serverIdentity.name}>
+        {#if $serverIdentity.icon}
+          <img src={httpBase + $serverIdentity.icon} alt="" width="20" height="20" />
+        {/if}
+        {#if $serverIdentity.name}
+          <span class="server-name">{$serverIdentity.name}</span>
+        {/if}
+      </div>
+    {/if}
     <h1>{channelName}</h1>
     {#if topic}
       <p class="topic" title={topic}>{topic}</p>
@@ -511,6 +526,34 @@
     font-size: var(--text-lg);
     font-weight: 600;
     white-space: nowrap;
+  }
+
+  .server-identity {
+    display: inline-flex;
+    align-items: center;
+    align-self: center;
+    gap: var(--space-2);
+    min-width: 0;
+    padding-right: var(--space-3);
+    border-right: 1px solid var(--color-surface-outline);
+  }
+
+  .server-identity img {
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .server-name {
+    font-size: var(--text-md);
+    font-weight: 600;
+    color: var(--color-on-surface);
+    max-width: 12rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .title h1::before {

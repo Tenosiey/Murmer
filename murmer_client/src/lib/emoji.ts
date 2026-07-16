@@ -138,6 +138,43 @@ export function unicodeFromShortcode(value: string): string | null {
   return match ? (EMOJI_CODES[match[1]] ?? null) : null;
 }
 
+/* Unicode codepoints that make up emoji: pictographs plus the joiners,
+   variation/keycap selectors, regional-indicator pairs and skin-tone
+   modifiers that combine into a single glyph. */
+const EMOJI_STRIP_RE =
+  /[\p{Extended_Pictographic}\u200D\uFE0F\u20E3]|[\u{1F1E6}-\u{1F1FF}]|[\u{1F3FB}-\u{1F3FF}]/gu;
+
+/**
+ * True when `text` is made up solely of emoji (unicode characters, known
+ * `:shortcode:`s or custom server emoji) and whitespace — used to render
+ * emoji-only messages at a larger size. Messages that mix emoji with any
+ * other text return false.
+ */
+export function isEmojiOnlyText(
+  text: string,
+  emojis: Record<string, CustomEmoji>
+): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+
+  let found = false;
+  // Drop known shortcodes (unicode and custom); leave unknown ones as text.
+  let stripped = trimmed.replace(SHORTCODE_RE, (whole, code: string) => {
+    if (EMOJI_CODES[code] || emojis[code]) {
+      found = true;
+      return '';
+    }
+    return whole;
+  });
+  // Drop literal unicode emoji characters.
+  stripped = stripped.replace(EMOJI_STRIP_RE, () => {
+    found = true;
+    return '';
+  });
+
+  return found && stripped.trim().length === 0;
+}
+
 /* Memoised per (custom emoji map, base) pair: whenever either changes the
    rendered HTML may change, so the cache resets. Same motivation as the
    renderMarkdown cache — message bodies re-evaluate on every list update. */

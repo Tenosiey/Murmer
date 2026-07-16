@@ -13,6 +13,8 @@
   import SettingsModal from '$lib/components/SettingsModal.svelte';
   import { normalizeServerUrl } from '$lib/utils';
   import { serverStatus } from '$lib/stores/serverStatus';
+  import { serverIdentityCache } from '$lib/stores/serverIdentity';
+  import { httpBaseFromWs } from '$lib/server-url';
   import { connectionError } from '$lib/stores/connection';
   import StatusDot from '$lib/components/StatusDot.svelte';
   import { createInviteLink, parseInviteLink } from '$lib/invite';
@@ -88,6 +90,15 @@
     newServer = '';
     newName = '';
     newPassword = '';
+  }
+
+  /** HTTP base for a stored server URL, for identity icon images. */
+  function httpBase(url: string): string {
+    try {
+      return httpBaseFromWs(url);
+    } catch {
+      return '';
+    }
   }
 
   function join(server: ServerEntry) {
@@ -243,13 +254,29 @@
     {:else}
       <div class="grid">
         {#each $servers as server}
+          {@const identity = $serverIdentityCache[server.url]}
           <article class="server-card surface-card">
             <div class="status">
               <StatusDot online={$serverStatus[server.url]} />
               <span class="status-label">{$serverStatus[server.url] === null ? 'Checking...' : $serverStatus[server.url] ? 'Online' : 'Offline'}</span>
             </div>
-            <h3>{server.name}</h3>
+            <div class="card-title">
+              {#if identity?.icon && httpBase(server.url)}
+                <img
+                  class="server-icon"
+                  src={httpBase(server.url) + identity.icon}
+                  alt=""
+                  width="28"
+                  height="28"
+                  loading="lazy"
+                />
+              {/if}
+              <h3>{identity?.name || server.name}</h3>
+            </div>
             <p class="meta" title={server.url}>{server.url}</p>
+            {#if identity?.description}
+              <p class="description">{identity.description}</p>
+            {/if}
             <div class="card-actions">
               <button type="button" class="btn btn-primary join" onclick={() => join(server)}>
                 Join
@@ -449,8 +476,38 @@
     gap: var(--space-2);
   }
 
+  .card-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .server-icon {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: var(--radius-sm);
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
   .server-card h3 {
     font-size: var(--text-lg);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .server-card .description {
+    margin: 0;
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   .meta {

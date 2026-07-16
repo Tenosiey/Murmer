@@ -21,6 +21,12 @@ export const EMOJI_NAME_RE = /^[a-z0-9_]{2,32}$/;
 export const EMOJI_SHORTCODE_RE = /^:([a-z0-9_]{2,32}):$/;
 export const MAX_EMOJI_FILE_BYTES = 512 * 1024;
 
+/* Server identity limits; must match the server's validation. */
+export const MAX_SERVER_NAME_LENGTH = 64;
+export const MAX_SERVER_DESCRIPTION_LENGTH = 300;
+export const MAX_WELCOME_MESSAGE_LENGTH = 500;
+export const MAX_SERVER_ICON_BYTES = 1024 * 1024;
+
 /* The channel every server is seeded with. The server places new connections
    into it and refuses to delete it, so the client can rely on it existing. */
 export const DEFAULT_CHANNEL_NAME = 'general';

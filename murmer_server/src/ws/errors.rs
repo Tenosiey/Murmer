@@ -224,6 +224,26 @@ pub const EMOJI_UPDATE_FAILED: &str = r#"{"type":"error","message":"emoji-update
 /// The referenced custom emoji does not exist.
 pub const EMOJI_NOT_FOUND: &str = r#"{"type":"error","message":"emoji-not-found"}"#;
 
+/// User lacks permission to edit the server identity.
+pub const IDENTITY_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"identity-permission-denied"}"#;
+
+/// Server name failed validation.
+pub const INVALID_SERVER_NAME: &str = r#"{"type":"error","message":"invalid-server-name"}"#;
+
+/// Server description failed validation.
+pub const INVALID_SERVER_DESCRIPTION: &str =
+    r#"{"type":"error","message":"invalid-server-description"}"#;
+
+/// Welcome message failed validation.
+pub const INVALID_WELCOME_MESSAGE: &str = r#"{"type":"error","message":"invalid-welcome-message"}"#;
+
+/// Server icon URL does not point at a valid uploaded image.
+pub const INVALID_SERVER_ICON: &str = r#"{"type":"error","message":"invalid-server-icon"}"#;
+
+/// Failed to persist a server identity change.
+pub const IDENTITY_UPDATE_FAILED: &str = r#"{"type":"error","message":"identity-update-failed"}"#;
+
 /// Bot presence frame did not include a token.
 pub const MISSING_BOT_TOKEN: &str = r#"{"type":"error","message":"missing-bot-token"}"#;
 

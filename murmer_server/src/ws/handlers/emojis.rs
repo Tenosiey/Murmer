@@ -14,30 +14,6 @@ use serde_json::Value;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
-/// Allowed file extensions for emoji images (subset of the upload safe-list).
-const EMOJI_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];
-
-/// Extract the file key from an uploaded-file URL of the form `/files/<key>`.
-/// Rejects anything that could escape the upload directory: the key must be a
-/// single non-empty path segment with an image extension.
-fn upload_key_from_url(url: &str) -> Option<&str> {
-    let key = url.strip_prefix("/files/")?;
-    if key.is_empty()
-        || key.contains('/')
-        || key.contains('\\')
-        || key.contains("..")
-        || key.chars().any(char::is_control)
-    {
-        return None;
-    }
-    let (_, ext) = key.rsplit_once('.')?;
-    let ext = ext.to_ascii_lowercase();
-    if !EMOJI_IMAGE_EXTENSIONS.contains(&ext.as_str()) {
-        return None;
-    }
-    Some(key)
-}
-
 /// Handle a request to register a custom emoji from a previously uploaded image.
 pub(super) async fn handle_add_emoji(
     state: &Arc<AppState>,
