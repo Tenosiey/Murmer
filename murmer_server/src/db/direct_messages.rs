@@ -2,7 +2,9 @@
 //!
 //! Messages are stored as opaque JSON text like channel messages, with the
 //! participants duplicated into indexed columns so conversations can be
-//! queried without parsing the payload.
+//! queried without parsing the payload. Since direct messages are end-to-end
+//! encrypted, the stored JSON carries `nonce`/`ciphertext` fields — the
+//! server never persists DM plaintext.
 
 use rusqlite::params;
 

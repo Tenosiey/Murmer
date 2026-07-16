@@ -142,6 +142,9 @@ pub const DM_TARGET_NOT_FOUND: &str = r#"{"type":"error","message":"dm-target-no
 /// Direct messages cannot be sent to oneself.
 pub const CANNOT_DM_SELF: &str = r#"{"type":"error","message":"cannot-dm-self"}"#;
 
+/// Direct message frame is missing or carries malformed encryption fields.
+pub const INVALID_DM_PAYLOAD: &str = r#"{"type":"error","message":"invalid-dm-payload"}"#;
+
 /// Failed to persist a direct message.
 pub const DM_SEND_FAILED: &str = r#"{"type":"error","message":"dm-send-failed"}"#;
 

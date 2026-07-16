@@ -27,6 +27,14 @@ export interface Message {
   editedAt?: string;
   replyTo?: ReplyInfo;
   threadId?: number;
+  /** Direct messages: sender/recipient names (metadata stays plaintext). */
+  from?: string;
+  to?: string;
+  /** Direct messages: end-to-end encryption fields (base64). */
+  nonce?: string;
+  ciphertext?: string;
+  /** Set when a DM ciphertext failed to decrypt; render a placeholder. */
+  decryptFailed?: boolean;
   [key: string]: unknown;
 }
 

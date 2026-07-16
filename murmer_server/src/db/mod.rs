@@ -212,6 +212,16 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         conn.execute_batch(&stats::stats_schema())?;
         conn.execute_batch(&wiki::wiki_schema())?;
 
+        // One-time wipe of pre-E2EE plaintext direct messages: DMs are
+        // end-to-end encrypted now, so old plaintext rows can neither be
+        // rendered by the client nor converted server-side. The marker in
+        // server_settings keeps the wipe from ever running twice.
+        conn.execute_batch(
+            r#"DELETE FROM direct_messages
+    WHERE NOT EXISTS (SELECT 1 FROM server_settings WHERE key = 'dm_e2ee');
+INSERT OR IGNORE INTO server_settings (key, value) VALUES ('dm_e2ee', '1');"#,
+        )?;
+
         // Full-text index over the `text` field of the message JSON, kept in
         // sync by triggers. The backfill covers databases created before the
         // index existed (and is a no-op afterwards). `json_valid` guards the

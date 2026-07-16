@@ -37,7 +37,9 @@ small team can deploy a private chat space quickly.
 - Message replies with quoted previews and lightweight threads
 - Typing indicators and per-channel unread badges with new-message markers
 - Moderation tools: role-gated kick, ban and timed mutes
-- Direct messages between users with persistent history and unread badges
+- End-to-end encrypted direct messages with persistent history and unread
+  badges: message text is encrypted on-device (NaCl box over the users'
+  identity keys), so the server only ever stores and relays ciphertext
 - Screen sharing in voice channels
 - Per-channel Markdown wiki with revisions and `[[wikilinks]]` (also across
   channels via `[[channel/page]]`)
@@ -326,6 +328,14 @@ must not be marked as pre-release — the updater endpoint
   (persisted in the database), so another client cannot take over an offline
   user's name and inherit their role. The `unbind-name` CLI subcommand
   releases a name when a user loses their keypair.
+- Direct messages are end-to-end encrypted: both sides derive X25519 keys from
+  their Ed25519 identity keys and encrypt with NaCl box, so the server never
+  sees DM plaintext (metadata — sender, recipient, timestamps — remains
+  visible for routing). Clients pin a peer's key on first contact, warn and
+  block sending when it changes, and offer a fingerprint for out-of-band
+  verification. Note the trade-offs: there is no forward secrecy (a stolen
+  keypair decrypts past DMs), a lost keypair makes old conversations
+  unreadable, and users without a key binding (e.g. bots) cannot receive DMs.
 - IP-based rate limiting protects authentication and chat message throughput.
 - Filenames are sanitised, uploads are limited to a safe-list of extensions and image contents are inspected before saving.
 - Admin token and server password checks use constant-time comparisons to

@@ -59,6 +59,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-emoji': 'That emoji is not allowed.',
   'reaction-failed': 'The server could not update the reaction. Please try again.',
   'dm-target-not-found': 'That user is not known on this server.',
+  'invalid-dm-payload': 'That direct message could not be sent (malformed encrypted payload).',
   'cannot-dm-self': 'You cannot send a direct message to yourself.',
   'dm-send-failed': 'The server could not deliver your direct message.',
   'dm-history-failed': 'The server could not load that conversation.',

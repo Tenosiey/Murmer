@@ -11,11 +11,16 @@ import { unread } from './unread';
 import { threadData } from './thread';
 import { dm } from './dm';
 import { pinned } from './pins';
+import { peerKeys } from './peerKeys';
+import { decryptDm, encryptDm } from '../dm-crypto';
+import { loadKeyPair } from '../keypair';
 
 /** Maximum number of search results to request from server */
 const MAX_SEARCH_RESULTS = 200;
 /** Timeout for search requests in milliseconds */
 const SEARCH_TIMEOUT_MS = 5000;
+/** Timeout for peer key lookups in milliseconds */
+const KEY_REQUEST_TIMEOUT_MS = 5000;
 /** Minimum interval between typing events sent to the server */
 const TYPING_SEND_INTERVAL_MS = 2000;
 
@@ -33,6 +38,13 @@ function createChatStore() {
   const pendingSearches = new Map<number, PendingSearch>();
   let lastTypingSentAt = 0;
 
+  /** In-flight and resolved peer key lookups, cached per connection. */
+  const peerKeyRequests = new Map<string, Promise<string | null>>();
+  const pendingKeyRequests = new Map<
+    string,
+    { resolve: (key: string | null) => void; timeout: ReturnType<typeof setTimeout> }
+  >();
+
   /** Clear all pending search requests with an error */
   function clearPendingSearches(reason: string): void {
     for (const [id, entry] of pendingSearches.entries()) {
@@ -40,6 +52,60 @@ function createChatStore() {
       entry.reject(new Error(reason));
       pendingSearches.delete(id);
     }
+  }
+
+  /** Drop peer key lookups from a previous connection. */
+  function clearPeerKeyRequests(): void {
+    for (const entry of pendingKeyRequests.values()) {
+      clearTimeout(entry.timeout);
+      entry.resolve(null);
+    }
+    pendingKeyRequests.clear();
+    peerKeyRequests.clear();
+  }
+
+  /**
+   * Resolve a peer's identity key for DM encryption: asks the server once
+   * per connection and records the answer in the pinning store (which flags
+   * key changes). Resolves to null when the peer has no key binding (e.g.
+   * bots) or the server does not answer in time.
+   */
+  function fetchPeerKey(peer: string): Promise<string | null> {
+    const cached = peerKeyRequests.get(peer);
+    if (cached) return cached;
+    const request = new Promise<string | null>((resolve) => {
+      const timeout = setTimeout(() => {
+        pendingKeyRequests.delete(peer);
+        peerKeyRequests.delete(peer);
+        resolve(null);
+      }, KEY_REQUEST_TIMEOUT_MS);
+      pendingKeyRequests.set(peer, { resolve, timeout });
+      sendRaw({ type: 'get-user-key', user: peer });
+    });
+    peerKeyRequests.set(peer, request);
+    return request;
+  }
+
+  /**
+   * Decrypt a DM frame from a conversation with `peer`. NaCl box's shared
+   * secret is symmetric, so the peer's public key decrypts both directions
+   * (their messages and our own echoed/stored ones). Failures surface as a
+   * `decryptFailed` placeholder message instead of being dropped.
+   */
+  async function decryptDmFrame(peer: string, msg: Message): Promise<Message> {
+    const nonce = typeof msg.nonce === 'string' ? msg.nonce : null;
+    const ciphertext = typeof msg.ciphertext === 'string' ? msg.ciphertext : null;
+    let text: string | null = null;
+    if (nonce && ciphertext) {
+      const key = await fetchPeerKey(peer);
+      if (key) text = decryptDm(nonce, ciphertext, key, loadKeyPair().secretKey);
+    }
+    if (text === null) {
+      const failed: Message = { ...msg, decryptFailed: true };
+      delete failed.text;
+      return prepareMessage(failed);
+    }
+    return prepareMessage({ ...msg, text });
   }
 
   /** Handle incoming messages from WebSocket */
@@ -161,13 +227,17 @@ function createChatStore() {
       }
 
       case 'dm': {
-        const prepared = prepareMessage(msg);
-        dm.receive(prepared, current);
-        const from = typeof prepared.from === 'string' ? prepared.from : null;
-        if (from && from !== current && dm.getActive() !== from) {
-          const text = (prepared.text ?? '').trim();
-          notify(`Direct message from ${from}`, text || 'sent you a message');
-        }
+        const from = typeof msg.from === 'string' ? msg.from : null;
+        const to = typeof msg.to === 'string' ? msg.to : null;
+        if (!from || !to || !current) break;
+        const peer = from === current ? to : from;
+        void decryptDmFrame(peer, msg).then((prepared) => {
+          dm.receive(prepared, current);
+          if (from !== current && dm.getActive() !== from) {
+            const text = (prepared.text ?? '').trim();
+            notify(`Direct message from ${from}`, text || 'sent you a message');
+          }
+        });
         break;
       }
 
@@ -175,8 +245,29 @@ function createChatStore() {
         const peer = typeof msg.with === 'string' ? msg.with : null;
         if (peer) {
           const list: Message[] = Array.isArray(msg.messages) ? (msg.messages as Message[]) : [];
-          dm.setHistory(peer, list.map((item) => prepareMessage(item)));
+          void Promise.all(list.map((item) => decryptDmFrame(peer, item))).then((prepared) => {
+            dm.setHistory(peer, prepared);
+          });
         }
+        break;
+      }
+
+      case 'user-key': {
+        const user = typeof msg.user === 'string' ? msg.user : null;
+        if (!user) break;
+        const pending = pendingKeyRequests.get(user);
+        if (!pending) break;
+        pendingKeyRequests.delete(user);
+        clearTimeout(pending.timeout);
+        const key = typeof msg.publicKey === 'string' ? msg.publicKey : null;
+        if (key) {
+          peerKeys.observe(user, key);
+        } else {
+          // No binding yet (e.g. a bot, or a user who never connected):
+          // don't cache the miss so a later attempt asks again.
+          peerKeyRequests.delete(user);
+        }
+        pending.resolve(key);
         break;
       }
 
@@ -257,6 +348,9 @@ function createChatStore() {
     // is persisted per server; switch both stores to this server's slice.
     unread.setServer(url);
     channelNotifications.setServer(url);
+    // Key pins persist per server; in-flight lookups belong to the old one.
+    peerKeys.setServer(url);
+    clearPeerKeyRequests();
     unread.reset();
     threadData.set(null);
     dm.reset();
@@ -271,6 +365,7 @@ function createChatStore() {
       },
       (info) => {
         clearPendingSearches('Connection closed');
+        clearPeerKeyRequests();
         // Intentional closes (leaving the server, reconnecting) update the
         // state themselves; everything else is a failure to surface.
         if (!info.intentional) {
@@ -293,6 +388,7 @@ function createChatStore() {
     if (!wsManager.isConnected()) return;
     wsManager.disconnect();
     clearPendingSearches('Connection lost');
+    clearPeerKeyRequests();
     connection.set('disconnected');
   }
 
@@ -332,20 +428,32 @@ function createChatStore() {
   }
 
   /**
-   * Send a direct message to another user.
+   * Encrypt and send a direct message to another user.
    * @param to - Recipient username
    * @param text - Message text
+   * @returns null on success, or an error message for the caller to surface
    */
-  function sendDm(to: string, text: string): void {
-    if (!wsManager.isConnected()) return;
+  async function sendDm(to: string, text: string): Promise<string | null> {
+    if (!wsManager.isConnected()) return 'Not connected to the server.';
+    const key = await fetchPeerKey(to);
+    if (!key) {
+      return `${to} has no encryption key on this server and cannot receive direct messages.`;
+    }
+    if (peerKeys.hasConflict(to)) {
+      return `${to}'s security key has changed. Review the warning in the conversation before sending.`;
+    }
+    const payload = encryptDm(text, key, loadKeyPair().secretKey);
+    if (!payload) return 'The message could not be encrypted.';
     const now = new Date();
     wsManager.send({
       type: 'dm',
       to,
-      text,
+      nonce: payload.nonce,
+      ciphertext: payload.ciphertext,
       time: now.toLocaleTimeString(),
       timestamp: now.toISOString()
     });
+    return null;
   }
 
   /**
@@ -503,6 +611,7 @@ function createChatStore() {
     dm.reset();
     pinned.reset();
     clearPendingSearches('Disconnected');
+    clearPeerKeyRequests();
     connection.set('idle');
   }
 
