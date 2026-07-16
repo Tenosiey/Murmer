@@ -221,6 +221,26 @@ export function formatFileSize(bytes: number): string {
   return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
 }
 
+/** Short "HH:MM" label shown next to messages (no seconds). */
+export function formatShortTime(message: Message): string {
+  const parsed = parseTimestampValue(message.timestamp);
+  if (parsed) {
+    return parsed.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+  // Fall back to trimming the seconds off the pre-formatted time string.
+  if (typeof message.time === 'string') {
+    return message.time.replace(/(\d{1,2}:\d{2}):\d{2}/, '$1');
+  }
+  return '';
+}
+
+/** Full date + time (with seconds) revealed on hover via the title tooltip. */
+export function formatFullTimestamp(message: Message): string {
+  const parsed = parseTimestampValue(message.timestamp);
+  if (parsed) return parsed.toLocaleString();
+  return typeof message.time === 'string' ? message.time : '';
+}
+
 export function formatSearchTimestamp(message: Message): string {
   const timestamp = typeof message.timestamp === 'string' ? message.timestamp : undefined;
   const parsed = parseTimestampValue(timestamp);
