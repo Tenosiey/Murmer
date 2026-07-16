@@ -96,6 +96,22 @@ synced to clients; editing is role-gated like other channel management.
 
 ---
 
+## 🔧 Tech debt / hardening
+
+- [ ] Gate the `/upload` endpoint behind authentication (or at least IP rate
+      limiting like auth) — currently anyone who can reach the server can
+      write 10 MB files to disk; needs a small client change to send
+      credentials with the upload
+- [ ] Make the rate limiter's clock injectable so the map-sweep behaviour in
+      `security.rs` can be covered by a regression test in
+      `tests/security_limits.rs` (the 60 s window uses `std::time::Instant`
+      directly and cannot be fast-forwarded)
+- [ ] Add a JS test runner (vitest) to the client — store logic like the
+      per-server unread namespacing and the wiki request tracking is complex
+      enough to deserve tests
+
+---
+
 ## 🐛 Bugs
 
 _(no known bugs yet)_
