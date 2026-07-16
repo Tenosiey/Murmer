@@ -14,6 +14,7 @@
   import { customEmojis } from '$lib/stores/customEmojis';
   import { selectedServer } from '$lib/stores/servers';
   import { httpBaseFromWs } from '$lib/server-url';
+  import { formatFullTimestamp, formatShortTime } from '$lib/chat/helpers';
 
   interface Props {
     title: string;
@@ -73,7 +74,7 @@
       <div class="entry" class:emphasized={emphasize(msg)}>
         <div class="entry-meta">
           <span class="username">{kind === 'dm' ? msg.from : msg.user}</span>
-          <span class="timestamp">{msg.time}</span>
+          <span class="timestamp" title={formatFullTimestamp(msg)}>{formatShortTime(msg)}</span>
         </div>
         <div class="entry-text">
           {#if msg.text}
