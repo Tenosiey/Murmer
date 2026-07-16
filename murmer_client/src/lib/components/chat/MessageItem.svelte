@@ -11,7 +11,13 @@
   import { session } from '$lib/stores/session';
   import { renderMarkdown } from '$lib/markdown';
   import { emojifyHtml } from '$lib/emoji';
-  import { ephemeralInfo, formatFileSize, reactionEntries } from '$lib/chat/helpers';
+  import {
+    ephemeralInfo,
+    formatFileSize,
+    formatFullTimestamp,
+    formatShortTime,
+    reactionEntries
+  } from '$lib/chat/helpers';
   import { giphyGifUrl } from '$lib/link-preview';
   import { customEmojis, shortcodeToEmoji } from '$lib/stores/customEmojis';
   import { selectedServer } from '$lib/stores/servers';
@@ -76,6 +82,9 @@
     /^https?:\/\/\S+$/.test(message.text.trim()));
 
   let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
+
+  let shortTime = $derived(formatShortTime(message));
+  let fullTime = $derived(formatFullTimestamp(message));
 </script>
 
 <div
@@ -88,7 +97,7 @@
     {#if !continuation}
       <UserAvatar name={message.user ?? '?'} />
     {:else}
-      <span class="gutter-time" aria-hidden="true">{message.time}</span>
+      <span class="gutter-time" aria-hidden="true" title={fullTime}>{shortTime}</span>
     {/if}
   </div>
 
@@ -118,7 +127,7 @@
             {roleInfo.role}
           </span>
         {/if}
-        <span class="timestamp">{message.time}</span>
+        <span class="timestamp" title={fullTime}>{shortTime}</span>
       </div>
     {/if}
 
