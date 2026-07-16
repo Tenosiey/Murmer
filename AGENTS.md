@@ -64,10 +64,11 @@ skipped. When asked to bump versions:
 
 1. Run `npm run bump` inside `murmer_client/`. The script
    (`scripts/bump-version.mjs`) computes the next version and writes it into
-   all six versioned files: the client's `package.json`,
-   `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and
-   `src-tauri/Cargo.lock`, plus the server's `Cargo.toml` and `Cargo.lock`
-   (the lock files matter: `--locked` builds fail when they disagree).
+   all seven versioned files: the client's `package.json` and
+   `package-lock.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`
+   and `src-tauri/Cargo.lock`, plus the server's `Cargo.toml` and
+   `Cargo.lock` (the lock files matter: `--locked` builds fail when they
+   disagree).
 2. Commit with `Release v<version>` and create a matching `v<version>` git
    tag. Pushing the tag triggers the GitHub Actions release workflow, which
    builds the installers and updater manifest.
