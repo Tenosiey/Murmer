@@ -1,3 +1,4 @@
+<!-- @migration-task Error while migrating Svelte code: Can't migrate code with afterUpdate. Please migrate by hand. -->
 <!--
   Primary chat surface. Handles WebSocket lifecycle, message rendering, voice
   channel state and peripheral UI such as sidebars and context menus. The

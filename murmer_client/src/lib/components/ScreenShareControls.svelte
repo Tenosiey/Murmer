@@ -9,15 +9,19 @@
   import { QUALITY_PRESETS, type QualityPreset } from '$lib/screenshare/manager';
   import { dialogs } from '$lib/stores/dialogs';
   
-  export let currentVoiceChannel: number | null = null;
-  export let inVoice: boolean = false;
+  interface Props {
+    currentVoiceChannel?: number | null;
+    inVoice?: boolean;
+  }
 
-  let showSettings = false;
-  let selectedPreset: QualityPreset = '720p';
-  let customWidth = 1280;
-  let customHeight = 720;
-  let customFrameRate = 30;
-  let useCustom = false;
+  let { currentVoiceChannel = null, inVoice = false }: Props = $props();
+
+  let showSettings = $state(false);
+  let selectedPreset: QualityPreset = $state('720p');
+  let customWidth = $state(1280);
+  let customHeight = $state(720);
+  let customFrameRate = $state(30);
+  let useCustom = $state(false);
 
   async function toggleScreenShare() {
     if ($isScreenSharing) {
@@ -68,7 +72,7 @@
   <button
     class="screenshare-button"
     class:active={$isScreenSharing}
-    on:click={toggleScreenShare}
+    onclick={toggleScreenShare}
     disabled={!inVoice}
     title={inVoice ? ($isScreenSharing ? 'Stop sharing screen' : 'Share screen') : 'Join a voice channel to share screen'}
     aria-label={$isScreenSharing ? 'Stop sharing screen' : 'Share screen'}
@@ -81,7 +85,7 @@
 
   <button
     class="settings-button"
-    on:click={() => showSettings = !showSettings}
+    onclick={() => showSettings = !showSettings}
     title="Screen share settings"
     aria-label="Screen share settings"
     disabled={$isScreenSharing}
@@ -102,7 +106,7 @@
         <button
           class="preset-button"
           class:selected={!useCustom && selectedPreset === preset}
-          on:click={() => applyPreset(preset as QualityPreset)}
+          onclick={() => applyPreset(preset as QualityPreset)}
         >
           {preset}
         </button>

@@ -12,36 +12,48 @@
   import { httpBaseFromWs } from '$lib/server-url';
   import { unicodeFromShortcode } from '$lib/emoji';
 
-  export let open = false;
-  export let x = 0;
-  export let y = 0;
-  export let onPick: (emoji: string) => void;
-  export let onClose: () => void;
+  interface Props {
+    open?: boolean;
+    x?: number;
+    y?: number;
+    onPick: (emoji: string) => void;
+    onClose: () => void;
+  }
+
+  let {
+    open = false,
+    x = 0,
+    y = 0,
+    onPick,
+    onClose
+  }: Props = $props();
 
   const EMOJI = [
     '👍', '👎', '❤️', '😂', '😮', '😢', '🎉', '🔥',
     '👀', '🤔', '✅', '❌', '🙏', '💯', '🚀', '🫡'
   ];
 
-  let panel: HTMLDivElement | null = null;
-  let custom = '';
-  let adjustedX = 0;
-  let adjustedY = 0;
+  let panel: HTMLDivElement | null = $state(null);
+  let custom = $state('');
+  let adjustedX = $state(0);
+  let adjustedY = $state(0);
 
-  $: httpBase = $selectedServer ? httpBaseFromWs($selectedServer) : '';
+  let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
 
-  $: if (open) {
-    adjustedX = x;
-    adjustedY = y;
-    custom = '';
-    tick().then(() => {
-      if (!panel) return;
-      const rect = panel.getBoundingClientRect();
-      if (rect.right > window.innerWidth) adjustedX = Math.max(8, x - rect.width);
-      if (rect.bottom > window.innerHeight) adjustedY = Math.max(8, y - rect.height);
-      panel.querySelector('button')?.focus();
-    });
-  }
+  $effect(() => {
+    if (open) {
+      adjustedX = x;
+      adjustedY = y;
+      custom = '';
+      tick().then(() => {
+        if (!panel) return;
+        const rect = panel.getBoundingClientRect();
+        if (rect.right > window.innerWidth) adjustedX = Math.max(8, x - rect.width);
+        if (rect.bottom > window.innerHeight) adjustedY = Math.max(8, y - rect.height);
+        panel.querySelector('button')?.focus();
+      });
+    }
+  });
 
   function pick(emoji: string) {
     const trimmed = emoji.trim();
@@ -85,7 +97,7 @@
   >
     <div class="grid">
       {#each EMOJI as emoji (emoji)}
-        <button type="button" class="emoji" on:click={() => pick(emoji)} title={`React with ${emoji}`}>
+        <button type="button" class="emoji" onclick={() => pick(emoji)} title={`React with ${emoji}`}>
           {emoji}
         </button>
       {/each}
@@ -97,7 +109,7 @@
           <button
             type="button"
             class="emoji"
-            on:click={() => pick(`:${emoji.name}:`)}
+            onclick={() => pick(`:${emoji.name}:`)}
             title={`:${emoji.name}:`}
           >
             <img src={httpBase + emoji.url} alt={`:${emoji.name}:`} loading="lazy" />
@@ -105,7 +117,7 @@
         {/each}
       </div>
     {/if}
-    <form class="custom" on:submit|preventDefault={() => pick(custom)}>
+    <form class="custom" onsubmit={(event) => { event.preventDefault(); pick(custom); }}>
       <input
         bind:value={custom}
         type="text"

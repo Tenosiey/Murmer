@@ -13,50 +13,72 @@
   import { wikilinks } from '$lib/wiki/links';
   import { dialogs } from '$lib/stores/dialogs';
 
-  export let channelId: number;
-  export let channelName: string;
-  export let page: WikiPage;
-  export let onSaved: () => void;
-  export let onCancel: () => void;
-  /** Bound by the parent to guard page switches while edits are unsaved. */
-  export let dirty = false;
+  
+  interface Props {
+    channelId: number;
+    channelName: string;
+    page: WikiPage;
+    onSaved: () => void;
+    onCancel: () => void;
+    /** Bound by the parent to guard page switches while edits are unsaved. */
+    dirty?: boolean;
+  }
+
+  let {
+    channelId,
+    channelName,
+    page,
+    onSaved,
+    onCancel,
+    dirty = $bindable(false)
+  }: Props = $props();
 
   /** Server-side body cap (mirrors MAX_WIKI_BODY_BYTES). */
   const MAX_BODY_BYTES = 100_000;
   const PREVIEW_DEBOUNCE_MS = 150;
 
-  let title = page.title;
-  let body = page.body;
+  /* The draft deliberately captures the page as it was when editing started;
+     remote updates surface through the conflict banner instead. */
+  // svelte-ignore state_referenced_locally
+  let title = $state(page.title);
+  // svelte-ignore state_referenced_locally
+  let body = $state(page.body);
   /** Revision this edit is based on; the save CAS targets it. */
-  let baseRevision = page.revision;
-  let saving = false;
+  // svelte-ignore state_referenced_locally
+  let baseRevision = $state(page.revision);
+  let saving = $state(false);
   /** Set when a save came back conflicted; carries the winning version. */
-  let conflict: WikiPage | null = null;
+  let conflict: WikiPage | null = $state(null);
 
-  $: dirty = title !== page.title || body !== page.body;
-  $: httpBase = $selectedServer ? httpBaseFromWs($selectedServer) : '';
+  $effect(() => {
+    dirty = title !== page.title || body !== page.body;
+  });
+  let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
 
   // Debounce the preview so typing stays responsive on large pages.
-  let previewBody = page.body;
+  // svelte-ignore state_referenced_locally
+  let previewBody = $state(page.body);
   let previewTimer: ReturnType<typeof setTimeout> | null = null;
-  $: {
+  $effect(() => {
     void body;
     if (previewTimer !== null) clearTimeout(previewTimer);
     previewTimer = setTimeout(() => {
       previewBody = body;
     }, PREVIEW_DEBOUNCE_MS);
-  }
-  $: previewHtml = emojifyHtml(renderMarkdown(previewBody), $customEmojis, httpBase);
+  });
+  let previewHtml = $derived(emojifyHtml(renderMarkdown(previewBody), $customEmojis, httpBase));
 
-  $: bodyBytes = new TextEncoder().encode(body).length;
-  $: tooLarge = bodyBytes > MAX_BODY_BYTES;
+  let bodyBytes = $derived(new TextEncoder().encode(body).length);
+  let tooLarge = $derived(bodyBytes > MAX_BODY_BYTES);
 
   // Warn before saving when the index shows someone else already saved a
   // newer revision of this page.
-  $: latestMeta = ($wiki[channelId] ?? []).find((p) => p.slug === page.slug);
-  $: remoteRevision = latestMeta?.revision ?? baseRevision;
-  $: conflictUser = conflict?.updatedBy ?? (remoteRevision > baseRevision ? latestMeta?.updatedBy : null) ?? null;
-  $: hasConflict = conflict !== null || remoteRevision > baseRevision;
+  let latestMeta = $derived(($wiki[channelId] ?? []).find((p) => p.slug === page.slug));
+  let remoteRevision = $derived(latestMeta?.revision ?? baseRevision);
+  let conflictUser = $derived.by(
+    () => conflict?.updatedBy ?? (remoteRevision > baseRevision ? latestMeta?.updatedBy : null) ?? null
+  );
+  let hasConflict = $derived(conflict !== null || remoteRevision > baseRevision);
 
   async function save() {
     const trimmedTitle = title.trim();
@@ -143,8 +165,8 @@
         {/if}
       </span>
       <div class="conflict-actions">
-        <button class="btn btn-ghost" on:click={loadNewest}>Load newest (discard my edits)</button>
-        <button class="btn btn-ghost" on:click={keepEditing}>Keep editing</button>
+        <button class="btn btn-ghost" onclick={loadNewest}>Load newest (discard my edits)</button>
+        <button class="btn btn-ghost" onclick={keepEditing}>Keep editing</button>
       </div>
     </div>
   {/if}
@@ -154,8 +176,8 @@
       {bodyBytes.toLocaleString()} / {MAX_BODY_BYTES.toLocaleString()} bytes
     </span>
     <div class="footer-actions">
-      <button class="btn btn-ghost" on:click={onCancel} disabled={saving}>Cancel</button>
-      <button class="btn btn-primary" on:click={save} disabled={saving || tooLarge}>
+      <button class="btn btn-ghost" onclick={onCancel} disabled={saving}>Cancel</button>
+      <button class="btn btn-primary" onclick={save} disabled={saving || tooLarge}>
         {saving ? 'Saving…' : hasConflict ? 'Overwrite' : 'Save'}
       </button>
     </div>

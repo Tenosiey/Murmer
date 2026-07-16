@@ -4,30 +4,40 @@
   denial arrives as a `stats-not-available` error frame shown inline.
 -->
 <script lang="ts">
+
+
   import { onMount, onDestroy } from 'svelte';
   import { chat } from '$lib/stores/chat';
   import { stats, statsSnapshot } from '$lib/stores/stats';
   import UserStatsPanel from '$lib/components/UserStatsPanel.svelte';
   import type { Message } from '$lib/types';
 
-  export let open: boolean;
-  export let user: string | null;
-  export let close: () => void;
-
-  let unavailable = false;
-  let requestedFor: string | null = null;
-
-  $: if (open && user && requestedFor !== user) {
-    requestedFor = user;
-    unavailable = false;
-    stats.fetchStats(user);
-  }
-  $: if (!open) {
-    requestedFor = null;
-    unavailable = false;
+  interface Props {
+    open: boolean;
+    user: string | null;
+    close: () => void;
   }
 
-  $: snapshot = $statsSnapshot && user && $statsSnapshot.user === user ? $statsSnapshot : null;
+  let { open, user, close }: Props = $props();
+
+  let unavailable = $state(false);
+  let requestedFor: string | null = $state(null);
+
+  $effect(() => {
+    if (open && user && requestedFor !== user) {
+      requestedFor = user;
+      unavailable = false;
+      stats.fetchStats(user);
+    }
+  });
+  $effect(() => {
+    if (!open) {
+      requestedFor = null;
+      unavailable = false;
+    }
+  });
+
+  let snapshot = $derived($statsSnapshot && user && $statsSnapshot.user === user ? $statsSnapshot : null);
 
   function handleServerError(msg: Message) {
     if (open && (msg as any).message === 'stats-not-available') {
@@ -52,14 +62,14 @@
 </script>
 
 {#if open && user}
-  <div class="modal-overlay" on:click={close} on:keydown={handleOverlayKeydown} role="dialog" aria-modal="true" aria-labelledby="user-stats-title" tabindex="-1">
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
-    <div class="modal-content" on:click|stopPropagation on:keydown={handleKeydown} role="document" tabindex="0">
+  <div class="modal-overlay" onclick={close} onkeydown={handleOverlayKeydown} role="dialog" aria-modal="true" aria-labelledby="user-stats-title" tabindex="-1">
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div class="modal-content" onclick={(event) => event.stopPropagation()} onkeydown={handleKeydown} role="document" tabindex="0">
       <div class="modal-header">
         <h2 id="user-stats-title">Stats — {user}</h2>
-        <button class="icon-btn close-btn" on:click={close} aria-label="Close stats">
+        <button class="icon-btn close-btn" onclick={close} aria-label="Close stats">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>

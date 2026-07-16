@@ -14,8 +14,12 @@
   - `wordmark` — also render the "MURMER" lettering next to the mark.
 -->
 <script lang="ts">
-  export let size = 32;
-  export let wordmark = false;
+  interface Props {
+    size?: number;
+    wordmark?: boolean;
+  }
+
+  let { size = 32, wordmark = false }: Props = $props();
 </script>
 
 <span class="logo" class:with-wordmark={wordmark}>

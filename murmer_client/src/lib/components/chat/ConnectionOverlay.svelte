@@ -4,10 +4,19 @@
   disconnected/failed states offer retry and a way back to the server list.
 -->
 <script lang="ts">
-  export let state: 'connecting' | 'disconnected' | 'failed';
-  export let server: string | null = null;
-  export let onRetry: () => void;
-  export let onBack: () => void;
+  interface Props {
+    state: 'connecting' | 'disconnected' | 'failed';
+    server?: string | null;
+    onRetry: () => void;
+    onBack: () => void;
+  }
+
+  let {
+    state,
+    server = null,
+    onRetry,
+    onBack
+  }: Props = $props();
 </script>
 
 <div class="connection-overlay" class:connecting={state === 'connecting'} role="alert">
@@ -25,8 +34,8 @@
       </p>
       <p class="detail">{server ?? 'Unknown server'}</p>
       <div class="actions">
-        <button type="button" class="btn btn-primary" on:click={onRetry}>Try again</button>
-        <button type="button" class="btn" on:click={onBack}>Back to servers</button>
+        <button type="button" class="btn btn-primary" onclick={onRetry}>Try again</button>
+        <button type="button" class="btn" onclick={onBack}>Back to servers</button>
       </div>
     {/if}
   </div>

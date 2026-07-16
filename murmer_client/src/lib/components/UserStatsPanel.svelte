@@ -11,11 +11,15 @@
   import { httpBaseFromWs } from '$lib/server-url';
   import { describeDuration } from '$lib/chat/helpers';
 
-  export let snapshot: UserStatsSnapshot;
+  interface Props {
+    snapshot: UserStatsSnapshot;
+  }
 
-  $: httpBase = $selectedServer ? httpBaseFromWs($selectedServer) : '';
-  $: achievements = computeAchievements(snapshot.stats);
-  $: unlockedCount = achievements.filter((a) => a.tierIndex >= 0).length;
+  let { snapshot }: Props = $props();
+
+  let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
+  let achievements = $derived(computeAchievements(snapshot.stats));
+  let unlockedCount = $derived(achievements.filter((a) => a.tierIndex >= 0).length);
 
   const numberFormat = new Intl.NumberFormat();
 
@@ -55,7 +59,7 @@
     return entry ? httpBase + entry.url : null;
   }
 
-  $: statRows = [
+  let statRows = $derived([
     { label: 'Messages sent', value: formatNumber(snapshot.stats.messagesSent) },
     { label: 'Characters typed', value: formatNumber(snapshot.stats.messageChars) },
     { label: 'Message data written', value: formatBytes(snapshot.stats.messageBytes) },
@@ -76,7 +80,7 @@
     { label: 'Time in voice', value: formatDuration(snapshot.stats.voiceSeconds) },
     { label: 'Voice sessions', value: formatNumber(snapshot.stats.voiceSessions) },
     { label: 'Time screen sharing', value: formatDuration(snapshot.stats.screenshareSeconds) }
-  ];
+  ]);
 
   // Small stroke-SVG icon set (1.8 stroke width, matching the app style).
   const ICON_PATHS: Record<AchievementIcon, string> = {

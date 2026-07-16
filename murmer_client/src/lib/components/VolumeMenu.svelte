@@ -1,20 +1,31 @@
 <script lang="ts">
+
   import { userVolumes, setUserVolume } from '$lib/stores/settings';
 
-  export let open: boolean;
-  export let x: number;
-  export let y: number;
-  export let user: string | null;
-  export let onClose: () => void;
+  interface Props {
+    open: boolean;
+    x: number;
+    y: number;
+    user: string | null;
+    onClose: () => void;
+  }
+
+  let {
+    open,
+    x,
+    y,
+    user,
+    onClose
+  }: Props = $props();
 </script>
 
 {#if open && user}
-  <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <div class="volume-menu-overlay" on:click={onClose}>
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <div class="volume-menu" style="left: {x}px; top: {y}px;" on:click|stopPropagation>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div class="volume-menu-overlay" onclick={onClose}>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div class="volume-menu" style="left: {x}px; top: {y}px;" onclick={(event) => event.stopPropagation()}>
       <div class="volume-menu-header">
         <span class="volume-menu-user">{user}</span>
         <span class="volume-menu-title">Volume Control</span>
@@ -31,7 +42,7 @@
             max="1"
             step="0.01"
             value={$userVolumes[user] ?? 1.0}
-            on:input={(e) => {
+            oninput={(e) => {
               if (!user) return;
               setUserVolume(user, parseFloat(e.currentTarget.value));
             }}
@@ -41,9 +52,9 @@
           >
         </div>
         <div class="volume-presets">
-          <button class="preset-btn" on:click={() => user && setUserVolume(user, 0)}>Mute</button>
-          <button class="preset-btn" on:click={() => user && setUserVolume(user, 0.5)}>50%</button>
-          <button class="preset-btn" on:click={() => user && setUserVolume(user, 1.0)}>100%</button>
+          <button class="preset-btn" onclick={() => user && setUserVolume(user, 0)}>Mute</button>
+          <button class="preset-btn" onclick={() => user && setUserVolume(user, 0.5)}>50%</button>
+          <button class="preset-btn" onclick={() => user && setUserVolume(user, 1.0)}>100%</button>
         </div>
       </div>
     </div>

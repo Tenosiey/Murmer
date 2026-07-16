@@ -5,32 +5,42 @@
   hover or click. Features fade-in/scale animation and keyboard navigation.
 -->
 <script lang="ts">
+
   import { onMount, onDestroy, tick } from 'svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import type { ContextMenuItem } from '$lib/types';
 
-  export let items: ContextMenuItem[] = [];
-  export let x = 0;
-  export let y = 0;
-  export let open = false;
+  interface Props {
+    items?: ContextMenuItem[];
+    x?: number;
+    y?: number;
+    open?: boolean;
+  }
 
-  let menuElement: HTMLUListElement;
-  let submenuElement: HTMLUListElement | undefined;
+  let {
+    items = [],
+    x = 0,
+    y = 0,
+    open = $bindable(false)
+  }: Props = $props();
+
+  let menuElement: HTMLUListElement | undefined = $state();
+  let submenuElement: HTMLUListElement | undefined = $state();
 
   /** Index of the item whose submenu is currently shown, if any. */
-  let openSubmenu: number | null = null;
+  let openSubmenu: number | null = $state(null);
   /** Submenu opens to the left when it would leave the viewport on the right. */
-  let submenuFlip = false;
+  let submenuFlip = $state(false);
   /** Pixels the submenu is pulled up by to stay inside the viewport. */
-  let submenuShift = 0;
+  let submenuShift = $state(0);
   /** Grace period so the cursor may cross the gap between the menu and its
    *  submenu without the submenu disappearing underneath it. */
   let submenuCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** A menu with submenus must not clip them, so it cannot be a scroll box.
    *  Keep such menus short enough to fit on screen. */
-  $: hasSubmenu = items.some((item) => item.children?.length);
+  let hasSubmenu = $derived(items.some((item) => item.children?.length));
 
   function cancelSubmenuClose() {
     if (submenuCloseTimer !== null) {
@@ -114,7 +124,9 @@
   });
 
   // A freshly opened menu never carries over the previous target's submenu.
-  $: if (!open) closeSubmenu();
+  $effect(() => {
+    if (!open) closeSubmenu();
+  });
 
   /** Places the menu at the cursor, then pulls it back inside the viewport.
    *  The menu has to be on screen before it can be measured, so this runs
@@ -133,9 +145,11 @@
     }
   }
 
-  let adjustedX = 0;
-  let adjustedY = 0;
-  $: if (open) placeMenu(x, y);
+  let adjustedX = $state(0);
+  let adjustedY = $state(0);
+  $effect(() => {
+    if (open) placeMenu(x, y);
+  });
 </script>
 
 {#if open}
@@ -148,19 +162,19 @@
     role="menu"
   >
     {#each items as item, index (index)}
-      <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <li
         role="none"
         class:has-submenu={!!item.children}
-        on:mouseenter={() => (item.children ? showSubmenu(index) : closeSubmenu())}
-        on:mouseleave={() => item.children && scheduleSubmenuClose()}
+        onmouseenter={() => (item.children ? showSubmenu(index) : closeSubmenu())}
+        onmouseleave={() => item.children && scheduleSubmenuClose()}
       >
         <button
           type="button"
           class="entry"
           class:entry-danger={item.danger}
           class:entry-active={openSubmenu === index}
-          on:click={() => (item.children ? showSubmenu(index) : activate(item))}
+          onclick={() => (item.children ? showSubmenu(index) : activate(item))}
           role="menuitem"
           aria-haspopup={item.children ? 'menu' : undefined}
           aria-expanded={item.children ? openSubmenu === index : undefined}
@@ -199,7 +213,7 @@
                   type="button"
                   class="entry"
                   class:entry-danger={child.danger}
-                  on:click={() => activate(child)}
+                  onclick={() => activate(child)}
                   role="menuitem"
                   tabindex="0"
                 >

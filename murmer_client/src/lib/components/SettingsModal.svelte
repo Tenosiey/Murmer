@@ -3,6 +3,8 @@
   The component renders nothing when the `open` prop is false.
 -->
 <script lang="ts">
+
+
   import {
     volume,
     inputDeviceId,
@@ -37,17 +39,21 @@
   import { stats, statsConfig, statsSnapshot } from '$lib/stores/stats';
   import { session } from '$lib/stores/session';
   import UserStatsPanel from '$lib/components/UserStatsPanel.svelte';
-  export let open: boolean;
-  export let close: () => void;
+  interface Props {
+    open: boolean;
+    close: () => void;
+  }
 
-  let updateMessage = '';
-  let updating = false;
-  let publicKey = '';
-  let keyCopied = false;
+  let { open, close }: Props = $props();
 
-  let inputs: MediaDeviceInfo[] = [];
-  let outputs: MediaDeviceInfo[] = [];
-  let capturingPttKey = false;
+  let updateMessage = $state('');
+  let updating = $state(false);
+  let publicKey = $state('');
+  let keyCopied = $state(false);
+
+  let inputs: MediaDeviceInfo[] = $state([]);
+  let outputs: MediaDeviceInfo[] = $state([]);
+  let capturingPttKey = $state(false);
 
   // Each settings topic lives on its own tab shown in the left rail.
   const TABS = [
@@ -61,7 +67,7 @@
     { id: 'about', label: 'About' },
     { id: 'server', label: 'Server', ownerOnly: true }
   ] as const;
-  let activeTab: (typeof TABS)[number]['id'] = 'appearance';
+  let activeTab: (typeof TABS)[number]['id'] = $state('appearance');
 
   const REPO_URL = 'https://github.com/Tenosiey/Murmer';
   const ABOUT_LINKS = [
@@ -70,11 +76,6 @@
     { label: 'Releases & changelog', url: `${REPO_URL}/releases` },
     { label: 'License', url: `${REPO_URL}/blob/main/LICENSE` }
   ];
-  $: visibleTabs = TABS.filter((tab) => !('ownerOnly' in tab && tab.ownerOnly) || $serverInfo);
-  // If the active tab disappears (e.g. server info clears), fall back to the first.
-  $: if (!visibleTabs.some((tab) => tab.id === activeTab)) {
-    activeTab = visibleTabs[0].id;
-  }
 
   // Preset theme colors shown next to the wheel; each is a wheel position.
   // "Lime" is the brand color and the default — both logo variants (#c8ff3e
@@ -92,9 +93,8 @@
 
   // The hex field mirrors the wheel. Edits only take effect on Enter or on
   // blur, so a half-typed code never repaints the whole app.
-  let hexInput = accentToHex(DEFAULT_ACCENT);
-  let hexInvalid = false;
-  $: syncHexField($accent);
+  let hexInput = $state(accentToHex(DEFAULT_ACCENT));
+  let hexInvalid = $state(false);
 
   function syncHexField(value: Accent | null) {
     hexInput = accentToHex(value ?? DEFAULT_ACCENT);
@@ -229,7 +229,7 @@
   }
 
   // ── Hotkey capture ─────────────────────────────────────────────────────
-  let capturingHotkeyId: HotkeyActionId | null = null;
+  let capturingHotkeyId: HotkeyActionId | null = $state(null);
   let hotkeyCaptureCleanup: (() => void) | null = null;
 
   function stopHotkeyCapture() {
@@ -273,18 +273,8 @@
     hotkeyCaptureCleanup = () => document.removeEventListener('keydown', handler, true);
   }
 
-  // Never leave a dangling capture when the modal closes or unmounts.
-  $: if (!open && capturingHotkeyId !== null) stopHotkeyCapture();
   onDestroy(stopHotkeyCapture);
 
-  // ── Lifetime stats (double opt-in) ─────────────────────────────────────
-  $: statsTracking = ($statsConfig?.serverEnabled ?? false) && ($statsConfig?.optedIn ?? false);
-  // Refresh the own snapshot whenever the tab is opened while tracking is on.
-  $: if (open && activeTab === 'stats' && statsTracking) {
-    stats.fetchStats();
-  }
-  $: ownSnapshot =
-    $statsSnapshot && $statsSnapshot.user === $session.user ? $statsSnapshot : null;
 
   function toggleStatsOptIn(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
@@ -301,19 +291,43 @@
     });
     if (confirmed) stats.resetStats();
   }
+  let visibleTabs = $derived(TABS.filter((tab) => !('ownerOnly' in tab && tab.ownerOnly) || $serverInfo));
+  // If the active tab disappears (e.g. server info clears), fall back to the first.
+  $effect(() => {
+    if (!visibleTabs.some((tab) => tab.id === activeTab)) {
+      activeTab = visibleTabs[0].id;
+    }
+  });
+  $effect(() => {
+    syncHexField($accent);
+  });
+  // Never leave a dangling capture when the modal closes or unmounts.
+  $effect(() => {
+    if (!open && capturingHotkeyId !== null) stopHotkeyCapture();
+  });
+  // ── Lifetime stats (double opt-in) ─────────────────────────────────────
+  let statsTracking = $derived(($statsConfig?.serverEnabled ?? false) && ($statsConfig?.optedIn ?? false));
+  // Refresh the own snapshot whenever the tab is opened while tracking is on.
+  $effect(() => {
+    if (open && activeTab === 'stats' && statsTracking) {
+      stats.fetchStats();
+    }
+  });
+  let ownSnapshot =
+    $derived($statsSnapshot && $statsSnapshot.user === $session.user ? $statsSnapshot : null);
 </script>
 
 {#if open}
-  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <div class="modal-overlay" on:click={close} on:keydown={handleOverlayKeydown} role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1">
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
-    <div class="modal-content" on:click|stopPropagation on:keydown={handleKeydown} role="document" tabindex="0">
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div class="modal-overlay" onclick={close} onkeydown={handleOverlayKeydown} role="dialog" aria-modal="true" aria-labelledby="settings-title" tabindex="-1">
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div class="modal-content" onclick={(event) => event.stopPropagation()} onkeydown={handleKeydown} role="document" tabindex="0">
       <div class="modal-header">
         <h2 id="settings-title">Settings</h2>
-        <button class="icon-btn close-btn" on:click={close} aria-label="Close settings">
+        <button class="icon-btn close-btn" onclick={close} aria-label="Close settings">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -328,7 +342,7 @@
               class="tab-btn"
               class:selected={activeTab === tab.id}
               aria-pressed={activeTab === tab.id}
-              on:click={() => (activeTab = tab.id)}
+              onclick={() => (activeTab = tab.id)}
             >{tab.label}</button>
           {/each}
         </nav>
@@ -345,13 +359,13 @@
                 class="btn mode-btn"
                 class:selected={$theme === 'dark'}
                 aria-pressed={$theme === 'dark'}
-                on:click={() => theme.set('dark')}
+                onclick={() => theme.set('dark')}
               >Dark</button>
               <button
                 class="btn mode-btn"
                 class:selected={$theme === 'light'}
                 aria-pressed={$theme === 'light'}
-                on:click={() => theme.set('light')}
+                onclick={() => theme.set('light')}
               >Light</button>
             </div>
           </div>
@@ -373,7 +387,7 @@
                       style={`background: hsl(${preset.hue} ${preset.saturation}% 50%);`}
                       title={preset.name}
                       aria-label={`Use ${preset.name} theme color`}
-                      on:click={() => accent.set({ hue: preset.hue, saturation: preset.saturation })}
+                      onclick={() => accent.set({ hue: preset.hue, saturation: preset.saturation })}
                     ></button>
                   {/each}
                 </div>
@@ -389,12 +403,12 @@
                     placeholder="#27c0e8"
                     aria-invalid={hexInvalid}
                     bind:value={hexInput}
-                    on:input={() => (hexInvalid = false)}
-                    on:blur={commitHex}
-                    on:keydown={handleHexKeydown}
+                    oninput={() => (hexInvalid = false)}
+                    onblur={commitHex}
+                    onkeydown={handleHexKeydown}
                   />
                 </label>
-                <button class="btn reset-accent" on:click={() => accent.reset()} disabled={$accent === null}>
+                <button class="btn reset-accent" onclick={() => accent.reset()} disabled={$accent === null}>
                   Reset to default
                 </button>
               </div>
@@ -551,7 +565,7 @@
                   id="ptt-key-button"
                   class="btn ptt-key-button"
                   class:capturing={capturingPttKey}
-                  on:click={capturePttKey}
+                  onclick={capturePttKey}
                   disabled={capturingPttKey}
                 >
                   {#if capturingPttKey}
@@ -590,7 +604,7 @@
                     class="btn hotkey-btn"
                     class:capturing={capturingHotkeyId === action.id}
                     class:unset={!$hotkeys[action.id] && capturingHotkeyId !== action.id}
-                    on:click={() => captureHotkey(action.id)}
+                    onclick={() => captureHotkey(action.id)}
                     title="Click, then press the new key combination"
                   >
                     {#if capturingHotkeyId === action.id}
@@ -601,7 +615,7 @@
                   </button>
                   <button
                     class="icon-btn hotkey-clear"
-                    on:click={() => hotkeys.unbind(action.id)}
+                    onclick={() => hotkeys.unbind(action.id)}
                     disabled={!$hotkeys[action.id]}
                     title="Remove hotkey"
                     aria-label={`Remove hotkey for ${action.label}`}
@@ -634,7 +648,7 @@
               </span>
             </label>
 
-            <button class="btn reset-hotkeys" on:click={() => hotkeys.resetAll()}>
+            <button class="btn reset-hotkeys" onclick={() => hotkeys.resetAll()}>
               Reset to defaults
             </button>
           </div>
@@ -654,7 +668,7 @@
                 readonly
                 value={publicKey}
               />
-              <button class="icon-btn copy-btn" on:click={copyPublicKey} title="Copy public key">
+              <button class="icon-btn copy-btn" onclick={copyPublicKey} title="Copy public key">
                 {#if keyCopied}
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="20,6 9,17 4,12"></polyline>
@@ -684,7 +698,7 @@
                 type="checkbox"
                 checked={$statsConfig?.optedIn ?? false}
                 disabled={$statsConfig === null || !$statsConfig.serverEnabled}
-                on:change={toggleStatsOptIn}
+                onchange={toggleStatsOptIn}
               />
               <span class="toggle-text">
                 <span class="toggle-label">Track my lifetime stats</span>
@@ -705,7 +719,7 @@
               </div>
             {/if}
             <div>
-              <button class="btn btn-danger" on:click={deleteMyStats}>Delete my stats…</button>
+              <button class="btn btn-danger" onclick={deleteMyStats}>Delete my stats…</button>
             </div>
           </div>
 
@@ -737,7 +751,7 @@
 
           <div class="setting-group">
             <span class="setting-label">Updates</span>
-            <button class="btn update-btn" on:click={checkUpdates} disabled={updating}>Check for Updates</button>
+            <button class="btn update-btn" onclick={checkUpdates} disabled={updating}>Check for Updates</button>
             {#if updateMessage}
               <div class="update-message" class:success={updateMessage.startsWith('You are running')} class:warning={updateMessage.startsWith('Update available')}>
                 {updateMessage}
@@ -787,7 +801,7 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-primary" on:click={close}>Done</button>
+        <button class="btn btn-primary" onclick={close}>Done</button>
       </div>
     </div>
   </div>

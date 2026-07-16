@@ -22,19 +22,37 @@
   import { formatVoiceQuality } from '$lib/chat/helpers';
   import type { CategoryInfo, ChannelInfo, VoiceChannelInfo } from '$lib/types';
 
-  export let currentChatChannelId: number;
-  export let currentVoiceChannelId: number | null;
-  export let inVoice: boolean;
-  export let serverStrength: number;
-  export let onJoinChannel: (id: number) => void;
-  export let onJoinVoiceChannel: (id: number) => void;
-  export let onOpenChannelMenu: (event: MouseEvent, channelId?: number, voice?: boolean) => void;
-  export let onOpenCategoryMenu: (event: MouseEvent, category: CategoryInfo) => void;
-  export let onOpenUserVolumeMenu: (event: MouseEvent, user: string) => void;
-  export let onViewScreenShare: (user: string) => void;
-  export let onLeaveVoice: () => void;
-  export let onToggleMicrophone: () => void;
-  export let onToggleOutput: () => void;
+  interface Props {
+    currentChatChannelId: number;
+    currentVoiceChannelId: number | null;
+    inVoice: boolean;
+    serverStrength: number;
+    onJoinChannel: (id: number) => void;
+    onJoinVoiceChannel: (id: number) => void;
+    onOpenChannelMenu: (event: MouseEvent, channelId?: number, voice?: boolean) => void;
+    onOpenCategoryMenu: (event: MouseEvent, category: CategoryInfo) => void;
+    onOpenUserVolumeMenu: (event: MouseEvent, user: string) => void;
+    onViewScreenShare: (user: string) => void;
+    onLeaveVoice: () => void;
+    onToggleMicrophone: () => void;
+    onToggleOutput: () => void;
+  }
+
+  let {
+    currentChatChannelId,
+    currentVoiceChannelId,
+    inVoice,
+    serverStrength,
+    onJoinChannel,
+    onJoinVoiceChannel,
+    onOpenChannelMenu,
+    onOpenCategoryMenu,
+    onOpenUserVolumeMenu,
+    onViewScreenShare,
+    onLeaveVoice,
+    onToggleMicrophone,
+    onToggleOutput
+  }: Props = $props();
 
   interface CategoryGroup {
     category: CategoryInfo | null;
@@ -64,7 +82,7 @@
     }
   }
 
-  let collapsedCategories: Set<number> = loadCollapsed();
+  let collapsedCategories: Set<number> = $state(loadCollapsed());
   function toggleCategory(id: number) {
     if (collapsedCategories.has(id)) {
       collapsedCategories.delete(id);
@@ -81,8 +99,8 @@
      never leaves this component) while the DataTransfer payload only exists so
      the browser reports a valid drag type during `dragover`. Permission to move
      a channel is enforced by the server, mirroring the "Move to" context menu. */
-  let draggedChannel: DraggedChannel | null = null;
-  let dragOverKey: string | null = null;
+  let draggedChannel: DraggedChannel | null = $state(null);
+  let dragOverKey: string | null = $state(null);
 
   function groupKey(group: CategoryGroup): string {
     return group.category ? String(group.category.id) : UNCATEGORIZED_KEY;
@@ -143,7 +161,7 @@
     return canDropOn(group, dragged);
   }
 
-  $: categoryGroups = (() => {
+  let categoryGroups = $derived((() => {
     const groups: CategoryGroup[] = [];
     const catMap = new Map<number, CategoryGroup>();
 
@@ -176,10 +194,10 @@
     groups.unshift(uncategorized);
 
     return groups;
-  })();
+  })());
 </script>
 
-<div class="channels" role="navigation" on:contextmenu={(e) => onOpenChannelMenu(e)} style="width: {$leftSidebarWidth}px">
+<div class="channels" role="navigation" oncontextmenu={(e) => onOpenChannelMenu(e)} style="width: {$leftSidebarWidth}px">
   {#each categoryGroups as group (groupKey(group))}
     {#if isGroupVisible(group, draggedChannel)}
       <div
@@ -187,19 +205,19 @@
         class:drop-target={dragOverKey === groupKey(group)}
         role="group"
         aria-label={group.category?.name ?? 'Uncategorized channels'}
-        on:dragover={(e) => handleGroupDragOver(e, group)}
-        on:dragleave={(e) => handleGroupDragLeave(e, group)}
-        on:drop={(e) => handleGroupDrop(e, group)}
+        ondragover={(e) => handleGroupDragOver(e, group)}
+        ondragleave={(e) => handleGroupDragLeave(e, group)}
+        ondrop={(e) => handleGroupDrop(e, group)}
       >
         {#if group.category}
-          <!-- svelte-ignore a11y-click-events-have-key-events -->
-          <!-- svelte-ignore a11y-no-noninteractive-element-to-interactive-role -->
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
           <h3
             class="section category-header"
             role="button"
             tabindex="0"
-            on:click={() => toggleCategory(group.category?.id ?? 0)}
-            on:contextmenu={(e) => { if (group.category) onOpenCategoryMenu(e, group.category); }}
+            onclick={() => toggleCategory(group.category?.id ?? 0)}
+            oncontextmenu={(e) => { if (group.category) onOpenCategoryMenu(e, group.category); }}
           >
             <span class="category-chevron" class:collapsed={collapsedCategories.has(group.category?.id ?? 0)}>&#9662;</span>
             {group.category?.name ?? ''}
@@ -219,10 +237,10 @@
               class:unread={ch.id !== currentChatChannelId && ($unread[ch.id]?.count ?? 0) > 0}
               class:dragging={draggedChannel?.id === ch.id && !draggedChannel.voice}
               draggable="true"
-              on:dragstart={(e) => handleChannelDragStart(e, ch, false)}
-              on:dragend={handleChannelDragEnd}
-              on:click={() => onJoinChannel(ch.id)}
-              on:contextmenu={(e) => onOpenChannelMenu(e, ch.id)}
+              ondragstart={(e) => handleChannelDragStart(e, ch, false)}
+              ondragend={handleChannelDragEnd}
+              onclick={() => onJoinChannel(ch.id)}
+              oncontextmenu={(e) => onOpenChannelMenu(e, ch.id)}
             >
               <span class="chan-icon">#</span>
               <span class="chan-name">{ch.name}</span>
@@ -247,10 +265,10 @@
               <button
                 class:dragging={draggedChannel?.id === ch.id && draggedChannel.voice}
                 draggable="true"
-                on:dragstart={(e) => handleChannelDragStart(e, ch, true)}
-                on:dragend={handleChannelDragEnd}
-                on:click={() => onJoinVoiceChannel(ch.id)}
-                on:contextmenu={(e) => onOpenChannelMenu(e, ch.id, true)}
+                ondragstart={(e) => handleChannelDragStart(e, ch, true)}
+                ondragend={handleChannelDragEnd}
+                onclick={() => onJoinVoiceChannel(ch.id)}
+                oncontextmenu={(e) => onOpenChannelMenu(e, ch.id, true)}
               >
                 <span class="chan-icon">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
@@ -266,7 +284,7 @@
                         ? { micMuted: $microphoneMuted, outputMuted: $outputMuted }
                         : ($voiceMuteStates[user] ?? { micMuted: false, outputMuted: false })}
                     <li
-                      on:contextmenu={(e) => user !== $session.user && onOpenUserVolumeMenu(e, user)}
+                      oncontextmenu={(e) => user !== $session.user && onOpenUserVolumeMenu(e, user)}
                       class:clickable={user !== $session.user}
                       class:talking={
                         user === $session.user
@@ -311,7 +329,7 @@
                       {#if $activeScreenShares[ch.id]?.includes(user) && user !== $session.user}
                         <button
                           class="screenshare-indicator"
-                          on:click={() => onViewScreenShare(user)}
+                          onclick={() => onViewScreenShare(user)}
                           title="View {user}'s screen"
                           aria-label="View {user}'s screen share"
                         >
@@ -341,7 +359,7 @@
       {/if}
       <div class="voice-controls-buttons">
         {#if inVoice}
-          <button class="voice-control-btn leave" on:click={onLeaveVoice}>
+          <button class="voice-control-btn leave" onclick={onLeaveVoice}>
             <span class="btn-icon">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </span>
@@ -354,7 +372,7 @@
           class:active={inVoice && $voiceMode === 'vad' && $voiceActivity}
           class:ptt-active={inVoice && $voiceMode === 'ptt' && $isPttActive}
           class:disabled={!inVoice}
-          on:click={onToggleMicrophone}
+          onclick={onToggleMicrophone}
           disabled={!inVoice}
           title={!inVoice ? 'Join a voice channel first' : $microphoneMuted ? 'Unmute Microphone' : 'Mute Microphone'}
         >
@@ -385,7 +403,7 @@
           class="voice-control-btn mute"
           class:muted={inVoice && $outputMuted}
           class:disabled={!inVoice}
-          on:click={onToggleOutput}
+          onclick={onToggleOutput}
           disabled={!inVoice}
           title={!inVoice ? 'Join a voice channel first' : $outputMuted ? 'Unmute Output' : 'Mute Output'}
         >
