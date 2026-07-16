@@ -1,6 +1,6 @@
 [package]
 name = "murmer_server"
-version = "2026.716.1"
+version = "2026.716.2"
 edition = "2024"
 
 [dependencies]
