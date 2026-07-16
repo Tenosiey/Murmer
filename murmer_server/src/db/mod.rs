@@ -81,13 +81,13 @@ const NOW_UTC: &str = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
 /// exists. Parent directories are created if missing.
 #[tracing::instrument(skip(db_path))]
 pub async fn init(db_path: &str) -> Result<Db, DbError> {
-    if let Some(parent) = Path::new(db_path).parent() {
-        if !parent.as_os_str().is_empty() {
-            tokio::fs::create_dir_all(parent).await.map_err(|e| {
-                error!("failed to create database directory: {e}");
-                DbError::Error(rusqlite::Error::InvalidPath(parent.to_path_buf()))
-            })?;
-        }
+    if let Some(parent) = Path::new(db_path).parent()
+        && !parent.as_os_str().is_empty()
+    {
+        tokio::fs::create_dir_all(parent).await.map_err(|e| {
+            error!("failed to create database directory: {e}");
+            DbError::Error(rusqlite::Error::InvalidPath(parent.to_path_buf()))
+        })?;
     }
 
     let conn = Db::open(db_path).await?;

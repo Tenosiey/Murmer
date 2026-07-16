@@ -38,7 +38,9 @@ fn set_tray_theme(app: tauri::AppHandle, theme: String) -> Result<(), String> {
 fn apply_webkitgtk_workarounds() {
     let nvidia = std::path::Path::new("/proc/driver/nvidia/version").exists();
     if nvidia && std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        // SAFETY: called from run() during startup, before the Tauri builder
+        // spawns any threads that could read the environment concurrently.
+        unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
     }
 
     // The tray icon goes through libayatana-appindicator, which logs a
@@ -57,9 +59,9 @@ fn apply_webkitgtk_workarounds() {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() -> tauri::Result<()> {
     use tauri::{
+        Manager,
         menu::{MenuBuilder, MenuItemBuilder},
         tray::{TrayIconBuilder, TrayIconEvent},
-        Manager,
     };
     use tauri_plugin_window_state::Builder as WindowStateBuilder;
     use tracing_subscriber::EnvFilter;
@@ -116,11 +118,11 @@ pub fn run() -> tauri::Result<()> {
             _ => {}
         })
         .on_tray_icon_event(|app, event| {
-            if let TrayIconEvent::DoubleClick { .. } = event {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+            if let TrayIconEvent::DoubleClick { .. } = event
+                && let Some(window) = app.get_webview_window("main")
+            {
+                let _ = window.show();
+                let _ = window.set_focus();
             }
         })
         .run(tauri::generate_context!())?;

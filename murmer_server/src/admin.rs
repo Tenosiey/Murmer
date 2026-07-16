@@ -9,8 +9,8 @@ use axum::{
     response::IntoResponse,
 };
 use axum_extra::{
-    headers::{authorization::Bearer, Authorization},
     TypedHeader,
+    headers::{Authorization, authorization::Bearer},
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -18,9 +18,8 @@ use subtle::ConstantTimeEq;
 use tracing::error;
 
 use crate::{
-    db,
-    roles::{default_color, RoleInfo},
-    AppState,
+    AppState, db,
+    roles::{RoleInfo, default_color},
 };
 
 #[derive(Debug, Deserialize)]

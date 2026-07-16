@@ -29,17 +29,17 @@
 //!   - `GET    /api/v1/users`                                         – list users
 //!   - `GET    /api/v1/server/info`                                   – server metadata
 
-use crate::{db, security, ws, AppState};
+use crate::{AppState, db, security, ws};
 use axum::{
+    Router,
     extract::{Json, Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{delete, get, post, put},
-    Router,
 };
 use axum_extra::{
-    headers::{authorization::Bearer, Authorization},
     TypedHeader,
+    headers::{Authorization, authorization::Bearer},
 };
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde_json::{Map, Value};
@@ -51,9 +51,9 @@ use tracing::error;
 use super::{
     db as bot_db,
     models::{
-        generate_bot_id, generate_token, hash_token, AddReactionRequest, BotPermissions, BotRecord,
-        CreateBotRequest, CreateChannelRequest, EditMessageRequest, MessageQuery, SearchQuery,
-        SendMessageRequest, UpdateBotRequest, UpdateChannelRequest,
+        AddReactionRequest, BotPermissions, BotRecord, CreateBotRequest, CreateChannelRequest,
+        EditMessageRequest, MessageQuery, SearchQuery, SendMessageRequest, UpdateBotRequest,
+        UpdateChannelRequest, generate_bot_id, generate_token, hash_token,
     },
 };
 
@@ -108,10 +108,10 @@ async fn format_messages(db: &db::Db, rows: Vec<(i64, String)>, channel_id: i32)
             if msg.get("channelId").is_none() {
                 msg["channelId"] = Value::from(channel_id);
             }
-            if let Some(reactions) = reaction_map.get(&id) {
-                if let Ok(val) = serde_json::to_value(reactions) {
-                    msg["reactions"] = val;
-                }
+            if let Some(reactions) = reaction_map.get(&id)
+                && let Ok(val) = serde_json::to_value(reactions)
+            {
+                msg["reactions"] = val;
             }
             if msg.get("reactions").is_none() {
                 msg["reactions"] = Value::Object(Map::new());
@@ -233,10 +233,10 @@ async fn update_bot_handler(
             return json_error(StatusCode::BAD_REQUEST, "invalid-bot-name");
         }
     }
-    if let Some(ref d) = body.description {
-        if d.len() > MAX_BOT_DESCRIPTION_LENGTH {
-            return json_error(StatusCode::BAD_REQUEST, "description-too-long");
-        }
+    if let Some(ref d) = body.description
+        && d.len() > MAX_BOT_DESCRIPTION_LENGTH
+    {
+        return json_error(StatusCode::BAD_REQUEST, "description-too-long");
     }
 
     let perms = body

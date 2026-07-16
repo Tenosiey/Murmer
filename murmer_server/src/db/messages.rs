@@ -28,18 +28,16 @@ pub async fn fetch_history(
                 "SELECT id, content FROM messages WHERE channel_id = ?1 AND id < ?2 \
                  ORDER BY id DESC LIMIT ?3",
             )?;
-            let rows = stmt
-                .query_map(params![channel_id, id, limit], row_to_id_content)?
-                .collect::<Result<Vec<_>, _>>()?;
-            rows
+
+            stmt.query_map(params![channel_id, id, limit], row_to_id_content)?
+                .collect::<Result<Vec<_>, _>>()?
         } else {
             let mut stmt = conn.prepare(
                 "SELECT id, content FROM messages WHERE channel_id = ?1 ORDER BY id DESC LIMIT ?2",
             )?;
-            let rows = stmt
-                .query_map(params![channel_id, limit], row_to_id_content)?
-                .collect::<Result<Vec<_>, _>>()?;
-            rows
+
+            stmt.query_map(params![channel_id, limit], row_to_id_content)?
+                .collect::<Result<Vec<_>, _>>()?
         };
         Ok(rows)
     })
@@ -87,10 +85,10 @@ pub async fn send_history(
             for (id, content) in rows.into_iter().rev() {
                 if let Ok(mut val) = serde_json::from_str::<Value>(&content) {
                     val["id"] = Value::from(id);
-                    if let Some(reactions) = reaction_map.get(&id) {
-                        if let Ok(value) = serde_json::to_value(reactions) {
-                            val["reactions"] = value;
-                        }
+                    if let Some(reactions) = reaction_map.get(&id)
+                        && let Ok(value) = serde_json::to_value(reactions)
+                    {
+                        val["reactions"] = value;
                     }
                     msgs.push(val);
                 }

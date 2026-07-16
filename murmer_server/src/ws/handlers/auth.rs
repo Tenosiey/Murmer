@@ -1,9 +1,9 @@
 //! Authentication handlers for user and bot presence.
 
 use crate::ws::{constants::*, errors, helpers::*};
-use crate::{bot, db, roles::RoleInfo, security, AppState};
+use crate::{AppState, bot, db, roles::RoleInfo, security};
 use axum::extract::ws::{Message, WebSocket};
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use futures::stream::SplitSink;
 use serde_json::Value;
@@ -108,13 +108,11 @@ pub(super) async fn handle_presence(
     client_ip: &str,
     default_channel_id: i32,
 ) -> Result<(), ()> {
-    if !*authenticated {
-        if let Some(required) = &state.password {
-            let provided = v.get("password").and_then(|p| p.as_str()).unwrap_or("");
-            if !bool::from(provided.as_bytes().ct_eq(required.as_bytes())) {
-                send_error(sender, errors::INVALID_PASSWORD).await;
-                return Err(());
-            }
+    if !*authenticated && let Some(required) = &state.password {
+        let provided = v.get("password").and_then(|p| p.as_str()).unwrap_or("");
+        if !bool::from(provided.as_bytes().ct_eq(required.as_bytes())) {
+            send_error(sender, errors::INVALID_PASSWORD).await;
+            return Err(());
         }
     }
 
@@ -177,10 +175,10 @@ pub(super) async fn handle_presence(
             }
 
             // Claim the name for this key (no-op when already bound).
-            if let Some(pk) = verified_key.as_deref() {
-                if let Err(e) = db::bind_user_key(&state.db, u, pk).await {
-                    error!("Failed to persist name binding for {u}: {e}");
-                }
+            if let Some(pk) = verified_key.as_deref()
+                && let Err(e) = db::bind_user_key(&state.db, u, pk).await
+            {
+                error!("Failed to persist name binding for {u}: {e}");
             }
 
             state.users.lock().await.insert(u.to_string());

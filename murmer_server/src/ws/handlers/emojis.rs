@@ -7,7 +7,7 @@
 //! before registering it, so the open upload endpoint grants no extra power.
 
 use crate::ws::{constants::*, errors, helpers::*, validation::*};
-use crate::{db, AppState};
+use crate::{AppState, db};
 use axum::extract::ws::{Message, WebSocket};
 use futures::stream::SplitSink;
 use serde_json::Value;

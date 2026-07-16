@@ -5,9 +5,9 @@
 //! joining a channel, so all clients converge on the persisted state.
 
 use crate::ws::{constants::*, errors, helpers::*};
-use crate::{db, AppState};
+use crate::{AppState, db};
 use axum::extract::ws::{Message, WebSocket};
-use futures::{stream::SplitSink, SinkExt};
+use futures::{SinkExt, stream::SplitSink};
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::{error, info};

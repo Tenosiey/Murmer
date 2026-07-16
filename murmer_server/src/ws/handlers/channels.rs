@@ -1,7 +1,7 @@
 //! Handlers for text channel, voice channel and category management.
 
 use crate::ws::{constants::*, errors, helpers::*, validation::*};
-use crate::{db, security, AppState, VoiceChannelState};
+use crate::{AppState, VoiceChannelState, db, security};
 use axum::extract::ws::{Message, WebSocket};
 use futures::stream::SplitSink;
 use serde_json::Value;
@@ -106,16 +106,19 @@ pub(super) async fn handle_delete_channel(
         return Err(());
     }
 
-    if let Err(e) = db::remove_channel(&state.db, ch_id).await {
-        error!("db remove channel error: {e}");
-        send_error(sender, errors::CHANNEL_DELETION_FAILED).await;
-    } else {
-        state.channels.lock().await.remove(&ch_id);
-        broadcast_remove_channel(state, ch_id).await;
-        if *channel_id == ch_id {
-            *channel_id = default_channel_id;
-            *chan_tx = get_or_create_channel(state, *channel_id).await;
-            *chan_rx = chan_tx.subscribe();
+    match db::remove_channel(&state.db, ch_id).await {
+        Err(e) => {
+            error!("db remove channel error: {e}");
+            send_error(sender, errors::CHANNEL_DELETION_FAILED).await;
+        }
+        Ok(_) => {
+            state.channels.lock().await.remove(&ch_id);
+            broadcast_remove_channel(state, ch_id).await;
+            if *channel_id == ch_id {
+                *channel_id = default_channel_id;
+                *chan_tx = get_or_create_channel(state, *channel_id).await;
+                *chan_rx = chan_tx.subscribe();
+            }
         }
     }
 
