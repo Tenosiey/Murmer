@@ -47,20 +47,18 @@ pub async fn fetch_dm_history(
                  WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) \
                  AND id < ?3 ORDER BY id DESC LIMIT ?4",
             )?;
-            let rows = stmt
-                .query_map(params![user_a, user_b, before, limit], map)?
-                .collect::<Result<Vec<_>, _>>()?;
-            rows
+
+            stmt.query_map(params![user_a, user_b, before, limit], map)?
+                .collect::<Result<Vec<_>, _>>()?
         } else {
             let mut stmt = conn.prepare(
                 "SELECT id, content FROM direct_messages \
                  WHERE (sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1) \
                  ORDER BY id DESC LIMIT ?3",
             )?;
-            let rows = stmt
-                .query_map(params![user_a, user_b, limit], map)?
-                .collect::<Result<Vec<_>, _>>()?;
-            rows
+
+            stmt.query_map(params![user_a, user_b, limit], map)?
+                .collect::<Result<Vec<_>, _>>()?
         };
         Ok(rows)
     })

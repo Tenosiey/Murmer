@@ -1,10 +1,10 @@
 //! Helper functions for WebSocket message handling.
 
-use crate::{db, AppState, VoiceChannelState};
+use crate::{AppState, VoiceChannelState, db};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use futures::stream::SplitSink;
 use futures::SinkExt;
+use futures::stream::SplitSink;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -112,16 +112,14 @@ pub async fn broadcast_role(state: &Arc<AppState>, user: &str, role: &str, color
 pub async fn send_all_roles(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let roles = state.roles.lock().await.clone();
     for (user, info) in roles {
-        #[allow(clippy::collapsible_if)]
         if let Ok(msg) = serde_json::to_string(&serde_json::json!({
             "type": "role-update",
             "user": user,
             "role": info.role,
             "color": info.color,
-        })) {
-            if sender.send(Message::Text(msg.into())).await.is_err() {
-                break;
-            }
+        })) && sender.send(Message::Text(msg.into())).await.is_err()
+        {
+            break;
         }
     }
 }
@@ -295,15 +293,13 @@ pub async fn send_voice_channels(
 pub async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let map = state.voice_channels.lock().await.clone();
     for (id, info) in map {
-        #[allow(clippy::collapsible_if)]
         if let Ok(msg) = serde_json::to_string(&serde_json::json!({
             "type": "voice-users",
             "channelId": id,
             "users": info.users.into_iter().collect::<Vec<_>>(),
-        })) {
-            if sender.send(Message::Text(msg.into())).await.is_err() {
-                break;
-            }
+        })) && sender.send(Message::Text(msg.into())).await.is_err()
+        {
+            break;
         }
     }
 }

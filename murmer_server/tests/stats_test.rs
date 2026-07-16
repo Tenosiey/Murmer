@@ -164,10 +164,12 @@ async fn purge_deletes_counters_but_keeps_the_opt_in() {
     db::purge_user_stats(&db, "alice").await.expect("purge");
 
     assert_eq!(messages_sent(&db, "alice").await, 0);
-    assert!(db::get_favorite_reactions(&db, "alice", 5)
-        .await
-        .expect("load favorites")
-        .is_empty());
+    assert!(
+        db::get_favorite_reactions(&db, "alice", 5)
+            .await
+            .expect("load favorites")
+            .is_empty()
+    );
     // The preference survives, so tracking resumes with fresh counters.
     assert!(db::stats_opt_in(&db, "alice").await.expect("opt-in state"));
     let recorded = db::record_user_stats(&db, "alice", vec![(Stat::MessagesSent, 1)], None)

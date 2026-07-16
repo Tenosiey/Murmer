@@ -30,10 +30,12 @@ async fn finds_messages_by_word_and_prefix() {
     }
 
     // Phrase adjacency: the words exist but not next to each other.
-    assert!(db::search_messages(&db, channel, "quick fox", 50)
-        .await
-        .expect("search")
-        .is_empty());
+    assert!(
+        db::search_messages(&db, channel, "quick fox", 50)
+            .await
+            .expect("search")
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -46,10 +48,12 @@ async fn respects_channel_boundaries() {
         .id;
     insert_text(&db, general, "hello world").await;
 
-    assert!(db::search_messages(&db, other, "hello", 50)
-        .await
-        .expect("search")
-        .is_empty());
+    assert!(
+        db::search_messages(&db, other, "hello", 50)
+            .await
+            .expect("search")
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -59,13 +63,17 @@ async fn index_follows_edits_and_deletions() {
 
     let edited = serde_json::json!({"type": "chat", "user": "alice", "text": "revised phrasing"})
         .to_string();
-    assert!(db::update_message_content(&db, id, &edited)
-        .await
-        .expect("edit"));
-    assert!(db::search_messages(&db, channel, "original", 50)
-        .await
-        .expect("search")
-        .is_empty());
+    assert!(
+        db::update_message_content(&db, id, &edited)
+            .await
+            .expect("edit")
+    );
+    assert!(
+        db::search_messages(&db, channel, "original", 50)
+            .await
+            .expect("search")
+            .is_empty()
+    );
     assert_eq!(
         db::search_messages(&db, channel, "revised", 50)
             .await
@@ -75,10 +83,12 @@ async fn index_follows_edits_and_deletions() {
     );
 
     assert!(db::delete_message(&db, id).await.expect("delete"));
-    assert!(db::search_messages(&db, channel, "revised", 50)
-        .await
-        .expect("search")
-        .is_empty());
+    assert!(
+        db::search_messages(&db, channel, "revised", 50)
+            .await
+            .expect("search")
+            .is_empty()
+    );
 }
 
 /// Databases created before the FTS index existed must be backfilled when the
@@ -124,10 +134,12 @@ async fn hostile_queries_neither_error_nor_match_everything() {
         let result = db::search_messages(&db, channel, query, 50).await;
         assert!(result.is_ok(), "query {query:?} must not error");
     }
-    assert!(db::search_messages(&db, channel, "!!!", 50)
-        .await
-        .expect("search")
-        .is_empty());
+    assert!(
+        db::search_messages(&db, channel, "!!!", 50)
+            .await
+            .expect("search")
+            .is_empty()
+    );
     // Operator words still work as literal search terms.
     insert_text(&db, channel, "mix AND match").await;
     assert_eq!(

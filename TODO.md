@@ -9,12 +9,12 @@ Use the checkboxes to track progress.
 
 ### 🗨️ Chat Features
 
-- [ ] Ban user via the user context menu (kick exists there already)
+- [x] Ban user via the user context menu (kick exists there already)
 - [ ] Bot integration/webhooks (basic REST bot API exists, no webhooks)
 - [x] Channel categories in the client UI (grouping, collapse, context-menu management)
 - [x] Channel description/topics (persisted on the server, synced to all clients)
 - [x] Channel permissions and moderation (role-gated kick/ban/mute with persistence)
-- [ ] Custom server emojis
+- [x] Custom server emojis (managed in the server dashboard, usable in messages and reactions)
 - [ ] Custom sort order for channels and categories
 - [x] Direct messages between users
 - [x] Drag & drop channels into categories (text and voice, with a drop zone for removing a channel from its category)
@@ -78,7 +78,7 @@ synced to clients; editing is role-gated like other channel management.
 
 ### 🛠️ Other Features
 
-- [ ] Admin dashboard (online users, storage usage, moderation)
+- [ ] Admin dashboard (dashboard shell with emoji/moderation/stats tabs exists; online users, storage usage and voice sections are still placeholders)
 - [ ] Anonymous chat modes
 - [ ] Backup & export of chat history and uploads
 - [ ] Decentralized/mesh networking option
@@ -93,6 +93,22 @@ synced to clients; editing is role-gated like other channel management.
 - [ ] Scheduled voice events / calendar integration
 - [ ] Translation services for international teams
 - [x] Widen message IDs from i32 to i64 throughout the server (SQLite rowids are 64-bit)
+
+---
+
+## 🔧 Tech debt / hardening
+
+- [ ] Gate the `/upload` endpoint behind authentication (or at least IP rate
+      limiting like auth) — currently anyone who can reach the server can
+      write 10 MB files to disk; needs a small client change to send
+      credentials with the upload
+- [ ] Make the rate limiter's clock injectable so the map-sweep behaviour in
+      `security.rs` can be covered by a regression test in
+      `tests/security_limits.rs` (the 60 s window uses `std::time::Instant`
+      directly and cannot be fast-forwarded)
+- [ ] Add a JS test runner (vitest) to the client — store logic like the
+      per-server unread namespacing and the wiki request tracking is complex
+      enough to deserve tests
 
 ---
 

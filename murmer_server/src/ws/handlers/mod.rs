@@ -23,15 +23,15 @@ mod stats;
 mod wiki;
 
 use super::{errors, helpers::*, validation::*};
-use crate::{db, roles::RoleInfo, AppState};
+use crate::{AppState, db, roles::RoleInfo};
 use axum::{
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
         ConnectInfo, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
     },
     response::IntoResponse,
 };
-use futures::{stream::SplitSink, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt, stream::SplitSink};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Arc;

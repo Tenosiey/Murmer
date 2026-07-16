@@ -8,9 +8,9 @@
 //! replies correlated by `requestId`.
 
 use crate::ws::{constants::*, errors, helpers::*, validation::*};
-use crate::{db, security, AppState};
+use crate::{AppState, db, security};
 use axum::extract::ws::{Message, WebSocket};
-use futures::{stream::SplitSink, SinkExt};
+use futures::{SinkExt, stream::SplitSink};
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::{error, info};

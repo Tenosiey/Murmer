@@ -13,11 +13,13 @@ src/
   lib.rs           shared state (AppState, RateLimiter) and module re-exports
   config.rs        environment variable parsing and CORS setup
   ws/              WebSocket endpoint
-    handlers/      auth, messages, channels, DMs, moderation, pins
+    handlers/      auth, messages, channels, DMs, emojis, moderation, pins,
+                   stats, wiki
     helpers.rs     broadcast, permission and ephemeral-message utilities
     validation.rs / errors.rs / constants.rs
   db/              SQLite schema + queries, split by domain (channels,
-                   messages, reactions, roles, moderation, pins, DMs)
+                   messages, reactions, roles, moderation, pins, DMs,
+                   emojis, stats, users, wiki)
   bot/             REST API for bots (routes, models, queries)
   upload.rs        multipart file/image upload with type and size validation
   link_preview.rs  server-side OpenGraph fetching with SSRF protection

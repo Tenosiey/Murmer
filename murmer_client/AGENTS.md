@@ -1,7 +1,9 @@
 # Murmer Client Guide
 
-The desktop client is built with **SvelteKit 2** and ships inside a **Tauri 2**
-shell.
+The desktop client is built with **SvelteKit 2** (static adapter, SSR off) and
+ships inside a **Tauri 2** shell. Svelte 5 is used with the **classic
+(non-runes) syntax** throughout — `export let` props, `$:` reactivity and
+stores; keep new code in that style. TypeScript is pinned to major 6.
 
 ## Development commands
 - `npm install` – install/update dependencies and refresh `package-lock.json`
@@ -40,6 +42,16 @@ deliberately exempt from the accent re-tinting that `--color-*` gets. The same
 artwork is duplicated in `static/logo/` (favicon) and `src-tauri/icons/`
 (installer/tray) because those are consumed outside the DOM — keep all three in
 sync, see the Brand section in `README.md`.
+
+## State and persistence
+- All client state lives in Svelte stores (`src/lib/stores/`); most persist to
+  `localStorage` under `murmer_*` keys.
+- Server connection state flows through `stores/chat.ts` (owns the
+  `WebSocketManager`); register frame handlers with `chat.on(type, cb)` and
+  clean them up with `chat.off`.
+- Per-channel client state that persists (last-read markers, notification
+  preferences) is namespaced by server URL — channel ids are only unique per
+  server. Follow that pattern for any new per-channel persistence.
 
 ## Security considerations
 - Key pairs are stored in `localStorage`; treat this as acceptable for the

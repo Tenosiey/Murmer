@@ -77,9 +77,11 @@ async fn emoji_round_trip() {
 async fn emojis_are_listed_in_name_order() {
     let db = db::init(":memory:").await.expect("in-memory db");
     for name in ["zebra", "apple", "mango"] {
-        assert!(db::add_emoji(&db, name, "/files/1-a.png", "alice")
-            .await
-            .expect("add"));
+        assert!(
+            db::add_emoji(&db, name, "/files/1-a.png", "alice")
+                .await
+                .expect("add")
+        );
     }
     let names: Vec<String> = db::get_emojis(&db)
         .await

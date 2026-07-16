@@ -68,9 +68,12 @@ pub async fn check_auth_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool
     let mut attempts = rate_limiter.auth_attempts.lock().await;
     let cutoff = now - Duration::from_secs(60);
 
-    if let Some(timestamps) = attempts.get_mut(ip) {
+    // Sweep the whole map (not just this IP) so entries for idle IPs don't
+    // accumulate forever on a long-running server.
+    attempts.retain(|_, timestamps| {
         cleanup_old_timestamps(timestamps, cutoff);
-    }
+        !timestamps.is_empty()
+    });
 
     let current_attempts = attempts.get(ip).map_or(0, |v| v.len());
     if current_attempts >= get_max_auth_attempts_per_minute() {
@@ -99,9 +102,12 @@ pub async fn check_message_rate_limit(rate_limiter: &RateLimiter, user: &str) ->
     let mut message_times = rate_limiter.message_times.lock().await;
     let cutoff = now - Duration::from_secs(60);
 
-    if let Some(timestamps) = message_times.get_mut(user) {
+    // Sweep the whole map (not just this user) so entries for users who went
+    // quiet don't accumulate forever on a long-running server.
+    message_times.retain(|_, timestamps| {
         cleanup_old_timestamps(timestamps, cutoff);
-    }
+        !timestamps.is_empty()
+    });
 
     let current_messages = message_times.get(user).map_or(0, |v| v.len());
     if current_messages >= get_max_messages_per_minute() {
@@ -147,10 +153,10 @@ pub async fn check_and_store_nonce(rate_limiter: &RateLimiter, nonce: &str) -> b
 
 /// Validate that a timestamp string is within an acceptable time range.
 ///
-/// This function parses a timestamp (milliseconds since Unix epoch) and verifies:
-/// - It's within ±60 seconds of the current time (for most operations)
-/// - It's not more than 1 hour in the future (clock skew protection)
-/// - It's not more than 24 hours in the past
+/// Parses a timestamp (milliseconds since Unix epoch) and requires it to be
+/// within ±60 seconds of the current time. Combined with the nonce store this
+/// bounds the replay window: a signature older than the window is rejected
+/// here, a fresh one can only be used once.
 ///
 /// # Arguments
 /// * `timestamp_str` - The timestamp string to validate (milliseconds since Unix epoch)
@@ -164,21 +170,8 @@ pub fn validate_timestamp(timestamp_str: &str) -> Result<i64, &'static str> {
         .map_err(|_| "Invalid timestamp format")?;
 
     let now = chrono::Utc::now().timestamp_millis();
-    let diff = (now - timestamp).abs();
-
-    // Allow 60 second window
-    if diff > 60_000 {
+    if (now - timestamp).abs() > 60_000 {
         return Err("Timestamp outside acceptable window");
-    }
-
-    // Reject timestamps >1h in future to limit clock skew abuse
-    if timestamp > now + 3_600_000 {
-        return Err("Timestamp too far in future");
-    }
-
-    // Reject timestamps >24h old to bound the replay window
-    if timestamp < now - 86_400_000 {
-        return Err("Timestamp too old");
     }
 
     Ok(timestamp)

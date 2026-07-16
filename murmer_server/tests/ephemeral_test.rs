@@ -43,8 +43,10 @@ async fn ephemeral_scan_returns_only_flagged_messages() {
 
     let removed = db::delete_message(&db, ephemeral_id).await.expect("delete");
     assert!(removed);
-    assert!(db::get_ephemeral_messages(&db)
-        .await
-        .expect("rescan")
-        .is_empty());
+    assert!(
+        db::get_ephemeral_messages(&db)
+            .await
+            .expect("rescan")
+            .is_empty()
+    );
 }

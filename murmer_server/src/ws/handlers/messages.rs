@@ -1,10 +1,10 @@
 //! Handlers for chat messages, message deletion, editing, reactions, history and search.
 
 use crate::ws::{constants::*, errors, helpers::*, validation::is_emoji_shortcode};
-use crate::{db, security, AppState};
+use crate::{AppState, db, security};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use futures::{stream::SplitSink, SinkExt};
+use futures::{SinkExt, stream::SplitSink};
 use serde_json::{Map, Value};
 use std::sync::Arc;
 use tracing::error;
@@ -121,10 +121,10 @@ pub(super) async fn handle_search_history(
                     if value.get("channelId").is_none() {
                         value["channelId"] = Value::from(channel_to_search);
                     }
-                    if let Some(reactions) = reaction_map.get(&id) {
-                        if let Ok(reaction_value) = serde_json::to_value(reactions) {
-                            value["reactions"] = reaction_value;
-                        }
+                    if let Some(reactions) = reaction_map.get(&id)
+                        && let Ok(reaction_value) = serde_json::to_value(reactions)
+                    {
+                        value["reactions"] = reaction_value;
                     }
                     if value.get("reactions").is_none() {
                         value["reactions"] = Value::Object(Map::new());
@@ -180,11 +180,11 @@ pub(super) async fn handle_chat(
         return;
     }
 
-    if let Some(text) = v.get("text").and_then(|t| t.as_str()) {
-        if text.len() > MAX_MESSAGE_LENGTH {
-            send_error(sender, errors::MESSAGE_TOO_LONG).await;
-            return;
-        }
+    if let Some(text) = v.get("text").and_then(|t| t.as_str())
+        && text.len() > MAX_MESSAGE_LENGTH
+    {
+        send_error(sender, errors::MESSAGE_TOO_LONG).await;
+        return;
     }
 
     v["user"] = Value::String(user.clone());
@@ -521,10 +521,10 @@ pub(super) async fn handle_load_thread(
             for (id, content) in rows {
                 if let Ok(mut value) = serde_json::from_str::<Value>(&content) {
                     value["id"] = Value::from(id);
-                    if let Some(reactions) = reaction_map.get(&id) {
-                        if let Ok(reaction_value) = serde_json::to_value(reactions) {
-                            value["reactions"] = reaction_value;
-                        }
+                    if let Some(reactions) = reaction_map.get(&id)
+                        && let Ok(reaction_value) = serde_json::to_value(reactions)
+                    {
+                        value["reactions"] = reaction_value;
                     }
                     messages.push(value);
                 }
@@ -559,10 +559,10 @@ pub(super) async fn handle_typing(
     };
 
     let throttle = std::time::Duration::from_millis(TYPING_BROADCAST_INTERVAL_MS);
-    if let Some(prev) = last_typing_broadcast {
-        if prev.elapsed() < throttle {
-            return;
-        }
+    if let Some(prev) = last_typing_broadcast
+        && prev.elapsed() < throttle
+    {
+        return;
     }
     *last_typing_broadcast = Some(std::time::Instant::now());
 

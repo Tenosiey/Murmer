@@ -12,7 +12,7 @@
 //! message later does not subtract from them. Users can purge their own
 //! stats at any time via [`purge_user_stats`].
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
 use super::{Db, DbCall, DbError, NOW_UTC};
 

@@ -25,9 +25,11 @@ async fn first_key_claims_a_name_until_unbound() {
 
     // Unbinding releases the name for a new key.
     assert!(db::unbind_user_name(&db, "alice").await.expect("unbind"));
-    assert!(!db::unbind_user_name(&db, "alice")
-        .await
-        .expect("second unbind"));
+    assert!(
+        !db::unbind_user_name(&db, "alice")
+            .await
+            .expect("second unbind")
+    );
     db::bind_user_key(&db, "alice", "key-b")
         .await
         .expect("bind new key");

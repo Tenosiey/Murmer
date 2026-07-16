@@ -12,12 +12,12 @@
 //! local network. Redirects are followed manually and re-vetted per hop.
 
 use axum::{
-    extract::Query,
-    http::{header, StatusCode},
-    response::{IntoResponse, Response},
     Json,
+    extract::Query,
+    http::{StatusCode, header},
+    response::{IntoResponse, Response},
 };
-use reqwest::{redirect, Url};
+use reqwest::{Url, redirect};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -319,11 +319,7 @@ fn html_title(html: &str) -> Option<String> {
     let open_end = lower[start..].find('>')? + start + 1;
     let close = lower[open_end..].find("</title")? + open_end;
     let title = decode_entities(html[open_end..close].trim());
-    if title.is_empty() {
-        None
-    } else {
-        Some(title)
-    }
+    if title.is_empty() { None } else { Some(title) }
 }
 
 /// Parse `name="value"` attributes from a single HTML tag. Values are

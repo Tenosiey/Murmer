@@ -8,7 +8,7 @@
 //! closure are race-free.
 
 use chrono::{DateTime, Utc};
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
 use super::{Db, DbCall, DbError, NOW_UTC};
 
