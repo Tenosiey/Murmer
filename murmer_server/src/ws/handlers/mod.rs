@@ -135,6 +135,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "load-dm-history" => {
                                 dms::handle_load_dm_history(&state, &mut sender, &v, &user_name).await;
                             }
+                            "get-user-key" => {
+                                dms::handle_get_user_key(&state, &mut sender, &v).await;
+                            }
                             "typing" => {
                                 messages::handle_typing(&state, channel_id, &user_name, &mut last_typing_broadcast).await;
                             }

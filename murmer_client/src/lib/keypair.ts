@@ -3,11 +3,11 @@ import { browser } from '$app/environment';
 
 const STORAGE_KEY = 'murmer_keypair';
 
-function toBase64(bytes: Uint8Array): string {
+export function toBase64(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes));
 }
 
-function fromBase64(s: string): Uint8Array {
+export function fromBase64(s: string): Uint8Array {
   const b = atob(s);
   return Uint8Array.from([...b].map(c => c.charCodeAt(0)));
 }

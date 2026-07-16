@@ -58,7 +58,13 @@ sync, see the Brand section in `README.md`.
 
 ## Security considerations
 - Key pairs are stored in `localStorage`; treat this as acceptable for the
-  prototype but evaluate more secure storage for production.
+  prototype but evaluate more secure storage for production. The Ed25519
+  identity key doubles as the DM encryption key (converted to X25519 in
+  `src/lib/dm-crypto.ts`), so losing it also makes past DMs unreadable.
+- DM encryption trusts the server as key directory only on first contact:
+  `stores/peerKeys.ts` pins each peer's key per server URL, flags changes,
+  and blocks sending until the user explicitly trusts the new key. Keep that
+  flow intact when touching DM code; there is no forward secrecy.
 - Always validate server responses before mutating client state.
 - DOMPurify sanitises Markdown output – keep the dependency up to date.
 - Avoid `{@html ...}` unless the content is sanitised explicitly.

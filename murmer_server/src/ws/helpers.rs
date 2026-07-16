@@ -606,6 +606,46 @@ pub fn reply_preview(text: &str, max_chars: usize) -> String {
     text.chars().take(max_chars).collect()
 }
 
+/// Why a direct message's encryption fields were rejected.
+#[derive(Debug, PartialEq, Eq)]
+pub enum DmPayloadError {
+    /// Nonce or ciphertext is not valid base64, has the wrong nonce length,
+    /// or the ciphertext is too short to contain the authenticator.
+    Malformed,
+    /// Decoded ciphertext exceeds the plaintext limit plus box overhead.
+    TooLong,
+}
+
+/// Validate the encryption fields of a direct-message frame. Direct messages
+/// are end-to-end encrypted, so the server never sees their plaintext; this
+/// shape check (base64, exact nonce length, bounded ciphertext size) is the
+/// only content validation possible before storing the frame verbatim.
+pub fn validate_dm_payload(nonce_b64: &str, ciphertext_b64: &str) -> Result<(), DmPayloadError> {
+    use base64::{Engine as _, engine::general_purpose};
+
+    let nonce = general_purpose::STANDARD
+        .decode(nonce_b64)
+        .map_err(|_| DmPayloadError::Malformed)?;
+    if nonce.len() != super::constants::DM_NONCE_BYTES {
+        return Err(DmPayloadError::Malformed);
+    }
+
+    let ciphertext = general_purpose::STANDARD
+        .decode(ciphertext_b64)
+        .map_err(|_| DmPayloadError::Malformed)?;
+    // The authenticator alone (empty plaintext) is also rejected: clients
+    // never send empty messages.
+    if ciphertext.len() <= super::constants::DM_CIPHERTEXT_OVERHEAD_BYTES {
+        return Err(DmPayloadError::Malformed);
+    }
+    if ciphertext.len()
+        > super::constants::MAX_MESSAGE_LENGTH + super::constants::DM_CIPHERTEXT_OVERHEAD_BYTES
+    {
+        return Err(DmPayloadError::TooLong);
+    }
+    Ok(())
+}
+
 /// Whether `user` is the sender or recipient of a direct-message frame.
 /// The socket loop uses this to keep DMs private on the shared broadcast.
 pub fn dm_involves(v: &Value, user: Option<&str>) -> bool {

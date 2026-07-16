@@ -83,6 +83,13 @@ pub const MAX_EPHEMERAL_SECONDS: i64 = 86_400;
 /// Maximum length in bytes for a chat message's text content.
 pub const MAX_MESSAGE_LENGTH: usize = 4000;
 
+/// Exact decoded length in bytes of a direct message's NaCl box nonce.
+pub const DM_NONCE_BYTES: usize = 24;
+
+/// Poly1305 authenticator bytes appended to every NaCl box ciphertext; a
+/// direct message ciphertext may exceed [`MAX_MESSAGE_LENGTH`] by this much.
+pub const DM_CIPHERTEXT_OVERHEAD_BYTES: usize = 16;
+
 /// Maximum length in bytes for a channel topic/description.
 pub const MAX_TOPIC_LENGTH: usize = 256;
 

@@ -53,6 +53,12 @@ may create or delete text/voice channels. The server logs and returns an error
 for unauthorised attempts.
 
 ## Security notes
+- Direct messages are end-to-end encrypted by the clients; the server only
+  shape-checks `nonce`/`ciphertext` (base64, 24-byte nonce, bounded size —
+  see `validate_dm_payload`) and stores the frame verbatim. Do not add any
+  code path that accepts or produces plaintext DM content. Clients fetch a
+  peer's key via the `get-user-key` frame, answered from the `user_keys`
+  binding; users without a binding (e.g. bots) cannot receive DMs.
 - Client IP addresses are used for authentication rate limiting – ensure the
   service runs behind a proxy that forwards the real IP if applicable.
 - Nonces combine the public key and timestamp; replayed signatures are rejected.

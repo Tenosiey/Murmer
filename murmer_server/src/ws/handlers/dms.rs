@@ -1,5 +1,11 @@
 //! Direct message handlers: private chat between two users.
 //!
+//! Direct messages are end-to-end encrypted: clients encrypt with NaCl box
+//! (X25519 keys derived from both users' Ed25519 identity keys), so the
+//! server only ever validates, stores and relays `nonce`/`ciphertext` pairs
+//! and never sees plaintext. Clients fetch a peer's public key with the
+//! `get-user-key` frame, answered from the persistent name→key binding.
+//!
 //! DM frames travel over the global broadcast channel like presence updates,
 //! but the socket loop only forwards a frame to its two participants (see
 //! [`crate::ws::helpers::dm_involves`]), so other clients never receive the
@@ -51,22 +57,33 @@ pub(super) async fn handle_dm(
         return;
     }
 
-    let Some(text) = v.get("text").and_then(|t| t.as_str()) else {
+    let (Some(nonce), Some(ciphertext)) = (
+        v.get("nonce").and_then(|n| n.as_str()),
+        v.get("ciphertext").and_then(|c| c.as_str()),
+    ) else {
+        send_error(sender, errors::INVALID_DM_PAYLOAD).await;
         return;
     };
-    if text.trim().is_empty() {
-        return;
-    }
-    if text.len() > MAX_MESSAGE_LENGTH {
-        send_error(sender, errors::MESSAGE_TOO_LONG).await;
-        return;
+    match validate_dm_payload(nonce, ciphertext) {
+        Ok(()) => {}
+        Err(DmPayloadError::TooLong) => {
+            send_error(sender, errors::MESSAGE_TOO_LONG).await;
+            return;
+        }
+        Err(DmPayloadError::Malformed) => {
+            send_error(sender, errors::INVALID_DM_PAYLOAD).await;
+            return;
+        }
     }
 
+    // The outgoing frame is rebuilt from known fields only, so a client
+    // cannot smuggle extra (e.g. plaintext) fields into storage.
     let mut out = serde_json::json!({
         "type": "dm",
         "from": from,
         "to": to,
-        "text": text,
+        "nonce": nonce,
+        "ciphertext": ciphertext,
     });
     if let Some(ts) = v.get("timestamp").and_then(|t| t.as_str()) {
         out["timestamp"] = Value::String(ts.to_string());
@@ -142,4 +159,26 @@ pub(super) async fn handle_load_dm_history(
             send_error(sender, errors::DM_HISTORY_FAILED).await;
         }
     }
+}
+
+/// Handle a request for the public key bound to a user name, which clients
+/// need to encrypt direct messages for that user. Answered from the
+/// persistent first-connection binding; `publicKey` is `null` when the name
+/// has no binding (e.g. bots), meaning the user cannot receive encrypted DMs.
+pub(super) async fn handle_get_user_key(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+) {
+    let user = match v.get("user").and_then(|u| u.as_str()).map(str::trim) {
+        Some(user) if !user.is_empty() => user.to_string(),
+        _ => return,
+    };
+    let key = lookup_user_key(state, &user).await;
+    let msg = serde_json::json!({
+        "type": "user-key",
+        "user": user,
+        "publicKey": key,
+    });
+    let _ = sender.send(Message::Text(msg.to_string().into())).await;
 }
