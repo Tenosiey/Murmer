@@ -10,7 +10,7 @@
   import { roles } from '$lib/stores/roles';
   import { session } from '$lib/stores/session';
   import { renderMarkdown } from '$lib/markdown';
-  import { emojifyHtml } from '$lib/emoji';
+  import { emojifyHtml, isEmojiOnlyText } from '$lib/emoji';
   import {
     ephemeralInfo,
     formatFileSize,
@@ -85,6 +85,13 @@
 
   let shortTime = $derived(formatShortTime(message));
   let fullTime = $derived(formatFullTimestamp(message));
+
+  /* Emoji-only messages (no other text) render their emoji enlarged. */
+  let emojiOnly = $derived(
+    typeof message.text === 'string' &&
+      !textIsOnlyGif &&
+      isEmojiOnlyText(message.text, $customEmojis)
+  );
 </script>
 
 <div
@@ -133,7 +140,9 @@
 
     <span class="content">
       {#if message.text && !textIsOnlyGif}
-        {@html emojifyHtml(renderMarkdown(message.text), $customEmojis, httpBase)}
+        <span class="markdown" class:emoji-only={emojiOnly}>
+          {@html emojifyHtml(renderMarkdown(message.text), $customEmojis, httpBase)}
+        </span>
       {/if}
       {#if message.edited}
         <span
@@ -419,6 +428,22 @@
     vertical-align: -0.3em;
   }
 
+  .markdown {
+    display: block;
+  }
+
+  /* Emoji-only messages: enlarge unicode glyphs and custom emoji ~2x. */
+  .markdown.emoji-only {
+    font-size: 2em;
+    line-height: 1.2;
+  }
+
+  .markdown.emoji-only :global(img.inline-emoji) {
+    width: 2.75rem;
+    height: 2.75rem;
+    vertical-align: -0.3em;
+  }
+
   .edited-badge {
     margin-left: var(--space-1);
     font-size: var(--text-xs);
@@ -595,9 +620,13 @@
     border-color: var(--color-outline-strong);
   }
 
+  .reaction-chip .emoji {
+    font-size: 1.1em;
+  }
+
   .reaction-chip .custom-emoji {
-    width: 1.125rem;
-    height: 1.125rem;
+    width: 1.2375rem;
+    height: 1.2375rem;
     object-fit: contain;
     vertical-align: middle;
   }
