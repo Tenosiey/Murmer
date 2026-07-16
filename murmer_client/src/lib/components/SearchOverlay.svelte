@@ -77,6 +77,9 @@
   }
 
   function handleOverlayKeydown(event: KeyboardEvent) {
+    // Keyboard activation of the focused backdrop only; keystrokes inside
+    // the overlay content (inputs, buttons) bubble here and must not close it.
+    if (event.target !== event.currentTarget) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       onClose();
