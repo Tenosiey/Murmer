@@ -17,42 +17,43 @@
   import { httpBaseFromWs } from '$lib/server-url';
   import type { ContextMenuItem } from '$lib/types';
 
-  export let channelId: number;
-  export let channelName: string;
-  export let canEdit = false;
-  /** Page to open initially (e.g. from a cross-channel link). */
-  export let initialSlug: string | null = null;
-  /** A `[[other-channel/page]]` link was clicked; the parent switches channels. */
-  export let onCrossChannel: (channel: string, slug: string) => void = () => {};
-
-  let selectedSlug: string | null = initialSlug;
-  let mode: 'view' | 'edit' = 'view';
-  let currentPage: WikiPage | null = null;
-  let loading = false;
-  let editorDirty = false;
-
-  let menuOpen = false;
-  let menuX = 0;
-  let menuY = 0;
-  let menuSlug = '';
-
-  $: pages = $wiki[channelId] ?? [];
-  $: httpBase = $selectedServer ? httpBaseFromWs($selectedServer) : '';
-
-  // Default to the first page (the list arrives title-sorted).
-  $: if (selectedSlug === null && pages.length > 0) {
-    selectedSlug = pages[0].slug;
+  
+  
+  interface Props {
+    channelId: number;
+    channelName: string;
+    canEdit?: boolean;
+    /** Page to open initially (e.g. from a cross-channel link). */
+    initialSlug?: string | null;
+    /** A `[[other-channel/page]]` link was clicked; the parent switches channels. */
+    onCrossChannel?: (channel: string, slug: string) => void;
   }
 
-  // Reload the page body when the selection changes or a remote save bumps
-  // the selected page's revision in the index.
-  $: selectedMeta = selectedSlug ? (pages.find((p) => p.slug === selectedSlug) ?? null) : null;
-  $: fetchKey = `${channelId}:${selectedSlug ?? ''}:${selectedMeta?.revision ?? 0}`;
+  let {
+    channelId,
+    channelName,
+    canEdit = false,
+    initialSlug = null,
+    onCrossChannel = () => {}
+  }: Props = $props();
+
+  /* Deliberately captures the slug the view opened with; later navigation
+     is driven by selectPage, not by the prop. */
+  // svelte-ignore state_referenced_locally
+  let selectedSlug: string | null = $state(initialSlug);
+  let mode: 'view' | 'edit' = $state('view');
+  let currentPage: WikiPage | null = $state(null);
+  let loading = $state(false);
+  let editorDirty = $state(false);
+
+  let menuOpen = $state(false);
+  let menuX = $state(0);
+  let menuY = $state(0);
+  let menuSlug = $state('');
+
+
+
   let lastFetchKey = '';
-  $: if (fetchKey !== lastFetchKey) {
-    lastFetchKey = fetchKey;
-    void loadSelected();
-  }
 
   async function loadSelected() {
     if (!selectedSlug) {
@@ -196,15 +197,33 @@
     mode = 'edit';
   }
 
-  $: pageMenuItems = [
-    { label: 'Rename', action: () => void renamePrompt(menuSlug) },
-    { label: 'Delete', danger: true, action: () => void deletePrompt(menuSlug) }
-  ] satisfies ContextMenuItem[];
 
   function formatTimestamp(value: string): string {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
   }
+  let pages = $derived($wiki[channelId] ?? []);
+  let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
+  // Default to the first page (the list arrives title-sorted).
+  $effect(() => {
+    if (selectedSlug === null && pages.length > 0) {
+      selectedSlug = pages[0].slug;
+    }
+  });
+  // Reload the page body when the selection changes or a remote save bumps
+  // the selected page's revision in the index.
+  let selectedMeta = $derived(selectedSlug ? (pages.find((p) => p.slug === selectedSlug) ?? null) : null);
+  let fetchKey = $derived(`${channelId}:${selectedSlug ?? ''}:${selectedMeta?.revision ?? 0}`);
+  $effect(() => {
+    if (fetchKey !== lastFetchKey) {
+      lastFetchKey = fetchKey;
+      void loadSelected();
+    }
+  });
+  let pageMenuItems = $derived([
+    { label: 'Rename', action: () => void renamePrompt(menuSlug) },
+    { label: 'Delete', danger: true, action: () => void deletePrompt(menuSlug) }
+  ] satisfies ContextMenuItem[]);
 </script>
 
 <div class="wiki">
@@ -212,7 +231,7 @@
     <div class="sidebar-header">
       <h2>Wiki</h2>
       {#if canEdit}
-        <button class="icon-btn" on:click={() => createPagePrompt()} title="New wiki page">
+        <button class="icon-btn" onclick={() => createPagePrompt()} title="New wiki page">
           <svg
             width="18"
             height="18"
@@ -238,8 +257,8 @@
             <button
               class="page-item"
               class:active={page.slug === selectedSlug}
-              on:click={() => selectPage(page.slug)}
-              on:contextmenu={(e) => openPageMenu(e, page.slug)}
+              onclick={() => selectPage(page.slug)}
+              oncontextmenu={(e) => openPageMenu(e, page.slug)}
               title={page.slug}
             >
               {page.title}
@@ -281,7 +300,7 @@
           </span>
         </div>
         {#if canEdit}
-          <button class="btn btn-ghost" on:click={startEditing}>Edit</button>
+          <button class="btn btn-ghost" onclick={startEditing}>Edit</button>
         {/if}
       </div>
       <div
@@ -296,7 +315,7 @@
       <div class="placeholder">
         <p>This channel has no wiki pages yet.</p>
         {#if canEdit}
-          <button class="btn btn-primary" on:click={() => createPagePrompt()}>
+          <button class="btn btn-primary" onclick={() => createPagePrompt()}>
             Create the first page
           </button>
         {:else}
@@ -307,7 +326,7 @@
       <div class="placeholder">
         <p>This page does not exist{selectedSlug ? ` (${selectedSlug})` : ''}.</p>
         {#if canEdit && selectedSlug}
-          <button class="btn btn-primary" on:click={() => createPagePrompt(selectedSlug ?? undefined)}>
+          <button class="btn btn-primary" onclick={() => createPagePrompt(selectedSlug ?? undefined)}>
             Create it
           </button>
         {/if}

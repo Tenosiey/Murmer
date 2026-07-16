@@ -5,26 +5,43 @@
   callbacks down.
 -->
 <script lang="ts">
+
   import type { Message } from '$lib/types';
   import { formatFileSize, searchResultPreview } from '$lib/chat/helpers';
   import { MESSAGE_INPUT_MAX_HEIGHT } from '$lib/chat/constants';
 
-  export let value = '';
-  export let replyingTo: Message | null = null;
-  export let typingLabel: string | null = null;
-  export let commandFeedback: string | null = null;
-  export let commandFeedbackType: 'info' | 'error' = 'info';
-  export let pendingFile: File | null = null;
-  export let previewUrl: string | null = null;
 
-  export let onSend: () => void;
-  export let onInput: () => void;
-  export let onCancelReply: () => void;
-  export let onFileSelected: (file: File | null) => void;
+  interface Props {
+    value?: string;
+    replyingTo?: Message | null;
+    typingLabel?: string | null;
+    commandFeedback?: string | null;
+    commandFeedbackType?: 'info' | 'error';
+    pendingFile?: File | null;
+    previewUrl?: string | null;
+    onSend: () => void;
+    onInput: () => void;
+    onCancelReply: () => void;
+    onFileSelected: (file: File | null) => void;
+  }
 
-  let fileInput: HTMLInputElement;
-  let textarea: HTMLTextAreaElement;
-  let scrollable = false;
+  let {
+    value = $bindable(''),
+    replyingTo = null,
+    typingLabel = null,
+    commandFeedback = null,
+    commandFeedbackType = 'info',
+    pendingFile = null,
+    previewUrl = null,
+    onSend,
+    onInput,
+    onCancelReply,
+    onFileSelected
+  }: Props = $props();
+
+  let fileInput: HTMLInputElement | undefined = $state();
+  let textarea: HTMLTextAreaElement | undefined = $state();
+  let scrollable = $state(false);
 
   export function focusInput() {
     textarea?.focus();
@@ -39,7 +56,10 @@
   }
 
   /* Shrink back after sends and programmatic clears, not just user input. */
-  $: value, textarea && autoResize();
+  $effect(() => {
+    void value;
+    if (textarea) autoResize();
+  });
 
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -82,7 +102,7 @@
         Replying to <strong>{replyingTo.user}</strong>
         <span class="reply-bar-preview">{searchResultPreview(replyingTo)}</span>
       </span>
-      <button type="button" class="reply-bar-cancel" on:click={onCancelReply} aria-label="Cancel reply">
+      <button type="button" class="reply-bar-cancel" onclick={onCancelReply} aria-label="Cancel reply">
         ✕
       </button>
     </div>
@@ -101,9 +121,9 @@
     class:scrollable
     rows="1"
     placeholder="Message"
-    on:input={onInput}
-    on:paste={handlePaste}
-    on:keydown={handleKeydown}
+    oninput={onInput}
+    onpaste={handlePaste}
+    onkeydown={handleKeydown}
   ></textarea>
 
   <!-- Hidden native input; the visible "Upload file" button proxies to it. -->
@@ -113,7 +133,7 @@
     aria-hidden="true"
     tabindex="-1"
     bind:this={fileInput}
-    on:change={() => onFileSelected(fileInput?.files?.[0] ?? null)}
+    onchange={() => onFileSelected(fileInput?.files?.[0] ?? null)}
   />
 
   <div class="controls">
@@ -130,7 +150,7 @@
             {/if}
           </span>
         {/if}
-        <button class="preview-remove" on:click={clearFile} aria-label="Remove file">
+        <button class="preview-remove" onclick={clearFile} aria-label="Remove file">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -144,13 +164,13 @@
         class="file-button"
         title="Upload file"
         aria-label="Upload file"
-        on:click={() => fileInput.click()}
+        onclick={() => fileInput?.click()}
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
         </svg>
       </button>
-      <button class="send" on:click={onSend} title="Send message" aria-label="Send message">
+      <button class="send" onclick={onSend} title="Send message" aria-label="Send message">
         <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
         </svg>

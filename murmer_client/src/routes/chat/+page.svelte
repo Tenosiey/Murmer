@@ -4,7 +4,7 @@
   module coordinates many Svelte stores to keep the interface reactive.
 -->
 <script lang="ts">
-  import { onMount, onDestroy, afterUpdate, tick } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { chat } from '$lib/stores/chat';
   import { roles } from '$lib/stores/roles';
   import { session } from '$lib/stores/session';
@@ -84,59 +84,48 @@
   import WikiView from '$lib/components/wiki/WikiView.svelte';
   import { wikilinks } from '$lib/wiki/links';
 
-  let serverStrength = 0;
-  $: serverStrength = pingToStrength($ping);
 
-  let message = '';
-  let composer: MessageComposer;
-  let previewUrl: string | null = null;
-  let pendingFile: File | null = null;
-  let dragDepth = 0;
-  $: dragActive = dragDepth > 0;
-  let menuOpen = false;
-  let menuX = 0;
-  let menuY = 0;
-  let statusMap: Record<string, UserStatus> = {};
+  let message = $state('');
+  let composer: MessageComposer | undefined = $state();
+  let previewUrl: string | null = $state(null);
+  let pendingFile: File | null = $state(null);
+  let dragDepth = $state(0);
+  let menuOpen = $state(false);
+  let menuX = $state(0);
+  let menuY = $state(0);
 
-  let pinnedEntries: PinnedEntry[] = [];
-  let highlightedMessageId: number | null = null;
+  let highlightedMessageId: number | null = $state(null);
   let pendingScrollToMessage: number | null = null;
   let highlightTimer: ReturnType<typeof setTimeout> | null = null;
-  let currentUserCanModerate = false;
 
-  let commandFeedback: string | null = null;
-  let commandFeedbackType: 'info' | 'error' = 'info';
+  let commandFeedback: string | null = $state(null);
+  let commandFeedbackType: 'info' | 'error' = $state('info');
   let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
-  let searchOpen = false;
-  let searchOverlay: SearchOverlay;
+  let searchOpen = $state(false);
+  let searchOverlay: SearchOverlay | undefined = $state();
 
-  let wikiOpen = false;
+  let wikiOpen = $state(false);
   /** Page a wikilink asked to open; consumed by WikiView on mount. */
-  let wikiInitialSlug: string | null = null;
+  let wikiInitialSlug: string | null = $state(null);
 
-  let helpOpen = false;
-  let helpOverlay: HelpOverlay;
+  let helpOpen = $state(false);
+  let helpOverlay: HelpOverlay | undefined = $state();
 
-  let now = Date.now();
+  let now = $state(Date.now());
   let expiryTicker: number | null = null;
 
-  let viewingScreenShare: ScreenSharePeer | null = null;
-  let pendingScreenShareView: string | null = null;
+  let viewingScreenShare: ScreenSharePeer | null = $state(null);
+  let pendingScreenShareView: string | null = $state(null);
 
-  let channelMessages: Message[] = [];
-  let messageBlocks: MessageBlock[] = [];
 
-  let replyingTo: Message | null = null;
-  let threadRootId: number | null = null;
+  let replyingTo: Message | null = $state(null);
+  let threadRootId: number | null = $state(null);
   const dmConversations = dm.conversations;
   const dmActivePeer = dm.activePeer;
-  let threadMessages: Message[] = [];
-  let threadReplyCounts = new Map<number, number>();
   /* Last-read message id captured when entering the channel; the "New"
      divider stays anchored there until the user switches channels. */
-  let unreadMarkerAfterId = 0;
-  let typingLabel: string | null = null;
+  let unreadMarkerAfterId = $state(0);
 
   function setCommandFeedback(message: string, type: 'info' | 'error' = 'info') {
     commandFeedback = message;
@@ -221,9 +210,9 @@
     chat.react(messageId, emoji, hasReaction ? 'remove' : 'add');
   }
 
-  let emojiPickerOpen = false;
-  let emojiPickerX = 0;
-  let emojiPickerY = 0;
+  let emojiPickerOpen = $state(false);
+  let emojiPickerX = $state(0);
+  let emojiPickerY = $state(0);
   let emojiPickerMessageId: number | null = null;
 
   function openEmojiPicker(messageId: number | undefined, event: MouseEvent) {
@@ -244,57 +233,16 @@
     chat.react(emojiPickerMessageId, emoji, 'add');
   }
 
-  $: statusMap = (() => {
-    const map: Record<string, UserStatus> = { ...$statuses };
-    for (const user of $onlineUsers) {
-      if (!map[user]) {
-        map[user] = 'online';
-      }
-    }
-    for (const user of $offlineUsers) {
-      if (!map[user]) {
-        map[user] = 'offline';
-      }
-    }
-    return map;
-  })();
 
-  $: currentUserCanModerate = (() => {
-    const user = $session.user;
-    if (!user) return false;
-    const info = $roles[user];
-    if (!info) return false;
-    return MODERATOR_ROLES.some((role) => info.role?.toLowerCase() === role.toLowerCase());
-  })();
 
-  let inVoice = false;
-  let settingsOpen = false;
-  let currentChatChannelId: number = 0;
-  let initialChannelSet = false;
-  let currentVoiceChannelId: number | null = null;
-  let currentTopic = '';
-  $: currentChatChannelName = $channels.find(c => c.id === currentChatChannelId)?.name ?? '';
+  let inVoice = $state(false);
+  let settingsOpen = $state(false);
+  let currentChatChannelId: number = $state(0);
+  let initialChannelSet = $state(false);
+  let currentVoiceChannelId: number | null = $state(null);
 
-  $: if (pendingScreenShareView && $screenSharePeers) {
-    const peer = $screenSharePeers.find(p => p.userId === pendingScreenShareView);
-    if (peer) {
-      viewingScreenShare = peer;
-      pendingScreenShareView = null;
-    }
-  }
 
-  $: if (viewingScreenShare && $screenSharePeers) {
-    if (!$screenSharePeers.find(p => p.userId === viewingScreenShare?.userId)) {
-      viewingScreenShare = null;
-    }
-  }
 
-  $: channelMessages = $chat.filter((m) => m.channelId === currentChatChannelId);
-  $: messageBlocks = buildMessageBlocks(channelMessages, {
-    unreadAfterId: unreadMarkerAfterId,
-    currentUser: $session.user
-  });
-  $: pinnedEntries = $pinned[currentChatChannelId] ?? [];
 
   /* The server drops every connection into "general" and sends its history with
      the presence response, so the initial pick has to be "general" too — the
@@ -304,17 +252,6 @@
     return list.find((c) => c.name === DEFAULT_CHANNEL_NAME) ?? list[0];
   }
 
-  $: if ($channels.length && !$channels.some((c) => c.id === currentChatChannelId)) {
-    currentChatChannelId = defaultChannel($channels).id;
-    unreadMarkerAfterId = unread.getLastRead(currentChatChannelId);
-    unread.setActive(currentChatChannelId);
-    loadingHistory = false;
-    if (initialChannelSet) {
-      chat.sendRaw({ type: 'join', channelId: currentChatChannelId });
-    } else {
-      initialChannelSet = true;
-    }
-  }
 
   function latestMessageId(messages: Message[]): number | null {
     let max: number | null = null;
@@ -324,51 +261,10 @@
     return max;
   }
 
-  // Everything rendered in the active channel counts as read.
-  $: {
-    const latest = latestMessageId(channelMessages);
-    if (latest !== null) unread.markRead(currentChatChannelId, latest);
-  }
 
-  $: typingLabel = (() => {
-    const users = Object.entries($typing[currentChatChannelId] ?? {})
-      .filter(([user, expiry]) => user !== $session.user && expiry > now)
-      .map(([user]) => user);
-    if (users.length === 0) return null;
-    if (users.length === 1) return `${users[0]} is typing…`;
-    if (users.length === 2) return `${users[0]} and ${users[1]} are typing…`;
-    return 'Several people are typing…';
-  })();
 
-  $: threadReplyCounts = (() => {
-    const map = new Map<number, number>();
-    for (const m of channelMessages) {
-      if (typeof m.threadId === 'number') {
-        map.set(m.threadId, (map.get(m.threadId) ?? 0) + 1);
-      }
-    }
-    return map;
-  })();
 
-  /* The panel merges the server's thread snapshot with live messages from the
-     store, so replies arriving while the thread is open show up immediately. */
-  $: threadMessages = (() => {
-    if (threadRootId === null) return [];
-    const byId = new Map<number, Message>();
-    const data = $threadData;
-    if (data && data.rootId === threadRootId) {
-      for (const m of data.messages) {
-        if (typeof m.id === 'number') byId.set(m.id, m);
-      }
-    }
-    for (const m of channelMessages) {
-      if (typeof m.id !== 'number') continue;
-      if (m.id === threadRootId || m.threadId === threadRootId) byId.set(m.id, m);
-    }
-    return [...byId.values()].sort((a, b) => (a.id as number) - (b.id as number));
-  })();
 
-  $: currentTopic = $channelTopics[currentChatChannelId] ?? '';
 
   function stream(node: HTMLAudioElement, data: { stream: MediaStream, userId: string }) {
     node.srcObject = data.stream;
@@ -949,7 +845,6 @@
     chat.sendDm(peer, text);
   }
 
-  $: dmMessages = $dmActivePeer ? ($dmConversations[$dmActivePeer] ?? []) : [];
 
   function handleComposerInput() {
     if (message.trim().length > 0) {
@@ -1075,37 +970,27 @@
     scrollBottom();
   }
 
-  let menuChannelId: number | null = null;
-  let menuVoiceChannelId: number | null = null;
-  let menuCategoryId: number | null = null;
-  let volumeMenuOpen = false;
-  let volumeMenuX = 0;
-  let volumeMenuY = 0;
-  let volumeMenuUser: string | null = null;
+  let menuChannelId: number | null = $state(null);
+  let menuVoiceChannelId: number | null = $state(null);
+  let menuCategoryId: number | null = $state(null);
+  let volumeMenuOpen = $state(false);
+  let volumeMenuX = $state(0);
+  let volumeMenuY = $state(0);
+  let volumeMenuUser: string | null = $state(null);
 
   function closeVolumeMenu() {
     volumeMenuOpen = false;
     volumeMenuUser = null;
   }
 
-  let userRoleMenuOpen = false;
-  let userRoleMenuX = 0;
-  let userRoleMenuY = 0;
-  let userRoleMenuTarget: string | null = null;
+  let userRoleMenuOpen = $state(false);
+  let userRoleMenuX = $state(0);
+  let userRoleMenuY = $state(0);
+  let userRoleMenuTarget: string | null = $state(null);
 
   const ASSIGNABLE_ROLES = ['Owner', 'Admin', 'Mod'] as const;
 
-  $: currentUserIsOwner = (() => {
-    const user = $session.user;
-    if (!user) return false;
-    const info = $roles[user];
-    return info?.role?.toLowerCase() === 'owner';
-  })();
 
-  // Requesters must strictly outrank their target for kick/ban/mute.
-  $: currentUserModerationRank = roleRank(
-    $session.user ? $roles[$session.user]?.role : undefined
-  );
 
   function canModerate(target: string): boolean {
     if (target === $session.user) return false;
@@ -1159,42 +1044,6 @@
     chat.sendRaw({ type: 'unmute-user', user });
   }
 
-  $: userRoleMenuItems = (() => {
-    if (!userRoleMenuTarget) return [];
-    const target = userRoleMenuTarget;
-    const currentRole = $roles[target]?.role;
-    const items: ContextMenuItem[] = [];
-    items.push({ label: 'Send Message', action: () => openDm(target) });
-    items.push({ label: 'View Stats', action: () => openUserStats(target) });
-    if (currentUserIsOwner) {
-      const roleItems: ContextMenuItem[] = ASSIGNABLE_ROLES.filter(
-        (role) => currentRole?.toLowerCase() !== role.toLowerCase()
-      ).map((role) => ({ label: role, action: () => assignRole(target, role) }));
-      if (currentRole) {
-        roleItems.push({ label: 'Remove Role', action: () => removeRole(target), danger: true });
-      }
-      if (roleItems.length) {
-        items.push({ label: 'Set Role', children: roleItems });
-      }
-    }
-    if (canModerate(target)) {
-      items.push({
-        label: 'Mute',
-        children: [
-          { label: '10 minutes', action: () => muteUser(target, 600) },
-          { label: '1 hour', action: () => muteUser(target, 3600) },
-          { label: 'Until lifted', action: () => muteUser(target) },
-          { label: 'Unmute', action: () => unmuteUser(target) }
-        ]
-      });
-      if ($onlineUsers.includes(target)) {
-        items.push({ label: 'Kick User', danger: true, action: () => kickUser(target) });
-      }
-      items.push({ label: 'Ban User', danger: true, action: () => banUser(target) });
-      items.push({ label: 'Unban User', action: () => unbanUser(target) });
-    }
-    return items;
-  })();
 
   function openChannelMenu(event: MouseEvent, channelId?: number, voice?: boolean) {
     event.preventDefault();
@@ -1244,7 +1093,7 @@
     settingsOpen = false;
   }
 
-  let serverDashboardOpen = false;
+  let serverDashboardOpen = $state(false);
 
   function openServerDashboard() {
     serverDashboardOpen = true;
@@ -1254,7 +1103,7 @@
     serverDashboardOpen = false;
   }
 
-  let statsUser: string | null = null;
+  let statsUser: string | null = $state(null);
 
   function openUserStats(user: string) {
     statsUser = user;
@@ -1467,49 +1316,8 @@
     return targets.length ? [{ label: 'Move to', children: targets }] : [];
   }
 
-  $: channelMenuItems = [
-    {
-      label: 'Create',
-      children: [
-        { label: 'Text Channel', action: () => createChannelPrompt() },
-        { label: 'Voice Channel', action: () => createVoiceChannelPrompt() },
-        { label: 'Category', action: createCategoryPrompt }
-      ]
-    },
-    ...(menuChannelId != null
-      ? [
-          ...buildMoveToItems(menuChannelId, false),
-          { label: 'Delete Channel', action: () => channels.remove(menuChannelId!), danger: true }
-        ]
-      : []),
-    ...(menuVoiceChannelId != null
-      ? [
-          ...VOICE_QUALITY_PRESETS.map((preset) => ({
-            label:
-              preset.bitrate && preset.bitrate > 0
-                ? `Set Voice Quality: ${preset.label} (${Math.round(preset.bitrate / 1000)} kbps)`
-                : `Set Voice Quality: ${preset.label}`,
-            action: () =>
-              voiceChannels.configure(menuVoiceChannelId!, {
-                quality: preset.quality,
-                bitrate: preset.bitrate
-              })
-          })),
-          ...buildMoveToItems(menuVoiceChannelId, true),
-          { label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannelId!), danger: true }
-        ]
-      : []),
-    ...(menuCategoryId != null
-      ? [
-          { label: 'Create Text Channel Here', action: () => createChannelPrompt(menuCategoryId) },
-          { label: 'Create Voice Channel Here', action: () => createVoiceChannelPrompt(menuCategoryId) },
-          { label: 'Rename Category', action: () => renameCategoryPrompt(menuCategoryId!) },
-          { label: 'Delete Category', action: () => categories.remove(menuCategoryId!), danger: true }
-        ]
-      : [])
-  ];
 
-  let messagesContainer: HTMLDivElement;
+  let messagesContainer: HTMLDivElement | undefined = $state();
   async function scrollBottom() {
     await tick();
     if (messagesContainer) {
@@ -1517,7 +1325,7 @@
     }
   }
   let lastLength = 0;
-  let loadingHistory = false;
+  let loadingHistory = $state(false);
   let prevHeight = 0;
   let programmaticScroll = false;
 
@@ -1579,7 +1387,9 @@
   };
   chat.on('message-deleted', handleMessageDeleted);
 
-  afterUpdate(() => {
+  /* Post-render scroll maintenance: honour a pending scroll-to-message and
+     stick to the bottom when new messages arrive in the current channel. */
+  $effect(() => {
     const handledPending =
       pendingScrollToMessage !== null && highlightMessageById(pendingScrollToMessage);
     if (handledPending) {
@@ -1638,6 +1448,194 @@
     window.removeEventListener('mouseup', stopResize);
     window.removeEventListener('keydown', handleGlobalShortcut);
   });
+  let serverStrength = $derived(pingToStrength($ping));
+  let dragActive = $derived(dragDepth > 0);
+  let statusMap: Record<string, UserStatus> = $derived.by(() => {
+    const map: Record<string, UserStatus> = { ...$statuses };
+    for (const user of $onlineUsers) {
+      if (!map[user]) {
+        map[user] = 'online';
+      }
+    }
+    for (const user of $offlineUsers) {
+      if (!map[user]) {
+        map[user] = 'offline';
+      }
+    }
+    return map;
+  });
+  let currentUserCanModerate = $derived.by(() => {
+    const user = $session.user;
+    if (!user) return false;
+    const info = $roles[user];
+    if (!info) return false;
+    return MODERATOR_ROLES.some((role) => info.role?.toLowerCase() === role.toLowerCase());
+  });
+  $effect(() => {
+    if ($channels.length && !$channels.some((c) => c.id === currentChatChannelId)) {
+      currentChatChannelId = defaultChannel($channels).id;
+      unreadMarkerAfterId = unread.getLastRead(currentChatChannelId);
+      unread.setActive(currentChatChannelId);
+      loadingHistory = false;
+      if (initialChannelSet) {
+        chat.sendRaw({ type: 'join', channelId: currentChatChannelId });
+      } else {
+        initialChannelSet = true;
+      }
+    }
+  });
+  let currentChatChannelName = $derived($channels.find(c => c.id === currentChatChannelId)?.name ?? '');
+  $effect(() => {
+    if (pendingScreenShareView && $screenSharePeers) {
+      const peer = $screenSharePeers.find(p => p.userId === pendingScreenShareView);
+      if (peer) {
+        viewingScreenShare = peer;
+        pendingScreenShareView = null;
+      }
+    }
+  });
+  $effect(() => {
+    if (viewingScreenShare && $screenSharePeers) {
+      if (!$screenSharePeers.find(p => p.userId === viewingScreenShare?.userId)) {
+        viewingScreenShare = null;
+      }
+    }
+  });
+  let channelMessages = $derived($chat.filter((m) => m.channelId === currentChatChannelId));
+  let messageBlocks = $derived(buildMessageBlocks(channelMessages, {
+    unreadAfterId: unreadMarkerAfterId,
+    currentUser: $session.user
+  }));
+  let pinnedEntries = $derived($pinned[currentChatChannelId] ?? []);
+  // Everything rendered in the active channel counts as read.
+  $effect(() => {
+    const latest = latestMessageId(channelMessages);
+    if (latest !== null) unread.markRead(currentChatChannelId, latest);
+  });
+  let typingLabel = $derived.by(() => {
+    const users = Object.entries($typing[currentChatChannelId] ?? {})
+      .filter(([user, expiry]) => user !== $session.user && expiry > now)
+      .map(([user]) => user);
+    if (users.length === 0) return null;
+    if (users.length === 1) return `${users[0]} is typing…`;
+    if (users.length === 2) return `${users[0]} and ${users[1]} are typing…`;
+    return 'Several people are typing…';
+  });
+  let threadReplyCounts = $derived.by(() => {
+    const map = new Map<number, number>();
+    for (const m of channelMessages) {
+      if (typeof m.threadId === 'number') {
+        map.set(m.threadId, (map.get(m.threadId) ?? 0) + 1);
+      }
+    }
+    return map;
+  });
+  /* The panel merges the server's thread snapshot with live messages from the
+     store, so replies arriving while the thread is open show up immediately. */
+  let threadMessages = $derived.by(() => {
+    if (threadRootId === null) return [];
+    const byId = new Map<number, Message>();
+    const data = $threadData;
+    if (data && data.rootId === threadRootId) {
+      for (const m of data.messages) {
+        if (typeof m.id === 'number') byId.set(m.id, m);
+      }
+    }
+    for (const m of channelMessages) {
+      if (typeof m.id !== 'number') continue;
+      if (m.id === threadRootId || m.threadId === threadRootId) byId.set(m.id, m);
+    }
+    return [...byId.values()].sort((a, b) => (a.id as number) - (b.id as number));
+  });
+  let currentTopic = $derived($channelTopics[currentChatChannelId] ?? '');
+  let dmMessages = $derived($dmActivePeer ? ($dmConversations[$dmActivePeer] ?? []) : []);
+  let currentUserIsOwner = $derived((() => {
+    const user = $session.user;
+    if (!user) return false;
+    const info = $roles[user];
+    return info?.role?.toLowerCase() === 'owner';
+  })());
+  // Requesters must strictly outrank their target for kick/ban/mute.
+  let currentUserModerationRank = $derived(roleRank(
+    $session.user ? $roles[$session.user]?.role : undefined
+  ));
+  let userRoleMenuItems = $derived((() => {
+    if (!userRoleMenuTarget) return [];
+    const target = userRoleMenuTarget;
+    const currentRole = $roles[target]?.role;
+    const items: ContextMenuItem[] = [];
+    items.push({ label: 'Send Message', action: () => openDm(target) });
+    items.push({ label: 'View Stats', action: () => openUserStats(target) });
+    if (currentUserIsOwner) {
+      const roleItems: ContextMenuItem[] = ASSIGNABLE_ROLES.filter(
+        (role) => currentRole?.toLowerCase() !== role.toLowerCase()
+      ).map((role) => ({ label: role, action: () => assignRole(target, role) }));
+      if (currentRole) {
+        roleItems.push({ label: 'Remove Role', action: () => removeRole(target), danger: true });
+      }
+      if (roleItems.length) {
+        items.push({ label: 'Set Role', children: roleItems });
+      }
+    }
+    if (canModerate(target)) {
+      items.push({
+        label: 'Mute',
+        children: [
+          { label: '10 minutes', action: () => muteUser(target, 600) },
+          { label: '1 hour', action: () => muteUser(target, 3600) },
+          { label: 'Until lifted', action: () => muteUser(target) },
+          { label: 'Unmute', action: () => unmuteUser(target) }
+        ]
+      });
+      if ($onlineUsers.includes(target)) {
+        items.push({ label: 'Kick User', danger: true, action: () => kickUser(target) });
+      }
+      items.push({ label: 'Ban User', danger: true, action: () => banUser(target) });
+      items.push({ label: 'Unban User', action: () => unbanUser(target) });
+    }
+    return items;
+  })());
+  let channelMenuItems = $derived([
+    {
+      label: 'Create',
+      children: [
+        { label: 'Text Channel', action: () => createChannelPrompt() },
+        { label: 'Voice Channel', action: () => createVoiceChannelPrompt() },
+        { label: 'Category', action: createCategoryPrompt }
+      ]
+    },
+    ...(menuChannelId != null
+      ? [
+          ...buildMoveToItems(menuChannelId, false),
+          { label: 'Delete Channel', action: () => channels.remove(menuChannelId!), danger: true }
+        ]
+      : []),
+    ...(menuVoiceChannelId != null
+      ? [
+          ...VOICE_QUALITY_PRESETS.map((preset) => ({
+            label:
+              preset.bitrate && preset.bitrate > 0
+                ? `Set Voice Quality: ${preset.label} (${Math.round(preset.bitrate / 1000)} kbps)`
+                : `Set Voice Quality: ${preset.label}`,
+            action: () =>
+              voiceChannels.configure(menuVoiceChannelId!, {
+                quality: preset.quality,
+                bitrate: preset.bitrate
+              })
+          })),
+          ...buildMoveToItems(menuVoiceChannelId, true),
+          { label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannelId!), danger: true }
+        ]
+      : []),
+    ...(menuCategoryId != null
+      ? [
+          { label: 'Create Text Channel Here', action: () => createChannelPrompt(menuCategoryId) },
+          { label: 'Create Voice Channel Here', action: () => createVoiceChannelPrompt(menuCategoryId) },
+          { label: 'Rename Category', action: () => renameCategoryPrompt(menuCategoryId!) },
+          { label: 'Delete Category', action: () => categories.remove(menuCategoryId!), danger: true }
+        ]
+      : [])
+  ]);
 </script>
 
   <div class="page">
@@ -1656,15 +1654,15 @@
       onToggleMicrophone={toggleMicrophone}
       onToggleOutput={toggleOutput}
     />
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="resizer" role="separator" aria-label="Resize channel list" on:mousedown={startLeftResize}></div>
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div class="resizer" role="separator" aria-label="Resize channel list" onmousedown={startLeftResize}></div>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="chat"
-      on:dragenter={handleDragEnter}
-      on:dragover={handleDragOver}
-      on:dragleave={handleDragLeave}
-      on:drop={handleDrop}
+      ondragenter={handleDragEnter}
+      ondragover={handleDragOver}
+      ondragleave={handleDragLeave}
+      ondrop={handleDrop}
     >
       {#if dragActive}
         <div class="drop-overlay" aria-hidden="true">
@@ -1725,7 +1723,7 @@
         <div
           class="messages"
           bind:this={messagesContainer}
-          on:scroll={onScroll}
+          onscroll={onScroll}
           use:wikilinks={{
             channelName: currentChatChannelName,
             onNavigate: (nav) => openWikiPage(nav.channel, nav.slug)
@@ -1818,8 +1816,8 @@
         <audio autoplay use:stream={{ stream: peer.stream, userId: peer.id }}></audio>
       {/each}
     </div>
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="resizer" role="separator" aria-label="Resize user list" on:mousedown={startRightResize}></div>
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div class="resizer" role="separator" aria-label="Resize user list" onmousedown={startRightResize}></div>
     <UserList
       {statusMap}
       onUserContextMenu={openUserRoleMenu}

@@ -1,31 +1,33 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { browser } from '$app/environment';
   import { fetchLinkPreview, giphyGifUrl, type LinkPreviewData } from '$lib/link-preview';
 
-  export let url: string;
+  interface Props {
+    url: string;
+  }
+
+  let { url }: Props = $props();
 
   const PREVIEW_TIMEOUT_MS = 6000;
 
-  let safeUrl: URL | null = null;
-  let displayHost = '';
+  let safeUrl: URL | null = $state(null);
+  let displayHost = $state('');
   let metadataTimeout: number | null = null;
   let metadataAbort: AbortController | null = null;
-  let currentUrl = '';
+  let currentUrl = $state('');
 
-  let giphyGif: string | null = null;
+  let giphyGif: string | null = $state(null);
 
-  let youtubeId: string | null = null;
-  let youtubeTitle = '';
-  let youtubeAuthor = '';
-  let youtubeThumbnail = '';
-  let youtubeError = false;
+  let youtubeId: string | null = $state(null);
+  let youtubeTitle = $state('');
+  let youtubeAuthor = $state('');
+  let youtubeThumbnail = $state('');
+  let youtubeError = $state(false);
 
-  let preview: LinkPreviewData | null = null;
-  let previewImageFailed = false;
+  let preview: LinkPreviewData | null = $state(null);
+  let previewImageFailed = $state(false);
 
-  $: parseUrl();
-  $: setupPreview();
 
   function parseUrl() {
     try {
@@ -151,6 +153,15 @@
     if (metadataTimeout) clearTimeout(metadataTimeout);
     if (metadataAbort) metadataAbort.abort();
   });
+  /* Re-parse and rebuild the preview whenever the url prop changes; untrack
+     keeps the intermediate state writes from becoming effect dependencies. */
+  $effect(() => {
+    void url;
+    untrack(() => {
+      parseUrl();
+      setupPreview();
+    });
+  });
 </script>
 
 {#if safeUrl}
@@ -162,7 +173,7 @@
       rel="noopener noreferrer"
       aria-label={`Open GIF on ${displayHost}`}
     >
-      <img src={giphyGif} alt="GIF" loading="lazy" on:error={handleGiphyError} />
+      <img src={giphyGif} alt="GIF" loading="lazy" onerror={handleGiphyError} />
       <span class="giphy-badge" aria-hidden="true">GIF</span>
     </a>
   {:else if youtubeId}
@@ -203,7 +214,7 @@
           src={preview.image}
           alt=""
           loading="lazy"
-          on:error={() => (previewImageFailed = true)}
+          onerror={() => (previewImageFailed = true)}
         />
       {/if}
     </a>

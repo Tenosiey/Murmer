@@ -295,7 +295,7 @@ Publishing a release:
    Versions follow the date-based scheme `YYYY.MDD.N` (year, month+day,
    counter for multiple releases on the same day), e.g. `2026.710.0` for the
    first release on 2026-07-10. Client and server share one version: the
-   script writes it into the client's `package.json`,
+   script writes it into the client's `package.json`, `package-lock.json`,
    `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and
    `src-tauri/Cargo.lock` as well as the server's `Cargo.toml` and
    `Cargo.lock` — do not bump the server separately.

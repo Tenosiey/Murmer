@@ -15,20 +15,39 @@
   import { ensureStatus } from '$lib/chat/helpers';
   import type { UserStatus } from '$lib/types';
 
-  export let channelId: number;
-  export let channelName: string;
-  export let topic: string;
-  export let serverStrength: number;
-  export let statusMap: Record<string, UserStatus>;
-  export let onEditTopic: () => void;
-  export let onOpenSearch: () => void;
-  export let onOpenSettings: () => void;
-  export let wikiOpen = false;
-  export let onToggleWiki: () => void = () => {};
-  export let showServerDashboard = false;
-  export let onOpenServerDashboard: () => void = () => {};
-  export let onLeaveServer: () => void;
-  export let onLogout: () => void;
+  interface Props {
+    channelId: number;
+    channelName: string;
+    topic: string;
+    serverStrength: number;
+    statusMap: Record<string, UserStatus>;
+    onEditTopic: () => void;
+    onOpenSearch: () => void;
+    onOpenSettings: () => void;
+    wikiOpen?: boolean;
+    onToggleWiki?: () => void;
+    showServerDashboard?: boolean;
+    onOpenServerDashboard?: () => void;
+    onLeaveServer: () => void;
+    onLogout: () => void;
+  }
+
+  let {
+    channelId,
+    channelName,
+    topic,
+    serverStrength,
+    statusMap,
+    onEditTopic,
+    onOpenSearch,
+    onOpenSettings,
+    wikiOpen = false,
+    onToggleWiki = () => {},
+    showServerDashboard = false,
+    onOpenServerDashboard = () => {},
+    onLeaveServer,
+    onLogout
+  }: Props = $props();
 
   const statusOptions: Array<{ value: UserStatus; label: string }> =
     USER_STATUS_VALUES.map((value) => ({
@@ -36,37 +55,36 @@
       label: STATUS_LABELS[value]
     }));
 
-  let statusMenuOpen = false;
-  let statusMenuButton: HTMLButtonElement | null = null;
-  let statusMenuElement: HTMLDivElement | null = null;
+  let statusMenuOpen = $state(false);
+  let statusMenuButton: HTMLButtonElement | null = $state(null);
+  let statusMenuElement: HTMLDivElement | null = $state(null);
 
-  let notificationMenuOpen = false;
-  let notificationMenuButton: HTMLButtonElement | null = null;
-  let notificationMenuElement: HTMLDivElement | null = null;
+  let notificationMenuOpen = $state(false);
+  let notificationMenuButton: HTMLButtonElement | null = $state(null);
+  let notificationMenuElement: HTMLDivElement | null = $state(null);
 
-  let statsMenuOpen = false;
-  let statsMenuButton: HTMLButtonElement | null = null;
-  let statsMenuElement: HTMLDivElement | null = null;
+  let statsMenuOpen = $state(false);
+  let statsMenuButton: HTMLButtonElement | null = $state(null);
+  let statsMenuElement: HTMLDivElement | null = $state(null);
 
-  $: currentUserStatus = $session.user
+  let currentUserStatus = $derived($session.user
     ? ensureStatus(statusMap, $session.user, 'online')
-    : 'offline';
-  $: currentUserStatusLabel = STATUS_LABELS[currentUserStatus];
+    : 'offline');
+  let currentUserStatusLabel = $derived(STATUS_LABELS[currentUserStatus]);
 
-  $: currentNotificationPreference = ($channelNotifications[channelId] ?? 'all') as ChannelNotificationPreference;
-  $: notificationMenuLabel = (() => {
+  let currentNotificationPreference = $derived(($channelNotifications[channelId] ?? 'all') as ChannelNotificationPreference);
+  let notificationMenuLabel = $derived((() => {
     const found = NOTIFICATION_OPTIONS.find((option) => option.value === currentNotificationPreference);
     return found ? found.label : 'All messages';
-  })();
+  })());
 
   // Close any open menu when the user switches channels.
-  let lastChannelId = channelId;
-  $: if (channelId !== lastChannelId) {
-    lastChannelId = channelId;
+  $effect(() => {
+    void channelId;
     statusMenuOpen = false;
     notificationMenuOpen = false;
     statsMenuOpen = false;
-  }
+  });
 
   function toggleStatusMenu(event: MouseEvent) {
     event.stopPropagation();
@@ -146,7 +164,7 @@
   }
 </script>
 
-<svelte:window on:click={handleMenuOutside} />
+<svelte:window onclick={handleMenuOutside} />
 
 <div class="header">
   <div class="title">
@@ -166,7 +184,7 @@
         bind:this={statusMenuButton}
         aria-haspopup="true"
         aria-expanded={statusMenuOpen}
-        on:click={toggleStatusMenu}
+        onclick={toggleStatusMenu}
         title={`Set status (${currentUserStatusLabel})`}
       >
         <span class={`status ${currentUserStatus}`}></span>
@@ -191,13 +209,13 @@
           bind:this={statusMenuElement}
           role="menu"
           tabindex="-1"
-          on:click|stopPropagation
-          on:keydown={handleStatusMenuKeydown}
+          onclick={(event) => event.stopPropagation()}
+          onkeydown={handleStatusMenuKeydown}
         >
           {#each statusOptions as option}
             <button
               class:active={option.value === currentUserStatus}
-              on:click={() => selectStatus(option.value)}
+              onclick={() => selectStatus(option.value)}
               role="menuitemradio"
               aria-checked={option.value === currentUserStatus}
             >
@@ -214,7 +232,7 @@
           bind:this={statsMenuButton}
           aria-haspopup="true"
           aria-expanded={statsMenuOpen}
-          on:click={toggleStatsMenu}
+          onclick={toggleStatsMenu}
           title="Connection stats"
         >
           <PingDot ping={$ping} />
@@ -226,8 +244,8 @@
             bind:this={statsMenuElement}
             role="menu"
             tabindex="-1"
-            on:click|stopPropagation
-            on:keydown={handleStatsMenuKeydown}
+            onclick={(event) => event.stopPropagation()}
+            onkeydown={handleStatsMenuKeydown}
           >
             <ConnectionStatsPanel />
           </div>
@@ -237,7 +255,7 @@
     <div class="action-group">
     <button
       class="icon-btn"
-      on:click={() => theme.toggle()}
+      onclick={() => theme.toggle()}
       title={$theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
       aria-pressed={$theme === 'light'}
     >
@@ -281,7 +299,7 @@
         <span class="sr-only">Switch to dark theme</span>
       {/if}
     </button>
-    <button class="icon-btn" on:click={onEditTopic} title="Edit channel topic">
+    <button class="icon-btn" onclick={onEditTopic} title="Edit channel topic">
       <svg
         width="20"
         height="20"
@@ -306,7 +324,7 @@
         bind:this={notificationMenuButton}
         aria-haspopup="true"
         aria-expanded={notificationMenuOpen}
-        on:click={toggleNotificationMenu}
+        onclick={toggleNotificationMenu}
         title={`Channel notifications: ${notificationMenuLabel}`}
       >
         <span class="notification-icon" aria-hidden="true">
@@ -326,13 +344,13 @@
           bind:this={notificationMenuElement}
           role="menu"
           tabindex="-1"
-          on:click|stopPropagation
-          on:keydown={handleNotificationMenuKeydown}
+          onclick={(event) => event.stopPropagation()}
+          onkeydown={handleNotificationMenuKeydown}
         >
           {#each NOTIFICATION_OPTIONS as option}
             <button
               class:active={option.value === currentNotificationPreference}
-              on:click={() => selectNotificationPreference(option.value)}
+              onclick={() => selectNotificationPreference(option.value)}
               role="menuitemradio"
               aria-checked={option.value === currentNotificationPreference}
             >
@@ -350,7 +368,7 @@
     <div class="action-group">
     <button
       class="icon-btn"
-      on:click={onToggleWiki}
+      onclick={onToggleWiki}
       title={wikiOpen ? 'Close channel wiki' : 'Open channel wiki'}
       aria-pressed={wikiOpen}
     >
@@ -372,7 +390,7 @@
       </svg>
       <span class="sr-only">Toggle channel wiki</span>
     </button>
-    <button class="icon-btn" on:click={onOpenSearch} title="Search messages">
+    <button class="icon-btn" onclick={onOpenSearch} title="Search messages">
       <svg
         width="20"
         height="20"
@@ -390,7 +408,7 @@
       <span class="sr-only">Search messages</span>
     </button>
     {#if showServerDashboard}
-      <button class="icon-btn" on:click={onOpenServerDashboard} title="Server dashboard">
+      <button class="icon-btn" onclick={onOpenServerDashboard} title="Server dashboard">
         <svg
           width="20"
           height="20"
@@ -408,7 +426,7 @@
         <span class="sr-only">Open server dashboard</span>
       </button>
     {/if}
-    <button class="icon-btn" on:click={onOpenSettings} title="Settings">
+    <button class="icon-btn" onclick={onOpenSettings} title="Settings">
       <svg
         width="20"
         height="20"
@@ -427,7 +445,7 @@
       </svg>
       <span class="sr-only">Open settings</span>
     </button>
-    <button class="icon-btn" on:click={onLeaveServer} title="Leave Server">
+    <button class="icon-btn" onclick={onLeaveServer} title="Leave Server">
       <svg
         width="20"
         height="20"
@@ -447,7 +465,7 @@
     </button>
     </div>
     <div class="action-group">
-    <button class="icon-btn danger" on:click={onLogout} title="Logout">
+    <button class="icon-btn danger" onclick={onLogout} title="Logout">
       <svg
         width="20"
         height="20"

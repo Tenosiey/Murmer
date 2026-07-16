@@ -6,18 +6,23 @@
   colors below are the wheel's content, not UI chrome.
 -->
 <script lang="ts">
-  export let hue: number;
-  export let saturation: number;
-  export let onchange: (hue: number, saturation: number) => void;
+  interface Props {
+    hue: number;
+    saturation: number;
+    onchange: (hue: number, saturation: number) => void;
+  }
 
-  let wheel: HTMLDivElement;
+  let { hue, saturation, onchange }: Props = $props();
+
+  let wheel: HTMLDivElement | undefined = $state();
   let dragging = false;
 
-  $: rad = (hue * Math.PI) / 180;
-  $: dotLeft = 50 + (Math.sin(rad) * saturation) / 2;
-  $: dotTop = 50 - (Math.cos(rad) * saturation) / 2;
+  let rad = $derived((hue * Math.PI) / 180);
+  let dotLeft = $derived(50 + (Math.sin(rad) * saturation) / 2);
+  let dotTop = $derived(50 - (Math.cos(rad) * saturation) / 2);
 
   function pick(event: PointerEvent) {
+    if (!wheel) return;
     const rect = wheel.getBoundingClientRect();
     const dx = event.clientX - (rect.left + rect.width / 2);
     const dy = event.clientY - (rect.top + rect.height / 2);
@@ -28,7 +33,7 @@
 
   function handlePointerDown(event: PointerEvent) {
     dragging = true;
-    wheel.setPointerCapture(event.pointerId);
+    wheel?.setPointerCapture(event.pointerId);
     pick(event);
   }
 
@@ -75,10 +80,10 @@
   aria-valuemax={360}
   aria-valuenow={Math.round(hue)}
   aria-valuetext={`Hue ${Math.round(hue)} degrees, intensity ${Math.round(saturation)} percent`}
-  on:pointerdown={handlePointerDown}
-  on:pointermove={handlePointerMove}
-  on:pointerup={handlePointerUp}
-  on:keydown={handleKeydown}
+  onpointerdown={handlePointerDown}
+  onpointermove={handlePointerMove}
+  onpointerup={handlePointerUp}
+  onkeydown={handleKeydown}
 >
   <div
     class="dot"

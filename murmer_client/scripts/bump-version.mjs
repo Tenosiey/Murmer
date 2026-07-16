@@ -3,7 +3,7 @@
   Computes the next release version and writes it into every versioned
   manifest of the monorepo:
 
-  - murmer_client/package.json
+  - murmer_client/package.json + package-lock.json
   - murmer_client/src-tauri/tauri.conf.json
   - murmer_client/src-tauri/Cargo.toml + Cargo.lock
   - murmer_server/Cargo.toml + Cargo.lock
@@ -45,6 +45,16 @@ const version = `${datePart}.${counter}`;
 
 pkg.version = version;
 writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+
+// package-lock.json records the package's own version twice (top level and
+// the "" entry in packages); leaving it stale caused mismatch fixup commits.
+const lockJsonPath = path.join(clientRoot, 'package-lock.json');
+const lockJson = JSON.parse(readFileSync(lockJsonPath, 'utf8'));
+lockJson.version = version;
+if (lockJson.packages && lockJson.packages['']) {
+  lockJson.packages[''].version = version;
+}
+writeFileSync(lockJsonPath, JSON.stringify(lockJson, null, 2) + '\n');
 
 const conf = readFileSync(confPath, 'utf8');
 writeFileSync(confPath, conf.replace(/"version":\s*"[^"]+"/, `"version": "${version}"`));

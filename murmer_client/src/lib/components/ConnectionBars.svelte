@@ -4,7 +4,11 @@
   Uses Material 3 color tokens for consistent theming.
 -->
 <script lang="ts">
-  export let strength: number = 0;
+  interface Props {
+    strength?: number;
+  }
+
+  let { strength = 0 }: Props = $props();
   const bars = [1, 2, 3, 4, 5];
   
   function getBarColor(barIndex: number, currentStrength: number): string {

@@ -8,11 +8,15 @@
   import type { ScreenSharePeer } from '$lib/types';
   import { stopViewingScreenShare } from '$lib/stores/screenShare';
 
-  export let peer: ScreenSharePeer;
-  export let onClose: () => void;
+  interface Props {
+    peer: ScreenSharePeer;
+    onClose: () => void;
+  }
 
-  let videoElement: HTMLVideoElement;
-  let isFullscreen = false;
+  let { peer, onClose }: Props = $props();
+
+  let videoElement: HTMLVideoElement | undefined = $state();
+  let isFullscreen = $state(false);
 
   onMount(() => {
     if (videoElement && peer.stream) {
@@ -63,16 +67,16 @@
   }
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} />
 
-<!-- svelte-ignore a11y-click-events-have-key-events -->
-<!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="screenshare-overlay" on:click={close}>
-  <div class="screenshare-container" on:click={(e) => e.stopPropagation()} role="dialog" aria-label="Screen share viewer" tabindex="-1">
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="screenshare-overlay" onclick={close}>
+  <div class="screenshare-container" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Screen share viewer" tabindex="-1">
     <div class="screenshare-header">
       <h3>{peer.userId}'s Screen</h3>
       <div class="screenshare-controls">
-        <button on:click={toggleFullscreen} title="Toggle fullscreen (F)" aria-label="Toggle fullscreen">
+        <button onclick={toggleFullscreen} title="Toggle fullscreen (F)" aria-label="Toggle fullscreen">
           {#if isFullscreen}
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
@@ -83,7 +87,7 @@
             </svg>
           {/if}
         </button>
-        <button on:click={close} title="Close (Esc)" aria-label="Close">
+        <button onclick={close} title="Close (Esc)" aria-label="Close">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -91,7 +95,7 @@
       </div>
     </div>
     <div class="screenshare-video-container">
-      <!-- svelte-ignore a11y-media-has-caption -->
+      <!-- svelte-ignore a11y_media_has_caption -->
       <video
         bind:this={videoElement}
         autoplay

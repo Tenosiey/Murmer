@@ -5,6 +5,7 @@
   the viewer's own DMs.
 -->
 <script lang="ts">
+
   import type { Message } from '$lib/types';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
@@ -14,18 +15,31 @@
   import { selectedServer } from '$lib/stores/servers';
   import { httpBaseFromWs } from '$lib/server-url';
 
-  export let title: string;
-  export let kind: 'thread' | 'dm' = 'thread';
-  export let messages: Message[] = [];
-  export let emptyText = 'No messages yet.';
-  export let placeholder = 'Reply…';
-  export let onSend: (text: string) => void;
-  export let onClose: () => void;
-  export let emphasize: (msg: Message) => boolean = () => false;
+  interface Props {
+    title: string;
+    kind?: 'thread' | 'dm';
+    messages?: Message[];
+    emptyText?: string;
+    placeholder?: string;
+    onSend: (text: string) => void;
+    onClose: () => void;
+    emphasize?: (msg: Message) => boolean;
+  }
 
-  let draft = '';
+  let {
+    title,
+    kind = 'thread',
+    messages = [],
+    emptyText = 'No messages yet.',
+    placeholder = 'Reply…',
+    onSend,
+    onClose,
+    emphasize = () => false
+  }: Props = $props();
 
-  $: httpBase = $selectedServer ? httpBaseFromWs($selectedServer) : '';
+  let draft = $state('');
+
+  let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
 
   function submit() {
     const trimmed = draft.trim();
@@ -49,7 +63,7 @@
       {/if}
       {title}
     </span>
-    <button type="button" class="icon-btn" on:click={onClose} aria-label="Close panel">
+    <button type="button" class="icon-btn" onclick={onClose} aria-label="Close panel">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </header>
@@ -78,7 +92,7 @@
     {/each}
   </div>
 
-  <form class="reply" on:submit|preventDefault={submit}>
+  <form class="reply" onsubmit={(event) => { event.preventDefault(); submit(); }}>
     <input type="text" bind:value={draft} {placeholder} aria-label={placeholder} />
   </form>
 </aside>

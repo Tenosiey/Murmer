@@ -25,6 +25,11 @@
   import '@fontsource/jetbrains-mono/400.css';
   import '@fontsource/jetbrains-mono/500.css';
   import '@fontsource/jetbrains-mono/600.css';
+  interface Props {
+    children?: import('svelte').Snippet;
+  }
+
+  let { children }: Props = $props();
 
   onMount(() => {
     theme.init();
@@ -591,7 +596,7 @@
   }
 </style>
 
-<slot />
+{@render children?.()}
 
 <DialogHost />
 

@@ -16,8 +16,11 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
 - **rusqlite is pinned by tokio-rusqlite** — bump it only when a new
   tokio-rusqlite release allows it.
 - **Never bump versions by hand** — only via `npm run bump` (see Versioning).
-- **Svelte components use the classic (non-runes) syntax** (`export let`,
-  `$:`, stores). Match it; do not introduce `$state`/`$props` piecemeal.
+- **Svelte components use the runes syntax** (`$state`, `$props`, `$derived`,
+  `$effect`) — `runes: true` is enforced in `svelte.config.js`, so legacy
+  syntax (`export let`, `$:`) fails the build. Shared state still lives in
+  `svelte/store` modules (`src/lib/stores/`), consumed via `$store`
+  auto-subscription; never import from `svelte/legacy`.
 
 ## Workflow overview
 - Install the latest [Rust toolchain](https://www.rust-lang.org/tools/install)
@@ -64,10 +67,11 @@ skipped. When asked to bump versions:
 
 1. Run `npm run bump` inside `murmer_client/`. The script
    (`scripts/bump-version.mjs`) computes the next version and writes it into
-   all six versioned files: the client's `package.json`,
-   `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and
-   `src-tauri/Cargo.lock`, plus the server's `Cargo.toml` and `Cargo.lock`
-   (the lock files matter: `--locked` builds fail when they disagree).
+   all seven versioned files: the client's `package.json` and
+   `package-lock.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`
+   and `src-tauri/Cargo.lock`, plus the server's `Cargo.toml` and
+   `Cargo.lock` (the lock files matter: `--locked` builds fail when they
+   disagree).
 2. Commit with `Release v<version>` and create a matching `v<version>` git
    tag. Pushing the tag triggers the GitHub Actions release workflow, which
    builds the installers and updater manifest.
