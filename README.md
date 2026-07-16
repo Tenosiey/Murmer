@@ -46,6 +46,9 @@ small team can deploy a private chat space quickly.
   a server Owner/Admin enables tracking server-wide *and* the user opts in
   themselves; only aggregate counters are stored and users can purge their
   own stats at any time
+- Server identity configurable from the dashboard (Admin/Owner): server name,
+  description and icon shown to every member, plus a welcome message delivered
+  to first-time members
 - REST API for bots (see [`murmer_server/BOT_API.md`](murmer_server/BOT_API.md))
 
 ## Repository layout

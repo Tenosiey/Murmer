@@ -18,8 +18,11 @@
   let dialog = $derived($activeDialog);
 
   /* Reset local state whenever a new dialog becomes active and move focus
-     into it; focus returns to the previously focused element on close. */
-  let seen: ActiveDialog | null = $state(null);
+     into it; focus returns to the previously focused element on close.
+     `seen` must be $state.raw: a deep $state proxy would never compare
+     equal to the raw store value, making the effect below rewrite `seen`
+     forever until Svelte kills it — leaving the dialog stuck on screen. */
+  let seen: ActiveDialog | null = $state.raw(null);
   $effect(() => {
     if (dialog !== seen) {
       seen = dialog;

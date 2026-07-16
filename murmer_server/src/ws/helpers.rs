@@ -464,6 +464,22 @@ pub async fn broadcast_emojis(state: &Arc<AppState>) {
     }
 }
 
+/// Determine whether a user is authorised to edit the server identity (name,
+/// description, welcome message, icon). Always restricted to Admin/Owner:
+/// identity is server-wide state, so like emojis there is no lenient
+/// fallback for servers without an `ADMIN_TOKEN`.
+pub async fn can_manage_server_identity(state: &Arc<AppState>, user: &str) -> bool {
+    let roles = state.roles.lock().await;
+    roles
+        .get(user)
+        .map(|info| {
+            super::constants::SERVER_IDENTITY_ROLES
+                .iter()
+                .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
+        })
+        .unwrap_or(false)
+}
+
 /// Determine whether a user is authorised to view other users' self-reported
 /// connection stats. Restricted to Owner and Admin roles.
 pub async fn can_view_connection_stats(state: &Arc<AppState>, user: &str) -> bool {

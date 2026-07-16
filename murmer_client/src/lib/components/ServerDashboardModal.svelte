@@ -1,20 +1,29 @@
 <!--
   Server management dashboard for moderators and above. Separate from the
   user-facing SettingsModal: everything in here is server-wide state. Tabs are
-  tiered by moderation rank (Mod 1 < Admin 2 < Owner 3). Custom emojis are
-  fully functional; the remaining sections are placeholders for future
-  server-side settings and render disabled controls.
+  tiered by moderation rank (Mod 1 < Admin 2 < Owner 3). The Overview tab
+  (server identity), custom emojis and the stats toggle are fully functional;
+  the remaining sections are placeholders for future server-side settings and
+  render disabled controls.
 -->
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, untrack } from 'svelte';
   import { chat } from '$lib/stores/chat';
   import { selectedServer } from '$lib/stores/servers';
   import { customEmojis, customEmojiList } from '$lib/stores/customEmojis';
   import { dialogs } from '$lib/stores/dialogs';
   import { describeServerError } from '$lib/errors';
   import { httpBaseFromWs } from '$lib/server-url';
-  import { EMOJI_NAME_RE, MAX_EMOJI_FILE_BYTES } from '$lib/chat/constants';
+  import {
+    EMOJI_NAME_RE,
+    MAX_EMOJI_FILE_BYTES,
+    MAX_SERVER_NAME_LENGTH,
+    MAX_SERVER_DESCRIPTION_LENGTH,
+    MAX_WELCOME_MESSAGE_LENGTH,
+    MAX_SERVER_ICON_BYTES
+  } from '$lib/chat/constants';
   import { stats, statsConfig } from '$lib/stores/stats';
+  import { serverIdentity } from '$lib/stores/serverIdentity';
   import type { Message } from '$lib/types';
 
   
@@ -52,6 +61,106 @@
 
   let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
 
+  // ── Server identity (Overview tab) ─────────────────────────────────────────
+  let identityName = $state('');
+  let identityDescription = $state('');
+  let identityWelcome = $state('');
+  let identityFeedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
+  /** Set after sending a save; cleared (with feedback) once the broadcast
+      confirms the change or an error frame arrives. */
+  let identitySavePending = $state(false);
+  let iconFileInput: HTMLInputElement | null = $state(null);
+  let iconUploading = $state(false);
+
+  // (Re-)fill the form whenever the dashboard opens; while it is open,
+  // incoming identity broadcasts must not clobber what the user is typing.
+  $effect(() => {
+    if (open) {
+      untrack(() => {
+        identityName = $serverIdentity?.name ?? '';
+        identityDescription = $serverIdentity?.description ?? '';
+        identityWelcome = $serverIdentity?.welcomeMessage ?? '';
+        identityFeedback = null;
+        identitySavePending = false;
+      });
+    }
+  });
+
+  let identityDirty = $derived.by(() => {
+    const current = $serverIdentity;
+    return (
+      identityName.trim() !== (current?.name ?? '') ||
+      identityDescription.trim() !== (current?.description ?? '') ||
+      identityWelcome.trim() !== (current?.welcomeMessage ?? '')
+    );
+  });
+
+  // A broadcast matching the submitted values confirms the save.
+  $effect(() => {
+    if (identitySavePending && !identityDirty) {
+      identitySavePending = false;
+      identityFeedback = { text: 'Changes saved.', kind: 'info' };
+    }
+  });
+
+  function saveIdentity() {
+    const current = $serverIdentity;
+    const fields: { name?: string; description?: string; welcomeMessage?: string } = {};
+    const name = identityName.trim();
+    const description = identityDescription.trim();
+    const welcome = identityWelcome.trim();
+    if (name !== (current?.name ?? '')) fields.name = name;
+    if (description !== (current?.description ?? '')) fields.description = description;
+    if (welcome !== (current?.welcomeMessage ?? '')) fields.welcomeMessage = welcome;
+    if (Object.keys(fields).length === 0) return;
+    identityFeedback = null;
+    identitySavePending = true;
+    // Role-checked server-side; the confirmation arrives as a broadcast
+    // server-identity frame which updates the store.
+    serverIdentity.save(fields);
+  }
+
+  async function uploadIcon(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    input.value = '';
+    if (!file || !httpBase) return;
+    identityFeedback = null;
+    if (file.size > MAX_SERVER_ICON_BYTES) {
+      identityFeedback = { text: 'Server icons must be 1 MB or smaller.', kind: 'error' };
+      return;
+    }
+    iconUploading = true;
+    const form = new FormData();
+    form.append('file', file);
+    try {
+      const res = await fetch(httpBase + '/upload', { method: 'POST', body: form });
+      if (res.status === 415) {
+        identityFeedback = { text: 'This image type is not allowed on the server.', kind: 'error' };
+        return;
+      }
+      if (res.status === 413) {
+        identityFeedback = { text: 'That image is too large to upload.', kind: 'error' };
+        return;
+      }
+      if (!res.ok) throw new Error(`upload failed with status ${res.status}`);
+      const data = await res.json();
+      if (typeof data.url !== 'string') throw new Error('upload response missing url');
+      // Registration is role-checked server-side, like emoji registration.
+      serverIdentity.save({ icon: data.url });
+    } catch (e) {
+      console.error('server icon upload failed', e);
+      identityFeedback = { text: 'Icon upload failed. Please try again.', kind: 'error' };
+    } finally {
+      iconUploading = false;
+    }
+  }
+
+  function removeIcon() {
+    identityFeedback = null;
+    serverIdentity.save({ icon: null });
+  }
+
   // ── Custom emoji management ────────────────────────────────────────────────
   let emojiName = $state('');
   let emojiFile: File | null = $state(null);
@@ -76,10 +185,24 @@
     'emoji-not-found'
   ]);
 
+  const IDENTITY_ERROR_CODES = new Set([
+    'identity-permission-denied',
+    'invalid-server-name',
+    'invalid-server-description',
+    'invalid-welcome-message',
+    'invalid-server-icon',
+    'identity-update-failed'
+  ]);
+
   function handleServerError(msg: Message) {
     const code = (msg as any).message;
-    if (!open || typeof code !== 'string' || !EMOJI_ERROR_CODES.has(code)) return;
-    emojiFeedback = { text: describeServerError(code), kind: 'error' };
+    if (!open || typeof code !== 'string') return;
+    if (EMOJI_ERROR_CODES.has(code)) {
+      emojiFeedback = { text: describeServerError(code), kind: 'error' };
+    } else if (IDENTITY_ERROR_CODES.has(code)) {
+      identitySavePending = false;
+      identityFeedback = { text: describeServerError(code), kind: 'error' };
+    }
   }
 
   onMount(() => chat.on('error', handleServerError));
@@ -150,6 +273,9 @@
   }
 
   function handleOverlayKeydown(event: KeyboardEvent) {
+    // Keyboard activation of the focused backdrop only; keystrokes inside
+    // the modal content (inputs, buttons) bubble here and must not close it.
+    if (event.target !== event.currentTarget) return;
     if (event.key === 'Enter' || event.key === ' ') {
       close();
     }
@@ -189,24 +315,96 @@
           <div class="settings-section">
             <h3 class="section-title">Server Identity</h3>
             <div class="setting-group">
-              <span class="setting-label">Server name <span class="badge">Coming soon</span></span>
-              <input type="text" placeholder="My Murmer Server" disabled />
+              <span class="setting-label">Server name</span>
+              <input
+                type="text"
+                bind:value={identityName}
+                placeholder="My Murmer Server"
+                maxlength={MAX_SERVER_NAME_LENGTH}
+                disabled={$serverIdentity === null}
+              />
               <div class="setting-description">The name shown to members of this server.</div>
             </div>
             <div class="setting-group">
-              <span class="setting-label">Description <span class="badge">Coming soon</span></span>
-              <textarea rows="2" placeholder="What this server is about…" disabled></textarea>
-              <div class="setting-description">A short description shown when joining.</div>
+              <span class="setting-label">Description</span>
+              <textarea
+                rows="2"
+                bind:value={identityDescription}
+                placeholder="What this server is about…"
+                maxlength={MAX_SERVER_DESCRIPTION_LENGTH}
+                disabled={$serverIdentity === null}
+              ></textarea>
+              <div class="setting-description">A short description shown in the server list.</div>
             </div>
             <div class="setting-group">
-              <span class="setting-label">Welcome message <span class="badge">Coming soon</span></span>
-              <input type="text" placeholder="Welcome to the server!" disabled />
-              <div class="setting-description">Sent to new members the first time they connect.</div>
+              <span class="setting-label">Welcome message</span>
+              <input
+                type="text"
+                bind:value={identityWelcome}
+                placeholder="Welcome to the server!"
+                maxlength={MAX_WELCOME_MESSAGE_LENGTH}
+                disabled={$serverIdentity === null}
+              />
+              <div class="setting-description">
+                Shown to new members the first time they connect. Leave empty to disable.
+              </div>
             </div>
             <div class="setting-group">
-              <span class="setting-label">Server icon <span class="badge">Coming soon</span></span>
-              <div><button class="btn" disabled>Upload icon…</button></div>
-              <div class="setting-description">Shown in the server list of every member.</div>
+              <div>
+                <button
+                  class="btn btn-primary"
+                  onclick={saveIdentity}
+                  disabled={!identityDirty || $serverIdentity === null}
+                >Save changes</button>
+              </div>
+              {#if $serverIdentity === null}
+                <div class="setting-description">Waiting for the server…</div>
+              {/if}
+              {#if identityFeedback}
+                <div class="identity-feedback" class:error={identityFeedback.kind === 'error'}>
+                  {identityFeedback.text}
+                </div>
+              {/if}
+            </div>
+            <div class="setting-group">
+              <span class="setting-label">Server icon</span>
+              <div class="icon-row">
+                {#if $serverIdentity?.icon}
+                  <img
+                    class="icon-preview"
+                    src={httpBase + $serverIdentity.icon}
+                    alt="Server icon"
+                    width="48"
+                    height="48"
+                  />
+                {/if}
+                <input
+                  bind:this={iconFileInput}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  class="sr-only"
+                  onchange={uploadIcon}
+                />
+                <button
+                  class="btn"
+                  onclick={() => iconFileInput?.click()}
+                  disabled={iconUploading || $serverIdentity === null}
+                >
+                  {iconUploading
+                    ? 'Uploading…'
+                    : $serverIdentity?.icon
+                      ? 'Replace icon…'
+                      : 'Upload icon…'}
+                </button>
+                {#if $serverIdentity?.icon}
+                  <button class="btn btn-danger" onclick={removeIcon} disabled={iconUploading}>
+                    Remove
+                  </button>
+                {/if}
+              </div>
+              <div class="setting-description">
+                Shown in the server list of every member. Images up to 1 MB (PNG, JPEG, GIF or WebP).
+              </div>
             </div>
           </div>
         {/if}
@@ -595,6 +793,30 @@
   .toggle-description {
     font-size: var(--text-sm);
     color: var(--color-muted);
+  }
+
+  .identity-feedback {
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+  }
+
+  .identity-feedback.error {
+    color: var(--color-warning);
+  }
+
+  .icon-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .icon-preview {
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--radius-md);
+    object-fit: cover;
+    border: 1px solid var(--color-surface-outline);
+    flex-shrink: 0;
   }
 
   .emoji-form {
