@@ -70,7 +70,8 @@ function bumpCargoToml(cargoPath) {
 // `--locked` (Docker, CI) fail when it disagrees with Cargo.toml.
 function bumpCargoLock(lockPath, crateName) {
   const lock = readFileSync(lockPath, 'utf8');
-  const block = new RegExp(`(name = "${crateName}"\\nversion = )"[^"]+"`);
+  // \r?\n: the working copy may have CRLF line endings (git autocrlf).
+  const block = new RegExp(`(name = "${crateName}"\\r?\\nversion = )"[^"]+"`);
   if (!block.test(lock)) {
     throw new Error(`could not find crate ${crateName} in ${lockPath}`);
   }
