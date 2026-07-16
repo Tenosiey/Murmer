@@ -135,7 +135,10 @@ pub async fn upload(State(state): State<Arc<AppState>>, mut multipart: Multipart
 
     let key = format!("{}-{}", chrono::Utc::now().timestamp_millis(), filename);
     let path = state.upload_dir.join(&key);
-    let temp_path = path.with_extension("tmp");
+    // Append ".tmp" rather than replacing the extension: with_extension()
+    // would map same-millisecond uploads of "a.pdf" and "a.zip" onto the same
+    // temp file and let the concurrent writes corrupt each other.
+    let temp_path = state.upload_dir.join(format!("{key}.tmp"));
 
     match tokio::fs::write(temp_path.as_path(), &data).await {
         Ok(_) => match tokio::fs::rename(temp_path.as_path(), &path).await {
