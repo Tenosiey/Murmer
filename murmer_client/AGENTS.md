@@ -1,9 +1,12 @@
 # Murmer Client Guide
 
 The desktop client is built with **SvelteKit 2** (static adapter, SSR off) and
-ships inside a **Tauri 2** shell. Svelte 5 is used with the **classic
-(non-runes) syntax** throughout — `export let` props, `$:` reactivity and
-stores; keep new code in that style. TypeScript is pinned to major 6.
+ships inside a **Tauri 2** shell. Svelte 5 is used with the **runes syntax**
+throughout — `$props()` props, `$state`/`$derived` reactivity and `$effect`
+side effects; `runes: true` in `svelte.config.js` rejects legacy syntax at
+build time. Cross-component state stays in `svelte/store` modules under
+`src/lib/stores/`, consumed via `$store` auto-subscription. TypeScript is
+pinned to major 6.
 
 ## Development commands
 - `npm install` – install/update dependencies and refresh `package-lock.json`

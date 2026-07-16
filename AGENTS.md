@@ -16,8 +16,11 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
 - **rusqlite is pinned by tokio-rusqlite** — bump it only when a new
   tokio-rusqlite release allows it.
 - **Never bump versions by hand** — only via `npm run bump` (see Versioning).
-- **Svelte components use the classic (non-runes) syntax** (`export let`,
-  `$:`, stores). Match it; do not introduce `$state`/`$props` piecemeal.
+- **Svelte components use the runes syntax** (`$state`, `$props`, `$derived`,
+  `$effect`) — `runes: true` is enforced in `svelte.config.js`, so legacy
+  syntax (`export let`, `$:`) fails the build. Shared state still lives in
+  `svelte/store` modules (`src/lib/stores/`), consumed via `$store`
+  auto-subscription; never import from `svelte/legacy`.
 
 ## Workflow overview
 - Install the latest [Rust toolchain](https://www.rust-lang.org/tools/install)
