@@ -39,6 +39,8 @@ small team can deploy a private chat space quickly.
 - Moderation tools: role-gated kick, ban and timed mutes
 - Direct messages between users with persistent history and unread badges
 - Screen sharing in voice channels
+- Per-channel Markdown wiki with revisions and `[[wikilinks]]` (also across
+  channels via `[[channel/page]]`)
 - Lifetime stats and achievements (messages, voice minutes, GIFs, favorite
   reactions and more) with double opt-in privacy: nothing is recorded unless
   a server Owner/Admin enables tracking server-wide *and* the user opts in
