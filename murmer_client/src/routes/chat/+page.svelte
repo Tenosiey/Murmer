@@ -44,6 +44,8 @@
   import { unread } from '$lib/stores/unread';
   import { threadData } from '$lib/stores/thread';
   import { dm } from '$lib/stores/dm';
+  import { peerKeys } from '$lib/stores/peerKeys';
+  import { dmFingerprint } from '$lib/dm-crypto';
   import { screenSharePeers, viewScreenShare, leaveScreenShareAsViewer } from '$lib/stores/screenShare';
   import ScreenShareViewer from '$lib/components/ScreenShareViewer.svelte';
   import { loadKeyPair, sign } from '$lib/keypair';
@@ -123,6 +125,7 @@
   let threadRootId: number | null = $state(null);
   const dmConversations = dm.conversations;
   const dmActivePeer = dm.activePeer;
+  const peerKeyConflicts = peerKeys.conflicts;
   /* Last-read message id captured when entering the channel; the "New"
      divider stays anchored there until the user switches channels. */
   let unreadMarkerAfterId = $state(0);
@@ -842,7 +845,38 @@
   function sendDmMessage(text: string) {
     const peer = $dmActivePeer;
     if (!peer) return;
-    chat.sendDm(peer, text);
+    void chat.sendDm(peer, text).then((error) => {
+      if (error) void dialogs.alert({ title: 'Message not sent', message: error });
+    });
+  }
+
+  /** Accept a DM peer's changed identity key after the user confirmed it. */
+  function trustDmKey() {
+    const peer = $dmActivePeer;
+    if (peer) peerKeys.trust(peer);
+  }
+
+  /** Show the conversation's key fingerprint for out-of-band comparison. */
+  function verifyDmKeys() {
+    const peer = $dmActivePeer;
+    if (!peer) return;
+    // Verify the key actually in use: the unconfirmed new key if there is
+    // a conflict, the pinned one otherwise.
+    const peerKey = $peerKeyConflicts[peer] ?? peerKeys.pinned(peer);
+    if (!peerKey) {
+      void dialogs.alert({
+        title: 'No key yet',
+        message: `No encryption key is known for ${peer} on this server.`
+      });
+      return;
+    }
+    void dialogs.alert({
+      title: `Verify keys with ${peer}`,
+      message:
+        `Fingerprint: ${dmFingerprint(loadKeyPair().publicKey, peerKey)} — ` +
+        `compare it with ${peer} over another channel (in person, a call, …). ` +
+        `It must match exactly on both ends.`
+    });
   }
 
 
@@ -1809,6 +1843,9 @@
           onSend={sendDmMessage}
           onClose={closeDm}
           emphasize={(msg) => msg.from === $session.user}
+          keyWarning={$dmActivePeer in $peerKeyConflicts}
+          onTrustKey={trustDmKey}
+          onVerify={verifyDmKeys}
         />
       {/if}
 

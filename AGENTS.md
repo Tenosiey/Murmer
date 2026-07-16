@@ -48,6 +48,12 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
 
 ## Security expectations
 - Authentication relies on Ed25519 signatures with replay protection.
+- Direct messages are end-to-end encrypted (NaCl box over X25519 keys derived
+  from the users' Ed25519 identity keys via ed2curve). The server only
+  validates, stores and relays `nonce`/`ciphertext` pairs — it must never
+  gain a plaintext DM path. Clients pin peer keys on first use
+  (`stores/peerKeys.ts`), block sending on key changes until the user trusts
+  the new key, and expose a fingerprint for out-of-band verification.
 - Rate limiting exists for both authentication and chat traffic.
 - File uploads are validated by size and an extension safe-list; images are additionally checked by magic bytes. Active content (HTML, SVG, scripts) is never accepted.
 - Channel management honours role assignments when `ADMIN_TOKEN` is configured.
