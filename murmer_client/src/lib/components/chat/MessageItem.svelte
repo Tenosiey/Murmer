@@ -19,40 +19,63 @@
   import LinkPreview from '$lib/components/LinkPreview.svelte';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
 
-  export let message: Message;
-  export let links: string[] = [];
-  export let continuation = false;
-  export let now: number;
-  export let highlighted = false;
-  export let pinned = false;
-  export let replyCount = 0;
-  export let canEdit = false;
-  export let canDelete = false;
-  export let canPin = false;
 
-  export let onFocusMessage: (id: number) => void;
-  export let onReply: (msg: Message) => void;
-  export let onEdit: (msg: Message) => void;
-  export let onTogglePin: (msg: Message) => void;
-  export let onDelete: (msg: Message) => void;
-  export let onOpenEmojiPicker: (id: number, event: MouseEvent) => void;
-  export let onToggleReaction: (id: number, emoji: string, users: string[]) => void;
-  export let onOpenThread: (id: number) => void;
+  interface Props {
+    message: Message;
+    links?: string[];
+    continuation?: boolean;
+    now: number;
+    highlighted?: boolean;
+    pinned?: boolean;
+    replyCount?: number;
+    canEdit?: boolean;
+    canDelete?: boolean;
+    canPin?: boolean;
+    onFocusMessage: (id: number) => void;
+    onReply: (msg: Message) => void;
+    onEdit: (msg: Message) => void;
+    onTogglePin: (msg: Message) => void;
+    onDelete: (msg: Message) => void;
+    onOpenEmojiPicker: (id: number, event: MouseEvent) => void;
+    onToggleReaction: (id: number, emoji: string, users: string[]) => void;
+    onOpenThread: (id: number) => void;
+  }
 
-  $: messageId = typeof message.id === 'number' ? message.id : null;
-  $: roleInfo = message.user ? $roles[message.user] : undefined;
-  $: reactions = reactionEntries(message);
-  $: eInfo = message.ephemeral ? ephemeralInfo(message, now) : null;
-  $: hasActions = messageId !== null && (canPin || canDelete);
+  let {
+    message,
+    links = [],
+    continuation = false,
+    now,
+    highlighted = false,
+    pinned = false,
+    replyCount = 0,
+    canEdit = false,
+    canDelete = false,
+    canPin = false,
+    onFocusMessage,
+    onReply,
+    onEdit,
+    onTogglePin,
+    onDelete,
+    onOpenEmojiPicker,
+    onToggleReaction,
+    onOpenThread
+  }: Props = $props();
+
+  let messageId = $derived(typeof message.id === 'number' ? message.id : null);
+  let roleInfo = $derived(message.user ? $roles[message.user] : undefined);
+  let reactions = $derived(reactionEntries(message));
+  let eInfo = $derived(message.ephemeral ? ephemeralInfo(message, now) : null);
+  let hasActions = $derived(messageId !== null && (canPin || canDelete));
   /* A message that is nothing but a Giphy link renders as the GIF alone;
      the raw URL text would just duplicate it. */
-  $: textIsOnlyGif =
-    links.length === 1 &&
+  let textIsOnlyGif =
+    $derived(links.length === 1 &&
     giphyGifUrl(links[0]) !== null &&
     typeof message.text === 'string' &&
-    /^https?:\/\/\S+$/.test(message.text.trim());
+    /^https?:\/\/\S+$/.test(message.text.trim()));
 
-  $: httpBase = $selectedServer ? httpBaseFromWs($selectedServer) : '';
+  let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
 </script>
 
 <div
@@ -75,7 +98,7 @@
       <button
         type="button"
         class="reply-quote"
-        on:click={() => onFocusMessage(reply.id)}
+        onclick={() => onFocusMessage(reply.id)}
         title={`Jump to ${reply.user}'s message`}
       >
         <span class="reply-quote-arrow" aria-hidden="true">↪</span>
@@ -152,7 +175,7 @@
           <button
             class="reaction-chip"
             class:active={reaction.users.includes($session.user ?? '')}
-            on:click={() => onToggleReaction(messageId, reaction.emoji, reaction.users)}
+            onclick={() => onToggleReaction(messageId, reaction.emoji, reaction.users)}
             title={reaction.users.join(', ')}
           >
             {#if customEmoji}
@@ -165,7 +188,7 @@
         {/each}
         <button
           class="reaction-chip add"
-          on:click={(e) => onOpenEmojiPicker(messageId, e)}
+          onclick={(e) => onOpenEmojiPicker(messageId, e)}
           title="Add reaction"
         >
           +
@@ -177,7 +200,7 @@
       <button
         type="button"
         class="thread-indicator"
-        on:click={() => onOpenThread(messageId)}
+        onclick={() => onOpenThread(messageId)}
         title="Open thread"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -191,18 +214,18 @@
       <button
         type="button"
         class="message-action"
-        on:click={(e) => onOpenEmojiPicker(messageId, e)}
+        onclick={(e) => onOpenEmojiPicker(messageId, e)}
         title="Add reaction"
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
         <span class="sr-only">Add reaction</span>
       </button>
-      <button type="button" class="message-action" on:click={() => onReply(message)} title="Reply">
+      <button type="button" class="message-action" onclick={() => onReply(message)} title="Reply">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
         <span class="sr-only">Reply</span>
       </button>
       {#if canEdit}
-        <button type="button" class="message-action" on:click={() => onEdit(message)} title="Edit message">
+        <button type="button" class="message-action" onclick={() => onEdit(message)} title="Edit message">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
           <span class="sr-only">Edit message</span>
         </button>
@@ -212,7 +235,7 @@
           type="button"
           class="message-action"
           class:active={pinned}
-          on:click={() => onTogglePin(message)}
+          onclick={() => onTogglePin(message)}
           title={pinned ? 'Unpin message' : 'Pin message'}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
@@ -223,7 +246,7 @@
         <button
           type="button"
           class="message-action danger"
-          on:click={() => onDelete(message)}
+          onclick={() => onDelete(message)}
           title="Delete message"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>

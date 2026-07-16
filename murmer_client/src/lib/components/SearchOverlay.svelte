@@ -1,20 +1,31 @@
 <script lang="ts">
+
   import { tick } from 'svelte';
   import type { Message } from '$lib/types';
   import { searchResultPreview, formatSearchTimestamp, ephemeralInfo } from '$lib/chat/helpers';
 
-  export let open: boolean;
-  export let onClose: () => void;
-  export let onSearch: (query: string) => Promise<Message[]>;
-  export let onFocusResult: (msg: Message) => void;
-  export let now: number;
+  interface Props {
+    open: boolean;
+    onClose: () => void;
+    onSearch: (query: string) => Promise<Message[]>;
+    onFocusResult: (msg: Message) => void;
+    now: number;
+  }
 
-  let query = '';
-  let results: Message[] = [];
-  let loading = false;
-  let error: string | null = null;
-  let performed = false;
-  let inputEl: HTMLInputElement | null = null;
+  let {
+    open,
+    onClose,
+    onSearch,
+    onFocusResult,
+    now
+  }: Props = $props();
+
+  let query = $state('');
+  let results: Message[] = $state([]);
+  let loading = $state(false);
+  let error: string | null = $state(null);
+  let performed = $state(false);
+  let inputEl: HTMLInputElement | null = $state(null);
 
   export function openWith(initialQuery = '') {
     query = initialQuery;
@@ -83,18 +94,18 @@
     role="button"
     tabindex="0"
     aria-label="Close search results"
-    on:click={onClose}
-    on:keydown={handleOverlayKeydown}
+    onclick={onClose}
+    onkeydown={handleOverlayKeydown}
   >
     <div
       class="search-panel"
       role="dialog"
       aria-modal="true"
       tabindex="-1"
-      on:click|stopPropagation
-      on:keydown={handleKeydown}
+      onclick={(event) => event.stopPropagation()}
+      onkeydown={handleKeydown}
     >
-      <form class="search-form" on:submit|preventDefault={performSearch}>
+      <form class="search-form" onsubmit={(event) => { event.preventDefault(); performSearch(); }}>
         <input
           type="search"
           placeholder="Search messages"
@@ -103,7 +114,7 @@
           bind:this={inputEl}
         />
         <button type="submit" class="btn btn-primary search-submit" disabled={loading}>Search</button>
-        <button type="button" class="btn search-close" on:click={onClose}>Close</button>
+        <button type="button" class="btn search-close" onclick={onClose}>Close</button>
       </form>
       {#if error}
         <p class="search-error">{error}</p>
@@ -114,7 +125,7 @@
         <ul class="search-results">
           {#each results as result (result.id ?? `${result.timestamp ?? ''}-${result.user ?? ''}`)}
             <li>
-              <button type="button" class="search-result" on:click={() => focusResult(result)}>
+              <button type="button" class="search-result" onclick={() => focusResult(result)}>
                 <span class="search-result-text">{searchResultPreview(result)}</span>
                 <span class="search-result-meta">
                   <span class="search-result-user">{result.user ?? 'Unknown'}</span>

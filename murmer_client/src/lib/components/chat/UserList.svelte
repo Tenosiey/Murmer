@@ -12,9 +12,13 @@
   import { ensureStatus } from '$lib/chat/helpers';
   import type { UserStatus } from '$lib/types';
 
-  export let statusMap: Record<string, UserStatus>;
-  export let onUserContextMenu: (event: MouseEvent, user: string) => void;
-  export let onOpenDm: (user: string) => void;
+  interface Props {
+    statusMap: Record<string, UserStatus>;
+    onUserContextMenu: (event: MouseEvent, user: string) => void;
+    onOpenDm: (user: string) => void;
+  }
+
+  let { statusMap, onUserContextMenu, onOpenDm }: Props = $props();
 
   const dmUnread = dm.unread;
 
@@ -28,13 +32,13 @@
   <h3>Online — {$onlineUsers.length}</h3>
   <ul>
     {#each $onlineUsers as user}
-      <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-      <!-- svelte-ignore a11y-click-events-have-key-events -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
       <li
         class:clickable={user !== $session.user}
         title={STATUS_LABELS[ensureStatus(statusMap, user, 'online')]}
-        on:click={() => handleClick(user)}
-        on:contextmenu={(e) => onUserContextMenu(e, user)}
+        onclick={() => handleClick(user)}
+        oncontextmenu={(e) => onUserContextMenu(e, user)}
       >
         <span class={`status ${ensureStatus(statusMap, user, 'online')}`}></span>
         <span
@@ -58,14 +62,14 @@
   <h3>Offline — {$offlineUsers.length}</h3>
   <ul>
     {#each $offlineUsers as user}
-      <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-      <!-- svelte-ignore a11y-click-events-have-key-events -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
       <li
         class="offline-user"
         class:clickable={user !== $session.user}
         title={STATUS_LABELS[ensureStatus(statusMap, user)]}
-        on:click={() => handleClick(user)}
-        on:contextmenu={(e) => onUserContextMenu(e, user)}
+        onclick={() => handleClick(user)}
+        oncontextmenu={(e) => onUserContextMenu(e, user)}
       >
         <span class={`status ${ensureStatus(statusMap, user)}`}></span>
         <span

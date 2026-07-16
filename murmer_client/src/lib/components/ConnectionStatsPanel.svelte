@@ -19,16 +19,18 @@
 
   // Poll the server for everyone's stats while an authorised user has the
   // panel open; the interval dies with the component.
-  $: if ($canViewAllConnectionStats && refreshInterval === null) {
-    allConnectionStats.request();
-    refreshInterval = window.setInterval(
-      () => allConnectionStats.request(),
-      REFRESH_INTERVAL_MS
-    );
-  } else if (!$canViewAllConnectionStats && refreshInterval !== null) {
-    clearInterval(refreshInterval);
-    refreshInterval = null;
-  }
+  $effect(() => {
+    if ($canViewAllConnectionStats && refreshInterval === null) {
+      allConnectionStats.request();
+      refreshInterval = window.setInterval(
+        () => allConnectionStats.request(),
+        REFRESH_INTERVAL_MS
+      );
+    } else if (!$canViewAllConnectionStats && refreshInterval !== null) {
+      clearInterval(refreshInterval);
+      refreshInterval = null;
+    }
+  });
 
   onDestroy(() => {
     if (refreshInterval !== null) clearInterval(refreshInterval);
@@ -46,8 +48,8 @@
     return seconds < 15 ? 'just now' : `${Math.round(seconds)}s ago`;
   }
 
-  $: voicePeers = Object.entries($voiceStats);
-  $: userList = Object.entries($allConnectionStats).sort(([a], [b]) => a.localeCompare(b));
+  let voicePeers = $derived(Object.entries($voiceStats));
+  let userList = $derived(Object.entries($allConnectionStats).sort(([a], [b]) => a.localeCompare(b)));
 </script>
 
 <div class="panel" role="dialog" aria-label="Connection stats">

@@ -3,8 +3,12 @@
   gets the same color on every client. Sizes follow the spacing scale.
 -->
 <script lang="ts">
-  export let name: string;
-  export let size: 'sm' | 'md' = 'md';
+  interface Props {
+    name: string;
+    size?: 'sm' | 'md';
+  }
+
+  let { name, size = 'md' }: Props = $props();
 
   /* FNV-1a over the name, mapped onto the hue circle. */
   function hueFor(value: string): number {
@@ -16,8 +20,8 @@
     return (hash >>> 0) % 360;
   }
 
-  $: hue = hueFor(name);
-  $: initials = name.trim().slice(0, 2).toUpperCase() || '??';
+  let hue = $derived(hueFor(name));
+  let initials = $derived(name.trim().slice(0, 2).toUpperCase() || '??');
 </script>
 
 <span class="avatar {size}" style="--avatar-hue: {hue}" aria-hidden="true">{initials}</span>

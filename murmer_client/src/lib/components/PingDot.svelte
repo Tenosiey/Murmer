@@ -3,23 +3,27 @@
   Uses Material 3 semantic colors for status indication.
 -->
 <script lang="ts">
-  export let ping: number = 0;
-  export let size: 'sm' | 'md' | 'lg' = 'md';
-  export let pulse = true;
+  interface Props {
+    ping?: number;
+    size?: 'sm' | 'md' | 'lg';
+    pulse?: boolean;
+  }
+
+  let { ping = 0, size = 'md', pulse = true }: Props = $props();
   
-  $: status = ping === 0 ? 'unknown'
+  let status = $derived(ping === 0 ? 'unknown'
     : ping < 50 ? 'excellent'
     : ping < 100 ? 'good'
     : ping < 200 ? 'fair'
     : ping < 400 ? 'poor'
-    : 'critical';
+    : 'critical');
   
-  $: label = ping === 0 ? 'Checking connection'
+  let label = $derived(ping === 0 ? 'Checking connection'
     : ping < 50 ? `Excellent (${ping}ms)`
     : ping < 100 ? `Good (${ping}ms)`
     : ping < 200 ? `Fair (${ping}ms)`
     : ping < 400 ? `Poor (${ping}ms)`
-    : `Critical (${ping}ms)`;
+    : `Critical (${ping}ms)`);
   
   const sizeMap = {
     sm: '0.5rem',

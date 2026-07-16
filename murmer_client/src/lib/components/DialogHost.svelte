@@ -9,35 +9,37 @@
   import { cubicOut } from 'svelte/easing';
   import { activeDialog, settleDialog, type ActiveDialog } from '$lib/stores/dialogs';
 
-  let value = '';
-  let selected = '';
-  let inputEl: HTMLInputElement | HTMLTextAreaElement | null = null;
-  let confirmEl: HTMLButtonElement | null = null;
-  let previousFocus: HTMLElement | null = null;
+  let value = $state('');
+  let selected = $state('');
+  let inputEl: HTMLInputElement | HTMLTextAreaElement | null = $state(null);
+  let confirmEl: HTMLButtonElement | null = $state(null);
+  let previousFocus: HTMLElement | null = $state(null);
 
-  $: dialog = $activeDialog;
+  let dialog = $derived($activeDialog);
 
   /* Reset local state whenever a new dialog becomes active and move focus
      into it; focus returns to the previously focused element on close. */
-  let seen: ActiveDialog | null = null;
-  $: if (dialog !== seen) {
-    seen = dialog;
-    if (dialog) {
-      previousFocus = document.activeElement as HTMLElement | null;
-      value = dialog.kind === 'prompt' ? (dialog.options.initial ?? '') : '';
-      selected =
-        dialog.kind === 'select'
-          ? (dialog.options.initial ?? dialog.options.options[0]?.value ?? '')
-          : '';
-      tick().then(() => {
-        (inputEl ?? confirmEl)?.focus();
-        if (inputEl && 'select' in inputEl) inputEl.select();
-      });
-    } else {
-      previousFocus?.focus?.();
-      previousFocus = null;
+  let seen: ActiveDialog | null = $state(null);
+  $effect(() => {
+    if (dialog !== seen) {
+      seen = dialog;
+      if (dialog) {
+        previousFocus = document.activeElement as HTMLElement | null;
+        value = dialog.kind === 'prompt' ? (dialog.options.initial ?? '') : '';
+        selected =
+          dialog.kind === 'select'
+            ? (dialog.options.initial ?? dialog.options.options[0]?.value ?? '')
+            : '';
+        tick().then(() => {
+          (inputEl ?? confirmEl)?.focus();
+          if (inputEl && 'select' in inputEl) inputEl.select();
+        });
+      } else {
+        previousFocus?.focus?.();
+        previousFocus = null;
+      }
     }
-  }
+  });
 
   function cancel() {
     if (!dialog) return;
@@ -77,18 +79,20 @@
     }
   }
 
-  $: promptValid =
-    dialog?.kind !== 'prompt' || !(dialog.options.required ?? true) || value.trim() !== '';
+  let promptValid =
+    $derived(dialog?.kind !== 'prompt' || !(dialog.options.required ?? true) || value.trim() !== '');
 </script>
 
 {#if dialog}
-  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     class="overlay"
     role="presentation"
     transition:fade={{ duration: 120 }}
-    on:mousedown|self={cancel}
-    on:keydown={handleKeydown}
+    onmousedown={(event) => {
+      if (event.target === event.currentTarget) cancel();
+    }}
+    onkeydown={handleKeydown}
   >
     <div
       class="dialog"
@@ -145,7 +149,7 @@
 
       <div class="actions">
         {#if dialog.kind !== 'alert'}
-          <button type="button" class="btn" on:click={cancel}>
+          <button type="button" class="btn" onclick={cancel}>
             {(dialog.kind === 'confirm' && dialog.options.cancelLabel) || 'Cancel'}
           </button>
         {/if}
@@ -154,7 +158,7 @@
           bind:this={confirmEl}
           class="btn {dialog.kind === 'confirm' && dialog.options.danger ? 'btn-danger' : 'btn-primary'}"
           disabled={!promptValid}
-          on:click={submit}
+          onclick={submit}
         >
           {dialog.kind === 'alert'
             ? 'OK'
@@ -243,7 +247,7 @@
     pointer-events: none;
   }
 
-  .option:has(input:focus-visible) {
+  .option:has(:global(input:focus-visible)) {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }

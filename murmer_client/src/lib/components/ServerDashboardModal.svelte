@@ -17,10 +17,15 @@
   import { stats, statsConfig } from '$lib/stores/stats';
   import type { Message } from '$lib/types';
 
-  export let open: boolean;
-  export let close: () => void;
-  /** The viewer's moderation rank; gates which tabs are visible. */
-  export let rank: number;
+  
+  interface Props {
+    open: boolean;
+    close: () => void;
+    /** The viewer's moderation rank; gates which tabs are visible. */
+    rank: number;
+  }
+
+  let { open, close, rank }: Props = $props();
 
   // Each server-wide topic lives on its own tab; minRank hides tabs the
   // viewer's role does not reach.
@@ -34,30 +39,32 @@
     { id: 'roles', label: 'Roles', minRank: 3 },
     { id: 'danger', label: 'Danger Zone', minRank: 3 }
   ] as const;
-  let activeTab: (typeof TABS)[number]['id'] = 'emojis';
+  let activeTab: (typeof TABS)[number]['id'] = $state('emojis');
 
-  $: visibleTabs = TABS.filter((tab) => rank >= tab.minRank);
+  let visibleTabs = $derived(TABS.filter((tab) => rank >= tab.minRank));
   // If the active tab disappears (e.g. the viewer's role changed), fall back
   // to the first visible one.
-  $: if (visibleTabs.length > 0 && !visibleTabs.some((tab) => tab.id === activeTab)) {
-    activeTab = visibleTabs[0].id;
-  }
+  $effect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.some((tab) => tab.id === activeTab)) {
+      activeTab = visibleTabs[0].id;
+    }
+  });
 
-  $: httpBase = $selectedServer ? httpBaseFromWs($selectedServer) : '';
+  let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
 
   // ── Custom emoji management ────────────────────────────────────────────────
-  let emojiName = '';
-  let emojiFile: File | null = null;
-  let emojiFileInput: HTMLInputElement | null = null;
-  let uploading = false;
-  let emojiFeedback: { text: string; kind: 'error' | 'info' } | null = null;
+  let emojiName = $state('');
+  let emojiFile: File | null = $state(null);
+  let emojiFileInput: HTMLInputElement | null = $state(null);
+  let uploading = $state(false);
+  let emojiFeedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
 
-  $: normalizedEmojiName = emojiName.trim().toLowerCase();
-  $: emojiNameValid = EMOJI_NAME_RE.test(normalizedEmojiName);
-  $: emojiNameTaken = emojiNameValid && normalizedEmojiName in $customEmojis;
-  $: emojiFileTooLarge = emojiFile !== null && emojiFile.size > MAX_EMOJI_FILE_BYTES;
-  $: canUploadEmoji =
-    !uploading && emojiNameValid && !emojiNameTaken && emojiFile !== null && !emojiFileTooLarge;
+  let normalizedEmojiName = $derived(emojiName.trim().toLowerCase());
+  let emojiNameValid = $derived(EMOJI_NAME_RE.test(normalizedEmojiName));
+  let emojiNameTaken = $derived(emojiNameValid && normalizedEmojiName in $customEmojis);
+  let emojiFileTooLarge = $derived.by(() => emojiFile !== null && emojiFile.size > MAX_EMOJI_FILE_BYTES);
+  let canUploadEmoji =
+    $derived(!uploading && emojiNameValid && !emojiNameTaken && emojiFile !== null && !emojiFileTooLarge);
 
   const EMOJI_ERROR_CODES = new Set([
     'emoji-permission-denied',
@@ -150,14 +157,14 @@
 </script>
 
 {#if open}
-  <div class="modal-overlay" on:click={close} on:keydown={handleOverlayKeydown} role="dialog" aria-modal="true" aria-labelledby="server-dashboard-title" tabindex="-1">
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
-    <div class="modal-content" on:click|stopPropagation on:keydown={handleKeydown} role="document" tabindex="0">
+  <div class="modal-overlay" onclick={close} onkeydown={handleOverlayKeydown} role="dialog" aria-modal="true" aria-labelledby="server-dashboard-title" tabindex="-1">
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div class="modal-content" onclick={(event) => event.stopPropagation()} onkeydown={handleKeydown} role="document" tabindex="0">
       <div class="modal-header">
         <h2 id="server-dashboard-title">Server Dashboard</h2>
-        <button class="icon-btn close-btn" on:click={close} aria-label="Close server dashboard">
+        <button class="icon-btn close-btn" onclick={close} aria-label="Close server dashboard">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -172,7 +179,7 @@
               class="tab-btn"
               class:selected={activeTab === tab.id}
               aria-pressed={activeTab === tab.id}
-              on:click={() => (activeTab = tab.id)}
+              onclick={() => (activeTab = tab.id)}
             >{tab.label}</button>
           {/each}
         </nav>
@@ -212,7 +219,7 @@
                 Upload custom emojis for everyone on this server. They can be used as
                 reactions via the emoji picker. Images up to 512 KB (PNG, JPEG, GIF or WebP).
               </div>
-              <form class="emoji-form" on:submit|preventDefault={uploadEmoji}>
+              <form class="emoji-form" onsubmit={(event) => { event.preventDefault(); uploadEmoji(); }}>
                 <label class="field emoji-name-field">
                   <span>Name</span>
                   <input
@@ -230,7 +237,7 @@
                     bind:this={emojiFileInput}
                     type="file"
                     accept="image/png,image/jpeg,image/gif,image/webp"
-                    on:change={handleEmojiFileChange}
+                    onchange={handleEmojiFileChange}
                   />
                 </label>
                 <button class="btn btn-primary" type="submit" disabled={!canUploadEmoji}>
@@ -267,7 +274,7 @@
                         class="icon-btn danger"
                         title={`Delete :${emoji.name}:`}
                         aria-label={`Delete emoji ${emoji.name}`}
-                        on:click={() => deleteEmoji(emoji.name)}
+                        onclick={() => deleteEmoji(emoji.name)}
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                           <path d="M3 6h18"></path>
@@ -323,7 +330,7 @@
                   type="checkbox"
                   checked={$statsConfig?.serverEnabled ?? false}
                   disabled={$statsConfig === null}
-                  on:change={toggleServerStats}
+                  onchange={toggleServerStats}
                 />
                 <span class="toggle-text">
                   <span class="toggle-label">Allow stat tracking on this server</span>
@@ -421,7 +428,7 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-primary" on:click={close}>Done</button>
+        <button class="btn btn-primary" onclick={close}>Done</button>
       </div>
     </div>
   </div>

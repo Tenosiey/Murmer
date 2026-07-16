@@ -4,12 +4,13 @@
   against authenticated users revisiting the login screen.
 -->
 <script lang="ts">
+
   import { session } from '$lib/stores/session';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import MurmerLogo from '$lib/components/MurmerLogo.svelte';
-  let username = '';
+  let username = $state('');
 
   onMount(() => {
     const existing = get(session).user;
@@ -39,7 +40,7 @@
       </p>
     </header>
 
-    <form class="login-card surface-card" on:submit|preventDefault={login} aria-labelledby="login-heading">
+    <form class="login-card surface-card" onsubmit={(event) => { event.preventDefault(); login(); }} aria-labelledby="login-heading">
       <h2 id="login-heading" class="sr-only">Your details</h2>
       <label class="field">
         <span>Display name</span>

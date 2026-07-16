@@ -5,10 +5,15 @@
   import type { Message } from '$lib/types';
   import { PIN_PREVIEW_LIMIT } from '$lib/chat/constants';
 
-  export let entries: PinnedEntry[];
-  /** Messages of the current channel, used to resolve fresh content for a pin. */
-  export let messages: Message[];
-  export let onFocusMessage: (messageId: number) => void;
+  
+  interface Props {
+    entries: PinnedEntry[];
+    /** Messages of the current channel, used to resolve fresh content for a pin. */
+    messages: Message[];
+    onFocusMessage: (messageId: number) => void;
+  }
+
+  let { entries, messages, onFocusMessage }: Props = $props();
 
   function resolvePinnedMessage(entry: PinnedEntry): Message | undefined {
     return messages.find((message) => message.id === entry.id);
@@ -50,7 +55,7 @@
     <ul class="pinned-list">
       {#each entries as entry (entry.id)}
         <li class="pinned-item">
-          <button class="pinned-preview" on:click={() => onFocusMessage(entry.id)}>
+          <button class="pinned-preview" onclick={() => onFocusMessage(entry.id)}>
             <span class="pinned-author">{pinnedAuthor(entry)}</span>
             <span class="pinned-text">{formatPinnedPreview(entry)}</span>
             {#if pinnedTimestamp(entry)}
@@ -59,7 +64,7 @@
           </button>
           <button
             class="pinned-remove"
-            on:click={() => chat.sendRaw({ type: 'unpin-message', messageId: entry.id })}
+            onclick={() => chat.sendRaw({ type: 'unpin-message', messageId: entry.id })}
             aria-label="Unpin message"
           >
             ✕

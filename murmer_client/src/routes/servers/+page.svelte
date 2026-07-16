@@ -4,6 +4,7 @@
   server reachability indicators up to date.
 -->
 <script lang="ts">
+
   import { goto } from '$app/navigation';
   import { servers, selectedServer, type ServerEntry } from '$lib/stores/servers';
   import { session } from '$lib/stores/session';
@@ -32,12 +33,12 @@
     clearCopyTimeout();
   });
 
-  let newServer = '';
-  let newName = '';
-  let newPassword = '';
-  let settingsOpen = false;
-  let error: string | null = null;
-  let copiedServer: string | null = null;
+  let newServer = $state('');
+  let newName = $state('');
+  let newPassword = $state('');
+  let settingsOpen = $state(false);
+  let error: string | null = $state(null);
+  let copiedServer: string | null = $state(null);
   let copyTimeout: ReturnType<typeof setTimeout> | null = null;
 
   function clearCopyTimeout() {
@@ -161,7 +162,7 @@
         <strong>{$session.user}</strong>
       </div>
       <div class="quick-actions">
-        <button type="button" class="icon-btn" on:click={openSettings}>
+        <button type="button" class="icon-btn" onclick={openSettings}>
           <svg
             width="20"
             height="20"
@@ -180,7 +181,7 @@
           </svg>
           <span class="sr-only">Open settings</span>
         </button>
-        <button type="button" class="icon-btn danger" on:click={logout}>
+        <button type="button" class="icon-btn danger" onclick={logout}>
           <svg
             width="20"
             height="20"
@@ -212,7 +213,7 @@
       <h2 id="create-title">Add a server</h2>
       <p>Use a Murmer server address or invite URL. Passwords stay on your device.</p>
     </div>
-    <form class="add" on:submit|preventDefault={add}>
+    <form class="add" onsubmit={(event) => { event.preventDefault(); add(); }}>
       <label class="field address-field">
         <span>Address</span>
         <input bind:value={newServer} placeholder="host:port or wss://example" required />
@@ -250,13 +251,13 @@
             <h3>{server.name}</h3>
             <p class="meta" title={server.url}>{server.url}</p>
             <div class="card-actions">
-              <button type="button" class="btn btn-primary join" on:click={() => join(server)}>
+              <button type="button" class="btn btn-primary join" onclick={() => join(server)}>
                 Join
               </button>
               <button
                 type="button"
                 class="icon-btn"
-                on:click={() => copyInvite(server)}
+                onclick={() => copyInvite(server)}
                 title={copiedServer === server.url ? 'Copied!' : 'Copy invite link'}
               >
                 {#if copiedServer === server.url}
@@ -266,7 +267,7 @@
                 {/if}
                 <span class="sr-only">{copiedServer === server.url ? 'Copied' : 'Copy invite link'}</span>
               </button>
-              <button type="button" class="icon-btn danger" on:click={() => removeServer(server.url)}>
+              <button type="button" class="icon-btn danger" onclick={() => removeServer(server.url)}>
                 <svg
                   width="18"
                   height="18"

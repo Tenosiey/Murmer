@@ -1,15 +1,20 @@
 <script lang="ts">
+
   import { tick } from 'svelte';
   import { HELP_COMMANDS } from '$lib/chat/constants';
   import { hotkeys, HOTKEY_ACTIONS, formatCombo } from '$lib/stores/hotkeys';
 
-  $: boundActions = HOTKEY_ACTIONS.filter((action) => $hotkeys[action.id]);
+  let boundActions = $derived(HOTKEY_ACTIONS.filter((action) => $hotkeys[action.id]));
 
-  export let open: boolean;
-  export let onClose: () => void;
+  interface Props {
+    open: boolean;
+    onClose: () => void;
+  }
 
-  let panel: HTMLDivElement | null = null;
-  let closeButton: HTMLButtonElement | null = null;
+  let { open, onClose }: Props = $props();
+
+  let panel: HTMLDivElement | null = $state(null);
+  let closeButton: HTMLButtonElement | null = $state(null);
 
   export function focusPanel() {
     tick().then(() => {
@@ -39,8 +44,8 @@
     role="button"
     tabindex="0"
     aria-label="Close command reference"
-    on:click={onClose}
-    on:keydown={handleOverlayKeydown}
+    onclick={onClose}
+    onkeydown={handleOverlayKeydown}
   >
     <div
       class="help-panel"
@@ -49,8 +54,8 @@
       aria-labelledby="help-title"
       tabindex="-1"
       bind:this={panel}
-      on:click|stopPropagation
-      on:keydown={handleKeydown}
+      onclick={(event) => event.stopPropagation()}
+      onkeydown={handleKeydown}
     >
       <div class="help-header">
         <h2 id="help-title">Slash commands</h2>
@@ -83,7 +88,7 @@
           {/each}
         </ul>
       {/if}
-      <button type="button" class="btn help-close" on:click={onClose} bind:this={closeButton}>
+      <button type="button" class="btn help-close" onclick={onClose} bind:this={closeButton}>
         Close
       </button>
     </div>
