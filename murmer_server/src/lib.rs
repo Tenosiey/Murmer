@@ -19,7 +19,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{Mutex, broadcast};
 
 pub use roles::RoleInfo;
 

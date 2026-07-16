@@ -253,6 +253,10 @@ function createChatStore() {
   function connect(url: string, onOpen?: () => void): void {
     set([]); // Clear previous history when connecting to a server
     typing.reset();
+    // Per-channel client state (last-read markers, notification preferences)
+    // is persisted per server; switch both stores to this server's slice.
+    unread.setServer(url);
+    channelNotifications.setServer(url);
     unread.reset();
     threadData.set(null);
     dm.reset();

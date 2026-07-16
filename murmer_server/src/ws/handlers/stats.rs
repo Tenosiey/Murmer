@@ -12,9 +12,9 @@
 //! session ends or the connection drops.
 
 use crate::ws::{constants::*, errors, helpers::*};
-use crate::{db, db::Stat, AppState};
+use crate::{AppState, db, db::Stat};
 use axum::extract::ws::{Message, WebSocket};
-use futures::{stream::SplitSink, SinkExt};
+use futures::{SinkExt, stream::SplitSink};
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Instant;
@@ -135,10 +135,10 @@ pub(super) async fn record_reaction_added(
     emoji: &str,
 ) {
     record_with_reaction(state, reactor, emoji).await;
-    if let Some(author) = author {
-        if author != reactor {
-            record(state, author, vec![(Stat::ReactionsReceived, 1)]).await;
-        }
+    if let Some(author) = author
+        && author != reactor
+    {
+        record(state, author, vec![(Stat::ReactionsReceived, 1)]).await;
     }
 }
 

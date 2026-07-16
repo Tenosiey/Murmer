@@ -16,15 +16,15 @@
 //! Run with `cargo run` or via Docker Compose (`docker compose up --build`).
 use anyhow::{Context, Result};
 use axum::{
-    extract::DefaultBodyLimit,
-    http::{header, HeaderValue, StatusCode},
-    routing::{get, post},
     Router,
+    extract::DefaultBodyLimit,
+    http::{HeaderValue, StatusCode, header},
+    routing::{get, post},
 };
 use dotenvy::dotenv;
 use murmer_server::{
-    admin, bot, config::Config, db, link_preview, upload, ws, AppState, RateLimiter,
-    VoiceChannelState,
+    AppState, RateLimiter, VoiceChannelState, admin, bot, config::Config, db, link_preview, upload,
+    ws,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -34,7 +34,7 @@ use std::{
 use tokio::{
     net::TcpListener,
     signal,
-    sync::{broadcast, Mutex},
+    sync::{Mutex, broadcast},
 };
 use tower::ServiceBuilder;
 use tower_http::{

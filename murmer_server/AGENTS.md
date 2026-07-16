@@ -1,8 +1,9 @@
 # Murmer Server Guide
 
-This crate implements the Murmer WebSocket/HTTP server using **Axum 0.8**.
-Authentication is based on Ed25519 signatures and an embedded SQLite database
-is used for persistence.
+This crate implements the Murmer WebSocket/HTTP server using **Axum 0.8**
+(Rust edition 2024). Authentication is based on Ed25519 signatures and an
+embedded SQLite database is used for persistence (rusqlite via
+tokio-rusqlite, which pins the rusqlite version).
 
 ## Development commands
 - `cargo check` – compile-time validation
@@ -17,8 +18,9 @@ SQLite database lives on a named volume): `docker compose up --build`.
 - `main.rs` – sets up the Axum router, middleware and shared state
 - `config.rs` – environment variable parsing and CORS setup
 - `ws/` – WebSocket handshake and message handling (`handlers/` for auth,
-  messages and channels)
-- `db/` – database connection, schema and queries
+  messages, channels, DMs, emojis, moderation, pins, stats and wiki;
+  the dispatch loop lives in `handlers/mod.rs`)
+- `db/` – database connection, schema and queries, split by the same domains
 - `bot/` – REST API for bots (see `BOT_API.md`)
 - `upload.rs` – multipart file upload endpoint with extension/MIME validation
 - `admin.rs` – `/role` endpoint guarded by a bearer token

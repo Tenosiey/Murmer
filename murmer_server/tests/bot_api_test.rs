@@ -5,13 +5,13 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use axum::{
-    body::Body,
-    http::{header, Request, StatusCode},
     Router,
+    body::Body,
+    http::{Request, StatusCode, header},
 };
-use murmer_server::{bot, db, AppState, RateLimiter};
-use serde_json::{json, Value};
-use tokio::sync::{broadcast, Mutex};
+use murmer_server::{AppState, RateLimiter, bot, db};
+use serde_json::{Value, json};
+use tokio::sync::{Mutex, broadcast};
 use tower::ServiceExt;
 
 const ADMIN_TOKEN: &str = "test-admin-token";
