@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
-ARG RUST_VERSION=1.90.0
-FROM docker.io/library/rust:${RUST_VERSION}-slim-bookworm@sha256:64232e656c058f4468e8d024e990acff04f0fd5a5c0a88a574dc37773d7325c9 AS builder
+ARG RUST_VERSION=1.97.1
+FROM docker.io/library/rust:${RUST_VERSION}-slim-trixie@sha256:754a8924e308fb20a327febeda1a07053a2b0fd7474b5ac1cc460a6d33ab18f3 AS builder
 WORKDIR /app
 
 # Cache dependencies
@@ -13,7 +13,7 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs \
 COPY src ./src
 RUN cargo build --release --locked
 
-FROM docker.io/library/debian:bookworm-slim@sha256:60eac759739651111db372c07be67863818726f754804b8707c90979bda511df
+FROM docker.io/library/debian:trixie-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd
 LABEL org.opencontainers.image.source="https://github.com/murmer/murmer"
 LABEL org.opencontainers.image.description="Murmer WebSocket server"
 WORKDIR /app
