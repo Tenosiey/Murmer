@@ -15,6 +15,7 @@
   import { selectedServer } from '$lib/stores/servers';
   import { httpBaseFromWs } from '$lib/server-url';
   import { formatFullTimestamp, formatShortTime } from '$lib/chat/helpers';
+  import UserAvatar from '$lib/components/UserAvatar.svelte';
 
   interface Props {
     title: string;
@@ -109,6 +110,7 @@
     {#each messages as msg (msg.id)}
       <div class="entry" class:emphasized={emphasize(msg)}>
         <div class="entry-meta">
+          <UserAvatar name={(kind === 'dm' ? msg.from : msg.user) ?? '?'} size="sm" />
           <span class="username">{kind === 'dm' ? msg.from : msg.user}</span>
           <span class="timestamp" title={formatFullTimestamp(msg)}>{formatShortTime(msg)}</span>
         </div>
@@ -234,7 +236,7 @@
 
   .entry-meta {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: var(--space-2);
   }
 

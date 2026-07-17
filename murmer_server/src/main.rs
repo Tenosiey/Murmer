@@ -108,6 +108,7 @@ async fn main() -> Result<()> {
                         quality: record.quality.clone(),
                         bitrate: record.bitrate,
                         category_id: record.category_id,
+                        position: record.position,
                     },
                 );
             }

@@ -165,31 +165,146 @@ pub(super) async fn handle_move_channel(
 
     let result = if is_voice {
         match db::move_voice_channel(&state.db, ch_id, category_id).await {
-            Ok(updated) => {
-                if updated {
-                    let mut map = state.voice_channels.lock().await;
-                    if let Some(entry) = map.get_mut(&ch_id) {
-                        entry.category_id = category_id;
-                    }
+            Ok(Some(position)) => {
+                let mut map = state.voice_channels.lock().await;
+                if let Some(entry) = map.get_mut(&ch_id) {
+                    entry.category_id = category_id;
+                    entry.position = position;
                 }
-                Ok(updated)
+                Ok(Some(position))
             }
-            Err(e) => Err(e),
+            other => other,
         }
     } else {
         db::move_channel(&state.db, ch_id, category_id).await
     };
 
     match result {
-        Ok(true) => {
-            broadcast_channel_move(state, ch_id, category_id, is_voice).await;
+        Ok(Some(position)) => {
+            broadcast_channel_move(state, ch_id, category_id, position, is_voice).await;
         }
-        Ok(false) => {
+        Ok(None) => {
             send_error(sender, errors::CHANNEL_MOVE_FAILED).await;
         }
         Err(e) => {
             error!("db move channel error: {e}");
             send_error(sender, errors::CHANNEL_MOVE_FAILED).await;
+        }
+    }
+}
+
+/// Parse a reorder frame's `order` field: a non-empty array of unique channel
+/// or category ids, bounded by [`MAX_REORDER_IDS`].
+fn parse_reorder_ids(v: &Value) -> Option<Vec<i32>> {
+    let list = v.get("order")?.as_array()?;
+    if list.is_empty() || list.len() > MAX_REORDER_IDS {
+        return None;
+    }
+    let mut ids = Vec::with_capacity(list.len());
+    let mut seen = HashSet::new();
+    for entry in list {
+        let id = i32::try_from(entry.as_i64()?).ok()?;
+        if !seen.insert(id) {
+            return None;
+        }
+        ids.push(id);
+    }
+    Some(ids)
+}
+
+/// Handle reorder of one category's text or voice channels. The listed
+/// channels are assigned to the given category in the given order, so a drop
+/// that changes both category and position arrives as a single frame.
+pub(super) async fn handle_reorder_channels(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(ids) = parse_reorder_ids(v) else {
+        send_error(sender, errors::REORDER_FAILED).await;
+        return;
+    };
+
+    let requester = match user_name.as_deref() {
+        Some(n) => n,
+        None => {
+            send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
+            return;
+        }
+    };
+
+    if !can_manage_channels(state, requester).await {
+        error!("User {requester} attempted to reorder channels without permission");
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
+        return;
+    }
+
+    let category_id = v
+        .get("categoryId")
+        .and_then(|c| c.as_i64())
+        .map(|i| i as i32);
+    let is_voice = v.get("voice").and_then(|v| v.as_bool()).unwrap_or(false);
+
+    match db::reorder_channels(&state.db, category_id, ids.clone(), is_voice).await {
+        Ok(true) => {
+            if is_voice {
+                let mut map = state.voice_channels.lock().await;
+                for (index, id) in ids.iter().enumerate() {
+                    if let Some(entry) = map.get_mut(id) {
+                        entry.category_id = category_id;
+                        entry.position = index as i32;
+                    }
+                }
+            }
+            broadcast_channel_reorder(state, category_id, &ids, is_voice).await;
+        }
+        Ok(false) => {
+            send_error(sender, errors::REORDER_FAILED).await;
+        }
+        Err(e) => {
+            error!("db reorder channels error: {e}");
+            send_error(sender, errors::REORDER_FAILED).await;
+        }
+    }
+}
+
+/// Handle reorder of the category list.
+pub(super) async fn handle_reorder_categories(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(ids) = parse_reorder_ids(v) else {
+        send_error(sender, errors::REORDER_FAILED).await;
+        return;
+    };
+
+    let requester = match user_name.as_deref() {
+        Some(n) => n,
+        None => {
+            send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
+            return;
+        }
+    };
+
+    if !can_manage_channels(state, requester).await {
+        error!("User {requester} attempted to reorder categories without permission");
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
+        return;
+    }
+
+    match db::reorder_categories(&state.db, ids.clone()).await {
+        Ok(true) => {
+            broadcast_category_reorder(state, &ids).await;
+        }
+        Ok(false) => {
+            send_error(sender, errors::REORDER_FAILED).await;
+        }
+        Err(e) => {
+            error!("db reorder categories error: {e}");
+            send_error(sender, errors::REORDER_FAILED).await;
         }
     }
 }
@@ -315,6 +430,7 @@ pub(super) async fn handle_create_voice_channel(
                 quality: record.quality.clone(),
                 bitrate: record.bitrate,
                 category_id: record.category_id,
+                position: record.position,
             };
             state
                 .voice_channels
@@ -489,14 +605,11 @@ pub(super) async fn handle_create_category(
         return;
     }
 
-    let position = v
-        .get("position")
-        .and_then(|p| p.as_i64())
-        .map(|p| p as i32)
-        .unwrap_or(0);
+    // Without an explicit position the category is appended at the end.
+    let position = v.get("position").and_then(|p| p.as_i64()).map(|p| p as i32);
 
     match db::add_category(&state.db, name, position).await {
-        Ok(id) => {
+        Ok((id, position)) => {
             broadcast_new_category(state, id, name, position).await;
         }
         Err(e) => {

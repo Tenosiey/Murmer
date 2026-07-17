@@ -38,6 +38,12 @@
   import { dialogs } from '$lib/stores/dialogs';
   import { stats, statsConfig, statsSnapshot } from '$lib/stores/stats';
   import { session } from '$lib/stores/session';
+  import { avatars } from '$lib/stores/avatars';
+  import { connection } from '$lib/stores/connection';
+  import { selectedServer } from '$lib/stores/servers';
+  import { httpBaseFromWs } from '$lib/server-url';
+  import { MAX_AVATAR_BYTES } from '$lib/chat/constants';
+  import UserAvatar from '$lib/components/UserAvatar.svelte';
   import UserStatsPanel from '$lib/components/UserStatsPanel.svelte';
   interface Props {
     open: boolean;
@@ -158,6 +164,57 @@
     } catch (e) {
       console.error('Failed to copy public key', e);
     }
+  }
+
+  // ── Avatar ─────────────────────────────────────────────────────────────────
+  let avatarFileInput: HTMLInputElement | null = $state(null);
+  let avatarUploading = $state(false);
+  let avatarError = $state('');
+  let hasAvatar = $derived(Boolean($session.user && $avatars[$session.user]));
+
+  async function uploadAvatar(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    input.value = '';
+    if (!file || !$selectedServer) return;
+    avatarError = '';
+    if (file.size > MAX_AVATAR_BYTES) {
+      avatarError = 'Avatars must be 1 MB or smaller.';
+      return;
+    }
+    avatarUploading = true;
+    const form = new FormData();
+    form.append('file', file);
+    try {
+      const res = await fetch(httpBaseFromWs($selectedServer) + '/upload', {
+        method: 'POST',
+        body: form
+      });
+      if (res.status === 415) {
+        avatarError = 'This image type is not allowed on the server.';
+        return;
+      }
+      if (res.status === 413) {
+        avatarError = 'That image is too large to upload.';
+        return;
+      }
+      if (!res.ok) throw new Error(`upload failed with status ${res.status}`);
+      const data = await res.json();
+      if (typeof data.url !== 'string') throw new Error('upload response missing url');
+      // Validated and registered server-side; the confirmation arrives as a
+      // broadcast avatar-update frame which updates the store.
+      avatars.setSelf(data.url);
+    } catch (e) {
+      console.error('avatar upload failed', e);
+      avatarError = 'Avatar upload failed. Please try again.';
+    } finally {
+      avatarUploading = false;
+    }
+  }
+
+  function removeAvatar() {
+    avatarError = '';
+    avatars.setSelf(null);
   }
 
   async function checkUpdates() {
@@ -662,6 +719,42 @@
         <div class="settings-section">
           <h3 class="section-title">Identity</h3>
           <div class="setting-group">
+            <span class="setting-label">Avatar</span>
+            {#if $connection === 'connected' && $session.user}
+              <div class="avatar-row">
+                <UserAvatar name={$session.user} />
+                <button
+                  class="btn"
+                  onclick={() => avatarFileInput?.click()}
+                  disabled={avatarUploading}
+                >
+                  {avatarUploading ? 'Uploading…' : hasAvatar ? 'Change image' : 'Upload image'}
+                </button>
+                {#if hasAvatar}
+                  <button class="btn btn-danger" onclick={removeAvatar} disabled={avatarUploading}>
+                    Remove
+                  </button>
+                {/if}
+                <input
+                  bind:this={avatarFileInput}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  hidden
+                  onchange={uploadAvatar}
+                />
+              </div>
+              {#if avatarError}
+                <div class="setting-description avatar-error" role="alert">{avatarError}</div>
+              {/if}
+              <div class="setting-description">
+                Shown next to your messages and in the member list. Stored on this server;
+                PNG, JPEG, GIF or WebP up to 1&nbsp;MB.
+              </div>
+            {:else}
+              <div class="setting-description">Connect to a server to set your avatar.</div>
+            {/if}
+          </div>
+          <div class="setting-group">
             <label class="setting-label" for="public-key-display">Public Key</label>
             <div class="pubkey-row">
               <input
@@ -1109,6 +1202,16 @@
     font-size: var(--text-sm);
     color: var(--color-muted);
     line-height: 1.4;
+  }
+
+  .avatar-row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .avatar-error {
+    color: var(--color-error);
   }
 
   .pubkey-row {

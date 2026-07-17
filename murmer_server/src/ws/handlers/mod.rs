@@ -21,6 +21,7 @@ mod identity;
 mod messages;
 mod moderation;
 mod pins;
+mod profile;
 mod stats;
 mod wiki;
 
@@ -155,6 +156,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "move-channel" => {
                                 channels::handle_move_channel(&state, &mut sender, &v, &user_name).await;
                             }
+                            "reorder-channels" => {
+                                channels::handle_reorder_channels(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "reorder-categories" => {
+                                channels::handle_reorder_categories(&state, &mut sender, &v, &user_name).await;
+                            }
                             "set-channel-topic" => {
                                 channels::handle_set_channel_topic(&state, &mut sender, &v, &user_name).await;
                             }
@@ -190,6 +197,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "status-update" => {
                                 handle_status_update(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "set-avatar" => {
+                                profile::handle_set_avatar(&state, &mut sender, &v, &user_name).await;
                             }
                             "ping" => {
                                 handle_ping(&mut sender, &v).await;

@@ -68,9 +68,10 @@
 
   const COLLAPSED_KEY = 'murmer_collapsed_categories';
   const UNCATEGORIZED_KEY = '__uncategorized';
-  /* Custom MIME type so the chat page's file-drop zone (which only reacts to
-     dragged files) never mistakes a channel drag for an upload. */
+  /* Custom MIME types so the chat page's file-drop zone (which only reacts to
+     dragged files) never mistakes a channel or category drag for an upload. */
   const CHANNEL_DRAG_MIME = 'application/x-murmer-channel';
+  const CATEGORY_DRAG_MIME = 'application/x-murmer-category';
 
   function loadCollapsed(): Set<number> {
     if (!browser) return new Set();
@@ -95,12 +96,18 @@
     }
   }
 
-  /* Channel drag & drop. The dragged channel is kept in component state (a drag
-     never leaves this component) while the DataTransfer payload only exists so
-     the browser reports a valid drag type during `dragover`. Permission to move
-     a channel is enforced by the server, mirroring the "Move to" context menu. */
+  /* Channel and category drag & drop. The dragged item is kept in component
+     state (a drag never leaves this component) while the DataTransfer payload
+     only exists so the browser reports a valid drag type during `dragover`.
+     Dropping on a category body appends the channel there; dropping on a
+     channel of the same kind inserts before/after it; dragging a category
+     header reorders categories. Permission is enforced by the server,
+     mirroring the "Move to" context menu. */
   let draggedChannel: DraggedChannel | null = $state(null);
   let dragOverKey: string | null = $state(null);
+  let channelDropTarget: { id: number; voice: boolean; after: boolean } | null = $state(null);
+  let draggedCategoryId: number | null = $state(null);
+  let categoryDropTarget: { id: number; after: boolean } | null = $state(null);
 
   function groupKey(group: CategoryGroup): string {
     return group.category ? String(group.category.id) : UNCATEGORIZED_KEY;
@@ -120,6 +127,102 @@
   function handleChannelDragEnd() {
     draggedChannel = null;
     dragOverKey = null;
+    channelDropTarget = null;
+  }
+
+  /* Reorder by dropping on a channel of the same kind: the pointer's vertical
+     half decides whether the dragged channel lands before or after it. */
+  function handleChannelItemDragOver(
+    event: DragEvent,
+    ch: ChannelInfo | VoiceChannelInfo,
+    voice: boolean
+  ) {
+    const dragged = draggedChannel;
+    if (!dragged || dragged.voice !== voice || dragged.id === ch.id) return;
+    event.preventDefault();
+    // Keep the group-level handler from claiming the drag as a category move.
+    event.stopPropagation();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    channelDropTarget = { id: ch.id, voice, after: event.clientY > rect.top + rect.height / 2 };
+    dragOverKey = null;
+  }
+
+  function handleChannelItemDragLeave(ch: ChannelInfo | VoiceChannelInfo, voice: boolean) {
+    if (channelDropTarget?.id === ch.id && channelDropTarget.voice === voice) {
+      channelDropTarget = null;
+    }
+  }
+
+  function handleChannelItemDrop(
+    event: DragEvent,
+    ch: ChannelInfo | VoiceChannelInfo,
+    voice: boolean,
+    group: CategoryGroup
+  ) {
+    const dragged = draggedChannel;
+    const target = channelDropTarget;
+    channelDropTarget = null;
+    dragOverKey = null;
+    if (!dragged || dragged.voice !== voice || dragged.id === ch.id) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const current = (voice ? group.voiceChannels : group.textChannels).map((c) => c.id);
+    const order = current.filter((id) => id !== dragged.id);
+    const after = target?.id === ch.id && target.voice === voice && target.after;
+    order.splice(order.indexOf(ch.id) + (after ? 1 : 0), 0, dragged.id);
+    const categoryId = group.category?.id ?? null;
+    // Skip the round-trip when the drop changes nothing.
+    if (
+      categoryId === dragged.categoryId &&
+      current.length === order.length &&
+      current.every((id, index) => id === order[index])
+    ) {
+      draggedChannel = null;
+      return;
+    }
+    channels.reorder(categoryId, order, voice);
+    draggedChannel = null;
+  }
+
+  /* Category reordering via the headers. */
+  function handleCategoryDragStart(event: DragEvent, category: CategoryInfo) {
+    draggedCategoryId = category.id;
+    if (!event.dataTransfer) return;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData(CATEGORY_DRAG_MIME, String(category.id));
+  }
+
+  function handleCategoryDragEnd() {
+    draggedCategoryId = null;
+    categoryDropTarget = null;
+  }
+
+  function handleCategoryDragOver(event: DragEvent, category: CategoryInfo) {
+    if (draggedCategoryId === null || draggedCategoryId === category.id) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    categoryDropTarget = { id: category.id, after: event.clientY > rect.top + rect.height / 2 };
+  }
+
+  function handleCategoryDragLeave(category: CategoryInfo) {
+    if (categoryDropTarget?.id === category.id) categoryDropTarget = null;
+  }
+
+  function handleCategoryDrop(event: DragEvent, category: CategoryInfo) {
+    const dragged = draggedCategoryId;
+    const target = categoryDropTarget;
+    draggedCategoryId = null;
+    categoryDropTarget = null;
+    if (dragged === null || dragged === category.id) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const order = sortedCategories.map((c) => c.id).filter((id) => id !== dragged);
+    const after = target?.id === category.id && target.after;
+    order.splice(order.indexOf(category.id) + (after ? 1 : 0), 0, dragged);
+    categories.reorder(order);
   }
 
   /** A channel can only be dropped on a category it is not already in. */
@@ -161,11 +264,21 @@
     return canDropOn(group, dragged);
   }
 
+  /** Custom sort order: position first, name and id as tie-breakers. */
+  function byPosition(
+    a: { position: number; name: string; id: number },
+    b: { position: number; name: string; id: number }
+  ): number {
+    return a.position - b.position || a.name.localeCompare(b.name) || a.id - b.id;
+  }
+
+  let sortedCategories = $derived([...$categories].sort(byPosition));
+
   let categoryGroups = $derived((() => {
     const groups: CategoryGroup[] = [];
     const catMap = new Map<number, CategoryGroup>();
 
-    for (const cat of $categories) {
+    for (const cat of sortedCategories) {
       const group: CategoryGroup = { category: cat, textChannels: [], voiceChannels: [] };
       catMap.set(cat.id, group);
       groups.push(group);
@@ -193,6 +306,11 @@
     // markup hides it while it is empty and no drag is in progress.
     groups.unshift(uncategorized);
 
+    for (const group of groups) {
+      group.textChannels.sort(byPosition);
+      group.voiceChannels.sort(byPosition);
+    }
+
     return groups;
   })());
 </script>
@@ -214,8 +332,17 @@
           <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
           <h3
             class="section category-header"
+            class:dragging={draggedCategoryId === group.category.id}
+            class:drop-before={categoryDropTarget?.id === group.category.id && !categoryDropTarget.after}
+            class:drop-after={categoryDropTarget?.id === group.category.id && categoryDropTarget.after}
             role="button"
             tabindex="0"
+            draggable="true"
+            ondragstart={(e) => { if (group.category) handleCategoryDragStart(e, group.category); }}
+            ondragend={handleCategoryDragEnd}
+            ondragover={(e) => { if (group.category) handleCategoryDragOver(e, group.category); }}
+            ondragleave={() => { if (group.category) handleCategoryDragLeave(group.category); }}
+            ondrop={(e) => { if (group.category) handleCategoryDrop(e, group.category); }}
             onclick={() => toggleCategory(group.category?.id ?? 0)}
             oncontextmenu={(e) => { if (group.category) onOpenCategoryMenu(e, group.category); }}
           >
@@ -236,9 +363,14 @@
               class:active={ch.id === currentChatChannelId}
               class:unread={ch.id !== currentChatChannelId && ($unread[ch.id]?.count ?? 0) > 0}
               class:dragging={draggedChannel?.id === ch.id && !draggedChannel.voice}
+              class:drop-before={channelDropTarget?.id === ch.id && !channelDropTarget.voice && !channelDropTarget.after}
+              class:drop-after={channelDropTarget?.id === ch.id && !channelDropTarget.voice && channelDropTarget.after}
               draggable="true"
               ondragstart={(e) => handleChannelDragStart(e, ch, false)}
               ondragend={handleChannelDragEnd}
+              ondragover={(e) => handleChannelItemDragOver(e, ch, false)}
+              ondragleave={() => handleChannelItemDragLeave(ch, false)}
+              ondrop={(e) => handleChannelItemDrop(e, ch, false, group)}
               onclick={() => onJoinChannel(ch.id)}
               oncontextmenu={(e) => onOpenChannelMenu(e, ch.id)}
             >
@@ -264,9 +396,14 @@
             <div class="voice-group">
               <button
                 class:dragging={draggedChannel?.id === ch.id && draggedChannel.voice}
+                class:drop-before={channelDropTarget?.id === ch.id && channelDropTarget.voice && !channelDropTarget.after}
+                class:drop-after={channelDropTarget?.id === ch.id && channelDropTarget.voice && channelDropTarget.after}
                 draggable="true"
                 ondragstart={(e) => handleChannelDragStart(e, ch, true)}
                 ondragend={handleChannelDragEnd}
+                ondragover={(e) => handleChannelItemDragOver(e, ch, true)}
+                ondragleave={() => handleChannelItemDragLeave(ch, true)}
+                ondrop={(e) => handleChannelItemDrop(e, ch, true, group)}
                 onclick={() => onJoinVoiceChannel(ch.id)}
                 oncontextmenu={(e) => onOpenChannelMenu(e, ch.id, true)}
               >
@@ -473,8 +610,20 @@
     color: var(--color-muted);
   }
 
-  .channels button.dragging {
+  .channels button.dragging,
+  .category-header.dragging {
     opacity: 0.5;
+  }
+
+  /* Insertion line for reordering: marks the edge the drop will land on. */
+  .channels button.drop-before,
+  .category-header.drop-before {
+    box-shadow: 0 -2px 0 0 var(--color-primary);
+  }
+
+  .channels button.drop-after,
+  .category-header.drop-after {
+    box-shadow: 0 2px 0 0 var(--color-primary);
   }
 
   .category-header {

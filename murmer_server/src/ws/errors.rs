@@ -106,6 +106,15 @@ pub const UNKNOWN_CATEGORY: &str = r#"{"type":"error","message":"unknown-categor
 /// Failed to move channel to category.
 pub const CHANNEL_MOVE_FAILED: &str = r#"{"type":"error","message":"channel-move-failed"}"#;
 
+/// Reorder request was malformed or referenced unknown channels/categories.
+pub const REORDER_FAILED: &str = r#"{"type":"error","message":"reorder-failed"}"#;
+
+/// Avatar reference is not a stored upload within the size cap.
+pub const INVALID_AVATAR: &str = r#"{"type":"error","message":"invalid-avatar"}"#;
+
+/// Failed to persist the avatar change.
+pub const AVATAR_UPDATE_FAILED: &str = r#"{"type":"error","message":"avatar-update-failed"}"#;
+
 /// Channel topic validation failed.
 pub const INVALID_CHANNEL_TOPIC: &str = r#"{"type":"error","message":"invalid-channel-topic"}"#;
 

@@ -1,6 +1,11 @@
 //! Text channel, voice channel and category persistence operations.
+//!
+//! Channels and categories carry a `position` column for the custom sort
+//! order. New rows append at the end of their scope (the category for
+//! channels, the whole list for categories); reordering rewrites the
+//! positions of one scope in a single transaction.
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use super::{Db, DbCall, DbError};
 
@@ -36,16 +41,23 @@ pub async fn get_categories(db: &Db) -> Vec<CategoryRecord> {
     .unwrap_or_default()
 }
 
-/// Create a new category and return its id.
-pub async fn add_category(db: &Db, name: &str, position: i32) -> Result<i32, DbError> {
+/// Create a new category and return its id and position. Without an explicit
+/// position the category is appended after the existing ones.
+pub async fn add_category(
+    db: &Db,
+    name: &str,
+    position: Option<i32>,
+) -> Result<(i32, i32), DbError> {
     let name = name.to_owned();
     db.call_db(move |conn| {
-        let id = conn.query_row(
-            "INSERT INTO categories (name, position) VALUES (?1, ?2) RETURNING id",
+        let row = conn.query_row(
+            "INSERT INTO categories (name, position) VALUES (?1, \
+                COALESCE(?2, (SELECT COALESCE(MAX(position) + 1, 0) FROM categories))) \
+             RETURNING id, position",
             params![name, position],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
-        Ok(id)
+        Ok(row)
     })
     .await
 }
@@ -73,6 +85,25 @@ pub async fn remove_category(db: &Db, id: i32) -> Result<bool, DbError> {
     .await
 }
 
+/// Rewrite category positions to match the given id order. Rolls back and
+/// returns false if any id does not exist.
+pub async fn reorder_categories(db: &Db, ids: Vec<i32>) -> Result<bool, DbError> {
+    db.call_db(move |conn| {
+        let tx = conn.transaction()?;
+        {
+            let mut stmt = tx.prepare("UPDATE categories SET position = ?1 WHERE id = ?2")?;
+            for (index, id) in ids.iter().enumerate() {
+                if stmt.execute(params![index as i32, id])? == 0 {
+                    return Ok(false);
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(true)
+    })
+    .await
+}
+
 // ---------------------------------------------------------------------------
 // Text channels
 // ---------------------------------------------------------------------------
@@ -84,6 +115,7 @@ pub struct ChannelRecord {
     pub name: String,
     pub category_id: Option<i32>,
     pub description: String,
+    pub position: i32,
 }
 
 fn row_to_channel(row: &rusqlite::Row) -> rusqlite::Result<ChannelRecord> {
@@ -92,14 +124,18 @@ fn row_to_channel(row: &rusqlite::Row) -> rusqlite::Result<ChannelRecord> {
         name: row.get(1)?,
         category_id: row.get(2)?,
         description: row.get(3)?,
+        position: row.get(4)?,
     })
 }
 
-/// Retrieve the list of text channels with their category assignments.
+/// Retrieve the list of text channels with their category assignments,
+/// ordered by their custom position (per category) then name.
 pub async fn get_channels(db: &Db) -> Vec<ChannelRecord> {
     db.call_db(|conn| {
-        let mut stmt =
-            conn.prepare("SELECT id, name, category_id, description FROM channels ORDER BY name")?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, category_id, description, position FROM channels \
+             ORDER BY position, name",
+        )?;
         let rows = stmt
             .query_map([], row_to_channel)?
             .collect::<Result<Vec<_>, _>>()?;
@@ -132,7 +168,7 @@ pub async fn get_channel_by_id(db: &Db, id: i32) -> Option<ChannelRecord> {
     db.call_db(move |conn| {
         let record = conn
             .query_row(
-                "SELECT id, name, category_id, description FROM channels WHERE id = ?1",
+                "SELECT id, name, category_id, description, position FROM channels WHERE id = ?1",
                 params![id],
                 row_to_channel,
             )
@@ -144,7 +180,8 @@ pub async fn get_channel_by_id(db: &Db, id: i32) -> Option<ChannelRecord> {
     .flatten()
 }
 
-/// Insert a new channel and return its record. Returns `None` if name already exists.
+/// Insert a new channel at the end of its category and return its record.
+/// Returns `None` if the name already exists.
 pub async fn add_channel(
     db: &Db,
     name: &str,
@@ -153,8 +190,10 @@ pub async fn add_channel(
     let name = name.to_owned();
     db.call_db(move |conn| {
         let mut stmt = conn.prepare(
-            "INSERT INTO channels (name, category_id) VALUES (?1, ?2) ON CONFLICT (name) DO NOTHING \
-             RETURNING id, name, category_id, description",
+            "INSERT INTO channels (name, category_id, position) VALUES (?1, ?2, \
+                (SELECT COALESCE(MAX(position) + 1, 0) FROM channels WHERE category_id IS ?2)) \
+             ON CONFLICT (name) DO NOTHING \
+             RETURNING id, name, category_id, description, position",
         )?;
         let mut rows = stmt.query(params![name, category_id])?;
         match rows.next()? {
@@ -178,14 +217,53 @@ pub async fn set_channel_description(db: &Db, id: i32, description: &str) -> Res
     .await
 }
 
-/// Move a text channel to a different category (or remove from category).
-pub async fn move_channel(db: &Db, id: i32, category_id: Option<i32>) -> Result<bool, DbError> {
+/// Move a text channel to the end of a different category (or out of any
+/// category). Returns the channel's new position, or `None` if it does not exist.
+pub async fn move_channel(
+    db: &Db,
+    id: i32,
+    category_id: Option<i32>,
+) -> Result<Option<i32>, DbError> {
     db.call_db(move |conn| {
-        let count = conn.execute(
-            "UPDATE channels SET category_id = ?2 WHERE id = ?1",
-            params![id, category_id],
-        )?;
-        Ok(count > 0)
+        let position = conn
+            .query_row(
+                "UPDATE channels SET category_id = ?2, position = \
+                    (SELECT COALESCE(MAX(position) + 1, 0) FROM channels \
+                     WHERE category_id IS ?2 AND id <> ?1) \
+                 WHERE id = ?1 RETURNING position",
+                params![id, category_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(position)
+    })
+    .await
+}
+
+/// Rewrite the category assignment and positions of text or voice channels to
+/// match the given id order. All listed channels end up in `category_id` at
+/// their list index. Rolls back and returns false if any id does not exist.
+pub async fn reorder_channels(
+    db: &Db,
+    category_id: Option<i32>,
+    ids: Vec<i32>,
+    voice: bool,
+) -> Result<bool, DbError> {
+    db.call_db(move |conn| {
+        let table = if voice { "voice_channels" } else { "channels" };
+        let tx = conn.transaction()?;
+        {
+            let mut stmt = tx.prepare(&format!(
+                "UPDATE {table} SET category_id = ?1, position = ?2 WHERE id = ?3"
+            ))?;
+            for (index, id) in ids.iter().enumerate() {
+                if stmt.execute(params![category_id, index as i32, id])? == 0 {
+                    return Ok(false);
+                }
+            }
+        }
+        tx.commit()?;
+        Ok(true)
     })
     .await
 }
@@ -218,6 +296,7 @@ pub struct VoiceChannelRecord {
     pub quality: String,
     pub bitrate: Option<i32>,
     pub category_id: Option<i32>,
+    pub position: i32,
 }
 
 fn row_to_voice_channel(row: &rusqlite::Row) -> rusqlite::Result<VoiceChannelRecord> {
@@ -227,14 +306,16 @@ fn row_to_voice_channel(row: &rusqlite::Row) -> rusqlite::Result<VoiceChannelRec
         quality: row.get(2)?,
         bitrate: row.get(3)?,
         category_id: row.get(4)?,
+        position: row.get(5)?,
     })
 }
 
-/// Retrieve all voice channels ordered by name.
+/// Retrieve all voice channels ordered by their custom position then name.
 pub async fn get_voice_channels(db: &Db) -> Vec<VoiceChannelRecord> {
     db.call_db(|conn| {
         let mut stmt = conn.prepare(
-            "SELECT id, name, quality, bitrate, category_id FROM voice_channels ORDER BY name",
+            "SELECT id, name, quality, bitrate, category_id, position FROM voice_channels \
+             ORDER BY position, name",
         )?;
         let rows = stmt
             .query_map([], row_to_voice_channel)?
@@ -250,7 +331,8 @@ pub async fn get_voice_channel_by_id(db: &Db, id: i32) -> Option<VoiceChannelRec
     db.call_db(move |conn| {
         let record = conn
             .query_row(
-                "SELECT id, name, quality, bitrate, category_id FROM voice_channels WHERE id = ?1",
+                "SELECT id, name, quality, bitrate, category_id, position FROM voice_channels \
+                 WHERE id = ?1",
                 params![id],
                 row_to_voice_channel,
             )
@@ -262,7 +344,8 @@ pub async fn get_voice_channel_by_id(db: &Db, id: i32) -> Option<VoiceChannelRec
     .flatten()
 }
 
-/// Insert a new voice channel and return its record. Returns `None` if name already exists.
+/// Insert a new voice channel at the end of its category and return its
+/// record. Returns `None` if the name already exists.
 pub async fn add_voice_channel(
     db: &Db,
     name: &str,
@@ -274,8 +357,11 @@ pub async fn add_voice_channel(
     let quality = quality.to_owned();
     db.call_db(move |conn| {
         let mut stmt = conn.prepare(
-            "INSERT INTO voice_channels (name, quality, bitrate, category_id) VALUES (?1, ?2, ?3, ?4) \
-             ON CONFLICT (name) DO NOTHING RETURNING id, name, quality, bitrate, category_id",
+            "INSERT INTO voice_channels (name, quality, bitrate, category_id, position) \
+             VALUES (?1, ?2, ?3, ?4, \
+                (SELECT COALESCE(MAX(position) + 1, 0) FROM voice_channels WHERE category_id IS ?4)) \
+             ON CONFLICT (name) DO NOTHING \
+             RETURNING id, name, quality, bitrate, category_id, position",
         )?;
         let mut rows = stmt.query(params![name, quality, bitrate, category_id])?;
         match rows.next()? {
@@ -286,18 +372,25 @@ pub async fn add_voice_channel(
     .await
 }
 
-/// Move a voice channel to a different category (or remove from category).
+/// Move a voice channel to the end of a different category (or out of any
+/// category). Returns the channel's new position, or `None` if it does not exist.
 pub async fn move_voice_channel(
     db: &Db,
     id: i32,
     category_id: Option<i32>,
-) -> Result<bool, DbError> {
+) -> Result<Option<i32>, DbError> {
     db.call_db(move |conn| {
-        let count = conn.execute(
-            "UPDATE voice_channels SET category_id = ?2 WHERE id = ?1",
-            params![id, category_id],
-        )?;
-        Ok(count > 0)
+        let position = conn
+            .query_row(
+                "UPDATE voice_channels SET category_id = ?2, position = \
+                    (SELECT COALESCE(MAX(position) + 1, 0) FROM voice_channels \
+                     WHERE category_id IS ?2 AND id <> ?1) \
+                 WHERE id = ?1 RETURNING position",
+                params![id, category_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(position)
     })
     .await
 }

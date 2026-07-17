@@ -10,6 +10,7 @@
   import { rightSidebarWidth } from '$lib/stores/layout';
   import { STATUS_LABELS } from '$lib/stores/status';
   import { ensureStatus } from '$lib/chat/helpers';
+  import UserAvatar from '$lib/components/UserAvatar.svelte';
   import type { UserStatus } from '$lib/types';
 
   interface Props {
@@ -40,7 +41,10 @@
         onclick={() => handleClick(user)}
         oncontextmenu={(e) => onUserContextMenu(e, user)}
       >
-        <span class={`status ${ensureStatus(statusMap, user, 'online')}`}></span>
+        <span class="avatar-wrap">
+          <UserAvatar name={user} size="sm" />
+          <span class={`status ${ensureStatus(statusMap, user, 'online')}`}></span>
+        </span>
         <span
           class="username"
           style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
@@ -71,7 +75,10 @@
         onclick={() => handleClick(user)}
         oncontextmenu={(e) => onUserContextMenu(e, user)}
       >
-        <span class={`status ${ensureStatus(statusMap, user)}`}></span>
+        <span class="avatar-wrap">
+          <UserAvatar name={user} size="sm" />
+          <span class={`status ${ensureStatus(statusMap, user)}`}></span>
+        </span>
         <span
           class="username"
           style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
@@ -150,11 +157,22 @@
     opacity: 0.55;
   }
 
+  /* The status dot sits on the avatar's corner, ringed by the background so
+     it stays readable on top of avatar images. */
+  .avatar-wrap {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+
   .status {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
     width: 0.5rem;
     height: 0.5rem;
     border-radius: 50%;
-    flex-shrink: 0;
+    box-shadow: 0 0 0 2px var(--color-bg);
   }
 
   .status.online {

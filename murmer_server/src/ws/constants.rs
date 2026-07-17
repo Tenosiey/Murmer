@@ -40,6 +40,9 @@ pub const MAX_WELCOME_MESSAGE_LENGTH: usize = 500;
 /// Maximum file size in bytes for the server icon image.
 pub const MAX_SERVER_ICON_BYTES: u64 = 1024 * 1024;
 
+/// Maximum file size in bytes for a user avatar image.
+pub const MAX_AVATAR_BYTES: u64 = 1024 * 1024;
+
 /// File extensions accepted for image uploads referenced over the WebSocket
 /// (custom emojis, server icon). Subset of the upload endpoint's safe-list.
 pub const UPLOAD_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];
@@ -70,6 +73,10 @@ pub const DEFAULT_VOICE_BITRATE: i32 = 64_000;
 
 /// Upper bound to reject unreasonable bitrate configuration values.
 pub const MAX_ALLOWED_VOICE_BITRATE: i32 = 320_000;
+
+/// Maximum number of ids accepted in a single reorder request (channels of
+/// one category, or all categories).
+pub const MAX_REORDER_IDS: usize = 200;
 
 /// Allowed user status values broadcast to clients.
 pub const USER_STATUSES: &[&str] = &["online", "away", "busy", "offline"];
