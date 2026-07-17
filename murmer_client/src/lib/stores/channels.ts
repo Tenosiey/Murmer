@@ -13,7 +13,8 @@ function createChannelStore() {
         .map((item: any) => ({
           id: item.id as number,
           name: typeof item.name === 'string' ? item.name : '',
-          categoryId: typeof item.categoryId === 'number' ? item.categoryId : null
+          categoryId: typeof item.categoryId === 'number' ? item.categoryId : null,
+          position: typeof item.position === 'number' ? item.position : 0
         }));
       set(items);
     }
@@ -25,8 +26,9 @@ function createChannelStore() {
     const name = typeof raw.name === 'string' ? raw.name : null;
     if (id !== null && name) {
       const categoryId = typeof raw.categoryId === 'number' ? raw.categoryId : null;
+      const position = typeof raw.position === 'number' ? raw.position : 0;
       update((chs) =>
-        chs.some((c) => c.id === id) ? chs : [...chs, { id, name, categoryId }]
+        chs.some((c) => c.id === id) ? chs : [...chs, { id, name, categoryId, position }]
       );
     }
   });
@@ -45,8 +47,31 @@ function createChannelStore() {
     const categoryId = typeof raw.categoryId === 'number' ? raw.categoryId : null;
     const isVoice = raw.voice === true;
     if (!isVoice) {
-      update((chs) => chs.map((c) => (c.id === id ? { ...c, categoryId } : c)));
+      update((chs) =>
+        chs.map((c) =>
+          c.id === id
+            ? { ...c, categoryId, position: typeof raw.position === 'number' ? raw.position : c.position }
+            : c
+        )
+      );
     }
+  });
+
+  chat.on('channel-reorder', (msg: Message) => {
+    const raw = msg as any;
+    if (raw.voice === true) return;
+    if (!Array.isArray(raw.order)) return;
+    const categoryId = typeof raw.categoryId === 'number' ? raw.categoryId : null;
+    const positions = new Map<number, number>(
+      raw.order
+        .filter((id: any): id is number => typeof id === 'number')
+        .map((id: number, index: number) => [id, index])
+    );
+    update((chs) =>
+      chs.map((c) =>
+        positions.has(c.id) ? { ...c, categoryId, position: positions.get(c.id)! } : c
+      )
+    );
   });
 
   function create(name: string, categoryId?: number | null) {
@@ -63,7 +88,13 @@ function createChannelStore() {
     chat.sendRaw({ type: 'move-channel', channelId, categoryId, voice });
   }
 
-  return { subscribe, set, create, remove, move };
+  /** Persist a new order for one category's channels; `order` lists every
+      channel that shall live in `categoryId`, in display order. */
+  function reorder(categoryId: number | null, order: number[], voice = false) {
+    chat.sendRaw({ type: 'reorder-channels', categoryId, order, voice });
+  }
+
+  return { subscribe, set, create, remove, move, reorder };
 }
 
 export const channels = createChannelStore();

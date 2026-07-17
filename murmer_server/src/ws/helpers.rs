@@ -93,6 +93,7 @@ pub fn voice_channel_descriptor(id: i32, info: &VoiceChannelState) -> Value {
         "quality": info.quality,
         "bitrate": info.bitrate,
         "categoryId": info.category_id,
+        "position": info.position,
     })
 }
 
@@ -157,6 +158,7 @@ pub async fn broadcast_new_channel(state: &Arc<AppState>, record: &crate::db::Ch
         "name": record.name,
         "categoryId": record.category_id,
         "topic": record.description,
+        "position": record.position,
     })) {
         let _ = state.tx.send(msg);
     }
@@ -192,6 +194,7 @@ pub async fn broadcast_new_voice_channel(state: &Arc<AppState>, id: i32, info: &
         "quality": info.quality,
         "bitrate": info.bitrate,
         "categoryId": info.category_id,
+        "position": info.position,
     })) {
         let _ = state.tx.send(msg);
     }
@@ -235,6 +238,7 @@ pub async fn send_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSock
                 "name": ch.name,
                 "categoryId": ch.category_id,
                 "topic": ch.description,
+                "position": ch.position,
             })
         })
         .collect();
@@ -276,7 +280,7 @@ pub async fn send_voice_channels(
         let map = state.voice_channels.lock().await;
         map.iter().map(|(id, info)| (*id, info.clone())).collect()
     };
-    entries.sort_by(|a, b| a.1.name.cmp(&b.1.name));
+    entries.sort_by(|a, b| (a.1.position, &a.1.name).cmp(&(b.1.position, &b.1.name)));
     let channels: Vec<Value> = entries
         .iter()
         .map(|(id, info)| voice_channel_descriptor(*id, info))
@@ -337,18 +341,49 @@ pub async fn broadcast_remove_category(state: &Arc<AppState>, id: i32) {
     }
 }
 
-/// Broadcast to all clients that a channel was moved to a different category.
+/// Broadcast to all clients that a channel was moved to a different category
+/// (appended at `position`, the end of the target category).
 pub async fn broadcast_channel_move(
     state: &Arc<AppState>,
     channel_id: i32,
     category_id: Option<i32>,
+    position: i32,
     voice: bool,
 ) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "channel-move",
         "channelId": channel_id,
         "categoryId": category_id,
+        "position": position,
         "voice": voice,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast the new order of one category's text or voice channels; the
+/// listed channels now live in `category_id` at their list index.
+pub async fn broadcast_channel_reorder(
+    state: &Arc<AppState>,
+    category_id: Option<i32>,
+    order: &[i32],
+    voice: bool,
+) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "channel-reorder",
+        "categoryId": category_id,
+        "order": order,
+        "voice": voice,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast the new order of all categories.
+pub async fn broadcast_category_reorder(state: &Arc<AppState>, order: &[i32]) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "category-reorder",
+        "order": order,
     })) {
         let _ = state.tx.send(msg);
     }

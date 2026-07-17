@@ -135,7 +135,8 @@ export class VoiceManager {
         name: this.channelConfig?.name ?? '',
         quality,
         bitrate,
-        categoryId: this.channelConfig?.categoryId ?? null
+        categoryId: this.channelConfig?.categoryId ?? null,
+        position: this.channelConfig?.position ?? 0
       };
       this.applyChannelConfigToPeers();
     });
@@ -485,14 +486,16 @@ export class VoiceManager {
           name: info.name,
           quality: info.quality,
           bitrate: info.bitrate,
-          categoryId: info.categoryId ?? null
+          categoryId: info.categoryId ?? null,
+          position: info.position ?? 0
         }
       : {
           id: channelId,
           name: '',
           quality: 'standard',
           bitrate: DEFAULT_AUDIO_BITRATE,
-          categoryId: null
+          categoryId: null,
+          position: 0
         };
     resetRemoteSpeaking();
     chat.on('voice-join', (m) => this.handleJoin(m, peersList));

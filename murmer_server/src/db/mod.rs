@@ -114,6 +114,27 @@ pub async fn init(db_path: &str) -> Result<Db, DbError> {
     Ok(conn)
 }
 
+/// Add `column` to `table` if it does not exist yet. SQLite has no
+/// `ADD COLUMN IF NOT EXISTS`, so the schema is inspected first.
+fn ensure_column(
+    conn: &rusqlite::Connection,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> rusqlite::Result<()> {
+    let exists: i64 = conn.query_row(
+        &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+        [column],
+        |row| row.get(0),
+    )?;
+    if exists == 0 {
+        conn.execute_batch(&format!(
+            "ALTER TABLE {table} ADD COLUMN {column} {definition};"
+        ))?;
+    }
+    Ok(())
+}
+
 /// Create any missing tables, indexes and triggers, and backfill the
 /// full-text index. Idempotent; runs on every startup so schema additions
 /// apply to existing databases.
@@ -129,14 +150,16 @@ CREATE TABLE IF NOT EXISTS channels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
-    description TEXT NOT NULL DEFAULT ''
+    description TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS voice_channels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     quality TEXT NOT NULL DEFAULT 'standard',
     bitrate INTEGER,
-    category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL
+    category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+    position INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -211,6 +234,16 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
 
         conn.execute_batch(&stats::stats_schema())?;
         conn.execute_batch(&wiki::wiki_schema())?;
+
+        // Columns added after a table first shipped; CREATE TABLE IF NOT
+        // EXISTS does not extend existing tables.
+        ensure_column(conn, "channels", "position", "INTEGER NOT NULL DEFAULT 0")?;
+        ensure_column(
+            conn,
+            "voice_channels",
+            "position",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
 
         // One-time wipe of pre-E2EE plaintext direct messages: DMs are
         // end-to-end encrypted now, so old plaintext rows can neither be

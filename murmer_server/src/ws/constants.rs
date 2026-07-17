@@ -71,6 +71,10 @@ pub const DEFAULT_VOICE_BITRATE: i32 = 64_000;
 /// Upper bound to reject unreasonable bitrate configuration values.
 pub const MAX_ALLOWED_VOICE_BITRATE: i32 = 320_000;
 
+/// Maximum number of ids accepted in a single reorder request (channels of
+/// one category, or all categories).
+pub const MAX_REORDER_IDS: usize = 200;
+
 /// Allowed user status values broadcast to clients.
 pub const USER_STATUSES: &[&str] = &["online", "away", "busy", "offline"];
 

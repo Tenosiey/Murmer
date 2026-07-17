@@ -15,7 +15,7 @@ Use the checkboxes to track progress.
 - [x] Channel description/topics (persisted on the server, synced to all clients)
 - [x] Channel permissions and moderation (role-gated kick/ban/mute with persistence)
 - [x] Custom server emojis (managed in the server dashboard, usable in messages and reactions)
-- [ ] Custom sort order for channels and categories
+- [x] Custom sort order for channels and categories (drag & drop reordering, persisted server-side)
 - [x] Direct messages between users
 - [x] Drag & drop channels into categories (text and voice, with a drop zone for removing a channel from its category)
 - [x] Edit sent messages

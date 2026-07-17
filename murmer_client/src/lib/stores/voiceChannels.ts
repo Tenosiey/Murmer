@@ -27,7 +27,8 @@ function normalizeChannel(value: any): VoiceChannelInfo | null {
     }
   }
   const categoryId = typeof value.categoryId === 'number' ? value.categoryId : null;
-  return { id, name, quality, bitrate, categoryId };
+  const position = typeof value.position === 'number' ? value.position : 0;
+  return { id, name, quality, bitrate, categoryId, position };
 }
 
 function createVoiceChannelStore() {
@@ -79,7 +80,30 @@ function createVoiceChannelStore() {
     const id = typeof raw.channelId === 'number' ? raw.channelId : null;
     if (id === null) return;
     const categoryId = typeof raw.categoryId === 'number' ? raw.categoryId : null;
-    update((chs) => chs.map((c) => (c.id === id ? { ...c, categoryId } : c)));
+    update((chs) =>
+      chs.map((c) =>
+        c.id === id
+          ? { ...c, categoryId, position: typeof raw.position === 'number' ? raw.position : c.position }
+          : c
+      )
+    );
+  });
+
+  chat.on('channel-reorder', (msg: Message) => {
+    const raw = msg as any;
+    if (raw.voice !== true) return;
+    if (!Array.isArray(raw.order)) return;
+    const categoryId = typeof raw.categoryId === 'number' ? raw.categoryId : null;
+    const positions = new Map<number, number>(
+      raw.order
+        .filter((id: any): id is number => typeof id === 'number')
+        .map((id: number, index: number) => [id, index])
+    );
+    update((chs) =>
+      chs.map((c) =>
+        positions.has(c.id) ? { ...c, categoryId, position: positions.get(c.id)! } : c
+      )
+    );
   });
 
   function create(

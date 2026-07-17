@@ -106,6 +106,9 @@ pub const UNKNOWN_CATEGORY: &str = r#"{"type":"error","message":"unknown-categor
 /// Failed to move channel to category.
 pub const CHANNEL_MOVE_FAILED: &str = r#"{"type":"error","message":"channel-move-failed"}"#;
 
+/// Reorder request was malformed or referenced unknown channels/categories.
+pub const REORDER_FAILED: &str = r#"{"type":"error","message":"reorder-failed"}"#;
+
 /// Channel topic validation failed.
 pub const INVALID_CHANNEL_TOPIC: &str = r#"{"type":"error","message":"invalid-channel-topic"}"#;
 

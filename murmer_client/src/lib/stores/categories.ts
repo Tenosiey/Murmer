@@ -48,6 +48,19 @@ function createCategoryStore() {
     }
   });
 
+  chat.on('category-reorder', (msg: Message) => {
+    const raw = msg as any;
+    if (!Array.isArray(raw.order)) return;
+    const positions = new Map<number, number>(
+      raw.order
+        .filter((id: any): id is number => typeof id === 'number')
+        .map((id: number, index: number) => [id, index])
+    );
+    update((cats) =>
+      cats.map((c) => (positions.has(c.id) ? { ...c, position: positions.get(c.id)! } : c))
+    );
+  });
+
   function create(name: string, position?: number) {
     const payload: Record<string, unknown> = { type: 'create-category', name };
     if (position !== undefined) payload.position = position;
@@ -62,7 +75,13 @@ function createCategoryStore() {
     chat.sendRaw({ type: 'delete-category', id });
   }
 
-  return { subscribe, set, create, rename, remove };
+  /** Persist a new order for all categories; `order` lists every category id
+      in display order. */
+  function reorder(order: number[]) {
+    chat.sendRaw({ type: 'reorder-categories', order });
+  }
+
+  return { subscribe, set, create, rename, remove, reorder };
 }
 
 export const categories = createCategoryStore();
