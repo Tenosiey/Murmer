@@ -181,6 +181,7 @@ CREATE TABLE IF NOT EXISTS roles (
 CREATE TABLE IF NOT EXISTS user_keys (
     user_name TEXT PRIMARY KEY,
     public_key TEXT NOT NULL,
+    avatar TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT ({NOW_UTC})
 );
 CREATE TABLE IF NOT EXISTS bans (
@@ -244,6 +245,7 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
             "position",
             "INTEGER NOT NULL DEFAULT 0",
         )?;
+        ensure_column(conn, "user_keys", "avatar", "TEXT NOT NULL DEFAULT ''")?;
 
         // One-time wipe of pre-E2EE plaintext direct messages: DMs are
         // end-to-end encrypted now, so old plaintext rows can neither be

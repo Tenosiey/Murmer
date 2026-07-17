@@ -27,6 +27,9 @@ export const MAX_SERVER_DESCRIPTION_LENGTH = 300;
 export const MAX_WELCOME_MESSAGE_LENGTH = 500;
 export const MAX_SERVER_ICON_BYTES = 1024 * 1024;
 
+/* User avatar size limit; must match the server's validation. */
+export const MAX_AVATAR_BYTES = 1024 * 1024;
+
 /* The channel every server is seeded with. The server places new connections
    into it and refuses to delete it, so the client can rely on it existing. */
 export const DEFAULT_CHANNEL_NAME = 'general';
