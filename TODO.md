@@ -30,7 +30,7 @@ Use the checkboxes to track progress.
 - [x] Typing indicators
 - [x] Unread markers and per-channel unread badges
 - [ ] User nicknames per server
-- [ ] User profiles/avatars
+- [ ] User profiles/avatars (avatars done: uploaded per server, shown in messages, member list and DMs; profile pages pending)
 
 ### 📚 Channel Wiki
 

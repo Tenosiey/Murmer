@@ -21,6 +21,7 @@ mod identity;
 mod messages;
 mod moderation;
 mod pins;
+mod profile;
 mod stats;
 mod wiki;
 
@@ -196,6 +197,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "status-update" => {
                                 handle_status_update(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "set-avatar" => {
+                                profile::handle_set_avatar(&state, &mut sender, &v, &user_name).await;
                             }
                             "ping" => {
                                 handle_ping(&mut sender, &v).await;
