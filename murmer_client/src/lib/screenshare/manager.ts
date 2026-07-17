@@ -11,16 +11,18 @@ import type { Message, ScreenShareSettings, ScreenSharePeer } from '../types';
 const DEFAULT_SETTINGS: ScreenShareSettings = {
   width: 1280,
   height: 720,
-  frameRate: 30
+  frameRate: 30,
+  maxBitrate: 5_000_000
 };
 
+// Resolution + bitrate only: the frame rate is a separate user setting and
+// deliberately not part of the presets.
 export const QUALITY_PRESETS = {
-  '480p': { width: 854, height: 480, frameRate: 15 },
-  '720p': { width: 1280, height: 720, frameRate: 30 },
-  '1080p': { width: 1920, height: 1080, frameRate: 30 },
-  '1080p60': { width: 1920, height: 1080, frameRate: 60 },
-  '1440p': { width: 2560, height: 1440, frameRate: 30 },
-  '4k': { width: 3840, height: 2160, frameRate: 30 }
+  '480p': { width: 854, height: 480, maxBitrate: 1_500_000 },
+  '720p': { width: 1280, height: 720, maxBitrate: 5_000_000 },
+  '1080p': { width: 1920, height: 1080, maxBitrate: 8_000_000 },
+  '1440p': { width: 2560, height: 1440, maxBitrate: 15_000_000 },
+  '4k': { width: 3840, height: 2160, maxBitrate: 25_000_000 }
 } as const;
 
 export type QualityPreset = keyof typeof QUALITY_PRESETS;
@@ -32,6 +34,8 @@ export class ScreenShareManager {
   private channelId: number | null = null;
   private listeners: Array<(peers: ScreenSharePeer[]) => void> = [];
   private settings: ScreenShareSettings = DEFAULT_SETTINGS;
+  /** Server-enforced bitrate cap in bits per second (null = no cap). */
+  private serverMaxBitrate: number | null = null;
 
   private config: RTCConfiguration = {
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -99,6 +103,12 @@ export class ScreenShareManager {
 
       this.localStream = stream;
 
+      // 'detail' keeps text sharp for mostly-static content; at 60 fps the
+      // intent is motion (gameplay), where dropping resolution beats
+      // dropping frames.
+      const track = stream.getVideoTracks()[0];
+      track.contentHint = this.settings.frameRate >= 60 ? 'motion' : 'detail';
+
       chat.sendRaw({
         type: 'screenshare-start',
         user,
@@ -106,7 +116,7 @@ export class ScreenShareManager {
         settings: this.settings
       });
 
-      stream.getVideoTracks()[0].addEventListener('ended', () => {
+      track.addEventListener('ended', () => {
         this.stopSharing();
       });
     } catch (error) {
@@ -139,6 +149,39 @@ export class ScreenShareManager {
 
   updateSettings(settings: Partial<ScreenShareSettings>): void {
     this.settings = { ...this.settings, ...settings };
+    this.applyBitrateLimit();
+  }
+
+  /** Update the server-enforced bitrate cap and re-apply it to live senders. */
+  setServerMaxBitrate(limit: number | null): void {
+    this.serverMaxBitrate = limit;
+    this.applyBitrateLimit();
+  }
+
+  /** The bitrate to enforce: the user's setting capped by the server limit. */
+  private effectiveMaxBitrate(): number {
+    return this.serverMaxBitrate !== null
+      ? Math.min(this.settings.maxBitrate, this.serverMaxBitrate)
+      : this.settings.maxBitrate;
+  }
+
+  /** (Re-)apply the bitrate cap to every outgoing video sender. */
+  private applyBitrateLimit(): void {
+    const limit = this.effectiveMaxBitrate();
+    if (!Number.isFinite(limit) || limit <= 0) return;
+    for (const pc of Object.values(this.peers)) {
+      for (const sender of pc.getSenders()) {
+        if (sender.track?.kind !== 'video') continue;
+        const params = sender.getParameters();
+        if (!params.encodings || params.encodings.length === 0) {
+          params.encodings = [{}];
+        }
+        for (const encoding of params.encodings) {
+          encoding.maxBitrate = limit;
+        }
+        sender.setParameters(params).catch(() => {});
+      }
+    }
   }
 
   private async createPeer(userId: string, initiator: boolean): Promise<RTCPeerConnection> {
@@ -151,6 +194,7 @@ export class ScreenShareManager {
       for (const track of this.localStream.getTracks()) {
         pc.addTrack(track, this.localStream);
       }
+      this.applyBitrateLimit();
     } else if (initiator) {
       pc.addTransceiver('video', { direction: 'recvonly' });
     }

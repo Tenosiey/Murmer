@@ -10,6 +10,7 @@
 //! - [`messages`] – chat, history, threads, typing, search and reactions
 //! - [`moderation`] – kick, ban and mute actions
 //! - [`pins`] – shared, persisted message pins
+//! - [`screenshare`] – server-wide screen share configuration (bitrate cap)
 //! - [`stats`] – lifetime user statistics (double opt-in gated)
 //! - [`wiki`] – per-channel Markdown wiki pages
 
@@ -22,6 +23,7 @@ mod messages;
 mod moderation;
 mod pins;
 mod profile;
+mod screenshare;
 mod stats;
 mod wiki;
 
@@ -263,6 +265,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 if claims_own_user(&v, &user_name) {
                                     let _ = state.tx.send(text.to_string());
                                 }
+                            }
+                            "set-screenshare-max-bitrate" => {
+                                screenshare::handle_set_screenshare_max_bitrate(&state, &mut sender, &v, &user_name).await;
                             }
                             "voice-mute" => {
                                 if claims_own_user(&v, &user_name) {

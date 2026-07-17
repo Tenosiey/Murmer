@@ -18,6 +18,7 @@
 //! - [`pins`] – persisted message pins per channel
 //! - [`reactions`] – emoji reaction operations
 //! - [`roles`] – user role persistence
+//! - [`screenshare`] – server-wide screen share bitrate cap
 //! - [`stats`] – lifetime user statistics (double opt-in gated)
 //! - [`users`] – user name to public key bindings
 //! - [`wiki`] – per-channel Markdown wiki pages with revision history
@@ -31,6 +32,7 @@ mod moderation;
 mod pins;
 mod reactions;
 mod roles;
+mod screenshare;
 mod stats;
 mod users;
 mod wiki;
@@ -44,6 +46,7 @@ pub use moderation::*;
 pub use pins::*;
 pub use reactions::*;
 pub use roles::*;
+pub use screenshare::*;
 pub use stats::*;
 pub use users::*;
 pub use wiki::*;

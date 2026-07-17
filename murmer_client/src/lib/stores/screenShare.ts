@@ -8,6 +8,7 @@ import { writable, derived, get } from 'svelte/store';
 import { ScreenShareManager } from '../screenshare/manager';
 import type { ScreenSharePeer, ScreenShareActive, ScreenShareSettings } from '../types';
 import { chat } from './chat';
+import { connection } from './connection';
 import type { Message } from '../types';
 
 /**
@@ -41,8 +42,40 @@ export const isScreenSharing = writable<boolean>(false);
 export const screenShareSettings = writable<ScreenShareSettings>({
   width: 1280,
   height: 720,
-  frameRate: 30
+  frameRate: 30,
+  maxBitrate: 5_000_000
 });
+
+/**
+ * Server-wide bitrate cap in bits per second set by Owners/Admins
+ * (null = no cap). Announced after auth and broadcast on change.
+ */
+export const screenShareServerMaxBitrate = writable<number | null>(null);
+
+chat.on('screenshare-config', (msg: Message) => {
+  const raw = (msg as any).maxBitrate;
+  const limit =
+    typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.round(raw) : null;
+  screenShareServerMaxBitrate.set(limit);
+  screenShareManager.setServerMaxBitrate(limit);
+});
+
+connection.subscribe((state) => {
+  if (state !== 'connected') {
+    // Forget the previous server's cap.
+    screenShareServerMaxBitrate.set(null);
+    screenShareManager.setServerMaxBitrate(null);
+  }
+});
+
+/**
+ * Set the server-wide bitrate cap (Owner/Admin only; enforced server-side).
+ * Pass null to remove the cap. Confirmation arrives as a broadcast
+ * screenshare-config frame which updates the store.
+ */
+export function setServerScreenShareMaxBitrate(maxBitrate: number | null): void {
+  chat.sendRaw({ type: 'set-screenshare-max-bitrate', maxBitrate });
+}
 
 chat.on('screenshare-start', (msg: Message) => {
   const user = msg.user as string;

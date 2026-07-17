@@ -95,6 +95,8 @@ export interface ScreenShareSettings {
   width: number;
   height: number;
   frameRate: number;
+  /** Encoder bitrate cap in bits per second. */
+  maxBitrate: number;
 }
 
 export interface ScreenSharePeer {
