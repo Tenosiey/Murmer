@@ -24,6 +24,10 @@
   } from '$lib/chat/constants';
   import { stats, statsConfig } from '$lib/stores/stats';
   import { serverIdentity } from '$lib/stores/serverIdentity';
+  import {
+    screenShareServerMaxBitrate,
+    setServerScreenShareMaxBitrate
+  } from '$lib/stores/screenShare';
   import type { Message } from '$lib/types';
 
   
@@ -161,6 +165,54 @@
     serverIdentity.save({ icon: null });
   }
 
+  // ── Screen share bitrate cap (Voice tab) ──────────────────────────────────
+  let screenShareCapMbps = $state(0);
+  let screenShareFeedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
+  /** Set after sending a save; cleared once the broadcast confirms the
+      change or an error frame arrives. */
+  let screenShareSavePending = $state(false);
+
+  // (Re-)fill the field whenever the dashboard opens; while it is open,
+  // incoming broadcasts must not clobber what the user is typing.
+  $effect(() => {
+    if (open) {
+      untrack(() => {
+        screenShareCapMbps = ($screenShareServerMaxBitrate ?? 0) / 1_000_000;
+        screenShareFeedback = null;
+        screenShareSavePending = false;
+      });
+    }
+  });
+
+  let screenShareCapDirty = $derived(
+    Math.round((Number.isFinite(screenShareCapMbps) ? screenShareCapMbps : 0) * 1_000_000) !==
+      ($screenShareServerMaxBitrate ?? 0)
+  );
+
+  // A broadcast matching the submitted value confirms the save.
+  $effect(() => {
+    if (screenShareSavePending && !screenShareCapDirty) {
+      screenShareSavePending = false;
+      screenShareFeedback = { text: 'Changes saved.', kind: 'info' };
+    }
+  });
+
+  function saveScreenShareCap() {
+    const mbps = Number.isFinite(screenShareCapMbps) ? screenShareCapMbps : NaN;
+    if (Number.isNaN(mbps) || mbps < 0 || mbps > 100 || (mbps > 0 && mbps < 0.1)) {
+      screenShareFeedback = {
+        text: 'Enter a value between 0.1 and 100 Mbps, or 0 for no limit.',
+        kind: 'error'
+      };
+      return;
+    }
+    screenShareFeedback = null;
+    screenShareSavePending = true;
+    // Role-checked server-side; the confirmation arrives as a broadcast
+    // screenshare-config frame which updates the store.
+    setServerScreenShareMaxBitrate(mbps > 0 ? Math.round(mbps * 1_000_000) : null);
+  }
+
   // ── Custom emoji management ────────────────────────────────────────────────
   let emojiName = $state('');
   let emojiFile: File | null = $state(null);
@@ -194,6 +246,12 @@
     'identity-update-failed'
   ]);
 
+  const SCREENSHARE_ERROR_CODES = new Set([
+    'screenshare-permission-denied',
+    'invalid-screenshare-bitrate',
+    'screenshare-update-failed'
+  ]);
+
   function handleServerError(msg: Message) {
     const code = (msg as any).message;
     if (!open || typeof code !== 'string') return;
@@ -202,6 +260,9 @@
     } else if (IDENTITY_ERROR_CODES.has(code)) {
       identitySavePending = false;
       identityFeedback = { text: describeServerError(code), kind: 'error' };
+    } else if (SCREENSHARE_ERROR_CODES.has(code)) {
+      screenShareSavePending = false;
+      screenShareFeedback = { text: describeServerError(code), kind: 'error' };
     }
   }
 
@@ -574,7 +635,34 @@
 
         {#if activeTab === 'voice'}
           <div class="settings-section">
-            <h3 class="section-title">Voice</h3>
+            <h3 class="section-title">Voice &amp; Screen Share</h3>
+            <div class="setting-group">
+              <span class="setting-label">Screen share max bitrate</span>
+              <input
+                type="number"
+                bind:value={screenShareCapMbps}
+                min="0"
+                max="100"
+                step="0.5"
+              />
+              <div class="setting-description">
+                Cap in Mbps applied to every member's outgoing screen share; 0 means no limit.
+                Screen shares travel peer-to-peer between members, so this limits member
+                bandwidth use, not server load.
+              </div>
+              <div>
+                <button
+                  class="btn btn-primary"
+                  onclick={saveScreenShareCap}
+                  disabled={!screenShareCapDirty}
+                >Save changes</button>
+              </div>
+              {#if screenShareFeedback}
+                <div class="identity-feedback" class:error={screenShareFeedback.kind === 'error'}>
+                  {screenShareFeedback.text}
+                </div>
+              {/if}
+            </div>
             <div class="setting-group">
               <span class="setting-label">Default bitrate <span class="badge">Coming soon</span></span>
               <input type="number" value="64000" disabled />

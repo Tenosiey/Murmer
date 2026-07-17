@@ -82,6 +82,11 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-welcome-message': 'That welcome message is not allowed.',
   'invalid-server-icon': 'The uploaded server icon could not be used. Please try again.',
   'identity-update-failed': 'The server could not update the server identity. Please try again.',
+  'screenshare-permission-denied':
+    'You do not have permission to change screen share settings on this server.',
+  'invalid-screenshare-bitrate': 'Invalid screen share bitrate setting.',
+  'screenshare-update-failed':
+    'The server could not update the screen share settings. Please try again.',
   'stats-permission-denied': 'You do not have permission to change stat tracking on this server.',
   'stats-not-available': "That user's stats are not available.",
   'stats-update-failed': 'The server could not update stat tracking. Please try again.',

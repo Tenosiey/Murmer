@@ -271,6 +271,18 @@ pub const STATS_NOT_AVAILABLE: &str = r#"{"type":"error","message":"stats-not-av
 /// Failed to persist or load stat tracking data.
 pub const STATS_UPDATE_FAILED: &str = r#"{"type":"error","message":"stats-update-failed"}"#;
 
+/// User lacks permission to change the screen share bitrate cap.
+pub const SCREENSHARE_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"screenshare-permission-denied"}"#;
+
+/// Screen share bitrate cap failed validation.
+pub const INVALID_SCREENSHARE_BITRATE: &str =
+    r#"{"type":"error","message":"invalid-screenshare-bitrate"}"#;
+
+/// Failed to persist or load the screen share configuration.
+pub const SCREENSHARE_UPDATE_FAILED: &str =
+    r#"{"type":"error","message":"screenshare-update-failed"}"#;
+
 /// Wiki page slug failed validation.
 pub const INVALID_WIKI_SLUG: &str = r#"{"type":"error","message":"invalid-wiki-slug"}"#;
 

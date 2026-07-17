@@ -2243,7 +2243,7 @@ dependencies = [
 
 [[package]]
 name = "murmer_client"
-version = "2026.717.0"
+version = "2026.717.1"
 dependencies = [
  "glib 0.22.8",
  "serde",

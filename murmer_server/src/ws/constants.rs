@@ -53,6 +53,13 @@ pub const CONNECTION_STATS_ROLES: &[&str] = &["Owner", "Admin"];
 /// Roles that are allowed to toggle the server-wide stat tracking switch.
 pub const STATS_ADMIN_ROLES: &[&str] = &["Owner", "Admin"];
 
+/// Roles that are allowed to change the server-wide screen share bitrate cap.
+pub const SCREENSHARE_ADMIN_ROLES: &[&str] = &["Owner", "Admin"];
+
+/// Bounds accepted for the screen share bitrate cap in bits per second.
+pub const MIN_SCREENSHARE_BITRATE: u64 = 100_000;
+pub const MAX_SCREENSHARE_BITRATE: u64 = 100_000_000;
+
 /// Maximum number of favorite reactions returned with a stats snapshot.
 pub const MAX_FAVORITE_REACTIONS: i64 = 5;
 

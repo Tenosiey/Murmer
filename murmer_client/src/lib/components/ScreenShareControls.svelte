@@ -4,7 +4,13 @@
   Provides UI for starting/stopping screen sharing and configuring quality settings.
 -->
 <script lang="ts">
-  import { isScreenSharing, startScreenShare, stopScreenShare, screenShareSettings } from '$lib/stores/screenShare';
+  import {
+    isScreenSharing,
+    startScreenShare,
+    stopScreenShare,
+    screenShareSettings,
+    screenShareServerMaxBitrate
+  } from '$lib/stores/screenShare';
   import { session } from '$lib/stores/session';
   import { QUALITY_PRESETS, type QualityPreset } from '$lib/screenshare/manager';
   import { dialogs } from '$lib/stores/dialogs';
@@ -20,8 +26,28 @@
   let selectedPreset: QualityPreset = $state('720p');
   let customWidth = $state(1280);
   let customHeight = $state(720);
-  let customFrameRate = $state(30);
   let useCustom = $state(false);
+  let frameRate = $state<number>(30);
+  let maxBitrateMbps = $state(QUALITY_PRESETS['720p'].maxBitrate / 1_000_000);
+
+  /** The frame rate to request, clamped to sane bounds. */
+  function chosenFrameRate(): number {
+    const fps = Number.isFinite(frameRate) ? frameRate : 30;
+    return Math.round(Math.min(Math.max(fps, 5), 60));
+  }
+
+  let serverCapMbps = $derived(
+    $screenShareServerMaxBitrate !== null ? $screenShareServerMaxBitrate / 1_000_000 : null
+  );
+
+  /** The bitrate to request in bits per second, clamped to sane bounds and
+      the server-wide cap. */
+  function chosenMaxBitrate(): number {
+    let mbps = Number.isFinite(maxBitrateMbps) ? maxBitrateMbps : 5;
+    mbps = Math.min(Math.max(mbps, 0.5), 100);
+    if (serverCapMbps !== null) mbps = Math.min(mbps, serverCapMbps);
+    return Math.round(mbps * 1_000_000);
+  }
 
   async function toggleScreenShare() {
     if ($isScreenSharing) {
@@ -37,14 +63,21 @@
 
       try {
         // Apply selected settings
+        const maxBitrate = chosenMaxBitrate();
+        const fps = chosenFrameRate();
         if (useCustom) {
           screenShareSettings.set({
             width: customWidth,
             height: customHeight,
-            frameRate: customFrameRate
+            frameRate: fps,
+            maxBitrate
           });
         } else {
-          screenShareSettings.set(QUALITY_PRESETS[selectedPreset]);
+          screenShareSettings.set({
+            ...QUALITY_PRESETS[selectedPreset],
+            frameRate: fps,
+            maxBitrate
+          });
         }
 
         await startScreenShare($session.user, currentVoiceChannel);
@@ -63,7 +96,7 @@
     const settings = QUALITY_PRESETS[preset];
     customWidth = settings.width;
     customHeight = settings.height;
-    customFrameRate = settings.frameRate;
+    maxBitrateMbps = settings.maxBitrate / 1_000_000;
     useCustom = false;
   }
 </script>
@@ -113,6 +146,28 @@
       {/each}
     </div>
 
+    <div class="bitrate-setting">
+      <div class="stream-inputs">
+        <label>
+          Frame Rate (fps)
+          <input type="number" bind:value={frameRate} min="5" max="60" step="5" />
+        </label>
+        <label>
+          Max Bitrate (Mbps)
+          <input
+            type="number"
+            bind:value={maxBitrateMbps}
+            min="0.5"
+            max={serverCapMbps ?? 100}
+            step="0.5"
+          />
+        </label>
+      </div>
+      {#if serverCapMbps !== null}
+        <p class="settings-note">This server caps the screen share bitrate at {serverCapMbps} Mbps.</p>
+      {/if}
+    </div>
+
     <div class="custom-settings">
       <label>
         <input type="checkbox" bind:checked={useCustom} />
@@ -128,10 +183,6 @@
           <label>
             Height
             <input type="number" bind:value={customHeight} min="480" max="2160" step="1" />
-          </label>
-          <label>
-            Frame Rate
-            <input type="number" bind:value={customFrameRate} min="15" max="60" step="5" />
           </label>
         </div>
       {/if}
@@ -260,6 +311,24 @@
     background: var(--color-primary);
     border-color: var(--color-primary);
     color: var(--color-on-primary);
+  }
+
+  .stream-inputs {
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .stream-inputs label {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    color: var(--color-muted);
+    font-size: var(--text-sm);
+  }
+
+  .stream-inputs input {
+    width: 100%;
   }
 
   .custom-settings {

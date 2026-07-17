@@ -40,7 +40,8 @@ small team can deploy a private chat space quickly.
 - End-to-end encrypted direct messages with persistent history and unread
   badges: message text is encrypted on-device (NaCl box over the users'
   identity keys), so the server only ever stores and relays ciphertext
-- Screen sharing in voice channels
+- Screen sharing in voice channels with adjustable resolution, frame rate and
+  bitrate; Owners/Admins can set a server-wide bitrate cap from the dashboard
 - Per-channel Markdown wiki with revisions and `[[wikilinks]]` (also across
   channels via `[[channel/page]]`)
 - Lifetime stats and achievements (messages, voice minutes, GIFs, favorite
