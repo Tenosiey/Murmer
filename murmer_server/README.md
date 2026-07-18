@@ -32,10 +32,10 @@ src/
 
 ```bash
 cargo run          # creates murmer.db in the working directory by default
-cargo fmt --all --check
-cargo clippy --all-targets --all-features -- -D warnings
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
 cargo test
-cargo audit
+cargo audit        # requires cargo-audit (cargo install cargo-audit)
 ```
 
 Integration tests live in `tests/` and exercise rate limiting, moderation and

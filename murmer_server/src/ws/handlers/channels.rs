@@ -569,7 +569,11 @@ pub(super) async fn handle_delete_voice_channel(
     }
 
     state.voice_channels.lock().await.remove(&ch_id);
-    let _ = db::remove_voice_channel(&state.db, ch_id).await;
+    if let Err(e) = db::remove_voice_channel(&state.db, ch_id).await {
+        // The in-memory removal already happened and is broadcast anyway;
+        // log it because the channel would reappear after a restart.
+        error!("db remove voice channel error: {e}");
+    }
     broadcast_remove_voice_channel(state, ch_id).await;
     if *voice_channel == Some(ch_id) {
         *voice_channel = None;

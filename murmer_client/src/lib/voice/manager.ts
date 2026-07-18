@@ -275,7 +275,7 @@ export class VoiceManager {
   private async setupAudioProcessing(inputStream: MediaStream): Promise<MediaStream> {
     try {
       this.rawStream = inputStream;
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      this.audioContext = new AudioContext();
       this.sourceNode = this.audioContext.createMediaStreamSource(inputStream);
       this.gainNode = this.audioContext.createGain();
       this.gainNode.gain.value = 1.0;

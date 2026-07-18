@@ -31,7 +31,7 @@ export class VoiceActivityDetector {
 
   private setupAudioContext() {
     try {
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      this.audioContext = new AudioContext();
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = this.FFT_SIZE;
       this.analyser.minDecibels = this.MIN_DECIBELS;

@@ -70,9 +70,9 @@ sync, see the Brand section in `README.md`.
 - Avoid `{@html ...}` unless the content is sanitised explicitly.
 
 ## Rust (Tauri) side
-The native shell lives in `src-tauri/`. Run `cargo check` there after making
-changes. Keep the Rust code minimal – prefer implementing features in Svelte
-unless native APIs are required.
+The native shell lives in `src-tauri/`. After making changes there, run
+`cargo clippy --all-targets -- -D warnings`. Keep the Rust code minimal –
+prefer implementing features in Svelte unless native APIs are required.
 
 ## QA checklist
 - Run `npm run check` before submitting changes.
