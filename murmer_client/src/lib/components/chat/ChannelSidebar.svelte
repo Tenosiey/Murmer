@@ -470,9 +470,8 @@
                           title="View {user}'s screen"
                           aria-label="View {user}'s screen share"
                         >
-                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
-                          </svg>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                          <span>LIVE</span>
                         </button>
                       {/if}
                       <ConnectionBars
@@ -908,28 +907,32 @@
     color: var(--color-success);
   }
 
-  .screenshare-indicator {
-    background: transparent;
-    border: none;
-    padding: var(--space-1);
-    cursor: pointer;
-    color: var(--color-primary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-xs);
-    flex-shrink: 0;
+  /* Clickable "LIVE" pill on users who are sharing their screen, shaped
+     like the unread badge. The `.channels button.` prefix is required to
+     out-rank the generic full-width `.channels button` sizing above. */
+  .channels button.screenshare-indicator {
     width: auto;
     min-height: 0;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--color-primary-container);
+    color: var(--color-primary);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    line-height: 1.125rem;
+    letter-spacing: 0.04em;
   }
 
-  .screenshare-indicator:hover {
-    background: var(--color-primary-container);
+  .channels button.screenshare-indicator:hover {
+    background: color-mix(in srgb, var(--color-primary) 24%, transparent);
     color: var(--color-primary);
   }
 
   .screenshare-indicator svg {
-    width: 0.875rem;
-    height: 0.875rem;
+    flex-shrink: 0;
   }
 </style>
