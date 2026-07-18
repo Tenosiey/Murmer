@@ -65,6 +65,13 @@ connection.subscribe((state) => {
     // Forget the previous server's cap.
     screenShareServerMaxBitrate.set(null);
     screenShareManager.setServerMaxBitrate(null);
+    // Without a connection the signaling is gone: stop a running local
+    // capture (otherwise it would keep recording invisibly) and drop the
+    // remote share list — channel ids are only unique per server, so stale
+    // entries would show phantom "live" badges after a reconnect.
+    screenShareManager.stopSharing();
+    isScreenSharing.set(false);
+    activeScreenShares.set({});
   }
 });
 

@@ -575,6 +575,7 @@ async fn handle_voice_leave(
         state.voice_mutes.lock().await.remove(u);
         stats::flush_voice_session(state, u).await;
         stats::flush_screenshare_session(state, u).await;
+        end_screen_shares_for_user(state, u).await;
         broadcast_voice(state, ch_id).await;
         if *voice_channel == Some(ch_id) {
             *voice_channel = None;
@@ -603,6 +604,39 @@ async fn handle_screenshare_start(state: &Arc<AppState>, v: &Value) {
         .entry(ch_id as i32)
         .or_default()
         .insert(user.to_string());
+}
+
+/// End every active screen share owned by `user` and announce each end to
+/// all clients. Screen shares cannot outlive the voice session, so this runs
+/// on voice-leave and on disconnect; well-behaved clients send an explicit
+/// `screenshare-stop` first, in which case this is a no-op.
+async fn end_screen_shares_for_user(state: &Arc<AppState>, user: &str) {
+    let channels_with_share: Vec<i32> = {
+        let mut shares = state.active_screen_shares.lock().await;
+        let channels: Vec<i32> = shares
+            .iter()
+            .filter(|(_, users)| users.contains(user))
+            .map(|(ch_id, _)| *ch_id)
+            .collect();
+        for ch_id in &channels {
+            if let Some(set) = shares.get_mut(ch_id) {
+                set.remove(user);
+                if set.is_empty() {
+                    shares.remove(ch_id);
+                }
+            }
+        }
+        channels
+    };
+    for ch_id in channels_with_share {
+        if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+            "type": "screenshare-stop",
+            "user": user,
+            "channelId": ch_id,
+        })) {
+            let _ = state.tx.send(msg);
+        }
+    }
 }
 
 /// Remove a screen share from application state.
@@ -843,32 +877,7 @@ async fn handle_disconnect(state: &Arc<AppState>, user_name: Option<String>) {
         state.connection_stats.lock().await.remove(&name);
 
         // Clean up any active screen shares owned by the disconnecting user.
-        {
-            let mut shares = state.active_screen_shares.lock().await;
-            let channels_with_share: Vec<i32> = shares
-                .iter()
-                .filter(|(_, users)| users.contains(&name))
-                .map(|(ch_id, _)| *ch_id)
-                .collect();
-            for ch_id in &channels_with_share {
-                if let Some(set) = shares.get_mut(ch_id) {
-                    set.remove(&name);
-                    if set.is_empty() {
-                        shares.remove(ch_id);
-                    }
-                }
-            }
-            drop(shares);
-            for ch_id in channels_with_share {
-                if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-                    "type": "screenshare-stop",
-                    "user": name,
-                    "channelId": ch_id,
-                })) {
-                    let _ = state.tx.send(msg);
-                }
-            }
-        }
+        end_screen_shares_for_user(state, &name).await;
 
         state
             .statuses

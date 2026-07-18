@@ -127,21 +127,7 @@
     error = null;
     const invite = createInviteLink(server);
     try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(invite);
-      } else if (typeof document !== 'undefined') {
-        const textarea = document.createElement('textarea');
-        textarea.value = invite;
-        textarea.setAttribute('readonly', '');
-        textarea.style.position = 'absolute';
-        textarea.style.left = '-9999px';
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-      } else {
-        throw new Error('Clipboard API not available');
-      }
+      await navigator.clipboard.writeText(invite);
       copiedServer = server.url;
       clearCopyTimeout();
       copyTimeout = setTimeout(() => {

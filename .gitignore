@@ -24,6 +24,12 @@ coverage
 # Environment overrides
 .env
 
+# Local SQLite database and uploads created by `cargo run` in murmer_server/
+*.db
+*.db-shm
+*.db-wal
+murmer_server/uploads/
+
 # Tauri updater signing keys must never be committed
 *.key
 *.key.pub

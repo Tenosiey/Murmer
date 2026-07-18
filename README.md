@@ -49,6 +49,8 @@ small team can deploy a private chat space quickly.
   a server Owner/Admin enables tracking server-wide *and* the user opts in
   themselves; only aggregate counters are stored and users can purge their
   own stats at any time
+- User avatars, uploaded per server and shown in messages, the member list
+  and direct messages
 - Server identity configurable from the dashboard (Admin/Owner): server name,
   description and icon shown to every member, plus a welcome message delivered
   to first-time members
@@ -159,12 +161,13 @@ cargo clippy -- -D warnings
 Run the following commands before opening a pull request:
 
 ```bash
-cargo fmt --all --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace
-cargo audit
+cd murmer_server
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+cargo audit          # requires cargo-audit (cargo install cargo-audit)
 
-cd murmer_client
+cd ../murmer_client
 npm run check
 npm audit
 ```

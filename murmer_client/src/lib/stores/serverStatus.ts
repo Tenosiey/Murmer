@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { servers } from './servers';
 import { browser } from '$app/environment';
+import { httpBaseFromWs } from '../server-url';
 
 export interface StatusMap {
   [url: string]: boolean | null;
@@ -8,10 +9,7 @@ export interface StatusMap {
 
 function toHttp(url: string): string {
   try {
-    const u = new URL(url);
-    u.protocol = u.protocol.replace('ws', 'http');
-    if (u.pathname.endsWith('/ws')) u.pathname = u.pathname.slice(0, -3);
-    return u.toString();
+    return httpBaseFromWs(url);
   } catch {
     return url;
   }

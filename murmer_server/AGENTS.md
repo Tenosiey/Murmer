@@ -8,7 +8,8 @@ tokio-rusqlite, which pins the rusqlite version).
 ## Development commands
 - `cargo check` – compile-time validation
 - `cargo fmt` – format Rust sources
-- `cargo clippy -- -D warnings` (optional but recommended)
+- `cargo clippy --all-targets -- -D warnings` – must pass clean
+- `cargo test` – integration tests in `tests/`
 - `cargo run` – launch the server locally (creates `murmer.db` by default)
 
 The repository includes a `docker-compose.yml` that launches the server (the
@@ -18,8 +19,8 @@ SQLite database lives on a named volume): `docker compose up --build`.
 - `main.rs` – sets up the Axum router, middleware and shared state
 - `config.rs` – environment variable parsing and CORS setup
 - `ws/` – WebSocket handshake and message handling (`handlers/` for auth,
-  messages, channels, DMs, emojis, moderation, pins, stats and wiki;
-  the dispatch loop lives in `handlers/mod.rs`)
+  messages, channels, DMs, emojis, identity, moderation, pins, profile,
+  screenshare, stats and wiki; the dispatch loop lives in `handlers/mod.rs`)
 - `db/` – database connection, schema and queries, split by the same domains
 - `bot/` – REST API for bots (see `BOT_API.md`)
 - `upload.rs` – multipart file upload endpoint with extension/MIME validation
@@ -67,7 +68,7 @@ for unauthorised attempts.
 - Avoid adding new WebSocket message types without updating validation helpers.
 
 ## QA checklist
-- Run `cargo check` and `cargo fmt`.
+- Run `cargo fmt`, `cargo clippy --all-targets -- -D warnings` and `cargo test`.
 - Exercise WebSocket authentication (invalid signatures, stale timestamps).
 - Verify file uploads reject invalid MIME types and oversize payloads.
 - Confirm channel/voice channel management respects role permissions when

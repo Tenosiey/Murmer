@@ -46,9 +46,15 @@
   import { dm } from '$lib/stores/dm';
   import { peerKeys } from '$lib/stores/peerKeys';
   import { dmFingerprint } from '$lib/dm-crypto';
-  import { screenSharePeers, viewScreenShare, leaveScreenShareAsViewer } from '$lib/stores/screenShare';
+  import {
+    screenSharePeers,
+    viewScreenShare,
+    leaveScreenShareAsViewer,
+    stopScreenShare
+  } from '$lib/stores/screenShare';
   import ScreenShareViewer from '$lib/components/ScreenShareViewer.svelte';
   import { loadKeyPair, sign } from '$lib/keypair';
+  import { httpBaseFromWs } from '$lib/server-url';
   import { connection, connectionError } from '$lib/stores/connection';
   import { describeServerError, isFatalConnectionError } from '$lib/errors';
   import type { Message, UserStatus, ScreenSharePeer } from '$lib/types';
@@ -342,12 +348,9 @@
     const startMeter = (stream: MediaStream | null | undefined) => {
       stopMeter();
       if (!stream) return;
-      const Ctor: typeof AudioContext | undefined =
-        (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (!Ctor) return;
 
       try {
-        audioContext = new Ctor();
+        audioContext = new AudioContext();
         if (audioContext.state === 'suspended') {
           audioContext.resume().catch(() => {
             /* ignore */
@@ -564,12 +567,7 @@
       return;
     }
     const selected = get(selectedServer) ?? 'ws://localhost:3001/ws';
-    const u = new URL(selected);
-    // convert ws:// -> http:// and strip trailing "/ws" from the path so that
-    // requests target the HTTP API root rather than the WebSocket endpoint
-    u.protocol = u.protocol.replace('ws', 'http');
-    if (u.pathname.endsWith('/ws')) u.pathname = u.pathname.slice(0, -3);
-    const base = u.toString().replace(/\/$/, '');
+    const base = httpBaseFromWs(selected);
     const form = new FormData();
     form.append('file', file);
     if (import.meta.env.DEV) console.log('Uploading file to', base + '/upload', file);
@@ -892,10 +890,11 @@
       voice.leave(currentVoiceChannelId);
     }
     inVoice = false;
-    // Close any active screen share viewer
+    // A screen share cannot outlive the voice session — stop our own
+    // capture and close any viewer state.
+    stopScreenShare();
     viewingScreenShare = null;
     pendingScreenShareView = null;
-    // Clean up screen share viewer session
     leaveScreenShareAsViewer();
   }
 
@@ -988,6 +987,9 @@
   async function joinVoiceChannel(id: number) {
     if (!$session.user) return;
     if (inVoice && currentVoiceChannelId !== null) {
+      // Switching channels ends the old voice session and with it any
+      // running screen share (it is bound to the old channel).
+      stopScreenShare();
       voice.leave(currentVoiceChannelId);
     }
     const info = $voiceChannels.find((vc) => vc.id === id);
