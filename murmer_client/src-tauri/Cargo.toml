@@ -1,6 +1,6 @@
 [package]
 name = "murmer_client"
-version = "2026.717.1"
+version = "2026.718.0"
 description = "Murmer desktop client (Tauri shell)"
 edition = "2024"
 
