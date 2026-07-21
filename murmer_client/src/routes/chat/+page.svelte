@@ -6,7 +6,10 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
   import { chat } from '$lib/stores/chat';
-  import { roles } from '$lib/stores/roles';
+  import { roles, userRoleIds } from '$lib/stores/roles';
+  import { roleDefinitions } from '$lib/stores/roleDefinitions';
+  import { can, myTopPosition, myPermissions } from '$lib/stores/permissions';
+  import { PERMISSIONS, hasPermission, computeTopPosition } from '$lib/chat/permissions';
   import { session } from '$lib/stores/session';
   import { voice } from '$lib/stores/voice';
   import { selectedServer, servers } from '$lib/stores/servers';
@@ -78,14 +81,12 @@
   } from '$lib/stores/globalHotkeys';
   import EmojiPicker from '$lib/components/EmojiPicker.svelte';
   import {
-    MODERATOR_ROLES,
     MAX_TOPIC_LENGTH,
     MIN_EPHEMERAL_SECONDS,
     MAX_EPHEMERAL_SECONDS,
     VOICE_QUALITY_PRESETS,
     DEFAULT_VOICE_PRESET,
-    DEFAULT_CHANNEL_NAME,
-    roleRank
+    DEFAULT_CHANNEL_NAME
   } from '$lib/chat/constants';
   import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
   import UserStatsModal from '$lib/components/UserStatsModal.svelte';
@@ -502,7 +503,8 @@
       goto('/login');
       return;
     }
-    roles.set({});
+    userRoleIds.reset();
+    roleDefinitions.reset();
     expiryTicker = window.setInterval(() => {
       now = Date.now();
     }, 1000);
@@ -529,7 +531,8 @@
       voice.leave(currentVoiceChannelId);
     }
     ping.stop();
-    roles.set({});
+    userRoleIds.reset();
+    roleDefinitions.reset();
     if (highlightTimer) {
       clearTimeout(highlightTimer);
       highlightTimer = null;
@@ -620,6 +623,9 @@
   }
 
   async function send() {
+    // The server rejects sends without SEND_MESSAGES; mirror that here so
+    // hotkeys and slash commands can't bypass the disabled composer.
+    if (!get(can)(PERMISSIONS.SEND_MESSAGES)) return;
     const hasMessage = message.trim() !== '';
     if (!pendingFile && !hasMessage) return;
     if (pendingFile) await sendFile();
@@ -1024,13 +1030,15 @@
   let userRoleMenuY = $state(0);
   let userRoleMenuTarget: string | null = $state(null);
 
-  const ASSIGNABLE_ROLES = ['Owner', 'Admin', 'Mod'] as const;
+  /** Highest hierarchy position of a target user (Infinity for admins). */
+  function targetTopPosition(target: string): number {
+    return computeTopPosition($roleDefinitions, $userRoleIds[target] ?? []);
+  }
 
-
-
-  function canModerate(target: string): boolean {
+  /** Whether the current user strictly outranks `target`. */
+  function outranks(target: string): boolean {
     if (target === $session.user) return false;
-    return currentUserModerationRank > roleRank($roles[target]?.role);
+    return $myTopPosition > targetTopPosition(target);
   }
 
   function openUserRoleMenu(event: MouseEvent, user: string) {
@@ -1043,12 +1051,18 @@
     userRoleMenuOpen = true;
   }
 
-  function assignRole(user: string, role: string) {
-    chat.sendRaw({ type: 'set-role', user, role });
+  /** Replace a user's assigned roles (server validates the hierarchy). */
+  function setUserRoles(user: string, roleIds: number[]) {
+    chat.sendRaw({ type: 'set-user-roles', user, roleIds });
   }
 
-  function removeRole(user: string) {
-    chat.sendRaw({ type: 'remove-role', user });
+  /** Toggle a single role on a user, preserving their other assignments. */
+  function toggleUserRole(user: string, roleId: number) {
+    const current = $userRoleIds[user] ?? [];
+    const next = current.includes(roleId)
+      ? current.filter((id) => id !== roleId)
+      : [...current, roleId];
+    setUserRoles(user, next);
   }
 
   function kickUser(user: string) {
@@ -1082,6 +1096,7 @@
 
 
   function openChannelMenu(event: MouseEvent, channelId?: number, voice?: boolean) {
+    if (!$can(PERMISSIONS.MANAGE_CHANNELS)) return;
     event.preventDefault();
     event.stopPropagation();
     menuX = event.clientX;
@@ -1097,6 +1112,7 @@
   }
 
   function openCategoryMenu(event: MouseEvent, category: CategoryInfo) {
+    if (!$can(PERMISSIONS.MANAGE_CHANNELS)) return;
     event.preventDefault();
     event.stopPropagation();
     menuX = event.clientX;
@@ -1168,7 +1184,7 @@
     const current = $session.user;
     if (!current || typeof msg.id !== 'number') return false;
     if (msg.user === current) return true;
-    return currentUserCanModerate;
+    return $can(PERMISSIONS.MANAGE_MESSAGES);
   }
 
   function canEditMessage(msg: Message): boolean {
@@ -1500,13 +1516,19 @@
     }
     return map;
   });
-  let currentUserCanModerate = $derived.by(() => {
-    const user = $session.user;
-    if (!user) return false;
-    const info = $roles[user];
-    if (!info) return false;
-    return MODERATOR_ROLES.some((role) => info.role?.toLowerCase() === role.toLowerCase());
-  });
+  // Whether the current user can reach the server dashboard at all: any
+  // management capability qualifies.
+  let currentUserCanManage = $derived(
+    $can(PERMISSIONS.MANAGE_MESSAGES) ||
+      $can(PERMISSIONS.MANAGE_CHANNELS) ||
+      $can(PERMISSIONS.MANAGE_WIKI) ||
+      $can(PERMISSIONS.MANAGE_ROLES) ||
+      $can(PERMISSIONS.MANAGE_EMOJIS) ||
+      $can(PERMISSIONS.MANAGE_SERVER) ||
+      $can(PERMISSIONS.KICK_MEMBERS) ||
+      $can(PERMISSIONS.BAN_MEMBERS) ||
+      $can(PERMISSIONS.MUTE_MEMBERS)
+  );
   $effect(() => {
     if ($channels.length && !$channels.some((c) => c.id === currentChatChannelId)) {
       currentChatChannelId = defaultChannel($channels).id;
@@ -1585,53 +1607,55 @@
   });
   let currentTopic = $derived($channelTopics[currentChatChannelId] ?? '');
   let dmMessages = $derived($dmActivePeer ? ($dmConversations[$dmActivePeer] ?? []) : []);
-  let currentUserIsOwner = $derived((() => {
-    const user = $session.user;
-    if (!user) return false;
-    const info = $roles[user];
-    return info?.role?.toLowerCase() === 'owner';
-  })());
-  // Requesters must strictly outrank their target for kick/ban/mute.
-  let currentUserModerationRank = $derived(roleRank(
-    $session.user ? $roles[$session.user]?.role : undefined
-  ));
+  // Roles the current user may grant: below their own position and no more
+  // powerful than themselves (the server enforces the same bounds).
+  let assignableRoles = $derived(
+    $roleDefinitions.filter(
+      (def) =>
+        !def.isDefault &&
+        def.position < $myTopPosition &&
+        ($can(PERMISSIONS.ADMINISTRATOR) || (def.permissions & ~$myPermissions) === 0)
+    )
+  );
   let userRoleMenuItems = $derived((() => {
     if (!userRoleMenuTarget) return [];
     const target = userRoleMenuTarget;
-    const currentRole = $roles[target]?.role;
     const items: ContextMenuItem[] = [];
     items.push({ label: 'Send Message', action: () => openDm(target) });
     items.push({ label: 'View Stats', action: () => openUserStats(target) });
-    if (currentUserIsOwner) {
-      const roleItems: ContextMenuItem[] = ASSIGNABLE_ROLES.filter(
-        (role) => currentRole?.toLowerCase() !== role.toLowerCase()
-      ).map((role) => ({ label: role, action: () => assignRole(target, role) }));
-      if (currentRole) {
-        roleItems.push({ label: 'Remove Role', action: () => removeRole(target), danger: true });
-      }
-      if (roleItems.length) {
-        items.push({ label: 'Set Role', children: roleItems });
-      }
+    // Role assignment: a checklist of grantable roles, shown only to managers
+    // who outrank the target.
+    if ($can(PERMISSIONS.MANAGE_ROLES) && outranks(target) && assignableRoles.length) {
+      const assigned = new Set($userRoleIds[target] ?? []);
+      const roleItems: ContextMenuItem[] = assignableRoles.map((def) => ({
+        label: assigned.has(def.id) ? `${def.name} (assigned)` : def.name,
+        action: () => toggleUserRole(target, def.id)
+      }));
+      items.push({ label: 'Roles', children: roleItems });
     }
-    if (canModerate(target)) {
-      items.push({
-        label: 'Mute',
-        children: [
-          { label: '10 minutes', action: () => muteUser(target, 600) },
-          { label: '1 hour', action: () => muteUser(target, 3600) },
-          { label: 'Until lifted', action: () => muteUser(target) },
-          { label: 'Unmute', action: () => unmuteUser(target) }
-        ]
-      });
-      if ($onlineUsers.includes(target)) {
+    if (outranks(target)) {
+      if ($can(PERMISSIONS.MUTE_MEMBERS)) {
+        items.push({
+          label: 'Mute',
+          children: [
+            { label: '10 minutes', action: () => muteUser(target, 600) },
+            { label: '1 hour', action: () => muteUser(target, 3600) },
+            { label: 'Until lifted', action: () => muteUser(target) },
+            { label: 'Unmute', action: () => unmuteUser(target) }
+          ]
+        });
+      }
+      if ($can(PERMISSIONS.KICK_MEMBERS) && $onlineUsers.includes(target)) {
         items.push({ label: 'Kick User', danger: true, action: () => kickUser(target) });
       }
-      items.push({ label: 'Ban User', danger: true, action: () => banUser(target) });
-      items.push({ label: 'Unban User', action: () => unbanUser(target) });
+      if ($can(PERMISSIONS.BAN_MEMBERS)) {
+        items.push({ label: 'Ban User', danger: true, action: () => banUser(target) });
+        items.push({ label: 'Unban User', action: () => unbanUser(target) });
+      }
     }
     return items;
   })());
-  let channelMenuItems = $derived([
+  let channelMenuItems = $derived(!$can(PERMISSIONS.MANAGE_CHANNELS) ? [] : [
     {
       label: 'Create',
       children: [
@@ -1716,7 +1740,7 @@
         onOpenSettings={openSettings}
         {wikiOpen}
         onToggleWiki={toggleWiki}
-        showServerDashboard={currentUserModerationRank >= 1}
+        showServerDashboard={currentUserCanManage}
         onOpenServerDashboard={openServerDashboard}
         onLeaveServer={leaveServer}
         onLogout={logout}
@@ -1725,7 +1749,7 @@
       <ServerDashboardModal
         open={serverDashboardOpen}
         close={closeServerDashboard}
-        rank={currentUserModerationRank}
+        permissions={$myPermissions}
       />
       <UserStatsModal open={statsUser !== null} user={statsUser} close={closeUserStats} />
       <HelpOverlay bind:this={helpOverlay} open={helpOpen} onClose={closeHelp} />
@@ -1738,13 +1762,13 @@
         {now}
       />
       {#if wikiOpen}
-        <!-- Edit affordances are shown to everyone; the server enforces the
-             channel-management gate, same as channel/topic management. -->
+        <!-- Edit affordances follow the MANAGE_WIKI permission; the server
+             enforces the same gate on every wiki mutation. -->
         {#key currentChatChannelId}
           <WikiView
             channelId={currentChatChannelId}
             channelName={currentChatChannelName}
-            canEdit={true}
+            canEdit={$can(PERMISSIONS.MANAGE_WIKI)}
             initialSlug={wikiInitialSlug}
             onCrossChannel={openWikiPage}
           />
@@ -1815,6 +1839,7 @@
         {commandFeedbackType}
         {pendingFile}
         {previewUrl}
+        canSend={$can(PERMISSIONS.SEND_MESSAGES)}
         onSend={send}
         onInput={handleComposerInput}
         onCancelReply={cancelReply}

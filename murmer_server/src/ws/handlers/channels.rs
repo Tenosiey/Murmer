@@ -35,7 +35,7 @@ pub(super) async fn handle_create_channel(
         }
     };
 
-    if !can_manage_channels(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_CHANNELS).await {
         error!("User {requester} attempted to create channel without permission");
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
@@ -100,7 +100,7 @@ pub(super) async fn handle_delete_channel(
         }
     };
 
-    if !can_manage_channels(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_CHANNELS).await {
         error!("User {requester} attempted to delete channel without permission");
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return Err(());
@@ -148,7 +148,7 @@ pub(super) async fn handle_move_channel(
         }
     };
 
-    if !can_manage_channels(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_CHANNELS).await {
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
     }
@@ -234,7 +234,7 @@ pub(super) async fn handle_reorder_channels(
         }
     };
 
-    if !can_manage_channels(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_CHANNELS).await {
         error!("User {requester} attempted to reorder channels without permission");
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
@@ -289,7 +289,7 @@ pub(super) async fn handle_reorder_categories(
         }
     };
 
-    if !can_manage_channels(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_CHANNELS).await {
         error!("User {requester} attempted to reorder categories without permission");
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
@@ -341,7 +341,7 @@ pub(super) async fn handle_set_channel_topic(
         }
     };
 
-    if !can_manage_channels(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_CHANNELS).await {
         error!("User {requester} attempted to set channel topic without permission");
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
@@ -387,7 +387,7 @@ pub(super) async fn handle_create_voice_channel(
         }
     };
 
-    if !can_manage_channels(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_CHANNELS).await {
         error!("User {requester} attempted to create voice channel without permission");
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
@@ -470,7 +470,7 @@ pub(super) async fn handle_update_voice_channel(
         }
     };
 
-    if !can_manage_channels(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_CHANNELS).await {
         error!("User {requester} attempted to update voice channel without permission");
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
@@ -562,7 +562,7 @@ pub(super) async fn handle_delete_voice_channel(
         }
     };
 
-    if !can_manage_channels(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_CHANNELS).await {
         error!("User {requester} attempted to delete voice channel without permission");
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
@@ -604,7 +604,7 @@ pub(super) async fn handle_create_category(
         }
     };
 
-    if !can_manage_channels(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_CHANNELS).await {
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
     }
@@ -650,7 +650,7 @@ pub(super) async fn handle_rename_category(
         }
     };
 
-    if !can_manage_channels(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_CHANNELS).await {
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
     }
@@ -688,7 +688,7 @@ pub(super) async fn handle_delete_category(
         }
     };
 
-    if !can_manage_channels(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_CHANNELS).await {
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
     }

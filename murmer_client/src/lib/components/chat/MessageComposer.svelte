@@ -19,6 +19,8 @@
     commandFeedbackType?: 'info' | 'error';
     pendingFile?: File | null;
     previewUrl?: string | null;
+    /** When false, the composer is read-only (no SEND_MESSAGES permission). */
+    canSend?: boolean;
     onSend: () => void;
     onInput: () => void;
     onCancelReply: () => void;
@@ -33,6 +35,7 @@
     commandFeedbackType = 'info',
     pendingFile = null,
     previewUrl = null,
+    canSend = true,
     onSend,
     onInput,
     onCancelReply,
@@ -64,7 +67,7 @@
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      onSend();
+      if (canSend) onSend();
     } else if (event.key === 'Escape' && replyingTo) {
       onCancelReply();
     }
@@ -120,7 +123,8 @@
     bind:value
     class:scrollable
     rows="1"
-    placeholder="Message"
+    placeholder={canSend ? 'Message' : 'You do not have permission to send messages'}
+    disabled={!canSend}
     oninput={onInput}
     onpaste={handlePaste}
     onkeydown={handleKeydown}
@@ -164,13 +168,14 @@
         class="file-button"
         title="Upload file"
         aria-label="Upload file"
+        disabled={!canSend}
         onclick={() => fileInput?.click()}
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
           <path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
         </svg>
       </button>
-      <button class="send" onclick={onSend} title="Send message" aria-label="Send message">
+      <button class="send" onclick={onSend} disabled={!canSend} title="Send message" aria-label="Send message">
         <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
         </svg>

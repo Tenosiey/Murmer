@@ -9,6 +9,16 @@ use serde_json::{Map, Value};
 use std::sync::Arc;
 use tracing::error;
 
+/// Whether `user` may read channel content. Users without the VIEW_CHANNELS
+/// permission receive no history/pins; the default `@everyone` role grants it,
+/// so this only bites when an owner deliberately removes it.
+async fn can_view(state: &Arc<AppState>, user_name: &Option<String>) -> bool {
+    match user_name.as_deref() {
+        Some(user) => has_permission(state, user, crate::permissions::VIEW_CHANNELS).await,
+        None => false,
+    }
+}
+
 /// Handle channel join and load initial history.
 pub(super) async fn handle_join(
     state: &Arc<AppState>,
@@ -17,11 +27,15 @@ pub(super) async fn handle_join(
     channel_id: &mut i32,
     chan_tx: &mut tokio::sync::broadcast::Sender<String>,
     chan_rx: &mut tokio::sync::broadcast::Receiver<String>,
+    user_name: &Option<String>,
 ) {
     if let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) {
         *channel_id = ch_id as i32;
         *chan_tx = get_or_create_channel(state, *channel_id).await;
         *chan_rx = chan_tx.subscribe();
+        if !can_view(state, user_name).await {
+            return;
+        }
         db::send_history(&state.db, sender, *channel_id, None, DEFAULT_HISTORY_LIMIT).await;
         super::pins::send_pins(state, sender, *channel_id).await;
         super::wiki::send_wiki_index(state, sender, *channel_id).await;
@@ -34,7 +48,11 @@ pub(super) async fn handle_load_history(
     sender: &mut SplitSink<WebSocket, Message>,
     v: &Value,
     channel_id: i32,
+    user_name: &Option<String>,
 ) {
+    if !can_view(state, user_name).await {
+        return;
+    }
     let before = v.get("before").and_then(|b| b.as_i64());
     let mut limit = v
         .get("limit")
@@ -169,6 +187,14 @@ pub(super) async fn handle_chat(
         Some(u) => u,
         None => return,
     };
+
+    // Sending requires the SEND_MESSAGES permission. Enforced server-side so a
+    // client whose role has it revoked cannot post by ignoring the disabled
+    // composer.
+    if !has_permission(state, user, crate::permissions::SEND_MESSAGES).await {
+        send_error(sender, errors::SEND_PERMISSION_DENIED).await;
+        return;
+    }
 
     if !security::check_message_rate_limit(&state.rate_limiter, user).await {
         send_error(sender, errors::MESSAGE_RATE_LIMIT).await;
@@ -350,7 +376,7 @@ pub(super) async fn handle_delete_message(
         .map(|value| value.to_string());
 
     let mut allowed = owner.as_deref() == Some(requester.as_str());
-    if !allowed && can_manage_channels(state, &requester).await {
+    if !allowed && has_permission(state, &requester, crate::permissions::MANAGE_MESSAGES).await {
         allowed = true;
     }
 

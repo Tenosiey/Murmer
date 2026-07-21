@@ -49,9 +49,20 @@ Optional environment variables:
 - `MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
   `NONCE_EXPIRY_SECONDS` – override rate limiting defaults
 
-When `ADMIN_TOKEN` is set, only users with the roles `Admin`, `Mod` or `Owner`
-may create or delete text/voice channels. The server logs and returns an error
-for unauthorised attempts.
+Authorization uses a permission bitmask (`src/permissions.rs`), not fixed role
+names. Roles are custom `role_definitions` rows with a permission mask and a
+hierarchy `position`; users hold any number of them (`user_roles`) and their
+effective permissions are the union plus the built-in `@everyone` baseline.
+`has_permission`/`top_position` in `ws/helpers.rs` are the single enforcement
+point. `ADMIN_TOKEN` still gates the `/role` bootstrap endpoint, and without it
+channel/wiki management stays open to everyone (the historical fallback);
+every other capability is role-gated regardless. The `/role` endpoint and the
+`set-role` CLI add a named role to a key, creating the definition if missing —
+use them to bootstrap the first Owner. Role CRUD and assignment otherwise flow
+through the `create-role`/`update-role`/`delete-role`/`reorder-roles`/
+`set-user-roles` WebSocket frames (`ws/handlers/roles.rs`), all requiring the
+`MANAGE_ROLES` permission and bounded by the hierarchy to prevent escalation.
+Legacy single-role databases are migrated once by `db::migrate_roles`.
 
 ## Security notes
 - Direct messages are end-to-end encrypted by the clients; the server only

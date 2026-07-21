@@ -1,9 +1,10 @@
 //! Validation helpers for WebSocket message parameters.
 
 use super::constants::{
-    MAX_ALLOWED_VOICE_BITRATE, MAX_EMOJI_NAME_LEN, MAX_SERVER_DESCRIPTION_LENGTH,
-    MAX_SERVER_NAME_LENGTH, MAX_TOPIC_LENGTH, MAX_WELCOME_MESSAGE_LENGTH, MAX_WIKI_SLUG_LENGTH,
-    MAX_WIKI_TITLE_LENGTH, MIN_EMOJI_NAME_LEN, UPLOAD_IMAGE_EXTENSIONS, USER_STATUSES,
+    MAX_ALLOWED_VOICE_BITRATE, MAX_EMOJI_NAME_LEN, MAX_ROLE_NAME_LENGTH,
+    MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_TOPIC_LENGTH,
+    MAX_WELCOME_MESSAGE_LENGTH, MAX_WIKI_SLUG_LENGTH, MAX_WIKI_TITLE_LENGTH, MIN_EMOJI_NAME_LEN,
+    UPLOAD_IMAGE_EXTENSIONS, USER_STATUSES,
 };
 
 /// Normalize a user status string to a valid status value.
@@ -130,9 +131,47 @@ pub fn validate_wiki_title(value: &str) -> bool {
         && !trimmed.chars().any(char::is_control)
 }
 
+/// Validate a role display name: non-empty after trimming, within the length
+/// limit and free of control characters. Uniqueness is enforced by the
+/// database's case-insensitive UNIQUE constraint.
+pub fn validate_role_name(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty()
+        && trimmed.len() <= MAX_ROLE_NAME_LENGTH
+        && !trimmed.chars().any(char::is_control)
+}
+
+/// Validate a role color: a hex string like `#rgb`, `#rrggbb` or `#rrggbbaa`
+/// (3 to 8 hex digits). Mirrors the client's `HEX_COLOR_RE`.
+pub fn validate_role_color(value: &str) -> bool {
+    let Some(hex) = value.strip_prefix('#') else {
+        return false;
+    };
+    (3..=8).contains(&hex.len()) && hex.chars().all(|c| c.is_ascii_hexdigit())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn role_name_limits() {
+        assert!(validate_role_name("Dude"));
+        assert!(validate_role_name("@everyone"));
+        assert!(!validate_role_name("   "));
+        assert!(!validate_role_name("bad\nname"));
+        assert!(!validate_role_name(&"x".repeat(MAX_ROLE_NAME_LENGTH + 1)));
+    }
+
+    #[test]
+    fn role_color_forms() {
+        assert!(validate_role_color("#fff"));
+        assert!(validate_role_color("#3b82f6"));
+        assert!(validate_role_color("#3b82f6ff"));
+        assert!(!validate_role_color("3b82f6"));
+        assert!(!validate_role_color("#xyz"));
+        assert!(!validate_role_color("#12"));
+    }
 
     #[test]
     fn wiki_slug_accepts_canonical_forms() {
