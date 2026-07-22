@@ -15,6 +15,7 @@
 //! - [`wiki`] – per-channel Markdown wiki pages
 
 mod auth;
+mod channel_overrides;
 mod channels;
 mod dms;
 mod emojis;
@@ -23,12 +24,14 @@ mod messages;
 mod moderation;
 mod pins;
 mod profile;
+mod roles;
 mod screenshare;
 mod stats;
 mod wiki;
 
 use super::{errors, helpers::*, validation::*};
-use crate::{AppState, db, roles::RoleInfo};
+use crate::channel_overrides::ChannelKind;
+use crate::{AppState, db};
 use axum::{
     extract::{
         ConnectInfo, State,
@@ -100,10 +103,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 }
                             }
                             "join" => {
-                                messages::handle_join(&state, &mut sender, &v, &mut channel_id, &mut chan_tx, &mut chan_rx).await;
+                                messages::handle_join(&state, &mut sender, &v, &mut channel_id, &mut chan_tx, &mut chan_rx, &user_name).await;
                             }
                             "load-history" => {
-                                messages::handle_load_history(&state, &mut sender, &v, channel_id).await;
+                                messages::handle_load_history(&state, &mut sender, &v, channel_id, &user_name).await;
                             }
                             "load-thread" => {
                                 messages::handle_load_thread(&state, &mut sender, &v, channel_id).await;
@@ -290,8 +293,29 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "unmute-user" => {
                                 moderation::handle_unmute_user(&state, &mut sender, &v, &user_name).await;
                             }
-                            "set-role" => {
-                                handle_set_role(&state, &mut sender, &v, &user_name).await;
+                            "set-user-roles" => {
+                                roles::handle_set_user_roles(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "create-role" => {
+                                roles::handle_create_role(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "update-role" => {
+                                roles::handle_update_role(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "delete-role" => {
+                                roles::handle_delete_role(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "reorder-roles" => {
+                                roles::handle_reorder_roles(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "set-channel-override" => {
+                                channel_overrides::handle_set_channel_override(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "remove-channel-override" => {
+                                channel_overrides::handle_remove_channel_override(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "get-channel-overrides" => {
+                                channel_overrides::handle_get_channel_overrides(&state, &mut sender, &v, &user_name).await;
                             }
                             "add-emoji" => {
                                 emojis::handle_add_emoji(&state, &mut sender, &v, &user_name).await;
@@ -301,9 +325,6 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "set-server-identity" => {
                                 identity::handle_set_server_identity(&state, &mut sender, &v, &user_name).await;
-                            }
-                            "remove-role" => {
-                                handle_remove_role(&state, &mut sender, &v, &user_name).await;
                             }
                             _ => {
                                 error!("unknown message type: {t}");
@@ -326,25 +347,57 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
             result = global_rx.recv() => {
                 match result {
                     Ok(msg) => {
-                        // Direct messages travel over the shared broadcast but
-                        // must only reach their two participants. The cheap
-                        // substring check avoids parsing every frame; escaped
-                        // quotes inside message text cannot produce it.
-                        if msg.contains("\"type\":\"dm\"") {
-                            let private = serde_json::from_str::<Value>(&msg).ok().is_some_and(|v| {
-                                v.get("type").and_then(|t| t.as_str()) == Some("dm")
-                                    && !dm_involves(&v, user_name.as_deref())
-                            });
-                            if private { continue; }
+                        // Parse once for the per-recipient filters below. Only
+                        // frames that need filtering are inspected further.
+                        let parsed = if msg.contains("\"type\":\"dm\"")
+                            || channel_frame_hint(&msg)
+                            || msg.contains("channels-refresh")
+                            || msg.contains("force-disconnect")
+                        {
+                            serde_json::from_str::<Value>(&msg).ok()
+                        } else {
+                            None
+                        };
+
+                        if let Some(v) = &parsed {
+                            let frame_type = v.get("type").and_then(|t| t.as_str());
+                            // Channel permissions changed: rebuild this
+                            // connection's own filtered channel/voice lists.
+                            if frame_type == Some("channels-refresh") {
+                                send_channels(&state, &mut sender, user_name.as_deref()).await;
+                                send_voice_channels(&state, &mut sender, user_name.as_deref()).await;
+                                continue;
+                            }
+                            // Direct messages must only reach their two participants.
+                            if frame_type == Some("dm")
+                                && !dm_involves(v, user_name.as_deref())
+                            {
+                                continue;
+                            }
+                            // Channel-scoped frames must not reach a user who
+                            // cannot see the channel. Channels with no overrides
+                            // are visible to everyone (fast path).
+                            if let Some((kind, id)) = channel_scope(v) {
+                                let restricted = state
+                                    .channel_overrides
+                                    .lock()
+                                    .await
+                                    .contains_key(&(kind, id));
+                                if restricted
+                                    && !user_can_see_channel(&state, user_name.as_deref(), kind, id).await
+                                {
+                                    continue;
+                                }
+                            }
                         }
+
                         // A force-disconnect broadcast targeting this user
                         // (kick/ban) is forwarded so the client learns why,
                         // then the connection is closed.
-                        let targets_this_user = msg.contains("force-disconnect")
-                            && serde_json::from_str::<Value>(&msg).ok().is_some_and(|v| {
-                                v.get("type").and_then(|t| t.as_str()) == Some("force-disconnect")
-                                    && v.get("user").and_then(|u| u.as_str()) == user_name.as_deref()
-                            });
+                        let targets_this_user = parsed.as_ref().is_some_and(|v| {
+                            v.get("type").and_then(|t| t.as_str()) == Some("force-disconnect")
+                                && v.get("user").and_then(|u| u.as_str()) == user_name.as_deref()
+                        });
                         if sender.send(Message::Text(msg.into())).await.is_err() { break; }
                         if targets_this_user {
                             info!("Closing connection after force-disconnect");
@@ -363,6 +416,44 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
 }
 
 // ── Small handlers kept here to avoid creating very tiny files ──────────────
+
+/// Cheap substring pre-check: does this frame's type look channel-scoped and
+/// therefore warrant parsing for the visibility filter? Avoids parsing the bulk
+/// of global frames (roles, statuses, presence, …).
+fn channel_frame_hint(msg: &str) -> bool {
+    msg.contains("-notify")
+        || msg.contains("channel-add")
+        || msg.contains("channel-topic")
+        || msg.contains("channel-remove")
+        || msg.contains("voice-channel-")
+        || msg.contains("voice-users")
+        || msg.contains("voice-join")
+        || msg.contains("voice-leave")
+        || msg.contains("screenshare-start")
+        || msg.contains("screenshare-stop")
+}
+
+/// If a broadcast frame is scoped to one channel whose visibility must be
+/// enforced, return its (kind, channel id). Frames not listed here reach
+/// everyone: `channel-move`/`channel-reorder` only shuffle ids a client already
+/// has, and voice/screen-share signaling is only meaningful to joined peers.
+fn channel_scope(v: &Value) -> Option<(ChannelKind, i32)> {
+    let ty = v.get("type").and_then(|t| t.as_str())?;
+    let kind = match ty {
+        "message-notify" | "channel-add" | "channel-topic" | "channel-remove" => ChannelKind::Text,
+        "voice-channel-add"
+        | "voice-channel-update"
+        | "voice-channel-remove"
+        | "voice-users"
+        | "voice-join"
+        | "voice-leave"
+        | "screenshare-start"
+        | "screenshare-stop" => ChannelKind::Voice,
+        _ => return None,
+    };
+    let id = v.get("channelId").and_then(|c| c.as_i64())? as i32;
+    Some((kind, id))
+}
 
 /// Whether a relayed frame's `user` field names the connection's own
 /// authenticated user. Prevents spoofing other users in signaling frames.
@@ -428,7 +519,7 @@ async fn handle_get_server_info(
         return;
     };
 
-    if !can_view_server_info(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::VIEW_SERVER_INFO).await {
         info!(requester, "Denied server info request");
         return;
     }
@@ -483,7 +574,7 @@ async fn handle_get_connection_stats(
         return;
     };
 
-    if !can_view_connection_stats(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::VIEW_CONNECTION_STATS).await {
         info!(requester, "Denied connection stats request");
         return;
     }
@@ -525,6 +616,10 @@ async fn handle_voice_join(
     };
     if let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) {
         let ch_id = ch_id as i32;
+        // A private voice channel is join-gated by View (see + join).
+        if !can_view_channel(state, u, ChannelKind::Voice, ch_id).await {
+            return;
+        }
         let mut map = state.voice_channels.lock().await;
         for info in map.values_mut() {
             info.users.remove(u);
@@ -549,6 +644,24 @@ async fn handle_voice_join(
             "channelId": ch_id,
         });
         let _ = state.tx.send(msg.to_string());
+
+        // Tell the joiner whether they may speak here (Talk = SEND in the
+        // channel). Voice audio is peer-to-peer, so the client enforces this by
+        // disabling its microphone; the server enforces View/join only.
+        let can_speak = has_channel_permission(
+            state,
+            u,
+            ChannelKind::Voice,
+            ch_id,
+            crate::permissions::SEND_MESSAGES,
+        )
+        .await;
+        let perms = serde_json::json!({
+            "type": "voice-permissions",
+            "channelId": ch_id,
+            "canSpeak": can_speak,
+        });
+        let _ = sender.send(Message::Text(perms.to_string().into())).await;
 
         send_active_screen_shares(state, sender, ch_id).await;
         send_voice_mutes(state, sender, ch_id).await;
@@ -739,113 +852,6 @@ async fn send_active_screen_shares(
     })) {
         let _ = sender.send(Message::Text(msg.into())).await;
     }
-}
-
-/// Handle set-role request from an Owner.
-async fn handle_set_role(
-    state: &Arc<AppState>,
-    sender: &mut SplitSink<WebSocket, Message>,
-    v: &Value,
-    user_name: &Option<String>,
-) {
-    let requester = match user_name.as_deref() {
-        Some(name) => name,
-        None => {
-            send_error(sender, errors::ROLE_PERMISSION_DENIED).await;
-            return;
-        }
-    };
-
-    if !can_manage_roles(state, requester).await {
-        send_error(sender, errors::ROLE_PERMISSION_DENIED).await;
-        return;
-    }
-
-    let Some(target_user) = v.get("user").and_then(|u| u.as_str()) else {
-        send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
-        return;
-    };
-
-    let Some(role) = v.get("role").and_then(|r| r.as_str()) else {
-        send_error(sender, errors::ROLE_UPDATE_FAILED).await;
-        return;
-    };
-
-    let Some(key) = lookup_user_key(state, target_user).await else {
-        send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
-        return;
-    };
-
-    let color = v
-        .get("color")
-        .and_then(|c| c.as_str())
-        .map(|s| s.to_string())
-        .or_else(|| crate::roles::default_color(role));
-
-    if let Err(e) = db::set_role(&state.db, &key, role, color.as_deref()).await {
-        error!("Failed to set role for {target_user} (key {key}): {e}");
-        send_error(sender, errors::ROLE_UPDATE_FAILED).await;
-        return;
-    }
-
-    let info = RoleInfo {
-        role: role.to_string(),
-        color,
-    };
-    state
-        .roles
-        .lock()
-        .await
-        .insert(target_user.to_string(), info.clone());
-    broadcast_role(state, target_user, &info.role, info.color.as_deref()).await;
-    info!(requester, target_user, role, "Role assigned via WebSocket");
-}
-
-/// Handle remove-role request from an Owner.
-async fn handle_remove_role(
-    state: &Arc<AppState>,
-    sender: &mut SplitSink<WebSocket, Message>,
-    v: &Value,
-    user_name: &Option<String>,
-) {
-    let requester = match user_name.as_deref() {
-        Some(name) => name,
-        None => {
-            send_error(sender, errors::ROLE_PERMISSION_DENIED).await;
-            return;
-        }
-    };
-
-    if !can_manage_roles(state, requester).await {
-        send_error(sender, errors::ROLE_PERMISSION_DENIED).await;
-        return;
-    }
-
-    let Some(target_user) = v.get("user").and_then(|u| u.as_str()) else {
-        send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
-        return;
-    };
-
-    let Some(key) = lookup_user_key(state, target_user).await else {
-        send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
-        return;
-    };
-
-    if let Err(e) = db::remove_role(&state.db, &key).await {
-        error!("Failed to remove role for {target_user} (key {key}): {e}");
-        send_error(sender, errors::ROLE_UPDATE_FAILED).await;
-        return;
-    }
-
-    state.roles.lock().await.remove(target_user);
-
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "role-remove",
-        "user": target_user,
-    })) {
-        let _ = state.tx.send(msg);
-    }
-    info!(requester, target_user, "Role removed via WebSocket");
 }
 
 /// Handle client disconnect cleanup.

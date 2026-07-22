@@ -15,6 +15,7 @@
   import { roles } from '$lib/stores/roles';
   import { leftSidebarWidth } from '$lib/stores/layout';
   import { microphoneMuted, outputMuted, voiceMode, voiceActivity, isPttActive } from '$lib/stores/settings';
+  import { canSpeak } from '$lib/stores/voicePermissions';
   import { remoteSpeaking } from '$lib/stores/voiceSpeaking';
   import { voiceMuteStates } from '$lib/stores/voiceMute';
   import { activeScreenShares } from '$lib/stores/screenShare';
@@ -376,6 +377,11 @@
             >
               <span class="chan-icon">#</span>
               <span class="chan-name">{ch.name}</span>
+              {#if ch.private}
+                <span class="chan-lock" title="Private channel" aria-label="Private channel">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </span>
+              {/if}
               {#if ch.id !== currentChatChannelId && ($unread[ch.id]?.count ?? 0) > 0}
                 <span
                   class="unread-badge"
@@ -411,6 +417,11 @@
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
                 </span>
                 <span class="voice-channel-name">{ch.name}</span>
+                {#if ch.private}
+                  <span class="chan-lock" title="Private channel" aria-label="Private channel">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  </span>
+                {/if}
                 <span class="voice-channel-quality">{formatVoiceQuality(ch)}</span>
               </button>
               {#if $voiceUsers[ch.id]?.length}
@@ -507,10 +518,16 @@
           class:muted={inVoice && $microphoneMuted}
           class:active={inVoice && $voiceMode === 'vad' && $voiceActivity}
           class:ptt-active={inVoice && $voiceMode === 'ptt' && $isPttActive}
-          class:disabled={!inVoice}
+          class:disabled={!inVoice || !$canSpeak}
           onclick={onToggleMicrophone}
-          disabled={!inVoice}
-          title={!inVoice ? 'Join a voice channel first' : $microphoneMuted ? 'Unmute Microphone' : 'Mute Microphone'}
+          disabled={!inVoice || !$canSpeak}
+          title={!inVoice
+            ? 'Join a voice channel first'
+            : !$canSpeak
+              ? 'You do not have permission to talk in this channel'
+              : $microphoneMuted
+                ? 'Unmute Microphone'
+                : 'Mute Microphone'}
         >
           <span class="btn-icon">
             {#if inVoice && $microphoneMuted}
@@ -522,6 +539,8 @@
           <span class="btn-text">
             {#if !inVoice}
               Microphone
+            {:else if !$canSpeak}
+              Listen only
             {:else if $microphoneMuted}
               Unmute Mic
             {:else if $voiceMode === 'continuous'}
@@ -695,6 +714,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .chan-lock {
+    display: inline-flex;
+    align-items: center;
+    color: var(--color-muted);
+    flex-shrink: 0;
   }
 
   .channels button.unread {

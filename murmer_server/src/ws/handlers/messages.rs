@@ -1,5 +1,6 @@
 //! Handlers for chat messages, message deletion, editing, reactions, history and search.
 
+use crate::channel_overrides::ChannelKind;
 use crate::ws::{constants::*, errors, helpers::*, validation::is_emoji_shortcode};
 use crate::{AppState, db, security};
 use axum::extract::ws::{Message, WebSocket};
@@ -9,6 +10,16 @@ use serde_json::{Map, Value};
 use std::sync::Arc;
 use tracing::error;
 
+/// Whether `user` may see a specific text channel, applying per-channel
+/// overrides. Users who cannot see a channel receive no history/pins and are
+/// never subscribed to its broadcast.
+async fn can_view_text(state: &Arc<AppState>, user_name: &Option<String>, channel_id: i32) -> bool {
+    match user_name.as_deref() {
+        Some(user) => can_view_channel(state, user, ChannelKind::Text, channel_id).await,
+        None => false,
+    }
+}
+
 /// Handle channel join and load initial history.
 pub(super) async fn handle_join(
     state: &Arc<AppState>,
@@ -17,9 +28,16 @@ pub(super) async fn handle_join(
     channel_id: &mut i32,
     chan_tx: &mut tokio::sync::broadcast::Sender<String>,
     chan_rx: &mut tokio::sync::broadcast::Receiver<String>,
+    user_name: &Option<String>,
 ) {
     if let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) {
-        *channel_id = ch_id as i32;
+        let ch_id = ch_id as i32;
+        // Refuse to switch to a channel the user cannot see, so a non-viewer is
+        // never even subscribed to the channel's live broadcast.
+        if !can_view_text(state, user_name, ch_id).await {
+            return;
+        }
+        *channel_id = ch_id;
         *chan_tx = get_or_create_channel(state, *channel_id).await;
         *chan_rx = chan_tx.subscribe();
         db::send_history(&state.db, sender, *channel_id, None, DEFAULT_HISTORY_LIMIT).await;
@@ -34,7 +52,11 @@ pub(super) async fn handle_load_history(
     sender: &mut SplitSink<WebSocket, Message>,
     v: &Value,
     channel_id: i32,
+    user_name: &Option<String>,
 ) {
+    if !can_view_text(state, user_name, channel_id).await {
+        return;
+    }
     let before = v.get("before").and_then(|b| b.as_i64());
     let mut limit = v
         .get("limit")
@@ -169,6 +191,23 @@ pub(super) async fn handle_chat(
         Some(u) => u,
         None => return,
     };
+
+    // Sending requires seeing the channel and holding SEND_MESSAGES within it
+    // (per-channel overrides included). Enforced server-side so a client whose
+    // permission was revoked cannot post by ignoring the disabled composer.
+    if !can_view_channel(state, user, ChannelKind::Text, channel_id).await
+        || !has_channel_permission(
+            state,
+            user,
+            ChannelKind::Text,
+            channel_id,
+            crate::permissions::SEND_MESSAGES,
+        )
+        .await
+    {
+        send_error(sender, errors::SEND_PERMISSION_DENIED).await;
+        return;
+    }
 
     if !security::check_message_rate_limit(&state.rate_limiter, user).await {
         send_error(sender, errors::MESSAGE_RATE_LIMIT).await;
@@ -350,7 +389,16 @@ pub(super) async fn handle_delete_message(
         .map(|value| value.to_string());
 
     let mut allowed = owner.as_deref() == Some(requester.as_str());
-    if !allowed && can_manage_channels(state, &requester).await {
+    if !allowed
+        && has_channel_permission(
+            state,
+            &requester,
+            ChannelKind::Text,
+            channel_id,
+            crate::permissions::MANAGE_MESSAGES,
+        )
+        .await
+    {
         allowed = true;
     }
 
@@ -651,6 +699,24 @@ pub(super) async fn handle_react(
         }
     };
     let target_channel_id = target_record.channel_id;
+
+    // Reacting requires seeing the channel; adding a reaction additionally
+    // requires SEND_MESSAGES there. Removing your own reaction stays allowed as
+    // long as you can still see the channel.
+    if !can_view_channel(state, &user, ChannelKind::Text, target_channel_id).await
+        || (action == "add"
+            && !has_channel_permission(
+                state,
+                &user,
+                ChannelKind::Text,
+                target_channel_id,
+                crate::permissions::SEND_MESSAGES,
+            )
+            .await)
+    {
+        send_error(sender, errors::SEND_PERMISSION_DENIED).await;
+        return;
+    }
 
     let result = match action {
         "add" => db::add_reaction(&state.db, message_id, &user, emoji).await,

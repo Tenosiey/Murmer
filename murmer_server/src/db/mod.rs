@@ -23,6 +23,7 @@
 //! - [`users`] – user name to public key bindings
 //! - [`wiki`] – per-channel Markdown wiki pages with revision history
 
+mod channel_overrides;
 mod channels;
 mod direct_messages;
 mod emojis;
@@ -37,6 +38,7 @@ mod stats;
 mod users;
 mod wiki;
 
+pub use channel_overrides::*;
 pub use channels::*;
 pub use direct_messages::*;
 pub use emojis::*;
@@ -181,6 +183,31 @@ CREATE TABLE IF NOT EXISTS roles (
     role TEXT NOT NULL,
     color TEXT
 );
+CREATE TABLE IF NOT EXISTS role_definitions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    color TEXT,
+    permissions INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL DEFAULT 0,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    is_owner INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS user_roles (
+    public_key TEXT NOT NULL,
+    role_id INTEGER NOT NULL REFERENCES role_definitions(id) ON DELETE CASCADE,
+    PRIMARY KEY (public_key, role_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles (role_id);
+CREATE TABLE IF NOT EXISTS channel_overrides (
+    channel_kind TEXT NOT NULL,
+    channel_id INTEGER NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    target_label TEXT NOT NULL DEFAULT '',
+    allow INTEGER NOT NULL DEFAULT 0,
+    deny INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (channel_kind, channel_id, target_type, target_id)
+);
 CREATE TABLE IF NOT EXISTS user_keys (
     user_name TEXT PRIMARY KEY,
     public_key TEXT NOT NULL,
@@ -238,6 +265,11 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
 
         conn.execute_batch(&stats::stats_schema())?;
         conn.execute_batch(&wiki::wiki_schema())?;
+
+        // Seed built-in roles and migrate any legacy single-role assignments
+        // into role_definitions/user_roles. Runs once (marker-guarded); depends
+        // on server_settings, created by stats_schema above.
+        roles::migrate_roles(conn)?;
 
         // Columns added after a table first shipped; CREATE TABLE IF NOT
         // EXISTS does not extend existing tables.

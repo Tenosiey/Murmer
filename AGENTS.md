@@ -56,7 +56,31 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   the new key, and expose a fingerprint for out-of-band verification.
 - Rate limiting exists for both authentication and chat traffic.
 - File uploads are validated by size and an extension safe-list; images are additionally checked by magic bytes. Active content (HTML, SVG, scripts) is never accepted.
-- Channel management honours role assignments when `ADMIN_TOKEN` is configured.
+- Authorization is a **permission bitmask**, not fixed roles. Server owners
+  define custom roles in the Server Dashboard and toggle each capability
+  (view/send/manage channels/kick/ban/manage roles/…) per role. A user's
+  effective permissions are the union of the built-in `@everyone` baseline
+  role and every role assigned to them; `ADMINISTRATOR` (the Owner role) grants
+  everything. The flag set is defined in `murmer_server/src/permissions.rs` and
+  mirrored in `murmer_client/src/lib/chat/permissions.ts` — keep them in sync.
+  Roles stack (a user may hold several) and carry a hierarchy `position`;
+  moderation and role management require strictly outranking the target, and a
+  manager can never grant a permission it lacks. Every check is enforced
+  server-side (`ws/helpers.rs::has_permission`/`top_position`); client gating
+  is cosmetic. Without `ADMIN_TOKEN`, channel and wiki management stay open to
+  everyone so a small unadministered server remains usable.
+- **Private channels** layer per-channel allow/deny overrides (for `@everyone`,
+  roles and individual users) on top of the server-wide permissions, resolved
+  by `channel_permissions`/`can_view_channel` in `ws/helpers.rs`. Overrides only
+  touch "see" (`VIEW_CHANNELS`) and "write/talk" (`SEND_MESSAGES`). The server
+  hides invisible channels from listings, filters channel-scoped broadcasts per
+  recipient (the `global_rx` loop in `ws/handlers/mod.rs`), and refuses
+  join/history/send/voice-join for channels a user cannot see. Voice **talk** is
+  the one client-enforced piece (mic disabled via the `voice-permissions` hint)
+  because audio is peer-to-peer; view/join and all text gates are server-enforced.
+  Managers (`MANAGE_CHANNELS`) edit overrides via the `set/remove-channel-override`
+  frames (`ws/handlers/channel_overrides.rs`); override data is sent only to
+  managers.
 - Lifetime user stats are double opt-in: recording requires the server-wide
   toggle (Owner/Admin) AND the user's own opt-in, enforced in
   `murmer_server/src/db/stats.rs`. Only aggregate counters are stored — never

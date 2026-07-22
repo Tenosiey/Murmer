@@ -57,19 +57,8 @@ pub(super) async fn handle_set_screenshare_max_bitrate(
         return;
     };
 
-    // Server-side role check; clients cannot spoof this.
-    let allowed = {
-        let roles = state.roles.lock().await;
-        roles
-            .get(requester)
-            .map(|info| {
-                SCREENSHARE_ADMIN_ROLES
-                    .iter()
-                    .any(|role| info.role.eq_ignore_ascii_case(role))
-            })
-            .unwrap_or(false)
-    };
-    if !allowed {
+    // Server-side permission check; clients cannot spoof this.
+    if !has_permission(state, requester, crate::permissions::MANAGE_SERVER).await {
         warn!(
             "User {requester} attempted to change the screen share bitrate cap without permission"
         );

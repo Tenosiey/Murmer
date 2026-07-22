@@ -1,35 +1,54 @@
-import { writable } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 import { chat } from './chat';
-import type { Message, RoleInfo } from '../types';
+import { roleDefinitions } from './roleDefinitions';
+import type { Message, RoleDef, RoleInfo } from '../types';
 
-const HEX_COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
+/**
+ * Role ids assigned to each user, keyed by username. Populated from the
+ * `user-roles` frame the server sends per user on connect and on any change.
+ * The default `@everyone` role is implicit and never appears here.
+ */
+function createUserRoleIdsStore() {
+  const { subscribe, update, set } = writable<Record<string, number[]>>({});
 
-function sanitizeColor(raw: unknown): string | undefined {
-  if (typeof raw === 'string' && HEX_COLOR_RE.test(raw)) return raw;
-  return undefined;
+  chat.on('user-roles', (msg: Message) => {
+    const user = msg.user;
+    const raw = (msg as any).roleIds;
+    if (typeof user !== 'string' || !Array.isArray(raw)) return;
+    const ids = raw.filter((id): id is number => typeof id === 'number');
+    update((r) => ({ ...r, [user]: ids }));
+  });
+
+  return { subscribe, reset: () => set({}) };
 }
 
-function createRoleStore() {
-  const { subscribe, update, set } = writable<Record<string, RoleInfo>>({});
-  chat.on('role-update', (msg: Message) => {
-    const user = msg.user;
-    const role = (msg as any).role as string | undefined;
-    const color = sanitizeColor((msg as any).color);
-    if (typeof user === 'string' && typeof role === 'string') {
-      update(r => ({ ...r, [user]: { role, color } }));
-    }
-  });
-  chat.on('role-remove', (msg: Message) => {
-    const user = msg.user;
-    if (typeof user === 'string') {
-      update(r => {
-        const copy = { ...r };
-        delete copy[user];
-        return copy;
-      });
-    }
-  });
-  return { subscribe, set };
+export const userRoleIds = createUserRoleIdsStore();
+
+/** The role a user is displayed as: their highest-position assigned role. */
+function displayRole(defs: RoleDef[], ids: number[]): RoleInfo | undefined {
+  const byId = new Map(defs.map((d) => [d.id, d]));
+  let best: RoleDef | undefined;
+  for (const id of ids) {
+    const def = byId.get(id);
+    if (!def || def.isDefault) continue;
+    if (!best || def.position > best.position) best = def;
+  }
+  return best ? { role: best.name, color: best.color } : undefined;
 }
 
-export const roles = createRoleStore();
+/**
+ * Per-user display role (username → highest-position role name/color), derived
+ * from the role definitions and each user's assignments. Kept in the same shape
+ * the badge/label components consumed before custom roles existed.
+ */
+export const roles = derived(
+  [roleDefinitions, userRoleIds],
+  ([defs, assignments]) => {
+    const map: Record<string, RoleInfo> = {};
+    for (const [user, ids] of Object.entries(assignments)) {
+      const info = displayRole(defs, ids);
+      if (info) map[user] = info;
+    }
+    return map;
+  }
+);

@@ -1,19 +1,16 @@
 //! Constants used in WebSocket message handling.
-
-/// Roles that are allowed to create or delete channels when administrative controls are enabled.
-pub const CHANNEL_MANAGE_ROLES: &[&str] = &["Admin", "Mod", "Owner"];
-
-/// Roles that are allowed to assign or remove roles from other users.
-pub const ROLE_MANAGE_ROLES: &[&str] = &["Owner"];
-
-/// Roles that are allowed to query server details such as the running version.
-pub const SERVER_INFO_ROLES: &[&str] = &["Owner", "Admin"];
-
-/// Roles that are allowed to add or remove custom server emojis.
-pub const EMOJI_MANAGE_ROLES: &[&str] = &["Owner", "Admin", "Mod"];
+//!
+//! Feature authorization is decided by the permission bitmask in
+//! [`crate::permissions`], not by hardcoded role-name lists.
 
 /// Maximum number of custom emojis a server may register.
 pub const MAX_CUSTOM_EMOJIS: i64 = 200;
+
+/// Maximum number of role definitions a server may hold (including built-ins).
+pub const MAX_ROLES: usize = 100;
+
+/// Maximum length in bytes for a role name.
+pub const MAX_ROLE_NAME_LENGTH: usize = 32;
 
 /// Maximum file size in bytes for a custom emoji image.
 pub const MAX_EMOJI_FILE_BYTES: u64 = 512 * 1024;
@@ -23,10 +20,6 @@ pub const MIN_EMOJI_NAME_LEN: usize = 2;
 
 /// Maximum length of a custom emoji name.
 pub const MAX_EMOJI_NAME_LEN: usize = 32;
-
-/// Roles that are allowed to edit the server identity (name, description,
-/// welcome message and icon) shown in the dashboard's Overview tab.
-pub const SERVER_IDENTITY_ROLES: &[&str] = &["Owner", "Admin"];
 
 /// Maximum length in bytes for the server display name.
 pub const MAX_SERVER_NAME_LENGTH: usize = 64;
@@ -46,15 +39,6 @@ pub const MAX_AVATAR_BYTES: u64 = 1024 * 1024;
 /// File extensions accepted for image uploads referenced over the WebSocket
 /// (custom emojis, server icon). Subset of the upload endpoint's safe-list.
 pub const UPLOAD_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];
-
-/// Roles that are allowed to view other users' self-reported connection stats.
-pub const CONNECTION_STATS_ROLES: &[&str] = &["Owner", "Admin"];
-
-/// Roles that are allowed to toggle the server-wide stat tracking switch.
-pub const STATS_ADMIN_ROLES: &[&str] = &["Owner", "Admin"];
-
-/// Roles that are allowed to change the server-wide screen share bitrate cap.
-pub const SCREENSHARE_ADMIN_ROLES: &[&str] = &["Owner", "Admin"];
 
 /// Bounds accepted for the screen share bitrate cap in bits per second.
 pub const MIN_SCREENSHARE_BITRATE: u64 = 100_000;

@@ -1,30 +1,57 @@
-use murmer_server::ws::helpers::moderation_rank;
+//! Permission-bitmask semantics that back moderation and every other
+//! authorization check.
+
+use murmer_server::permissions::{
+    self, ADMINISTRATOR, ALL, DEFAULT_ADMIN, DEFAULT_EVERYONE, DEFAULT_MOD, DEFAULT_OWNER,
+    KICK_MEMBERS, MANAGE_CHANNELS, MANAGE_SERVER, SEND_MESSAGES, VIEW_CHANNELS,
+};
 
 #[test]
-fn ranks_standard_roles() {
-    assert_eq!(moderation_rank(Some("Owner")), 3);
-    assert_eq!(moderation_rank(Some("Admin")), 2);
-    assert_eq!(moderation_rank(Some("Mod")), 1);
+fn administrator_grants_everything() {
+    assert!(permissions::mask_allows(ADMINISTRATOR, MANAGE_CHANNELS));
+    assert!(permissions::mask_allows(ADMINISTRATOR, KICK_MEMBERS));
+    assert!(permissions::mask_allows(ADMINISTRATOR, MANAGE_SERVER));
 }
 
 #[test]
-fn is_case_insensitive() {
-    assert_eq!(moderation_rank(Some("owner")), 3);
-    assert_eq!(moderation_rank(Some("ADMIN")), 2);
-    assert_eq!(moderation_rank(Some("mod")), 1);
+fn exact_flag_is_required_without_administrator() {
+    assert!(permissions::mask_allows(MANAGE_CHANNELS, MANAGE_CHANNELS));
+    assert!(!permissions::mask_allows(VIEW_CHANNELS, MANAGE_CHANNELS));
+    assert!(!permissions::mask_allows(0, SEND_MESSAGES));
 }
 
 #[test]
-fn unprivileged_roles_have_no_rank() {
-    assert_eq!(moderation_rank(None), 0);
-    assert_eq!(moderation_rank(Some("Member")), 0);
-    assert_eq!(moderation_rank(Some("")), 0);
+fn unknown_bits_are_rejected() {
+    assert!(permissions::is_valid_mask(ALL));
+    assert!(permissions::is_valid_mask(DEFAULT_MOD));
+    assert!(!permissions::is_valid_mask(1 << 60));
+    assert!(!permissions::is_valid_mask(ALL | (1 << 40)));
 }
 
 #[test]
-fn moderation_requires_strictly_higher_rank() {
-    // A Mod must not be able to act against another Mod or above.
-    assert!(moderation_rank(Some("Mod")) <= moderation_rank(Some("Mod")));
-    assert!(moderation_rank(Some("Admin")) > moderation_rank(Some("Mod")));
-    assert!(moderation_rank(Some("Owner")) <= moderation_rank(Some("Owner")));
+fn default_role_sets_match_expectations() {
+    // Baseline: read and chat, but nothing privileged.
+    assert!(permissions::mask_allows(DEFAULT_EVERYONE, VIEW_CHANNELS));
+    assert!(permissions::mask_allows(DEFAULT_EVERYONE, SEND_MESSAGES));
+    assert!(!permissions::mask_allows(DEFAULT_EVERYONE, MANAGE_CHANNELS));
+
+    // Mods manage channels and moderate, but do not touch server settings.
+    assert!(permissions::mask_allows(DEFAULT_MOD, MANAGE_CHANNELS));
+    assert!(permissions::mask_allows(DEFAULT_MOD, KICK_MEMBERS));
+    assert!(!permissions::mask_allows(DEFAULT_MOD, MANAGE_SERVER));
+
+    // Admins additionally manage server settings.
+    assert!(permissions::mask_allows(DEFAULT_ADMIN, MANAGE_SERVER));
+
+    // Owner is a plain administrator mask.
+    assert_eq!(DEFAULT_OWNER, ADMINISTRATOR);
+}
+
+#[test]
+fn permission_union_stacks() {
+    // Stacked roles union their permissions (the effective-permission model).
+    let stacked = DEFAULT_EVERYONE | KICK_MEMBERS;
+    assert!(permissions::mask_allows(stacked, SEND_MESSAGES));
+    assert!(permissions::mask_allows(stacked, KICK_MEMBERS));
+    assert!(!permissions::mask_allows(stacked, MANAGE_SERVER));
 }

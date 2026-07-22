@@ -1,7 +1,7 @@
 //! Authentication handlers for user and bot presence.
 
 use crate::ws::{constants::*, errors, helpers::*};
-use crate::{AppState, bot, db, roles::RoleInfo, security};
+use crate::{AppState, bot, db, security};
 use axum::extract::ws::{Message, WebSocket};
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -205,33 +205,28 @@ pub(super) async fn handle_presence(
                     .await
                     .insert(u.to_string(), pk.to_string());
 
-                if let Some((role, color)) = db::get_role(&state.db, pk).await {
-                    let info = RoleInfo {
-                        role: role.clone(),
-                        color: color.or_else(|| crate::roles::default_color(&role)),
-                    };
-                    state.roles.lock().await.insert(u.to_string(), info.clone());
-                    broadcast_role(state, u, &info.role, info.color.as_deref()).await;
-                } else if state.roles.lock().await.remove(u).is_some() {
-                    // The role was revoked (e.g. via the CLI) while the user
-                    // was offline; drop the stale in-memory entry so it does
-                    // not keep granting privileges.
-                    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-                        "type": "role-remove",
-                        "user": u,
-                    })) {
-                        let _ = state.tx.send(msg);
-                    }
-                }
+                // Load this key's role assignments from the database (the
+                // source of truth) into memory and announce them. An empty set
+                // also covers roles revoked while the user was offline.
+                let role_ids = db::get_user_role_ids(&state.db, pk)
+                    .await
+                    .unwrap_or_default();
+                state
+                    .user_roles
+                    .lock()
+                    .await
+                    .insert(u.to_string(), role_ids.clone());
+                broadcast_user_roles(state, u, &role_ids).await;
             }
 
-            send_all_roles(state, sender).await;
+            send_role_definitions(state, sender).await;
+            send_all_user_roles(state, sender).await;
             send_all_statuses(state, sender).await;
             super::profile::send_all_avatars(state, sender).await;
             send_categories(state, sender).await;
-            send_channels(state, sender).await;
+            send_channels(state, sender, Some(u)).await;
             send_emojis(state, sender).await;
-            send_voice_channels(state, sender).await;
+            send_voice_channels(state, sender, Some(u)).await;
             send_users(state, sender).await;
             send_all_voice(state, sender).await;
             super::identity::send_server_identity(state, sender).await;
@@ -301,12 +296,13 @@ pub(super) async fn handle_bot_presence(
     broadcast_users(state).await;
     *user_name = Some(bot_name);
 
-    send_all_roles(state, sender).await;
+    send_role_definitions(state, sender).await;
+    send_all_user_roles(state, sender).await;
     send_all_statuses(state, sender).await;
     super::profile::send_all_avatars(state, sender).await;
-    send_channels(state, sender).await;
+    send_channels(state, sender, user_name.as_deref()).await;
     send_emojis(state, sender).await;
-    send_voice_channels(state, sender).await;
+    send_voice_channels(state, sender, user_name.as_deref()).await;
     send_users(state, sender).await;
     send_all_voice(state, sender).await;
     super::identity::send_server_identity(state, sender).await;

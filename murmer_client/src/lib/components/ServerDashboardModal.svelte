@@ -28,33 +28,39 @@
     screenShareServerMaxBitrate,
     setServerScreenShareMaxBitrate
   } from '$lib/stores/screenShare';
-  import type { Message } from '$lib/types';
+  import { roleDefinitions } from '$lib/stores/roleDefinitions';
+  import { myTopPosition } from '$lib/stores/permissions';
+  import {
+    PERMISSIONS,
+    hasPermission,
+    PERMISSION_GROUPS
+  } from '$lib/chat/permissions';
+  import type { Message, RoleDef } from '$lib/types';
 
-  
   interface Props {
     open: boolean;
     close: () => void;
-    /** The viewer's moderation rank; gates which tabs are visible. */
-    rank: number;
+    /** The viewer's effective permission mask; gates which tabs are visible. */
+    permissions: number;
   }
 
-  let { open, close, rank }: Props = $props();
+  let { open, close, permissions }: Props = $props();
 
-  // Each server-wide topic lives on its own tab; minRank hides tabs the
-  // viewer's role does not reach.
+  // Each server-wide topic lives on its own tab, gated by the permission it
+  // controls so a role only sees what it can act on.
   const TABS = [
-    { id: 'overview', label: 'Overview', minRank: 2 },
-    { id: 'emojis', label: 'Emojis', minRank: 1 },
-    { id: 'moderation', label: 'Moderation', minRank: 1 },
-    { id: 'stats', label: 'Stats', minRank: 2 },
-    { id: 'uploads', label: 'Files & Uploads', minRank: 2 },
-    { id: 'voice', label: 'Voice', minRank: 2 },
-    { id: 'roles', label: 'Roles', minRank: 3 },
-    { id: 'danger', label: 'Danger Zone', minRank: 3 }
+    { id: 'overview', label: 'Overview', perm: PERMISSIONS.MANAGE_SERVER },
+    { id: 'emojis', label: 'Emojis', perm: PERMISSIONS.MANAGE_EMOJIS },
+    { id: 'moderation', label: 'Moderation', perm: PERMISSIONS.BAN_MEMBERS },
+    { id: 'stats', label: 'Stats', perm: PERMISSIONS.MANAGE_SERVER },
+    { id: 'uploads', label: 'Files & Uploads', perm: PERMISSIONS.MANAGE_SERVER },
+    { id: 'voice', label: 'Voice', perm: PERMISSIONS.MANAGE_SERVER },
+    { id: 'roles', label: 'Roles', perm: PERMISSIONS.MANAGE_ROLES },
+    { id: 'danger', label: 'Danger Zone', perm: PERMISSIONS.ADMINISTRATOR }
   ] as const;
   let activeTab: (typeof TABS)[number]['id'] = $state('emojis');
 
-  let visibleTabs = $derived(TABS.filter((tab) => rank >= tab.minRank));
+  let visibleTabs = $derived(TABS.filter((tab) => hasPermission(permissions, tab.perm)));
   // If the active tab disappears (e.g. the viewer's role changed), fall back
   // to the first visible one.
   $effect(() => {
@@ -252,6 +258,19 @@
     'screenshare-update-failed'
   ]);
 
+  const ROLE_ERROR_CODES = new Set([
+    'role-permission-denied',
+    'role-target-not-found',
+    'role-update-failed',
+    'role-not-found',
+    'role-name-taken',
+    'role-protected',
+    'role-limit-reached',
+    'invalid-role-name',
+    'invalid-role-color',
+    'invalid-role-permissions'
+  ]);
+
   function handleServerError(msg: Message) {
     const code = (msg as any).message;
     if (!open || typeof code !== 'string') return;
@@ -263,6 +282,8 @@
     } else if (SCREENSHARE_ERROR_CODES.has(code)) {
       screenShareSavePending = false;
       screenShareFeedback = { text: describeServerError(code), kind: 'error' };
+    } else if (ROLE_ERROR_CODES.has(code)) {
+      roleErrorFeedback(code);
     }
   }
 
@@ -340,6 +361,130 @@
     if (event.key === 'Enter' || event.key === ' ') {
       close();
     }
+  }
+
+  // ── Roles (Roles tab) ──────────────────────────────────────────────────────
+  // Roles are listed highest-power first (Owner on top, @everyone at the
+  // bottom). Editing is bounded by the viewer's own position; the server
+  // enforces the same rules, so these gates are cosmetic.
+  let selectedRoleId: number | null = $state(null);
+  let draftName = $state('');
+  let draftColor = $state('');
+  let draftPermissions = $state(0);
+  let roleFeedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
+
+  let rolesHighToLow = $derived([...$roleDefinitions].sort((a, b) => b.position - a.position));
+  let selectedRole = $derived(
+    $roleDefinitions.find((r) => r.id === selectedRoleId) ?? null
+  );
+  // Custom (reorderable) roles, highest-power first.
+  let customRolesHighToLow = $derived(
+    rolesHighToLow.filter((r) => !r.isDefault && !r.isOwner)
+  );
+
+  function canManageRole(role: RoleDef): boolean {
+    return $myTopPosition > role.position;
+  }
+  let nameEditable = $derived(!!selectedRole && canManageRole(selectedRole) && !selectedRole.isDefault);
+  let permsEditable = $derived(!!selectedRole && canManageRole(selectedRole) && !selectedRole.isOwner);
+  let deletable = $derived(
+    !!selectedRole && canManageRole(selectedRole) && !selectedRole.isDefault && !selectedRole.isOwner
+  );
+
+  // Load the selected role into the editable draft whenever the selection (or
+  // the underlying definition) changes.
+  $effect(() => {
+    const role = selectedRole;
+    if (role) {
+      untrack(() => {
+        draftName = role.name;
+        draftColor = role.color ?? '';
+        draftPermissions = role.permissions;
+      });
+    }
+  });
+
+  // Default to the highest role the viewer can see when the tab opens.
+  $effect(() => {
+    if (activeTab === 'roles' && selectedRoleId === null && rolesHighToLow.length) {
+      untrack(() => {
+        selectedRoleId = rolesHighToLow[0].id;
+      });
+    }
+  });
+
+  function selectRole(id: number) {
+    selectedRoleId = id;
+    roleFeedback = null;
+  }
+
+  function togglePermission(flag: number) {
+    if (!permsEditable) return;
+    draftPermissions ^= flag;
+  }
+
+  function isPermissionOn(flag: number): boolean {
+    if ((draftPermissions & PERMISSIONS.ADMINISTRATOR) !== 0) return true;
+    return (draftPermissions & flag) === flag;
+  }
+
+  function saveRole() {
+    if (!selectedRole) return;
+    const color = draftColor.trim();
+    chat.sendRaw({
+      type: 'update-role',
+      id: selectedRole.id,
+      name: draftName.trim(),
+      color: color === '' ? null : color,
+      permissions: draftPermissions >>> 0
+    });
+    roleFeedback = { text: 'Changes sent.', kind: 'info' };
+  }
+
+  async function createRole() {
+    const name = await dialogs.prompt({
+      title: 'Create role',
+      message: 'Name the new role. You can set its permissions after creating it.',
+      placeholder: 'e.g. Dude',
+      confirmLabel: 'Create'
+    });
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    // New roles start with the baseline view + send permissions.
+    chat.sendRaw({
+      type: 'create-role',
+      name: trimmed,
+      permissions: (PERMISSIONS.VIEW_CHANNELS | PERMISSIONS.SEND_MESSAGES) >>> 0
+    });
+  }
+
+  async function deleteRole() {
+    if (!selectedRole || !deletable) return;
+    const confirmed = await dialogs.confirm({
+      title: `Delete “${selectedRole.name}”?`,
+      message: 'Members lose this role. This cannot be undone.',
+      confirmLabel: 'Delete role',
+      danger: true
+    });
+    if (!confirmed) return;
+    chat.sendRaw({ type: 'delete-role', id: selectedRole.id });
+    selectedRoleId = null;
+  }
+
+  // Move a custom role up (more power) or down; sends the new order to the
+  // server, which re-derives positions.
+  function moveRole(role: RoleDef, direction: -1 | 1) {
+    const order = customRolesHighToLow.map((r) => r.id);
+    const index = order.indexOf(role.id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= order.length) return;
+    [order[index], order[target]] = [order[target], order[index]];
+    chat.sendRaw({ type: 'reorder-roles', orderedIds: order });
+  }
+
+  function roleErrorFeedback(code: string) {
+    roleFeedback = { text: describeServerError(code), kind: 'error' };
   }
 </script>
 
@@ -682,13 +827,139 @@
         {#if activeTab === 'roles'}
           <div class="settings-section">
             <h3 class="section-title">Roles</h3>
-            <div class="setting-group">
-              <span class="setting-label">Role management <span class="badge">Coming soon</span></span>
-              <div class="setting-description">
-                Create custom roles and manage assignments from here. Until then, roles are assigned
-                by Owners via the user context menu in the sidebar.
+            <div class="setting-description">
+              Define roles and their permissions. Assign roles to members by
+              right-clicking them in the sidebar. Everyone implicitly has
+              <strong>@everyone</strong>; grant capabilities on top of it, or lower
+              its baseline to restrict everyone.
+            </div>
+
+            <div class="roles-layout">
+              <div class="roles-list">
+                {#each rolesHighToLow as role (role.id)}
+                  <button
+                    type="button"
+                    class="role-row"
+                    class:active={role.id === selectedRoleId}
+                    onclick={() => selectRole(role.id)}
+                  >
+                    <span
+                      class="role-dot"
+                      style={`background: ${role.color ?? 'var(--color-muted)'}`}
+                      aria-hidden="true"
+                    ></span>
+                    <span class="role-row-name">{role.name}</span>
+                    {#if role.isOwner}<span class="badge">Owner</span>{/if}
+                    {#if role.isDefault}<span class="badge">Default</span>{/if}
+                  </button>
+                {/each}
+                <button type="button" class="btn role-create" onclick={createRole}>
+                  + Create role
+                </button>
               </div>
-              <div><button class="btn" disabled>Manage roles…</button></div>
+
+              <div class="role-editor">
+                {#if selectedRole}
+                  <div class="setting-group">
+                    <label class="setting-label" for="role-name">Name</label>
+                    <input
+                      id="role-name"
+                      class="field"
+                      bind:value={draftName}
+                      maxlength="32"
+                      disabled={!nameEditable}
+                    />
+                  </div>
+
+                  <div class="setting-group">
+                    <label class="setting-label" for="role-color">Color</label>
+                    <div class="role-color-row">
+                      <input
+                        id="role-color"
+                        class="field"
+                        bind:value={draftColor}
+                        placeholder="#3b82f6"
+                        disabled={!nameEditable}
+                      />
+                      <span
+                        class="role-dot large"
+                        style={`background: ${draftColor.trim() || 'var(--color-muted)'}`}
+                        aria-hidden="true"
+                      ></span>
+                    </div>
+                  </div>
+
+                  <div class="setting-group">
+                    <span class="setting-label">Permissions</span>
+                    {#if selectedRole.isOwner}
+                      <div class="setting-description">
+                        The Owner role always has every permission and cannot be changed.
+                      </div>
+                    {/if}
+                    {#each PERMISSION_GROUPS as group (group.title)}
+                      <div class="perm-group">
+                        <div class="perm-group-title">{group.title}</div>
+                        {#each group.permissions as perm (perm.key)}
+                          <label class="perm-row">
+                            <input
+                              type="checkbox"
+                              checked={isPermissionOn(perm.flag)}
+                              disabled={!permsEditable}
+                              onchange={() => togglePermission(perm.flag)}
+                            />
+                            <span class="perm-text">
+                              <span class="perm-label">{perm.label}</span>
+                              <span class="perm-desc">{perm.description}</span>
+                            </span>
+                          </label>
+                        {/each}
+                      </div>
+                    {/each}
+                  </div>
+
+                  {#if !selectedRole.isDefault && !selectedRole.isOwner}
+                    <div class="setting-group">
+                      <span class="setting-label">Position</span>
+                      <div class="role-reorder">
+                        <button
+                          type="button"
+                          class="btn"
+                          disabled={!canManageRole(selectedRole)}
+                          onclick={() => selectedRole && moveRole(selectedRole, -1)}
+                        >Move up</button>
+                        <button
+                          type="button"
+                          class="btn"
+                          disabled={!canManageRole(selectedRole)}
+                          onclick={() => selectedRole && moveRole(selectedRole, 1)}
+                        >Move down</button>
+                      </div>
+                    </div>
+                  {/if}
+
+                  {#if roleFeedback}
+                    <div class="identity-feedback" class:error={roleFeedback.kind === 'error'}>
+                      {roleFeedback.text}
+                    </div>
+                  {/if}
+
+                  <div class="role-actions">
+                    <button
+                      type="button"
+                      class="btn btn-primary"
+                      disabled={!nameEditable && !permsEditable}
+                      onclick={saveRole}
+                    >Save changes</button>
+                    {#if deletable}
+                      <button type="button" class="btn btn-danger" onclick={deleteRole}>
+                        Delete role
+                      </button>
+                    {/if}
+                  </div>
+                {:else}
+                  <div class="setting-description">Select a role to edit it.</div>
+                {/if}
+              </div>
             </div>
           </div>
         {/if}
@@ -991,6 +1262,133 @@
     to {
       opacity: 1;
       transform: translateY(0) scale(1);
+    }
+  }
+
+  /* ── Roles editor ──────────────────────────────────────────────────────── */
+  .roles-layout {
+    display: grid;
+    grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+    gap: var(--space-4);
+    margin-top: var(--space-3);
+  }
+
+  .roles-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    align-content: start;
+  }
+
+  .role-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-on-surface);
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+  }
+
+  .role-row:hover {
+    background: var(--color-surface-raised);
+  }
+
+  .role-row.active {
+    background: var(--color-surface-raised);
+    border-color: var(--color-surface-outline);
+  }
+
+  .role-row-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .role-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: var(--radius-pill, 50%);
+    flex-shrink: 0;
+  }
+
+  .role-dot.large {
+    width: 20px;
+    height: 20px;
+  }
+
+  .role-create {
+    margin-top: var(--space-2);
+    justify-content: center;
+  }
+
+  .role-editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+
+  .role-color-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .perm-group {
+    margin-top: var(--space-2);
+  }
+
+  .perm-group-title {
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-muted);
+    margin-bottom: var(--space-1);
+  }
+
+  .perm-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-1) 0;
+    cursor: pointer;
+  }
+
+  .perm-row input[disabled] {
+    cursor: not-allowed;
+  }
+
+  .perm-text {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .perm-label {
+    font-size: var(--text-sm);
+    color: var(--color-on-surface);
+  }
+
+  .perm-desc {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+  }
+
+  .role-reorder,
+  .role-actions {
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  @media (max-width: 640px) {
+    .roles-layout {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 </style>

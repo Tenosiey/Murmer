@@ -304,19 +304,8 @@ pub(super) async fn handle_set_stats_enabled(
         return;
     };
 
-    // Server-side role check; clients cannot spoof this.
-    let allowed = {
-        let roles = state.roles.lock().await;
-        roles
-            .get(requester)
-            .map(|info| {
-                STATS_ADMIN_ROLES
-                    .iter()
-                    .any(|role| info.role.eq_ignore_ascii_case(role))
-            })
-            .unwrap_or(false)
-    };
-    if !allowed {
+    // Server-side permission check; clients cannot spoof this.
+    if !has_permission(state, requester, crate::permissions::MANAGE_SERVER).await {
         info!(requester, "Denied stats toggle request");
         send_error(sender, errors::STATS_PERMISSION_DENIED).await;
         return;

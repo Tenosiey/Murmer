@@ -82,6 +82,10 @@ async fn main() -> Result<()> {
 
     let existing_mutes = db::get_all_mutes(&db_client).await.unwrap_or_default();
 
+    let existing_role_defs = db::list_role_defs(&db_client).await.unwrap_or_default();
+
+    let existing_overrides = db::load_all_overrides(&db_client).await.unwrap_or_default();
+
     tokio::fs::create_dir_all(&config.upload_dir)
         .await
         .with_context(|| {
@@ -114,7 +118,14 @@ async fn main() -> Result<()> {
             }
             map
         })),
-        roles: Arc::new(Mutex::new(HashMap::new())),
+        role_defs: Arc::new(Mutex::new(
+            existing_role_defs
+                .into_iter()
+                .map(|def| (def.id, def))
+                .collect(),
+        )),
+        user_roles: Arc::new(Mutex::new(HashMap::new())),
+        channel_overrides: Arc::new(Mutex::new(existing_overrides)),
         statuses: Arc::new(Mutex::new(HashMap::new())),
         user_keys: Arc::new(Mutex::new(HashMap::new())),
         mutes: Arc::new(Mutex::new(existing_mutes.into_iter().collect())),
@@ -226,12 +237,12 @@ async fn cli_set_role(args: &[String]) -> Result<()> {
         .await
         .context("failed to connect to database")?;
 
-    db::set_role(&client, key, role, color.as_deref())
+    let def = db::assign_named_role(&client, key, role, color.as_deref())
         .await
         .context("failed to set role in database")?;
 
-    println!("Role '{role}' assigned to key {key}");
-    if let Some(c) = &color {
+    println!("Role '{}' assigned to key {key}", def.name);
+    if let Some(c) = &def.color {
         println!("Color: {c}");
     }
     Ok(())

@@ -5,9 +5,11 @@
 
 pub mod admin;
 pub mod bot;
+pub mod channel_overrides;
 pub mod config;
 pub mod db;
 pub mod link_preview;
+pub mod permissions;
 pub mod roles;
 pub mod security;
 pub mod upload;
@@ -21,7 +23,7 @@ use std::{
 };
 use tokio::sync::{Mutex, broadcast};
 
-pub use roles::RoleInfo;
+pub use roles::RoleDef;
 
 /// Tracks rate limiting state for authentication, messaging and nonce usage.
 pub struct RateLimiter {
@@ -87,7 +89,16 @@ pub struct AppState {
     pub known_users: Arc<Mutex<HashSet<String>>>,
     /// Voice channel state, keyed by voice channel ID.
     pub voice_channels: Arc<Mutex<HashMap<i32, VoiceChannelState>>>,
-    pub roles: Arc<Mutex<HashMap<String, RoleInfo>>>,
+    /// All role definitions, keyed by role id. Loaded at startup and mutated
+    /// as roles are created/edited/deleted.
+    pub role_defs: Arc<Mutex<HashMap<i64, RoleDef>>>,
+    /// Roles assigned to each connected user (username → role ids). Populated
+    /// at authentication from the `user_roles` table.
+    pub user_roles: Arc<Mutex<HashMap<String, Vec<i64>>>>,
+    /// Per-channel permission overrides, keyed by (kind, channel id). Loaded at
+    /// startup and mutated as channel permissions change.
+    pub channel_overrides:
+        Arc<Mutex<HashMap<(channel_overrides::ChannelKind, i32), channel_overrides::OverrideSet>>>,
     pub statuses: Arc<Mutex<HashMap<String, String>>>,
     pub user_keys: Arc<Mutex<HashMap<String, String>>>,
     /// Active mutes keyed by public key; `None` means muted indefinitely.

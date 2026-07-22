@@ -105,7 +105,7 @@ async fn require_wiki_writer(
         send_error(sender, errors::MESSAGE_RATE_LIMIT).await;
         return None;
     }
-    if !can_manage_channels(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_WIKI).await {
         error!("User {requester} attempted a wiki write without permission");
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return None;

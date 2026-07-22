@@ -4,6 +4,7 @@
 //! `pins` snapshot for the channel, and clients receive the same snapshot when
 //! joining a channel, so all clients converge on the persisted state.
 
+use crate::channel_overrides::ChannelKind;
 use crate::ws::{constants::*, errors, helpers::*};
 use crate::{AppState, db};
 use axum::extract::ws::{Message, WebSocket};
@@ -74,6 +75,10 @@ pub(super) async fn handle_pin_message(
 
     match db::get_message_record(&state.db, message_id).await {
         Ok(Some(record)) => {
+            if !can_view_channel(state, &user, ChannelKind::Text, record.channel_id).await {
+                send_error(sender, errors::PIN_TARGET_NOT_FOUND).await;
+                return;
+            }
             match db::add_pin(
                 &state.db,
                 message_id,
@@ -120,6 +125,14 @@ pub(super) async fn handle_unpin_message(
     let Some(message_id) = require_message_id(sender, v).await else {
         return;
     };
+
+    // Only act on a pin in a channel the user can see.
+    if let Ok(Some(record)) = db::get_message_record(&state.db, message_id).await
+        && !can_view_channel(state, &user, ChannelKind::Text, record.channel_id).await
+    {
+        send_error(sender, errors::PIN_TARGET_NOT_FOUND).await;
+        return;
+    }
 
     match db::remove_pin(&state.db, message_id).await {
         Ok(Some(channel_id)) => {

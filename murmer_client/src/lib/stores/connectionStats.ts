@@ -2,13 +2,11 @@ import { writable, derived, get } from 'svelte/store';
 import { chat } from './chat';
 import { connection } from './connection';
 import { session } from './session';
-import { roles } from './roles';
+import { myPermissions } from './permissions';
+import { hasPermission, PERMISSIONS } from '../chat/permissions';
 import { ping } from './ping';
 import { voiceStats } from './voice';
 import type { Message, UserConnectionStats } from '../types';
-
-/** Roles the server answers `get-connection-stats` requests for. */
-const CONNECTION_STATS_ROLES = ['owner', 'admin'];
 
 /** How often the client reports its own stats while connected. */
 const REPORT_INTERVAL_MS = 10_000;
@@ -59,15 +57,14 @@ function startReporting() {
 startReporting();
 
 /**
- * Whether the current user's role allows viewing everyone's stats. The server
+ * Whether the current user's roles allow viewing everyone's stats. The server
  * enforces the actual check; this only controls what the UI offers.
  */
-export const canViewAllConnectionStats = derived([session, roles], ([$session, $roles]) => {
-  const user = $session.user;
-  if (!user) return false;
-  const role = $roles[user]?.role?.toLowerCase();
-  return !!role && CONNECTION_STATS_ROLES.includes(role);
-});
+export const canViewAllConnectionStats = derived(
+  [session, myPermissions],
+  ([$session, $mask]) =>
+    !!$session.user && hasPermission($mask, PERMISSIONS.VIEW_CONNECTION_STATS)
+);
 
 function createAllConnectionStatsStore() {
   const { subscribe, set } = writable<Record<string, UserConnectionStats>>({});

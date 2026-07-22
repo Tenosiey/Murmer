@@ -1,5 +1,8 @@
 //! Helper functions for WebSocket message handling.
 
+use crate::channel_overrides::ChannelKind;
+use crate::permissions::{self, Permissions};
+use crate::roles::RoleDef;
 use crate::{AppState, VoiceChannelState, db};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -97,27 +100,73 @@ pub fn voice_channel_descriptor(id: i32, info: &VoiceChannelState) -> Value {
     })
 }
 
-/// Broadcast a user's role to all connected clients.
-pub async fn broadcast_role(state: &Arc<AppState>, user: &str, role: &str, color: Option<&str>) {
+/// Serialize the full role-definition list as a `role-definitions` frame,
+/// ordered from lowest to highest position.
+fn role_definitions_frame(defs: &HashMap<i64, RoleDef>) -> Option<String> {
+    let mut list: Vec<&RoleDef> = defs.values().collect();
+    list.sort_by(|a, b| a.position.cmp(&b.position).then(a.id.cmp(&b.id)));
+    let roles: Vec<Value> = list
+        .iter()
+        .map(|d| {
+            serde_json::json!({
+                "id": d.id,
+                "name": d.name,
+                "color": d.color,
+                "permissions": d.permissions,
+                "position": d.position,
+                "isDefault": d.is_default,
+                "isOwner": d.is_owner,
+            })
+        })
+        .collect();
+    serde_json::to_string(&serde_json::json!({
+        "type": "role-definitions",
+        "roles": roles,
+    }))
+    .ok()
+}
+
+/// Broadcast the full set of role definitions to all connected clients.
+pub async fn broadcast_role_definitions(state: &Arc<AppState>) {
+    let defs = state.role_defs.lock().await;
+    if let Some(msg) = role_definitions_frame(&defs) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Send the full set of role definitions to a single client.
+pub async fn send_role_definitions(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+) {
+    let defs = state.role_defs.lock().await;
+    if let Some(msg) = role_definitions_frame(&defs) {
+        let _ = sender.send(Message::Text(msg.into())).await;
+    }
+}
+
+/// Broadcast one user's assigned role ids to all connected clients.
+pub async fn broadcast_user_roles(state: &Arc<AppState>, user: &str, role_ids: &[i64]) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "role-update",
+        "type": "user-roles",
         "user": user,
-        "role": role,
-        "color": color,
+        "roleIds": role_ids,
     })) {
         let _ = state.tx.send(msg);
     }
 }
 
-/// Send all known roles to a newly connected client.
-pub async fn send_all_roles(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
-    let roles = state.roles.lock().await.clone();
-    for (user, info) in roles {
+/// Send every connected user's role assignments to a newly connected client.
+pub async fn send_all_user_roles(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+) {
+    let assignments = state.user_roles.lock().await.clone();
+    for (user, ids) in assignments {
         if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-            "type": "role-update",
+            "type": "user-roles",
             "user": user,
-            "role": info.role,
-            "color": info.color,
+            "roleIds": ids,
         })) && sender.send(Message::Text(msg.into())).await.is_err()
         {
             break;
@@ -228,26 +277,41 @@ pub async fn broadcast_remove_voice_channel(state: &Arc<AppState>, channel_id: i
 }
 
 /// Send the list of available channels to a client.
-pub async fn send_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
-    let list = crate::db::get_channels(&state.db).await;
-    let channels: Vec<Value> = list
-        .iter()
-        .map(|ch| {
-            serde_json::json!({
-                "id": ch.id,
-                "name": ch.name,
-                "categoryId": ch.category_id,
-                "topic": ch.description,
-                "position": ch.position,
-            })
-        })
-        .collect();
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "channel-list",
-        "channels": channels,
-    })) {
+pub async fn send_channels(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    user: Option<&str>,
+) {
+    if let Ok(msg) = channel_list_frame(state, user).await {
         let _ = sender.send(Message::Text(msg.into())).await;
     }
+}
+
+/// Build a `channel-list` frame containing only the text channels `user` can
+/// see, each carrying a `private` flag for the lock indicator.
+pub async fn channel_list_frame(
+    state: &Arc<AppState>,
+    user: Option<&str>,
+) -> serde_json::Result<String> {
+    let list = crate::db::get_channels(&state.db).await;
+    let mut channels: Vec<Value> = Vec::new();
+    for ch in &list {
+        if !user_can_see_channel(state, user, ChannelKind::Text, ch.id).await {
+            continue;
+        }
+        channels.push(serde_json::json!({
+            "id": ch.id,
+            "name": ch.name,
+            "categoryId": ch.category_id,
+            "topic": ch.description,
+            "position": ch.position,
+            "private": channel_is_private(state, ChannelKind::Text, ch.id).await,
+        }));
+    }
+    serde_json::to_string(&serde_json::json!({
+        "type": "channel-list",
+        "channels": channels,
+    }))
 }
 
 /// Send the list of categories to a client.
@@ -275,22 +339,38 @@ pub async fn send_categories(state: &Arc<AppState>, sender: &mut SplitSink<WebSo
 pub async fn send_voice_channels(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
+    user: Option<&str>,
 ) {
+    if let Ok(msg) = voice_channel_list_frame(state, user).await {
+        let _ = sender.send(Message::Text(msg.into())).await;
+    }
+}
+
+/// Build a `voice-channel-list` frame containing only the voice channels `user`
+/// can see, each carrying a `private` flag.
+pub async fn voice_channel_list_frame(
+    state: &Arc<AppState>,
+    user: Option<&str>,
+) -> serde_json::Result<String> {
     let mut entries: Vec<(i32, VoiceChannelState)> = {
         let map = state.voice_channels.lock().await;
         map.iter().map(|(id, info)| (*id, info.clone())).collect()
     };
     entries.sort_by(|a, b| (a.1.position, &a.1.name).cmp(&(b.1.position, &b.1.name)));
-    let channels: Vec<Value> = entries
-        .iter()
-        .map(|(id, info)| voice_channel_descriptor(*id, info))
-        .collect();
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+    let mut channels: Vec<Value> = Vec::new();
+    for (id, info) in &entries {
+        if !user_can_see_channel(state, user, ChannelKind::Voice, *id).await {
+            continue;
+        }
+        let mut descriptor = voice_channel_descriptor(*id, info);
+        descriptor["private"] =
+            Value::Bool(channel_is_private(state, ChannelKind::Voice, *id).await);
+        channels.push(descriptor);
+    }
+    serde_json::to_string(&serde_json::json!({
         "type": "voice-channel-list",
         "channels": channels,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    }))
 }
 
 /// Send all voice channel member lists to a client.
@@ -389,73 +469,203 @@ pub async fn broadcast_category_reorder(state: &Arc<AppState>, order: &[i32]) {
     }
 }
 
-/// Determine whether a user is authorised to manage channel state.
+/// A user's effective permission mask: the union of the default `@everyone`
+/// role and every role assigned to them. Holding [`ADMINISTRATOR`] expands to
+/// the full permission set. Every authorization check funnels through this so
+/// the in-memory role state is the single source of truth.
 ///
-/// Without an `ADMIN_TOKEN` configured every authenticated user may manage
-/// channels, so a small unadministered server stays fully usable. Once an
-/// admin token is configured the action is restricted to privileged roles.
-pub async fn can_manage_channels(state: &Arc<AppState>, user: &str) -> bool {
-    if state.admin_token.is_none() {
+/// Server-wide only for now; a future per-channel override phase will resolve
+/// against a channel id here without changing the call sites.
+pub async fn effective_permissions(state: &Arc<AppState>, user: &str) -> Permissions {
+    // Lock order is always role_defs before user_roles; keep it consistent
+    // with `top_position` to avoid deadlocks.
+    let defs = state.role_defs.lock().await;
+    let mut mask = defs
+        .values()
+        .find(|d| d.is_default)
+        .map(|d| d.permissions)
+        .unwrap_or(0);
+    {
+        let assignments = state.user_roles.lock().await;
+        if let Some(ids) = assignments.get(user) {
+            for id in ids {
+                if let Some(def) = defs.get(id) {
+                    mask |= def.permissions;
+                }
+            }
+        }
+    }
+    if mask & permissions::ADMINISTRATOR != 0 {
+        permissions::ALL
+    } else {
+        mask
+    }
+}
+
+/// Whether `user` is authorised for `required`.
+///
+/// Without an `ADMIN_TOKEN` configured, channel and wiki management stay open
+/// to everyone so a small unadministered server remains usable (mirrors the
+/// historical fallback). Every other permission is always role-gated.
+pub async fn has_permission(state: &Arc<AppState>, user: &str, required: Permissions) -> bool {
+    if state.admin_token.is_none()
+        && (required == permissions::MANAGE_CHANNELS || required == permissions::MANAGE_WIKI)
+    {
         return true;
     }
-
-    let roles = state.roles.lock().await;
-    roles
-        .get(user)
-        .map(|info| {
-            super::constants::CHANNEL_MANAGE_ROLES
-                .iter()
-                .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
-        })
-        .unwrap_or(false)
+    permissions::mask_allows(effective_permissions(state, user).await, required)
 }
 
-/// Rank of a role for moderation purposes. Moderation actions require the
-/// requester to strictly outrank the target, so Mods cannot act against
-/// Admins/Owners and equally ranked users cannot act against each other.
-pub fn moderation_rank(role: Option<&str>) -> u8 {
-    match role {
-        Some(role) if role.eq_ignore_ascii_case("Owner") => 3,
-        Some(role) if role.eq_ignore_ascii_case("Admin") => 2,
-        Some(role) if role.eq_ignore_ascii_case("Mod") => 1,
-        _ => 0,
+/// A user's hierarchy position: the highest `position` among their roles, with
+/// the default role's position as the floor. Administrators sit above everyone
+/// (used so moderation and role management require strictly outranking the
+/// target). Returns [`i64::MAX`] for administrators.
+pub async fn top_position(state: &Arc<AppState>, user: &str) -> i64 {
+    let defs = state.role_defs.lock().await;
+    let default = defs.values().find(|d| d.is_default);
+    let mut pos = default.map(|d| d.position).unwrap_or(0);
+    let mut is_admin = default
+        .map(|d| d.permissions & permissions::ADMINISTRATOR != 0)
+        .unwrap_or(false);
+    {
+        let assignments = state.user_roles.lock().await;
+        if let Some(ids) = assignments.get(user) {
+            for id in ids {
+                if let Some(def) = defs.get(id) {
+                    pos = pos.max(def.position);
+                    if def.permissions & permissions::ADMINISTRATOR != 0 {
+                        is_admin = true;
+                    }
+                }
+            }
+        }
+    }
+    if is_admin { i64::MAX } else { pos }
+}
+
+/// A user's effective permission mask **within a specific channel**: the
+/// server-wide mask with the channel's overrides applied. Administrators bypass
+/// overrides entirely. Server-wide only for non-channel checks; this is the
+/// entry point for every per-channel gate.
+pub async fn channel_permissions(
+    state: &Arc<AppState>,
+    user: &str,
+    kind: ChannelKind,
+    channel_id: i32,
+) -> Permissions {
+    let base = effective_permissions(state, user).await;
+    if base & permissions::ADMINISTRATOR != 0 {
+        return permissions::ALL;
+    }
+
+    let overrides = {
+        let map = state.channel_overrides.lock().await;
+        match map.get(&(kind, channel_id)) {
+            Some(set) => set.clone(),
+            None => return base,
+        }
+    };
+
+    let role_ids: Vec<i64> = {
+        let assignments = state.user_roles.lock().await;
+        assignments.get(user).cloned().unwrap_or_default()
+    };
+    let user_key = lookup_user_key(state, user).await;
+    overrides.apply(base, &role_ids, user_key.as_deref())
+}
+
+/// Whether `user` may see a channel. Managers (server-wide `MANAGE_CHANNELS`,
+/// which also covers the no-`ADMIN_TOKEN` fallback) and administrators always
+/// can, so they can administer private channels; everyone else needs
+/// `VIEW_CHANNELS` after overrides.
+pub async fn can_view_channel(
+    state: &Arc<AppState>,
+    user: &str,
+    kind: ChannelKind,
+    channel_id: i32,
+) -> bool {
+    if has_permission(state, user, permissions::MANAGE_CHANNELS).await {
+        return true;
+    }
+    channel_permissions(state, user, kind, channel_id).await & permissions::VIEW_CHANNELS != 0
+}
+
+/// Whether `user` holds `required` within a channel (e.g. `SEND_MESSAGES`).
+pub async fn has_channel_permission(
+    state: &Arc<AppState>,
+    user: &str,
+    kind: ChannelKind,
+    channel_id: i32,
+    required: Permissions,
+) -> bool {
+    permissions::mask_allows(
+        channel_permissions(state, user, kind, channel_id).await,
+        required,
+    )
+}
+
+/// Broadcast a signal telling every connection to rebuild its own filtered
+/// channel and voice lists. Sent when a channel's permission overrides change,
+/// so private channels appear/disappear per viewer without leaking structure.
+pub async fn broadcast_channels_refresh(state: &Arc<AppState>) {
+    let _ = state.tx.send(r#"{"type":"channels-refresh"}"#.to_string());
+}
+
+/// Send the override list for one channel to a single (manager) client.
+pub async fn send_channel_overrides(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    kind: ChannelKind,
+    channel_id: i32,
+) {
+    let rows = db::get_channel_overrides(&state.db, kind, channel_id)
+        .await
+        .unwrap_or_default();
+    let entries: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "targetType": r.target_type,
+                "targetId": r.target_id,
+                "targetLabel": r.target_label,
+                "allow": r.allow,
+                "deny": r.deny,
+            })
+        })
+        .collect();
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "channel-overrides",
+        "channelId": channel_id,
+        "voice": kind == ChannelKind::Voice,
+        "overrides": entries,
+    })) {
+        let _ = sender.send(Message::Text(msg.into())).await;
     }
 }
 
-/// Fetch the moderation rank of a user from the in-memory role map.
-pub async fn user_moderation_rank(state: &Arc<AppState>, user: &str) -> u8 {
-    let roles = state.roles.lock().await;
-    moderation_rank(roles.get(user).map(|info| info.role.as_str()))
-}
-
-/// Determine whether a user is authorised to see server details such as the
-/// running version. Restricted to Owner and Admin roles.
-pub async fn can_view_server_info(state: &Arc<AppState>, user: &str) -> bool {
-    let roles = state.roles.lock().await;
-    roles
-        .get(user)
-        .map(|info| {
-            super::constants::SERVER_INFO_ROLES
-                .iter()
-                .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
-        })
+/// Whether a channel is private (its `@everyone` override denies View), read
+/// from the in-memory cache. Used to mark channels with a lock and to hide
+/// them from anonymous viewers.
+pub async fn channel_is_private(state: &Arc<AppState>, kind: ChannelKind, channel_id: i32) -> bool {
+    let map = state.channel_overrides.lock().await;
+    map.get(&(kind, channel_id))
+        .map(|set| set.restricts_view())
         .unwrap_or(false)
 }
 
-/// Determine whether a user is authorised to manage custom server emojis.
-/// Always restricted to Mod/Admin/Owner, even when no `ADMIN_TOKEN` is set:
-/// emojis are server-wide state, so unlike channel management there is no
-/// lenient fallback for unadministered servers.
-pub async fn can_manage_emojis(state: &Arc<AppState>, user: &str) -> bool {
-    let roles = state.roles.lock().await;
-    roles
-        .get(user)
-        .map(|info| {
-            super::constants::EMOJI_MANAGE_ROLES
-                .iter()
-                .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
-        })
-        .unwrap_or(false)
+/// Whether a (possibly anonymous) connection may see a channel. Named users go
+/// through the full override resolution; a keyless anonymous connection only
+/// sees non-private channels.
+pub async fn user_can_see_channel(
+    state: &Arc<AppState>,
+    user: Option<&str>,
+    kind: ChannelKind,
+    channel_id: i32,
+) -> bool {
+    match user {
+        Some(u) => can_view_channel(state, u, kind, channel_id).await,
+        None => !channel_is_private(state, kind, channel_id).await,
+    }
 }
 
 /// Serialize the current custom emoji list as an `emoji-list` frame.
@@ -497,49 +707,6 @@ pub async fn broadcast_emojis(state: &Arc<AppState>) {
     if let Some(msg) = emoji_list_frame(state).await {
         let _ = state.tx.send(msg);
     }
-}
-
-/// Determine whether a user is authorised to edit the server identity (name,
-/// description, welcome message, icon). Always restricted to Admin/Owner:
-/// identity is server-wide state, so like emojis there is no lenient
-/// fallback for servers without an `ADMIN_TOKEN`.
-pub async fn can_manage_server_identity(state: &Arc<AppState>, user: &str) -> bool {
-    let roles = state.roles.lock().await;
-    roles
-        .get(user)
-        .map(|info| {
-            super::constants::SERVER_IDENTITY_ROLES
-                .iter()
-                .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
-        })
-        .unwrap_or(false)
-}
-
-/// Determine whether a user is authorised to view other users' self-reported
-/// connection stats. Restricted to Owner and Admin roles.
-pub async fn can_view_connection_stats(state: &Arc<AppState>, user: &str) -> bool {
-    let roles = state.roles.lock().await;
-    roles
-        .get(user)
-        .map(|info| {
-            super::constants::CONNECTION_STATS_ROLES
-                .iter()
-                .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
-        })
-        .unwrap_or(false)
-}
-
-/// Determine whether a user is authorised to manage roles.
-pub async fn can_manage_roles(state: &Arc<AppState>, user: &str) -> bool {
-    let roles = state.roles.lock().await;
-    roles
-        .get(user)
-        .map(|info| {
-            super::constants::ROLE_MANAGE_ROLES
-                .iter()
-                .any(|allowed| info.role.eq_ignore_ascii_case(allowed))
-        })
-        .unwrap_or(false)
 }
 
 /// Resolve a user's public key: currently connected users first (in-memory

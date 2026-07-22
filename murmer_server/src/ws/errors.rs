@@ -61,6 +61,9 @@ pub const CANNOT_DELETE_GENERAL: &str = r#"{"type":"error","message":"cannot-del
 /// Message rate limit exceeded.
 pub const MESSAGE_RATE_LIMIT: &str = r#"{"type":"error","message":"message-rate-limit"}"#;
 
+/// Sender's roles do not grant permission to send messages.
+pub const SEND_PERMISSION_DENIED: &str = r#"{"type":"error","message":"send-permission-denied"}"#;
+
 /// Message content exceeds the maximum allowed length.
 pub const MESSAGE_TOO_LONG: &str = r#"{"type":"error","message":"message-too-long"}"#;
 
@@ -86,6 +89,29 @@ pub const ROLE_TARGET_NOT_FOUND: &str = r#"{"type":"error","message":"role-targe
 /// Failed to update role in database.
 pub const ROLE_UPDATE_FAILED: &str = r#"{"type":"error","message":"role-update-failed"}"#;
 
+/// The referenced role definition does not exist.
+pub const ROLE_NOT_FOUND: &str = r#"{"type":"error","message":"role-not-found"}"#;
+
+/// A role with this name already exists.
+pub const ROLE_NAME_TAKEN: &str = r#"{"type":"error","message":"role-name-taken"}"#;
+
+/// The role is protected (the default `@everyone` or the Owner role) and
+/// cannot be deleted or reassigned.
+pub const ROLE_PROTECTED: &str = r#"{"type":"error","message":"role-protected"}"#;
+
+/// The server has reached its role limit.
+pub const ROLE_LIMIT_REACHED: &str = r#"{"type":"error","message":"role-limit-reached"}"#;
+
+/// Role name failed validation.
+pub const INVALID_ROLE_NAME: &str = r#"{"type":"error","message":"invalid-role-name"}"#;
+
+/// Role color failed validation.
+pub const INVALID_ROLE_COLOR: &str = r#"{"type":"error","message":"invalid-role-color"}"#;
+
+/// Role permission mask contained unknown bits.
+pub const INVALID_ROLE_PERMISSIONS: &str =
+    r#"{"type":"error","message":"invalid-role-permissions"}"#;
+
 /// Category name validation failed.
 pub const INVALID_CATEGORY_NAME: &str = r#"{"type":"error","message":"invalid-category-name"}"#;
 
@@ -108,6 +134,21 @@ pub const CHANNEL_MOVE_FAILED: &str = r#"{"type":"error","message":"channel-move
 
 /// Reorder request was malformed or referenced unknown channels/categories.
 pub const REORDER_FAILED: &str = r#"{"type":"error","message":"reorder-failed"}"#;
+
+/// User lacks permission to edit a channel's permission overrides.
+pub const CHANNEL_OVERRIDE_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"channel-override-permission-denied"}"#;
+
+/// A channel override request was malformed (bad target, kind or mask).
+pub const INVALID_CHANNEL_OVERRIDE: &str =
+    r#"{"type":"error","message":"invalid-channel-override"}"#;
+
+/// The target of a channel override (role or user) could not be resolved.
+pub const OVERRIDE_TARGET_NOT_FOUND: &str =
+    r#"{"type":"error","message":"override-target-not-found"}"#;
+
+/// Failed to persist a channel override change.
+pub const CHANNEL_OVERRIDE_FAILED: &str = r#"{"type":"error","message":"channel-override-failed"}"#;
 
 /// Avatar reference is not a stored upload within the size cap.
 pub const INVALID_AVATAR: &str = r#"{"type":"error","message":"invalid-avatar"}"#;
