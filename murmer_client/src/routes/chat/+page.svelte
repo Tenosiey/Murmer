@@ -1720,17 +1720,20 @@
                 $voiceChannels.find((c) => c.id === menuVoiceChannelId)?.name ?? ''
               )
           },
-          ...VOICE_QUALITY_PRESETS.map((preset) => ({
-            label:
-              preset.bitrate && preset.bitrate > 0
-                ? `Set Voice Quality: ${preset.label} (${Math.round(preset.bitrate / 1000)} kbps)`
-                : `Set Voice Quality: ${preset.label}`,
-            action: () =>
-              voiceChannels.configure(menuVoiceChannelId!, {
-                quality: preset.quality,
-                bitrate: preset.bitrate
-              })
-          })),
+          {
+            label: 'Set Voice Quality',
+            children: VOICE_QUALITY_PRESETS.map((preset) => ({
+              label:
+                preset.bitrate && preset.bitrate > 0
+                  ? `${preset.label} (${Math.round(preset.bitrate / 1000)} kbps)`
+                  : preset.label,
+              action: () =>
+                voiceChannels.configure(menuVoiceChannelId!, {
+                  quality: preset.quality,
+                  bitrate: preset.bitrate
+                })
+            }))
+          },
           ...buildMoveToItems(menuVoiceChannelId, true),
           { label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannelId!), danger: true }
         ]
