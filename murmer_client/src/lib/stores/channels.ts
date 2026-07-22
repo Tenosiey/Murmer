@@ -14,7 +14,8 @@ function createChannelStore() {
           id: item.id as number,
           name: typeof item.name === 'string' ? item.name : '',
           categoryId: typeof item.categoryId === 'number' ? item.categoryId : null,
-          position: typeof item.position === 'number' ? item.position : 0
+          position: typeof item.position === 'number' ? item.position : 0,
+          private: item.private === true
         }));
       set(items);
     }
@@ -27,8 +28,11 @@ function createChannelStore() {
     if (id !== null && name) {
       const categoryId = typeof raw.categoryId === 'number' ? raw.categoryId : null;
       const position = typeof raw.position === 'number' ? raw.position : 0;
+      const isPrivate = raw.private === true;
       update((chs) =>
-        chs.some((c) => c.id === id) ? chs : [...chs, { id, name, categoryId, position }]
+        chs.some((c) => c.id === id)
+          ? chs
+          : [...chs, { id, name, categoryId, position, private: isPrivate }]
       );
     }
   });
@@ -74,9 +78,10 @@ function createChannelStore() {
     );
   });
 
-  function create(name: string, categoryId?: number | null) {
+  function create(name: string, categoryId?: number | null, isPrivate = false) {
     const payload: Record<string, unknown> = { type: 'create-channel', name };
     if (categoryId != null) payload.categoryId = categoryId;
+    if (isPrivate) payload.private = true;
     chat.sendRaw(payload);
   }
 

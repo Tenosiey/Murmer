@@ -83,6 +83,11 @@ pub const DEFAULT_ADMIN: Permissions =
 /// Default permissions seeded for the built-in `Owner` role.
 pub const DEFAULT_OWNER: Permissions = ADMINISTRATOR;
 
+/// Permissions that a per-channel override may grant or deny. Restricted to
+/// "see" and "write/talk" so channel settings can create private channels and
+/// listen-only members without ever conferring management or moderation power.
+pub const CHANNEL_OVERRIDABLE: Permissions = VIEW_CHANNELS | SEND_MESSAGES;
+
 /// Whether a permission mask satisfies `required`. [`ADMINISTRATOR`] grants
 /// everything.
 pub fn mask_allows(mask: Permissions, required: Permissions) -> bool {

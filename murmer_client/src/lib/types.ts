@@ -92,6 +92,19 @@ export interface VoiceChannelInfo {
   bitrate: number | null;
   categoryId: number | null;
   position: number;
+  /** True when the channel restricts View for @everyone (shows a lock). */
+  private?: boolean;
+}
+
+/** One per-channel permission override target, as sent to managers. */
+export interface ChannelOverride {
+  targetType: 'everyone' | 'role' | 'user';
+  /** Role id (as string) or user public key; empty for @everyone. */
+  targetId: string;
+  /** Username (user overrides) or role name (role overrides), for display. */
+  targetLabel: string;
+  allow: number;
+  deny: number;
 }
 
 export interface CategoryInfo {
@@ -105,6 +118,8 @@ export interface ChannelInfo {
   name: string;
   categoryId: number | null;
   position: number;
+  /** True when the channel restricts View for @everyone (shows a lock). */
+  private?: boolean;
 }
 
 export interface ScreenShareSettings {

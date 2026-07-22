@@ -135,6 +135,21 @@ pub const CHANNEL_MOVE_FAILED: &str = r#"{"type":"error","message":"channel-move
 /// Reorder request was malformed or referenced unknown channels/categories.
 pub const REORDER_FAILED: &str = r#"{"type":"error","message":"reorder-failed"}"#;
 
+/// User lacks permission to edit a channel's permission overrides.
+pub const CHANNEL_OVERRIDE_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"channel-override-permission-denied"}"#;
+
+/// A channel override request was malformed (bad target, kind or mask).
+pub const INVALID_CHANNEL_OVERRIDE: &str =
+    r#"{"type":"error","message":"invalid-channel-override"}"#;
+
+/// The target of a channel override (role or user) could not be resolved.
+pub const OVERRIDE_TARGET_NOT_FOUND: &str =
+    r#"{"type":"error","message":"override-target-not-found"}"#;
+
+/// Failed to persist a channel override change.
+pub const CHANNEL_OVERRIDE_FAILED: &str = r#"{"type":"error","message":"channel-override-failed"}"#;
+
 /// Avatar reference is not a stored upload within the size cap.
 pub const INVALID_AVATAR: &str = r#"{"type":"error","message":"invalid-avatar"}"#;
 

@@ -1,5 +1,6 @@
 //! Helper functions for WebSocket message handling.
 
+use crate::channel_overrides::ChannelKind;
 use crate::permissions::{self, Permissions};
 use crate::roles::RoleDef;
 use crate::{AppState, VoiceChannelState, db};
@@ -276,26 +277,41 @@ pub async fn broadcast_remove_voice_channel(state: &Arc<AppState>, channel_id: i
 }
 
 /// Send the list of available channels to a client.
-pub async fn send_channels(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
-    let list = crate::db::get_channels(&state.db).await;
-    let channels: Vec<Value> = list
-        .iter()
-        .map(|ch| {
-            serde_json::json!({
-                "id": ch.id,
-                "name": ch.name,
-                "categoryId": ch.category_id,
-                "topic": ch.description,
-                "position": ch.position,
-            })
-        })
-        .collect();
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "channel-list",
-        "channels": channels,
-    })) {
+pub async fn send_channels(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    user: Option<&str>,
+) {
+    if let Ok(msg) = channel_list_frame(state, user).await {
         let _ = sender.send(Message::Text(msg.into())).await;
     }
+}
+
+/// Build a `channel-list` frame containing only the text channels `user` can
+/// see, each carrying a `private` flag for the lock indicator.
+pub async fn channel_list_frame(
+    state: &Arc<AppState>,
+    user: Option<&str>,
+) -> serde_json::Result<String> {
+    let list = crate::db::get_channels(&state.db).await;
+    let mut channels: Vec<Value> = Vec::new();
+    for ch in &list {
+        if !user_can_see_channel(state, user, ChannelKind::Text, ch.id).await {
+            continue;
+        }
+        channels.push(serde_json::json!({
+            "id": ch.id,
+            "name": ch.name,
+            "categoryId": ch.category_id,
+            "topic": ch.description,
+            "position": ch.position,
+            "private": channel_is_private(state, ChannelKind::Text, ch.id).await,
+        }));
+    }
+    serde_json::to_string(&serde_json::json!({
+        "type": "channel-list",
+        "channels": channels,
+    }))
 }
 
 /// Send the list of categories to a client.
@@ -323,22 +339,38 @@ pub async fn send_categories(state: &Arc<AppState>, sender: &mut SplitSink<WebSo
 pub async fn send_voice_channels(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
+    user: Option<&str>,
 ) {
+    if let Ok(msg) = voice_channel_list_frame(state, user).await {
+        let _ = sender.send(Message::Text(msg.into())).await;
+    }
+}
+
+/// Build a `voice-channel-list` frame containing only the voice channels `user`
+/// can see, each carrying a `private` flag.
+pub async fn voice_channel_list_frame(
+    state: &Arc<AppState>,
+    user: Option<&str>,
+) -> serde_json::Result<String> {
     let mut entries: Vec<(i32, VoiceChannelState)> = {
         let map = state.voice_channels.lock().await;
         map.iter().map(|(id, info)| (*id, info.clone())).collect()
     };
     entries.sort_by(|a, b| (a.1.position, &a.1.name).cmp(&(b.1.position, &b.1.name)));
-    let channels: Vec<Value> = entries
-        .iter()
-        .map(|(id, info)| voice_channel_descriptor(*id, info))
-        .collect();
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+    let mut channels: Vec<Value> = Vec::new();
+    for (id, info) in &entries {
+        if !user_can_see_channel(state, user, ChannelKind::Voice, *id).await {
+            continue;
+        }
+        let mut descriptor = voice_channel_descriptor(*id, info);
+        descriptor["private"] =
+            Value::Bool(channel_is_private(state, ChannelKind::Voice, *id).await);
+        channels.push(descriptor);
+    }
+    serde_json::to_string(&serde_json::json!({
         "type": "voice-channel-list",
         "channels": channels,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    }))
 }
 
 /// Send all voice channel member lists to a client.
@@ -509,6 +541,131 @@ pub async fn top_position(state: &Arc<AppState>, user: &str) -> i64 {
         }
     }
     if is_admin { i64::MAX } else { pos }
+}
+
+/// A user's effective permission mask **within a specific channel**: the
+/// server-wide mask with the channel's overrides applied. Administrators bypass
+/// overrides entirely. Server-wide only for non-channel checks; this is the
+/// entry point for every per-channel gate.
+pub async fn channel_permissions(
+    state: &Arc<AppState>,
+    user: &str,
+    kind: ChannelKind,
+    channel_id: i32,
+) -> Permissions {
+    let base = effective_permissions(state, user).await;
+    if base & permissions::ADMINISTRATOR != 0 {
+        return permissions::ALL;
+    }
+
+    let overrides = {
+        let map = state.channel_overrides.lock().await;
+        match map.get(&(kind, channel_id)) {
+            Some(set) => set.clone(),
+            None => return base,
+        }
+    };
+
+    let role_ids: Vec<i64> = {
+        let assignments = state.user_roles.lock().await;
+        assignments.get(user).cloned().unwrap_or_default()
+    };
+    let user_key = lookup_user_key(state, user).await;
+    overrides.apply(base, &role_ids, user_key.as_deref())
+}
+
+/// Whether `user` may see a channel. Managers (server-wide `MANAGE_CHANNELS`,
+/// which also covers the no-`ADMIN_TOKEN` fallback) and administrators always
+/// can, so they can administer private channels; everyone else needs
+/// `VIEW_CHANNELS` after overrides.
+pub async fn can_view_channel(
+    state: &Arc<AppState>,
+    user: &str,
+    kind: ChannelKind,
+    channel_id: i32,
+) -> bool {
+    if has_permission(state, user, permissions::MANAGE_CHANNELS).await {
+        return true;
+    }
+    channel_permissions(state, user, kind, channel_id).await & permissions::VIEW_CHANNELS != 0
+}
+
+/// Whether `user` holds `required` within a channel (e.g. `SEND_MESSAGES`).
+pub async fn has_channel_permission(
+    state: &Arc<AppState>,
+    user: &str,
+    kind: ChannelKind,
+    channel_id: i32,
+    required: Permissions,
+) -> bool {
+    permissions::mask_allows(
+        channel_permissions(state, user, kind, channel_id).await,
+        required,
+    )
+}
+
+/// Broadcast a signal telling every connection to rebuild its own filtered
+/// channel and voice lists. Sent when a channel's permission overrides change,
+/// so private channels appear/disappear per viewer without leaking structure.
+pub async fn broadcast_channels_refresh(state: &Arc<AppState>) {
+    let _ = state.tx.send(r#"{"type":"channels-refresh"}"#.to_string());
+}
+
+/// Send the override list for one channel to a single (manager) client.
+pub async fn send_channel_overrides(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    kind: ChannelKind,
+    channel_id: i32,
+) {
+    let rows = db::get_channel_overrides(&state.db, kind, channel_id)
+        .await
+        .unwrap_or_default();
+    let entries: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "targetType": r.target_type,
+                "targetId": r.target_id,
+                "targetLabel": r.target_label,
+                "allow": r.allow,
+                "deny": r.deny,
+            })
+        })
+        .collect();
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "channel-overrides",
+        "channelId": channel_id,
+        "voice": kind == ChannelKind::Voice,
+        "overrides": entries,
+    })) {
+        let _ = sender.send(Message::Text(msg.into())).await;
+    }
+}
+
+/// Whether a channel is private (its `@everyone` override denies View), read
+/// from the in-memory cache. Used to mark channels with a lock and to hide
+/// them from anonymous viewers.
+pub async fn channel_is_private(state: &Arc<AppState>, kind: ChannelKind, channel_id: i32) -> bool {
+    let map = state.channel_overrides.lock().await;
+    map.get(&(kind, channel_id))
+        .map(|set| set.restricts_view())
+        .unwrap_or(false)
+}
+
+/// Whether a (possibly anonymous) connection may see a channel. Named users go
+/// through the full override resolution; a keyless anonymous connection only
+/// sees non-private channels.
+pub async fn user_can_see_channel(
+    state: &Arc<AppState>,
+    user: Option<&str>,
+    kind: ChannelKind,
+    channel_id: i32,
+) -> bool {
+    match user {
+        Some(u) => can_view_channel(state, u, kind, channel_id).await,
+        None => !channel_is_private(state, kind, channel_id).await,
+    }
 }
 
 /// Serialize the current custom emoji list as an `emoji-list` frame.

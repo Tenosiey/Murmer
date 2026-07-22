@@ -8,6 +8,8 @@
   import { chat } from '$lib/stores/chat';
   import { roles, userRoleIds } from '$lib/stores/roles';
   import { roleDefinitions } from '$lib/stores/roleDefinitions';
+  import { channelOverrides } from '$lib/stores/channelOverrides';
+  import { canSpeak, resetVoicePermissions } from '$lib/stores/voicePermissions';
   import { can, myTopPosition, myPermissions } from '$lib/stores/permissions';
   import { PERMISSIONS, hasPermission, computeTopPosition } from '$lib/chat/permissions';
   import { session } from '$lib/stores/session';
@@ -89,6 +91,7 @@
     DEFAULT_CHANNEL_NAME
   } from '$lib/chat/constants';
   import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
+  import ChannelPermissionsModal from '$lib/components/ChannelPermissionsModal.svelte';
   import UserStatsModal from '$lib/components/UserStatsModal.svelte';
   import WikiView from '$lib/components/wiki/WikiView.svelte';
   import { wikilinks } from '$lib/wiki/links';
@@ -505,6 +508,7 @@
     }
     userRoleIds.reset();
     roleDefinitions.reset();
+    channelOverrides.reset();
     expiryTicker = window.setInterval(() => {
       now = Date.now();
     }, 1000);
@@ -533,6 +537,7 @@
     ping.stop();
     userRoleIds.reset();
     roleDefinitions.reset();
+    channelOverrides.reset();
     if (highlightTimer) {
       clearTimeout(highlightTimer);
       highlightTimer = null;
@@ -896,6 +901,7 @@
       voice.leave(currentVoiceChannelId);
     }
     inVoice = false;
+    resetVoicePermissions();
     // A screen share cannot outlive the voice session — stop our own
     // capture and close any viewer state.
     stopScreenShare();
@@ -948,14 +954,14 @@
     goto('/servers');
   }
 
-  async function createChannelPrompt(categoryId: number | null = null) {
+  async function createChannelPrompt(categoryId: number | null = null, isPrivate = false) {
     const name = await dialogs.prompt({
-      title: 'Create text channel',
+      title: isPrivate ? 'Create private text channel' : 'Create text channel',
       label: 'Channel name',
       placeholder: 'e.g. general',
       confirmLabel: 'Create'
     });
-    if (name) channels.create(name.trim(), categoryId);
+    if (name) channels.create(name.trim(), categoryId, isPrivate);
   }
 
   async function selectVoicePreset(): Promise<{ quality: string; bitrate: number | null } | null> {
@@ -977,9 +983,9 @@
     return { quality: preset.quality, bitrate: preset.bitrate };
   }
 
-  async function createVoiceChannelPrompt(categoryId: number | null = null) {
+  async function createVoiceChannelPrompt(categoryId: number | null = null, isPrivate = false) {
     const name = await dialogs.prompt({
-      title: 'Create voice channel',
+      title: isPrivate ? 'Create private voice channel' : 'Create voice channel',
       label: 'Channel name',
       placeholder: 'e.g. Lounge',
       confirmLabel: 'Next'
@@ -987,7 +993,7 @@
     if (!name) return;
     const preset = await selectVoicePreset();
     if (!preset) return;
-    voiceChannels.create(name.trim(), preset, categoryId);
+    voiceChannels.create(name.trim(), preset, categoryId, isPrivate);
   }
 
   async function joinVoiceChannel(id: number) {
@@ -1155,6 +1161,23 @@
     serverDashboardOpen = false;
   }
 
+  // Per-channel permissions editor (private channels).
+  let channelPermsOpen = $state(false);
+  let channelPermsId: number | null = $state(null);
+  let channelPermsVoice = $state(false);
+  let channelPermsName = $state('');
+
+  function openChannelPermissions(id: number, voice: boolean, name: string) {
+    channelPermsId = id;
+    channelPermsVoice = voice;
+    channelPermsName = name;
+    channelPermsOpen = true;
+  }
+
+  function closeChannelPermissions() {
+    channelPermsOpen = false;
+  }
+
   let statsUser: string | null = $state(null);
 
   function openUserStats(user: string) {
@@ -1264,6 +1287,11 @@
   }
 
   function toggleMicrophone() {
+    // Listen-only channels (no Talk permission) can never unmute.
+    if (!get(canSpeak)) {
+      microphoneMuted.set(true);
+      return;
+    }
     microphoneMuted.update(muted => !muted);
   }
 
@@ -1661,17 +1689,37 @@
       children: [
         { label: 'Text Channel', action: () => createChannelPrompt() },
         { label: 'Voice Channel', action: () => createVoiceChannelPrompt() },
+        { label: 'Private Text Channel', action: () => createChannelPrompt(null, true) },
+        { label: 'Private Voice Channel', action: () => createVoiceChannelPrompt(null, true) },
         { label: 'Category', action: createCategoryPrompt }
       ]
     },
     ...(menuChannelId != null
       ? [
+          {
+            label: 'Edit Permissions',
+            action: () =>
+              openChannelPermissions(
+                menuChannelId!,
+                false,
+                $channels.find((c) => c.id === menuChannelId)?.name ?? ''
+              )
+          },
           ...buildMoveToItems(menuChannelId, false),
           { label: 'Delete Channel', action: () => channels.remove(menuChannelId!), danger: true }
         ]
       : []),
     ...(menuVoiceChannelId != null
       ? [
+          {
+            label: 'Edit Permissions',
+            action: () =>
+              openChannelPermissions(
+                menuVoiceChannelId!,
+                true,
+                $voiceChannels.find((c) => c.id === menuVoiceChannelId)?.name ?? ''
+              )
+          },
           ...VOICE_QUALITY_PRESETS.map((preset) => ({
             label:
               preset.bitrate && preset.bitrate > 0
@@ -1750,6 +1798,13 @@
         open={serverDashboardOpen}
         close={closeServerDashboard}
         permissions={$myPermissions}
+      />
+      <ChannelPermissionsModal
+        open={channelPermsOpen}
+        close={closeChannelPermissions}
+        channelId={channelPermsId}
+        voice={channelPermsVoice}
+        channelName={channelPermsName}
       />
       <UserStatsModal open={statsUser !== null} user={statsUser} close={closeUserStats} />
       <HelpOverlay bind:this={helpOverlay} open={helpOpen} onClose={closeHelp} />
