@@ -28,7 +28,7 @@ function normalizeChannel(value: any): VoiceChannelInfo | null {
   }
   const categoryId = typeof value.categoryId === 'number' ? value.categoryId : null;
   const position = typeof value.position === 'number' ? value.position : 0;
-  return { id, name, quality, bitrate, categoryId, position };
+  return { id, name, quality, bitrate, categoryId, position, private: value.private === true };
 }
 
 function createVoiceChannelStore() {
@@ -109,7 +109,8 @@ function createVoiceChannelStore() {
   function create(
     name: string,
     preset?: Pick<VoiceChannelInfo, 'quality' | 'bitrate'>,
-    categoryId?: number | null
+    categoryId?: number | null,
+    isPrivate = false
   ) {
     const payload: Record<string, unknown> = { type: 'create-voice-channel', name };
     if (preset) {
@@ -117,6 +118,7 @@ function createVoiceChannelStore() {
       payload.bitrate = preset.bitrate ?? null;
     }
     if (categoryId != null) payload.categoryId = categoryId;
+    if (isPrivate) payload.private = true;
     chat.sendRaw(payload);
   }
 

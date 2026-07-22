@@ -64,6 +64,18 @@ through the `create-role`/`update-role`/`delete-role`/`reorder-roles`/
 `MANAGE_ROLES` permission and bounded by the hierarchy to prevent escalation.
 Legacy single-role databases are migrated once by `db::migrate_roles`.
 
+Private channels add per-channel allow/deny overrides (`channel_overrides`
+table + in-memory cache in `AppState.channel_overrides`), resolved by
+`channel_permissions`/`can_view_channel` in `ws/helpers.rs`. Overrides are
+clamped to `CHANNEL_OVERRIDABLE` (View + Write/Talk). Enforcement: viewer-aware
+channel-list senders, a per-recipient filter on channel-scoped broadcasts in the
+`global_rx` loop, and channel-aware gates on join/history/send/react/pin and
+`voice-join`. Voice talk is a client-enforced hint (`voice-permissions`) since
+audio is peer-to-peer. Managers edit overrides through the
+`set-channel-override`/`remove-channel-override`/`get-channel-overrides` frames
+(`ws/handlers/channel_overrides.rs`), and creating a channel with `private: true`
+seeds an `@everyone` View-deny plus a creator allow.
+
 ## Security notes
 - Direct messages are end-to-end encrypted by the clients; the server only
   shape-checks `nonce`/`ciphertext` (base64, 24-byte nonce, bounded size —

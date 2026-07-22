@@ -23,6 +23,7 @@ async fn make_state(admin_token: Option<&str>) -> Arc<AppState> {
         voice_channels: Arc::new(Mutex::new(HashMap::new())),
         role_defs: Arc::new(Mutex::new(HashMap::new())),
         user_roles: Arc::new(Mutex::new(HashMap::new())),
+        channel_overrides: Arc::new(Mutex::new(HashMap::new())),
         statuses: Arc::new(Mutex::new(HashMap::new())),
         user_keys: Arc::new(Mutex::new(HashMap::new())),
         mutes: Arc::new(Mutex::new(HashMap::new())),

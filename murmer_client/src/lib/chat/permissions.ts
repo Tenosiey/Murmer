@@ -29,6 +29,36 @@ export type PermissionKey = keyof typeof PERMISSIONS;
 /** Union of every defined permission flag. */
 export const ALL_PERMISSIONS = Object.values(PERMISSIONS).reduce((acc, bit) => acc | bit, 0);
 
+/**
+ * Permissions a per-channel override may grant or deny: "see" and "write/talk".
+ * Mirrors the server's `CHANNEL_OVERRIDABLE`.
+ */
+export const CHANNEL_OVERRIDABLE = PERMISSIONS.VIEW_CHANNELS | PERMISSIONS.SEND_MESSAGES;
+
+/** A per-channel override toggle state for one permission flag. */
+export type OverrideState = 'inherit' | 'allow' | 'deny';
+
+/** Resolve the tri-state of `flag` from an allow/deny mask pair. */
+export function overrideState(allow: number, deny: number, flag: number): OverrideState {
+  if ((allow & flag) === flag) return 'allow';
+  if ((deny & flag) === flag) return 'deny';
+  return 'inherit';
+}
+
+/** Apply a tri-state choice for `flag` onto an allow/deny mask pair. */
+export function applyOverrideState(
+  allow: number,
+  deny: number,
+  flag: number,
+  state: OverrideState
+): { allow: number; deny: number } {
+  let nextAllow = allow & ~flag;
+  let nextDeny = deny & ~flag;
+  if (state === 'allow') nextAllow |= flag;
+  else if (state === 'deny') nextDeny |= flag;
+  return { allow: nextAllow, deny: nextDeny };
+}
+
 /** Whether a permission mask satisfies `flag`. Administrator grants everything. */
 export function hasPermission(mask: number, flag: number): boolean {
   return (mask & PERMISSIONS.ADMINISTRATOR) !== 0 || (mask & flag) === flag;

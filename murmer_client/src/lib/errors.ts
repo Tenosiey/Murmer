@@ -40,6 +40,11 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-role-color': 'That role color is not a valid hex color.',
   'invalid-role-permissions': 'Those permissions are not valid.',
   'send-permission-denied': 'You do not have permission to send messages in this channel.',
+  'channel-override-permission-denied':
+    'You do not have permission to edit this channel’s permissions.',
+  'invalid-channel-override': 'That channel permission change was invalid.',
+  'override-target-not-found': 'That role or user could not be found.',
+  'channel-override-failed': 'The server could not update the channel permissions. Please try again.',
   'invalid-category-name': 'That category name is not allowed.',
   'category-creation-failed': 'The server could not create the category. Please try again.',
   'category-rename-failed': 'The server could not rename the category. Please try again.',

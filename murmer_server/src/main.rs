@@ -84,6 +84,8 @@ async fn main() -> Result<()> {
 
     let existing_role_defs = db::list_role_defs(&db_client).await.unwrap_or_default();
 
+    let existing_overrides = db::load_all_overrides(&db_client).await.unwrap_or_default();
+
     tokio::fs::create_dir_all(&config.upload_dir)
         .await
         .with_context(|| {
@@ -123,6 +125,7 @@ async fn main() -> Result<()> {
                 .collect(),
         )),
         user_roles: Arc::new(Mutex::new(HashMap::new())),
+        channel_overrides: Arc::new(Mutex::new(existing_overrides)),
         statuses: Arc::new(Mutex::new(HashMap::new())),
         user_keys: Arc::new(Mutex::new(HashMap::new())),
         mutes: Arc::new(Mutex::new(existing_mutes.into_iter().collect())),

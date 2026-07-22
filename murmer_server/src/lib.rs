@@ -5,6 +5,7 @@
 
 pub mod admin;
 pub mod bot;
+pub mod channel_overrides;
 pub mod config;
 pub mod db;
 pub mod link_preview;
@@ -94,6 +95,10 @@ pub struct AppState {
     /// Roles assigned to each connected user (username → role ids). Populated
     /// at authentication from the `user_roles` table.
     pub user_roles: Arc<Mutex<HashMap<String, Vec<i64>>>>,
+    /// Per-channel permission overrides, keyed by (kind, channel id). Loaded at
+    /// startup and mutated as channel permissions change.
+    pub channel_overrides:
+        Arc<Mutex<HashMap<(channel_overrides::ChannelKind, i32), channel_overrides::OverrideSet>>>,
     pub statuses: Arc<Mutex<HashMap<String, String>>>,
     pub user_keys: Arc<Mutex<HashMap<String, String>>>,
     /// Active mutes keyed by public key; `None` means muted indefinitely.

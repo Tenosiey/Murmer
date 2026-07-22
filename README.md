@@ -20,6 +20,7 @@ small team can deploy a private chat space quickly.
 - Rate limiting on authentication and chat events
 - Markdown rendering with DOMPurify sanitisation and syntax highlighting
 - Custom roles with granular per-permission control and colour accents, managed from the Server Dashboard
+- Private text and voice channels with per-channel View / Write-Talk overrides for roles and members
 - Secure file and image sharing (extension safe-list, content-type checks, size limits and path sanitisation)
 - Desktop client with auto-reconnect and connection quality indicators
 - Connection stats panel (server ping, voice RTT, jitter, packet loss); Owners
@@ -207,6 +208,25 @@ tab of the Server Dashboard. Because server-wide roles only *grant*, restrict a
 capability by lowering the **@everyone** baseline and granting it through a
 role — e.g. turn **Send messages** off for @everyone and give a "Member" role
 that has it, so anyone with only a view-only role cannot post.
+
+### Private channels
+
+Text and voice channels can be made **private** so only chosen roles and members
+can see or use them. Managers (anyone with **Manage channels**) create a private
+channel from the sidebar's "Create" menu, or open **Edit Permissions** on any
+channel to configure per-channel overrides.
+
+Each override is a tri-state (**allow / inherit / deny**) for two permissions:
+**View** (see the channel; for voice, see + join + listen) and **Write/Talk**
+(post messages; for voice, speak). A channel is private when **View** is denied
+for `@everyone`; grant it back to specific roles or members. Denying only
+Write/Talk to a role or member makes them read-only (or listen-only in voice).
+
+The server hides private channels from users who cannot see them and enforces
+View and text Write server-side. Voice **talk** is enforced by the client
+(the microphone is disabled for listen-only members); because voice audio is
+peer-to-peer, a modified client could bypass the mute, so treat View/join as the
+real boundary.
 
 ### Bootstrapping the Owner from Docker
 
