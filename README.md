@@ -19,7 +19,7 @@ small team can deploy a private chat space quickly.
 - Ed25519 signature authentication with nonce-based replay protection
 - Rate limiting on authentication and chat events
 - Markdown rendering with DOMPurify sanitisation and syntax highlighting
-- Configurable user roles with optional colour accents
+- Custom roles with granular per-permission control and colour accents, managed from the Server Dashboard
 - Secure file and image sharing (extension safe-list, content-type checks, size limits and path sanitisation)
 - Desktop client with auto-reconnect and connection quality indicators
 - Connection stats panel (server ping, voice RTT, jitter, packet loss); Owners
@@ -188,13 +188,25 @@ Environment variables recognised by the server:
 | `MAX_AUTH_ATTEMPTS_PER_MINUTE` | No | Per-IP auth rate limit (default: 5) |
 | `NONCE_EXPIRY_SECONDS` | No | Replay protection window (default: 300) |
 
-When `ADMIN_TOKEN` is configured only users with the roles `Admin`, `Mod` or
-`Owner` may create or delete text/voice channels.
+Without `ADMIN_TOKEN` configured, channel and wiki management stay open to
+everyone so a small unadministered server remains usable; every other
+capability is still gated by roles.
 
-## Role management
+## Roles and permissions
 
-Roles control who can manage channels and delete other users' messages. The
-available built-in roles are **Owner**, **Admin** and **Mod**.
+Authorization is permission-based. A **role** is a named, colored bundle of
+permission toggles (view channels, send messages, manage channels, kick, ban,
+manage roles, manage server, …) with a hierarchy position. Every user
+implicitly has the built-in **@everyone** role; any additional roles they hold
+stack, and their effective permissions are the union. The built-in **Owner**
+role is an administrator (all permissions) and sits at the top; **Admin** and
+**Mod** are seeded as convenient starting points and can be edited or deleted.
+
+Server owners create custom roles and tune each permission from the **Roles**
+tab of the Server Dashboard. Because server-wide roles only *grant*, restrict a
+capability by lowering the **@everyone** baseline and granting it through a
+role — e.g. turn **Send messages** off for @everyone and give a "Member" role
+that has it, so anyone with only a view-only role cannot post.
 
 ### Bootstrapping the Owner from Docker
 
@@ -209,14 +221,16 @@ docker exec <server-container> murmer_server set-role <public_key> Owner
 Replace `<public_key>` with the user's Ed25519 public key (shown in the client
 settings) and `<server-container>` with the container name (e.g.
 `murmer-server-1`). You can also pass an optional hex colour as a third
-argument.
+argument. The command adds the named role, creating it if it does not exist.
 
 ### Managing roles from the client
 
-Once a user has the **Owner** role they can assign or remove roles for other
-users directly in the desktop client. Right-click any user in the sidebar user
-list and choose a role from the context menu. The change takes effect
-immediately for all connected clients.
+Users with the **Manage roles** permission define roles in the Server Dashboard
+(Roles tab) and assign them by right-clicking a member in the sidebar user list
+and toggling roles in the **Roles** submenu. You can only manage roles and
+members positioned below your own highest role, and can never grant a
+permission you do not hold yourself. Changes take effect immediately for all
+connected clients.
 
 ### Using the HTTP endpoint
 
@@ -344,7 +358,8 @@ must not be marked as pre-release — the updater endpoint
 - Filenames are sanitised, uploads are limited to a safe-list of extensions and image contents are inspected before saving.
 - Admin token and server password checks use constant-time comparisons to
   mitigate timing attacks.
-- Channel management honours server-side role assignments when admin mode is on.
+- Every capability is gated by a server-side permission check against the
+  user's roles; client-side gating is only cosmetic.
 
 ## Contributing
 

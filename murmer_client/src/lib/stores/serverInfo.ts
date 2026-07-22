@@ -2,21 +2,19 @@ import { writable, get } from 'svelte/store';
 import { chat } from './chat';
 import { connection } from './connection';
 import { session } from './session';
-import { roles } from './roles';
+import { myPermissions } from './permissions';
+import { hasPermission, PERMISSIONS } from '../chat/permissions';
 import type { Message } from '../types';
 
 export interface ServerInfo {
   version: string;
 }
 
-/** Roles the server answers `get-server-info` requests for. */
-const SERVER_INFO_ROLES = ['owner', 'admin'];
-
 /**
  * Server details (currently the running server version), available only to
- * Owner and Admin users. The server enforces the role check; this store just
- * requests the info once the client learns its own role qualifies and holds
- * the response. Stays null for everyone else.
+ * users whose roles grant VIEW_SERVER_INFO. The server enforces the check;
+ * this store just requests the info once the client learns it qualifies and
+ * holds the response. Stays null for everyone else.
  */
 function createServerInfoStore() {
   const { subscribe, set } = writable<ServerInfo | null>(null);
@@ -25,10 +23,8 @@ function createServerInfoStore() {
   function maybeRequest() {
     if (requested) return;
     if (get(connection) !== 'connected') return;
-    const user = get(session).user;
-    if (!user) return;
-    const role = get(roles)[user]?.role?.toLowerCase();
-    if (!role || !SERVER_INFO_ROLES.includes(role)) return;
+    if (!get(session).user) return;
+    if (!hasPermission(get(myPermissions), PERMISSIONS.VIEW_SERVER_INFO)) return;
     requested = true;
     chat.sendRaw({ type: 'get-server-info' });
   }
@@ -50,8 +46,8 @@ function createServerInfoStore() {
     }
   });
 
-  // The own role usually arrives after the connection is established.
-  roles.subscribe(maybeRequest);
+  // Permissions usually resolve after the connection is established.
+  myPermissions.subscribe(maybeRequest);
   session.subscribe(maybeRequest);
 
   return { subscribe };

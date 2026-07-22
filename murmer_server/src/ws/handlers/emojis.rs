@@ -29,7 +29,7 @@ pub(super) async fn handle_add_emoji(
         }
     };
 
-    if !can_manage_emojis(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_EMOJIS).await {
         warn!("User {requester} attempted to add an emoji without permission");
         send_error(sender, errors::EMOJI_PERMISSION_DENIED).await;
         return;
@@ -107,7 +107,7 @@ pub(super) async fn handle_remove_emoji(
         }
     };
 
-    if !can_manage_emojis(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_EMOJIS).await {
         warn!("User {requester} attempted to remove an emoji without permission");
         send_error(sender, errors::EMOJI_PERMISSION_DENIED).await;
         return;

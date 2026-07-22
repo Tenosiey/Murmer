@@ -23,12 +23,13 @@ mod messages;
 mod moderation;
 mod pins;
 mod profile;
+mod roles;
 mod screenshare;
 mod stats;
 mod wiki;
 
 use super::{errors, helpers::*, validation::*};
-use crate::{AppState, db, roles::RoleInfo};
+use crate::{AppState, db};
 use axum::{
     extract::{
         ConnectInfo, State,
@@ -100,10 +101,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 }
                             }
                             "join" => {
-                                messages::handle_join(&state, &mut sender, &v, &mut channel_id, &mut chan_tx, &mut chan_rx).await;
+                                messages::handle_join(&state, &mut sender, &v, &mut channel_id, &mut chan_tx, &mut chan_rx, &user_name).await;
                             }
                             "load-history" => {
-                                messages::handle_load_history(&state, &mut sender, &v, channel_id).await;
+                                messages::handle_load_history(&state, &mut sender, &v, channel_id, &user_name).await;
                             }
                             "load-thread" => {
                                 messages::handle_load_thread(&state, &mut sender, &v, channel_id).await;
@@ -290,8 +291,20 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "unmute-user" => {
                                 moderation::handle_unmute_user(&state, &mut sender, &v, &user_name).await;
                             }
-                            "set-role" => {
-                                handle_set_role(&state, &mut sender, &v, &user_name).await;
+                            "set-user-roles" => {
+                                roles::handle_set_user_roles(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "create-role" => {
+                                roles::handle_create_role(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "update-role" => {
+                                roles::handle_update_role(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "delete-role" => {
+                                roles::handle_delete_role(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "reorder-roles" => {
+                                roles::handle_reorder_roles(&state, &mut sender, &v, &user_name).await;
                             }
                             "add-emoji" => {
                                 emojis::handle_add_emoji(&state, &mut sender, &v, &user_name).await;
@@ -301,9 +314,6 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "set-server-identity" => {
                                 identity::handle_set_server_identity(&state, &mut sender, &v, &user_name).await;
-                            }
-                            "remove-role" => {
-                                handle_remove_role(&state, &mut sender, &v, &user_name).await;
                             }
                             _ => {
                                 error!("unknown message type: {t}");
@@ -428,7 +438,7 @@ async fn handle_get_server_info(
         return;
     };
 
-    if !can_view_server_info(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::VIEW_SERVER_INFO).await {
         info!(requester, "Denied server info request");
         return;
     }
@@ -483,7 +493,7 @@ async fn handle_get_connection_stats(
         return;
     };
 
-    if !can_view_connection_stats(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::VIEW_CONNECTION_STATS).await {
         info!(requester, "Denied connection stats request");
         return;
     }
@@ -739,113 +749,6 @@ async fn send_active_screen_shares(
     })) {
         let _ = sender.send(Message::Text(msg.into())).await;
     }
-}
-
-/// Handle set-role request from an Owner.
-async fn handle_set_role(
-    state: &Arc<AppState>,
-    sender: &mut SplitSink<WebSocket, Message>,
-    v: &Value,
-    user_name: &Option<String>,
-) {
-    let requester = match user_name.as_deref() {
-        Some(name) => name,
-        None => {
-            send_error(sender, errors::ROLE_PERMISSION_DENIED).await;
-            return;
-        }
-    };
-
-    if !can_manage_roles(state, requester).await {
-        send_error(sender, errors::ROLE_PERMISSION_DENIED).await;
-        return;
-    }
-
-    let Some(target_user) = v.get("user").and_then(|u| u.as_str()) else {
-        send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
-        return;
-    };
-
-    let Some(role) = v.get("role").and_then(|r| r.as_str()) else {
-        send_error(sender, errors::ROLE_UPDATE_FAILED).await;
-        return;
-    };
-
-    let Some(key) = lookup_user_key(state, target_user).await else {
-        send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
-        return;
-    };
-
-    let color = v
-        .get("color")
-        .and_then(|c| c.as_str())
-        .map(|s| s.to_string())
-        .or_else(|| crate::roles::default_color(role));
-
-    if let Err(e) = db::set_role(&state.db, &key, role, color.as_deref()).await {
-        error!("Failed to set role for {target_user} (key {key}): {e}");
-        send_error(sender, errors::ROLE_UPDATE_FAILED).await;
-        return;
-    }
-
-    let info = RoleInfo {
-        role: role.to_string(),
-        color,
-    };
-    state
-        .roles
-        .lock()
-        .await
-        .insert(target_user.to_string(), info.clone());
-    broadcast_role(state, target_user, &info.role, info.color.as_deref()).await;
-    info!(requester, target_user, role, "Role assigned via WebSocket");
-}
-
-/// Handle remove-role request from an Owner.
-async fn handle_remove_role(
-    state: &Arc<AppState>,
-    sender: &mut SplitSink<WebSocket, Message>,
-    v: &Value,
-    user_name: &Option<String>,
-) {
-    let requester = match user_name.as_deref() {
-        Some(name) => name,
-        None => {
-            send_error(sender, errors::ROLE_PERMISSION_DENIED).await;
-            return;
-        }
-    };
-
-    if !can_manage_roles(state, requester).await {
-        send_error(sender, errors::ROLE_PERMISSION_DENIED).await;
-        return;
-    }
-
-    let Some(target_user) = v.get("user").and_then(|u| u.as_str()) else {
-        send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
-        return;
-    };
-
-    let Some(key) = lookup_user_key(state, target_user).await else {
-        send_error(sender, errors::ROLE_TARGET_NOT_FOUND).await;
-        return;
-    };
-
-    if let Err(e) = db::remove_role(&state.db, &key).await {
-        error!("Failed to remove role for {target_user} (key {key}): {e}");
-        send_error(sender, errors::ROLE_UPDATE_FAILED).await;
-        return;
-    }
-
-    state.roles.lock().await.remove(target_user);
-
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "role-remove",
-        "user": target_user,
-    })) {
-        let _ = state.tx.send(msg);
-    }
-    info!(requester, target_user, "Role removed via WebSocket");
 }
 
 /// Handle client disconnect cleanup.

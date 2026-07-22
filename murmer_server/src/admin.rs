@@ -1,7 +1,9 @@
 //! Endpoints used to administratively modify server state.
 //!
 //! The `/role` endpoint requires the `ADMIN_TOKEN` environment variable to be
-//! set and allows assigning roles to users via their public key.
+//! set and assigns a role to a user by their public key. It is the primary way
+//! to bootstrap the first Owner before the dashboard is reachable; the role is
+//! added to any existing assignments rather than replacing them.
 
 use axum::{
     extract::{Json, State},
@@ -17,10 +19,9 @@ use std::sync::Arc;
 use subtle::ConstantTimeEq;
 use tracing::error;
 
-use crate::{
-    AppState, db,
-    roles::{RoleInfo, default_color},
-};
+use crate::roles::default_color;
+use crate::ws::helpers;
+use crate::{AppState, db};
 
 #[derive(Debug, Deserialize)]
 pub struct RoleBody {
@@ -48,39 +49,50 @@ pub async fn set_role(
     if !authorized {
         return StatusCode::UNAUTHORIZED;
     }
+
     let color = body.color.clone().or_else(|| default_color(&body.role));
-    if let Err(e) = db::set_role(&state.db, &body.key, &body.role, color.as_deref()).await {
-        error!("Failed to set role for user {}: {}", body.key, e);
-        return StatusCode::INTERNAL_SERVER_ERROR;
-    }
-    let mut affected = Vec::new();
+    let def = match db::assign_named_role(&state.db, &body.key, &body.role, color.as_deref()).await
     {
+        Ok(def) => def,
+        Err(e) => {
+            error!("Failed to set role for user {}: {}", body.key, e);
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
+    };
+
+    // Reflect a possibly newly created role definition in memory.
+    state.role_defs.lock().await.insert(def.id, def.clone());
+
+    // Update the in-memory assignments of any currently-connected users bound
+    // to this key.
+    let affected: Vec<String> = {
         let user_keys = state.user_keys.lock().await;
-        for (user, key) in user_keys.iter() {
-            if key == &body.key {
-                affected.push(user.clone());
+        user_keys
+            .iter()
+            .filter(|(_, key)| *key == &body.key)
+            .map(|(user, _)| user.clone())
+            .collect()
+    };
+    {
+        let mut assignments = state.user_roles.lock().await;
+        for user in &affected {
+            let entry = assignments.entry(user.clone()).or_default();
+            if !entry.contains(&def.id) {
+                entry.push(def.id);
             }
         }
     }
-    let info = RoleInfo {
-        role: body.role.clone(),
-        color,
-    };
-    {
-        let mut roles = state.roles.lock().await;
-        for user in affected.iter() {
-            roles.insert(user.clone(), info.clone());
-        }
-    }
+
+    helpers::broadcast_role_definitions(&state).await;
     for user in affected {
-        if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-            "type": "role-update",
-            "user": user,
-            "role": info.role,
-            "color": info.color,
-        })) {
-            let _ = state.tx.send(msg);
-        }
+        let ids = state
+            .user_roles
+            .lock()
+            .await
+            .get(&user)
+            .cloned()
+            .unwrap_or_default();
+        helpers::broadcast_user_roles(&state, &user, &ids).await;
     }
     StatusCode::OK
 }

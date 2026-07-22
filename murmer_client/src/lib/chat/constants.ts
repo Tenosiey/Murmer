@@ -1,21 +1,5 @@
 import type { ChannelNotificationPreference } from '../stores/channelNotifications';
 
-export const MODERATOR_ROLES = ['Admin', 'Mod', 'Owner'] as const;
-
-/** Mirror of the server's moderation ranking (Owner > Admin > Mod > none). */
-export function roleRank(role: string | null | undefined): number {
-  switch (role?.toLowerCase()) {
-    case 'owner':
-      return 3;
-    case 'admin':
-      return 2;
-    case 'mod':
-      return 1;
-    default:
-      return 0;
-  }
-}
-
 /* Custom server emoji naming rules; must match the server's validation. */
 export const EMOJI_NAME_RE = /^[a-z0-9_]{2,32}$/;
 export const EMOJI_SHORTCODE_RE = /^:([a-z0-9_]{2,32}):$/;

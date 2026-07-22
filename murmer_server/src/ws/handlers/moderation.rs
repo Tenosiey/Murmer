@@ -1,10 +1,11 @@
 //! Moderation handlers: kick, ban and mute.
 //!
-//! All actions require a privileged role (Owner, Admin or Mod) and the
-//! requester must strictly outrank the target. Unlike channel management
-//! there is no "no admin token" fallback: moderation is never open to
-//! unprivileged users.
+//! Each action requires the matching permission (`KICK_MEMBERS`,
+//! `BAN_MEMBERS`, `MUTE_MEMBERS`) and the requester must strictly outrank the
+//! target in the role hierarchy. Unlike channel management there is no "no
+//! admin token" fallback: moderation is never open to unprivileged users.
 
+use crate::permissions::Permissions;
 use crate::ws::{constants::*, errors, helpers::*};
 use crate::{AppState, db};
 use axum::extract::ws::{Message, WebSocket};
@@ -14,27 +15,29 @@ use serde_json::Value;
 use std::sync::Arc;
 use tracing::{error, info};
 
-/// Validate that `requester` may run a moderation action against `target`.
-/// Sends the appropriate error to the client and returns `false` on failure.
+/// Validate that `requester` may run a moderation action against `target`:
+/// they must hold `required` and strictly outrank the target. Sends the
+/// appropriate error to the client and returns `false` on failure.
 async fn check_allowed(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
     requester: &str,
     target: &str,
+    required: Permissions,
 ) -> bool {
     if requester == target {
         send_error(sender, errors::CANNOT_MODERATE_SELF).await;
         return false;
     }
 
-    let requester_rank = user_moderation_rank(state, requester).await;
-    if requester_rank == 0 {
+    if !has_permission(state, requester, required).await {
         send_error(sender, errors::MODERATION_PERMISSION_DENIED).await;
         return false;
     }
 
-    let target_rank = user_moderation_rank(state, target).await;
-    if target_rank >= requester_rank {
+    let requester_position = top_position(state, requester).await;
+    let target_position = top_position(state, target).await;
+    if requester_position <= target_position {
         send_error(sender, errors::MODERATION_TARGET_PROTECTED).await;
         return false;
     }
@@ -106,7 +109,15 @@ pub(super) async fn handle_kick_user(
     let Some(target) = require_target(sender, v).await else {
         return;
     };
-    if !check_allowed(state, sender, &requester, &target).await {
+    if !check_allowed(
+        state,
+        sender,
+        &requester,
+        &target,
+        crate::permissions::KICK_MEMBERS,
+    )
+    .await
+    {
         return;
     }
 
@@ -133,7 +144,15 @@ pub(super) async fn handle_ban_user(
     let Some(target) = require_target(sender, v).await else {
         return;
     };
-    if !check_allowed(state, sender, &requester, &target).await {
+    if !check_allowed(
+        state,
+        sender,
+        &requester,
+        &target,
+        crate::permissions::BAN_MEMBERS,
+    )
+    .await
+    {
         return;
     }
     let Some(key) = resolve_target_key(state, sender, &target).await else {
@@ -163,7 +182,15 @@ pub(super) async fn handle_unban_user(
     let Some(target) = require_target(sender, v).await else {
         return;
     };
-    if !check_allowed(state, sender, &requester, &target).await {
+    if !check_allowed(
+        state,
+        sender,
+        &requester,
+        &target,
+        crate::permissions::BAN_MEMBERS,
+    )
+    .await
+    {
         return;
     }
 
@@ -201,7 +228,15 @@ pub(super) async fn handle_mute_user(
     let Some(target) = require_target(sender, v).await else {
         return;
     };
-    if !check_allowed(state, sender, &requester, &target).await {
+    if !check_allowed(
+        state,
+        sender,
+        &requester,
+        &target,
+        crate::permissions::MUTE_MEMBERS,
+    )
+    .await
+    {
         return;
     }
     let Some(key) = resolve_target_key(state, sender, &target).await else {
@@ -247,7 +282,15 @@ pub(super) async fn handle_unmute_user(
     let Some(target) = require_target(sender, v).await else {
         return;
     };
-    if !check_allowed(state, sender, &requester, &target).await {
+    if !check_allowed(
+        state,
+        sender,
+        &requester,
+        &target,
+        crate::permissions::MUTE_MEMBERS,
+    )
+    .await
+    {
         return;
     }
 

@@ -62,9 +62,25 @@ export interface UserConnectionStats {
   ageSeconds: number;
 }
 
+/** A user's display role (highest-position assigned role) shown as a badge. */
 export interface RoleInfo {
   role: string;
   color?: string;
+}
+
+/** A server role definition as broadcast in the `role-definitions` frame. */
+export interface RoleDef {
+  id: number;
+  name: string;
+  color?: string;
+  /** Permission bitmask (see `src/lib/chat/permissions.ts`). */
+  permissions: number;
+  /** Hierarchy position; higher outranks lower. */
+  position: number;
+  /** The implicit `@everyone` baseline role (never assigned explicitly). */
+  isDefault: boolean;
+  /** The protected Owner role (locked to Administrator). */
+  isOwner: boolean;
 }
 
 export type UserStatus = 'online' | 'away' | 'busy' | 'offline';

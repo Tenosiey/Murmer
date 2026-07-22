@@ -105,7 +105,7 @@ pub(super) async fn handle_set_server_identity(
         }
     };
 
-    if !can_manage_server_identity(state, requester).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_SERVER).await {
         warn!("User {requester} attempted to edit the server identity without permission");
         send_error(sender, errors::IDENTITY_PERMISSION_DENIED).await;
         return;
