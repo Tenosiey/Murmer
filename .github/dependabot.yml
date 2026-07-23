@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Client frontend (npm)
+  # Client frontend (Bun — managed under the npm ecosystem via bun.lock)
   - package-ecosystem: "npm"
     directory: "/murmer_client"
     schedule:
@@ -42,6 +42,11 @@ updates:
     schedule:
       interval: "weekly"
     target-branch: "dev"
+    groups:
+      docker-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
   # GitHub Actions workflows
   - package-ecosystem: "github-actions"
@@ -49,3 +54,8 @@ updates:
     schedule:
       interval: "weekly"
     target-branch: "dev"
+    groups:
+      github-actions-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"

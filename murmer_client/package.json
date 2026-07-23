@@ -9,13 +9,10 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "tauri": "node ./scripts/run-tauri.js",
-    "bump": "node ./scripts/bump-version.mjs"
+    "tauri": "bun ./scripts/run-tauri.js",
+    "bump": "bun ./scripts/bump-version.mjs"
   },
   "license": "MIT",
-  "engines": {
-    "node": ">=22.0.0"
-  },
   "overrides": {
     "cookie": "^0.7.2"
   },

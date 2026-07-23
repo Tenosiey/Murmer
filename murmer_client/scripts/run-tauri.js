@@ -20,9 +20,10 @@ if (process.platform === 'linux') {
   }
 }
 
-// Invoke the Tauri CLI's JS entry point with the current Node binary instead
-// of going through `npx` + a shell: it avoids shell quoting issues (DEP0190)
-// and behaves the same on Linux, macOS and Windows.
+// Invoke the Tauri CLI's JS entry point with the current runtime binary
+// (the Bun executable via process.execPath) instead of going through `npx` +
+// a shell: it avoids shell quoting issues (DEP0190) and behaves the same on
+// Linux, macOS and Windows.
 const require = createRequire(import.meta.url);
 const tauriBin = require.resolve('@tauri-apps/cli/tauri.js');
 

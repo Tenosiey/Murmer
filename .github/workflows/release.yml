@@ -16,11 +16,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: murmer_client/package-lock.json
+          bun-version: latest
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('murmer_client/bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -30,7 +34,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: murmer_client
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v1
