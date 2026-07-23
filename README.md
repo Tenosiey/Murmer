@@ -12,6 +12,23 @@ into a Rust WebSocket server and a cross-platform desktop client powered by
 Tauri and SvelteKit. Both halves are designed with security-first defaults so a
 small team can deploy a private chat space quickly.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/server-select.png" alt="Server selection screen" width="800">
+</p>
+<p align="center"><em>Server selection — pick or add a server to connect to.</em></p>
+
+<p align="center">
+  <img src="docs/screenshots/chat-channel.png" alt="Chat channel with the sidebar and message list" width="800">
+</p>
+<p align="center"><em>A text channel with the channel sidebar, message history and member list.</em></p>
+
+<p align="center">
+  <img src="docs/screenshots/settings.png" alt="Settings menu" width="800">
+</p>
+<p align="center"><em>The settings menu.</em></p>
+
 ## Features
 
 - Persistent text chat stored in an embedded SQLite database
