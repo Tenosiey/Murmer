@@ -9,12 +9,12 @@ build time. Cross-component state stays in `svelte/store` modules under
 pinned to major 6.
 
 ## Development commands
-- `npm install` – install/update dependencies and refresh `package-lock.json`
-- `npm run dev` – run the Svelte dev server with hot module reloading
-- `npm run tauri dev` – launch the desktop shell backed by the dev server
-- `npm run build` – produce static assets consumed by Tauri
-- `npm run tauri build` – package installers/bundles for distribution
-- `npm run check` – TypeScript + Svelte diagnostics (run before committing)
+- `bun install` – install/update dependencies and refresh `bun.lock`
+- `bun run dev` – run the Svelte dev server with hot module reloading
+- `bun run tauri dev` – launch the desktop shell backed by the dev server
+- `bun run build` – produce static assets consumed by Tauri
+- `bun run tauri build` – package installers/bundles for distribution
+- `bun run check` – TypeScript + Svelte diagnostics (run before committing)
 
 ## Code organisation
 - `src/routes/` – SvelteKit pages (login, server selection, chat)
@@ -75,6 +75,6 @@ The native shell lives in `src-tauri/`. After making changes there, run
 prefer implementing features in Svelte unless native APIs are required.
 
 ## QA checklist
-- Run `npm run check` before submitting changes.
+- Run `bun run check` before submitting changes.
 - Exercise the reconnect flow and authentication failure cases manually.
 - Verify that push-to-talk works with the configured keybinding on Windows.
