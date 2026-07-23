@@ -923,8 +923,8 @@
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
     border: 1px solid var(--color-surface-outline);
-    width: min(720px, 94vw);
-    height: min(560px, 82vh);
+    width: min(864px, 94vw);
+    height: min(672px, 88vh);
     overflow: hidden;
     display: flex;
     flex-direction: column;
