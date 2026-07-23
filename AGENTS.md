@@ -15,7 +15,10 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
 - **Rust is edition 2024**; the toolchain is pinned in `rust-toolchain.toml`.
 - **rusqlite is pinned by tokio-rusqlite** — bump it only when a new
   tokio-rusqlite release allows it.
-- **Never bump versions by hand** — only via `npm run bump` (see Versioning).
+- **The client toolchain is Bun 1.x.** Dependencies, scripts and CI use Bun
+  (`bun install` writes `bun.lock`); there is no npm lockfile. `package.json`
+  declares no `engines` (Bun ignores it).
+- **Never bump versions by hand** — only via `bun run bump` (see Versioning).
 - **Svelte components use the runes syntax** (`$state`, `$props`, `$derived`,
   `$effect`) — `runes: true` is enforced in `svelte.config.js`, so legacy
   syntax (`export let`, `$:`) fails the build. Shared state still lives in
@@ -24,15 +27,15 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
 
 ## Workflow overview
 - Install the latest [Rust toolchain](https://www.rust-lang.org/tools/install)
-  and [Node.js 22+](https://nodejs.org).
+  and [Bun 1.x](https://bun.sh).
 - See `README.md` for detailed setup, build and configuration instructions.
-- When developing locally run the client with `npm run tauri dev` and the server
+- When developing locally run the client with `bun run tauri dev` and the server
   with `cargo run` or `docker compose up --build`.
 
 ## Quality checks
 - Server: `cargo fmt`, `cargo clippy --all-targets -- -D warnings` and
   `cargo test` inside `murmer_server/` — all three pass clean; keep it that way.
-- Client: `npm run check` inside `murmer_client/` (0 errors, 0 warnings);
+- Client: `bun run check` inside `murmer_client/` (0 errors, 0 warnings);
   `cargo clippy` in `murmer_client/src-tauri/` for the shell.
 - Document complex security-sensitive logic with inline comments.
 - Sanitize or validate all user-supplied data before acting on it.
@@ -95,13 +98,13 @@ multiple releases on the same day), e.g. `2026.710.0` for the first release on
 server crate (`murmer_server/Cargo.toml`) must not be bumped by hand or
 skipped. When asked to bump versions:
 
-1. Run `npm run bump` inside `murmer_client/`. The script
+1. Run `bun run bump` inside `murmer_client/`. The script
    (`scripts/bump-version.mjs`) computes the next version and writes it into
-   all seven versioned files: the client's `package.json` and
-   `package-lock.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`
+   all six versioned files: the client's `package.json`,
+   `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`
    and `src-tauri/Cargo.lock`, plus the server's `Cargo.toml` and
    `Cargo.lock` (the lock files matter: `--locked` builds fail when they
-   disagree).
+   disagree). `bun.lock` needs no bump — it does not record the root version.
 2. Commit with `Release v<version>` and create a matching `v<version>` git
    tag. Pushing the tag triggers the GitHub Actions release workflow, which
    builds the installers and updater manifest.

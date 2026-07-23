@@ -110,7 +110,7 @@ desktop-only project does not bundle — delete them again. The tray PNGs
 
 - [Rust](https://www.rust-lang.org/tools/install) (managed automatically via
   `rust-toolchain.toml`)
-- [Node.js](https://nodejs.org) 22 or newer
+- [Bun](https://bun.sh) 1.x
 - Docker and Docker Compose (for container-based workflows)
 
 ## Quick start (Docker)
@@ -128,8 +128,8 @@ docker compose up --build
 
 ```bash
 cd murmer_client
-npm install
-npm run tauri dev
+bun install
+bun run tauri dev
 ```
 
 The desktop shell opens with a development build of the Svelte UI. Added servers
@@ -142,10 +142,10 @@ after restarts.
 
 ```bash
 cd murmer_client
-npm install          # install dependencies / refresh package-lock
-npm run dev          # hot module reloading for the Svelte UI
-npm run tauri dev    # launch the native shell
-npm run check        # TypeScript + Svelte diagnostics
+bun install          # install dependencies / refresh bun.lock
+bun run dev          # hot module reloading for the Svelte UI
+bun run tauri dev    # launch the native shell
+bun run check        # TypeScript + Svelte diagnostics
 ```
 
 ### Server
@@ -169,8 +169,8 @@ cargo test
 cargo audit          # requires cargo-audit (cargo install cargo-audit)
 
 cd ../murmer_client
-npm run check
-npm audit
+bun run check
+bun audit
 ```
 
 ## Configuration
@@ -273,18 +273,18 @@ docker exec <server-container> murmer_server unbind-name <user_name>
 1. Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
    for Windows (Visual Studio Build Tools, WebView2, etc.).
 2. Install [Rust](https://www.rust-lang.org/tools/install) and
-   [Node.js 22+](https://nodejs.org) and ensure both are available in `PATH`.
+   [Bun 1.x](https://bun.sh) and ensure both are available in `PATH`.
 3. Build the client from `murmer_client/`:
 
 ```bash
-npm install
-npm run build
-npm run tauri build
+bun install
+bun run build
+bun run tauri build
 ```
 
 Bundles are produced in `murmer_client/src-tauri/target/release/bundle`.
 
-Note: because the app ships auto-updates (see below), `npm run tauri build`
+Note: because the app ships auto-updates (see below), `bun run tauri build`
 signs the updater artifacts and therefore needs the signing key in the
 environment:
 
@@ -315,7 +315,7 @@ One-time setup (already done for this repository once the secrets exist):
 
    ```bash
    cd murmer_client
-   npm run tauri signer generate -- -w ~/.tauri/murmer.key
+   bun run tauri signer generate -- -w ~/.tauri/murmer.key
    ```
 
    Keep the private key safe — if it is lost, existing installs can no longer
@@ -332,13 +332,13 @@ Publishing a release:
 
    ```bash
    cd murmer_client
-   npm run bump
+   bun run bump
    ```
 
    Versions follow the date-based scheme `YYYY.MDD.N` (year, month+day,
    counter for multiple releases on the same day), e.g. `2026.710.0` for the
    first release on 2026-07-10. Client and server share one version: the
-   script writes it into the client's `package.json`, `package-lock.json`,
+   script writes it into the client's `package.json`,
    `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and
    `src-tauri/Cargo.lock` as well as the server's `Cargo.toml` and
    `Cargo.lock` — do not bump the server separately.

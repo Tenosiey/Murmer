@@ -4,9 +4,9 @@
         "version": "2026.718.0",
         "identifier": "com.murmer.app",
         "build": {
-                "beforeDevCommand": "npm run dev",
+                "beforeDevCommand": "bun run dev",
                 "devUrl": "http://localhost:1420",
-                "beforeBuildCommand": "npm run build",
+                "beforeBuildCommand": "bun run build",
                 "frontendDist": "../build"
         },
         "app": {
