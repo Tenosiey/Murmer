@@ -9,6 +9,18 @@ use rusqlite::{OptionalExtension, params};
 
 use super::{Db, DbCall, DbError};
 
+/// Outcome of a channel rename. Channel names are unique, so a rename can fail
+/// either because the target row is gone or because another channel already
+/// owns the requested name.
+pub enum RenameResult<T> {
+    /// The channel was renamed; carries its updated record.
+    Renamed(T),
+    /// No channel exists with the given id.
+    NotFound,
+    /// Another channel already uses the requested name.
+    NameTaken,
+}
+
 // ---------------------------------------------------------------------------
 // Categories
 // ---------------------------------------------------------------------------
@@ -204,6 +216,38 @@ pub async fn add_channel(
     .await
 }
 
+/// Rename a text channel. Names are unique, so this reports [`RenameResult`]
+/// variants for the taken-name and unknown-channel cases separately. The check
+/// and update run on the single writer connection, so no other rename can slip
+/// in between them.
+pub async fn rename_channel(
+    db: &Db,
+    id: i32,
+    name: &str,
+) -> Result<RenameResult<ChannelRecord>, DbError> {
+    let name = name.to_owned();
+    db.call_db(move |conn| {
+        let taken: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM channels WHERE name = ?2 AND id <> ?1)",
+            params![id, name],
+            |row| row.get(0),
+        )?;
+        if taken {
+            return Ok(RenameResult::NameTaken);
+        }
+        let mut stmt = conn.prepare(
+            "UPDATE channels SET name = ?2 WHERE id = ?1 \
+             RETURNING id, name, category_id, description, position",
+        )?;
+        let mut rows = stmt.query(params![id, name])?;
+        match rows.next()? {
+            Some(row) => Ok(RenameResult::Renamed(row_to_channel(row)?)),
+            None => Ok(RenameResult::NotFound),
+        }
+    })
+    .await
+}
+
 /// Update a text channel's description/topic. Returns true if a row was updated.
 pub async fn set_channel_description(db: &Db, id: i32, description: &str) -> Result<bool, DbError> {
     let description = description.to_owned();
@@ -391,6 +435,36 @@ pub async fn move_voice_channel(
             )
             .optional()?;
         Ok(position)
+    })
+    .await
+}
+
+/// Rename a voice channel. Mirrors [`rename_channel`]; voice channel names are
+/// likewise unique.
+pub async fn rename_voice_channel(
+    db: &Db,
+    id: i32,
+    name: &str,
+) -> Result<RenameResult<VoiceChannelRecord>, DbError> {
+    let name = name.to_owned();
+    db.call_db(move |conn| {
+        let taken: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM voice_channels WHERE name = ?2 AND id <> ?1)",
+            params![id, name],
+            |row| row.get(0),
+        )?;
+        if taken {
+            return Ok(RenameResult::NameTaken);
+        }
+        let mut stmt = conn.prepare(
+            "UPDATE voice_channels SET name = ?2 WHERE id = ?1 \
+             RETURNING id, name, quality, bitrate, category_id, position",
+        )?;
+        let mut rows = stmt.query(params![id, name])?;
+        match rows.next()? {
+            Some(row) => Ok(RenameResult::Renamed(row_to_voice_channel(row)?)),
+            None => Ok(RenameResult::NotFound),
+        }
     })
     .await
 }

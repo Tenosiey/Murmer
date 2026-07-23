@@ -158,6 +158,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                     continue;
                                 }
                             }
+                            "rename-channel" => {
+                                channels::handle_rename_channel(&state, &mut sender, &v, &user_name).await;
+                            }
                             "move-channel" => {
                                 channels::handle_move_channel(&state, &mut sender, &v, &user_name).await;
                             }
@@ -184,6 +187,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "update-voice-channel" => {
                                 channels::handle_update_voice_channel(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "rename-voice-channel" => {
+                                channels::handle_rename_voice_channel(&state, &mut sender, &v, &user_name).await;
                             }
                             "delete-voice-channel" => {
                                 channels::handle_delete_voice_channel(&state, &mut sender, &v, &user_name, &mut voice_channel).await;
@@ -424,6 +430,7 @@ fn channel_frame_hint(msg: &str) -> bool {
     msg.contains("-notify")
         || msg.contains("channel-add")
         || msg.contains("channel-topic")
+        || msg.contains("channel-rename")
         || msg.contains("channel-remove")
         || msg.contains("voice-channel-")
         || msg.contains("voice-users")
@@ -440,9 +447,11 @@ fn channel_frame_hint(msg: &str) -> bool {
 fn channel_scope(v: &Value) -> Option<(ChannelKind, i32)> {
     let ty = v.get("type").and_then(|t| t.as_str())?;
     let kind = match ty {
-        "message-notify" | "channel-add" | "channel-topic" | "channel-remove" => ChannelKind::Text,
+        "message-notify" | "channel-add" | "channel-topic" | "channel-rename"
+        | "channel-remove" => ChannelKind::Text,
         "voice-channel-add"
         | "voice-channel-update"
+        | "voice-channel-rename"
         | "voice-channel-remove"
         | "voice-users"
         | "voice-join"

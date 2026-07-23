@@ -1369,6 +1369,28 @@
     if (name) categories.rename(id, name.trim());
   }
 
+  async function renameChannelPrompt(id: number) {
+    const ch = $channels.find((c) => c.id === id);
+    const name = await dialogs.prompt({
+      title: 'Rename channel',
+      label: 'Channel name',
+      initial: ch?.name ?? '',
+      confirmLabel: 'Rename'
+    });
+    if (name) channels.rename(id, name.trim());
+  }
+
+  async function renameVoiceChannelPrompt(id: number) {
+    const ch = $voiceChannels.find((c) => c.id === id);
+    const name = await dialogs.prompt({
+      title: 'Rename voice channel',
+      label: 'Channel name',
+      initial: ch?.name ?? '',
+      confirmLabel: 'Rename'
+    });
+    if (name) voiceChannels.rename(id, name.trim());
+  }
+
   /** Builds the "Move to" submenu; empty when there is nowhere to move to. */
   function buildMoveToItems(channelId: number, voice: boolean): ContextMenuItem[] {
     const targets: ContextMenuItem[] = [];
@@ -1705,6 +1727,7 @@
                 $channels.find((c) => c.id === menuChannelId)?.name ?? ''
               )
           },
+          { label: 'Rename Channel', action: () => renameChannelPrompt(menuChannelId!) },
           ...buildMoveToItems(menuChannelId, false),
           { label: 'Delete Channel', action: () => channels.remove(menuChannelId!), danger: true }
         ]
@@ -1734,6 +1757,7 @@
                 })
             }))
           },
+          { label: 'Rename Voice Channel', action: () => renameVoiceChannelPrompt(menuVoiceChannelId!) },
           ...buildMoveToItems(menuVoiceChannelId, true),
           { label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannelId!), danger: true }
         ]

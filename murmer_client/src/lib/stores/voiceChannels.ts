@@ -67,6 +67,15 @@ function createVoiceChannelStore() {
     }
   });
 
+  chat.on('voice-channel-rename', (msg: Message) => {
+    const raw = msg as any;
+    const id = typeof raw.channelId === 'number' ? raw.channelId : null;
+    const name = typeof raw.name === 'string' ? raw.name : null;
+    if (id !== null && name) {
+      update((chs) => chs.map((c) => (c.id === id ? { ...c, name } : c)));
+    }
+  });
+
   chat.on('voice-channel-remove', (msg: Message) => {
     const id = (msg as any).channelId;
     if (typeof id === 'number') {
@@ -132,11 +141,15 @@ function createVoiceChannelStore() {
     chat.sendRaw(payload);
   }
 
+  function rename(channelId: number, name: string) {
+    chat.sendRaw({ type: 'rename-voice-channel', channelId, name });
+  }
+
   function remove(channelId: number) {
     chat.sendRaw({ type: 'delete-voice-channel', channelId });
   }
 
-  return { subscribe, set, create, configure, remove };
+  return { subscribe, set, create, configure, rename, remove };
 }
 
 export const voiceChannels = createVoiceChannelStore();

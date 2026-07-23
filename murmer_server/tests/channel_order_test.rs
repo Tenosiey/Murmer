@@ -130,6 +130,99 @@ async fn reorder_voice_channels() {
     assert_eq!(names, ["Games", "Lobby"]);
 }
 
+/// Renaming reports the distinct outcomes the handler relies on: success, a
+/// name already taken by another channel, and an unknown id. Names are unique,
+/// so the taken-name case must not clobber the existing channel.
+#[tokio::test]
+async fn rename_channel_outcomes() {
+    let db = db::init(":memory:").await.expect("in-memory db");
+
+    let alpha = db::add_channel(&db, "alpha", None)
+        .await
+        .expect("add")
+        .expect("created");
+    db::add_channel(&db, "beta", None)
+        .await
+        .expect("add")
+        .expect("created");
+
+    // A free name renames the row and returns the updated record.
+    match db::rename_channel(&db, alpha.id, "gamma")
+        .await
+        .expect("rename")
+    {
+        db::RenameResult::Renamed(record) => assert_eq!(record.name, "gamma"),
+        _ => panic!("expected rename to succeed"),
+    }
+
+    // Colliding with another channel's name leaves both untouched.
+    assert!(matches!(
+        db::rename_channel(&db, alpha.id, "beta")
+            .await
+            .expect("rename"),
+        db::RenameResult::NameTaken
+    ));
+    let names: Vec<String> = db::get_channels(&db)
+        .await
+        .into_iter()
+        .map(|c| c.name)
+        .collect();
+    assert!(names.contains(&"gamma".to_string()) && names.contains(&"beta".to_string()));
+
+    // Renaming to the same current name is a no-op success, not a conflict.
+    assert!(matches!(
+        db::rename_channel(&db, alpha.id, "gamma")
+            .await
+            .expect("rename"),
+        db::RenameResult::Renamed(_)
+    ));
+
+    // A missing id is reported so the handler can answer "unknown channel".
+    assert!(matches!(
+        db::rename_channel(&db, 9999, "whatever")
+            .await
+            .expect("rename"),
+        db::RenameResult::NotFound
+    ));
+}
+
+/// Voice channels rename through the parallel call with the same outcomes.
+#[tokio::test]
+async fn rename_voice_channel_outcomes() {
+    let db = db::init(":memory:").await.expect("in-memory db");
+
+    let lobby = db::add_voice_channel(&db, "Lobby", "standard", None, None)
+        .await
+        .expect("add")
+        .expect("created");
+    db::add_voice_channel(&db, "Games", "standard", None, None)
+        .await
+        .expect("add")
+        .expect("created");
+
+    match db::rename_voice_channel(&db, lobby.id, "Lounge")
+        .await
+        .expect("rename")
+    {
+        db::RenameResult::Renamed(record) => assert_eq!(record.name, "Lounge"),
+        _ => panic!("expected rename to succeed"),
+    }
+
+    assert!(matches!(
+        db::rename_voice_channel(&db, lobby.id, "Games")
+            .await
+            .expect("rename"),
+        db::RenameResult::NameTaken
+    ));
+
+    assert!(matches!(
+        db::rename_voice_channel(&db, 9999, "whatever")
+            .await
+            .expect("rename"),
+        db::RenameResult::NotFound
+    ));
+}
+
 /// Categories append on create and reorder as a whole list.
 #[tokio::test]
 async fn reorder_categories() {

@@ -76,6 +76,74 @@ pub(super) async fn handle_create_channel(
     }
 }
 
+/// Handle rename channel request.
+pub(super) async fn handle_rename_channel(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(ch_id) = v
+        .get("channelId")
+        .and_then(|c| c.as_i64())
+        .map(|c| c as i32)
+    else {
+        return;
+    };
+    let Some(name) = v.get("name").and_then(|n| n.as_str()) else {
+        return;
+    };
+
+    if !security::validate_channel_name(name) {
+        send_error(sender, errors::INVALID_CHANNEL_NAME).await;
+        return;
+    }
+
+    let requester = match user_name.as_deref() {
+        Some(n) => n,
+        None => {
+            send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
+            return;
+        }
+    };
+
+    if !has_permission(state, requester, crate::permissions::MANAGE_CHANNELS).await {
+        error!("User {requester} attempted to rename channel without permission");
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
+        return;
+    }
+
+    // The "general" channel is re-seeded by name on every startup, so renaming
+    // it away would spawn a duplicate. Block it, mirroring delete.
+    match db::get_channel_by_id(&state.db, ch_id).await {
+        Some(record) if record.name == "general" => {
+            send_error(sender, errors::CANNOT_RENAME_GENERAL).await;
+            return;
+        }
+        Some(_) => {}
+        None => {
+            send_error(sender, errors::UNKNOWN_CHANNEL).await;
+            return;
+        }
+    }
+
+    match db::rename_channel(&state.db, ch_id, name).await {
+        Ok(db::RenameResult::Renamed(record)) => {
+            broadcast_channel_rename(state, record.id, &record.name).await;
+        }
+        Ok(db::RenameResult::NameTaken) => {
+            send_error(sender, errors::CHANNEL_NAME_TAKEN).await;
+        }
+        Ok(db::RenameResult::NotFound) => {
+            send_error(sender, errors::UNKNOWN_CHANNEL).await;
+        }
+        Err(e) => {
+            error!("db rename channel error: {e}");
+            send_error(sender, errors::CHANNEL_RENAME_FAILED).await;
+        }
+    }
+}
+
 /// Handle delete channel request.
 // The per-connection channel state (id, tx, rx) is deliberately passed as
 // individual &mut bindings from the ws dispatch loop.
@@ -565,6 +633,65 @@ pub(super) async fn handle_update_voice_channel(
         Err(e) => {
             error!("Failed to update voice channel {ch_id}: {e}");
             send_error(sender, errors::VOICE_CHANNEL_UPDATE_FAILED).await;
+        }
+    }
+}
+
+/// Handle rename voice channel request.
+pub(super) async fn handle_rename_voice_channel(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(ch_id) = v
+        .get("channelId")
+        .and_then(|c| c.as_i64())
+        .map(|c| c as i32)
+    else {
+        return;
+    };
+    let Some(name) = v.get("name").and_then(|n| n.as_str()) else {
+        return;
+    };
+
+    if !security::validate_channel_name(name) {
+        send_error(sender, errors::INVALID_CHANNEL_NAME).await;
+        return;
+    }
+
+    let requester = match user_name.as_deref() {
+        Some(n) => n,
+        None => {
+            send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
+            return;
+        }
+    };
+
+    if !has_permission(state, requester, crate::permissions::MANAGE_CHANNELS).await {
+        error!("User {requester} attempted to rename voice channel without permission");
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
+        return;
+    }
+
+    match db::rename_voice_channel(&state.db, ch_id, name).await {
+        Ok(db::RenameResult::Renamed(record)) => {
+            let mut map = state.voice_channels.lock().await;
+            if let Some(entry) = map.get_mut(&ch_id) {
+                entry.name = record.name.clone();
+            }
+            drop(map);
+            broadcast_voice_channel_rename(state, record.id, &record.name).await;
+        }
+        Ok(db::RenameResult::NameTaken) => {
+            send_error(sender, errors::CHANNEL_NAME_TAKEN).await;
+        }
+        Ok(db::RenameResult::NotFound) => {
+            send_error(sender, errors::UNKNOWN_VOICE_CHANNEL).await;
+        }
+        Err(e) => {
+            error!("db rename voice channel error: {e}");
+            send_error(sender, errors::CHANNEL_RENAME_FAILED).await;
         }
     }
 }

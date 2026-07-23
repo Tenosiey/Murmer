@@ -58,6 +58,15 @@ pub const CHANNEL_DELETION_FAILED: &str = r#"{"type":"error","message":"channel-
 /// Cannot delete the general channel.
 pub const CANNOT_DELETE_GENERAL: &str = r#"{"type":"error","message":"cannot-delete-general"}"#;
 
+/// Cannot rename the general channel (it is re-seeded by name on startup).
+pub const CANNOT_RENAME_GENERAL: &str = r#"{"type":"error","message":"cannot-rename-general"}"#;
+
+/// Another channel already uses the requested name.
+pub const CHANNEL_NAME_TAKEN: &str = r#"{"type":"error","message":"channel-name-taken"}"#;
+
+/// Failed to rename channel in database.
+pub const CHANNEL_RENAME_FAILED: &str = r#"{"type":"error","message":"channel-rename-failed"}"#;
+
 /// Message rate limit exceeded.
 pub const MESSAGE_RATE_LIMIT: &str = r#"{"type":"error","message":"message-rate-limit"}"#;
 

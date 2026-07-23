@@ -37,6 +37,15 @@ function createChannelStore() {
     }
   });
 
+  chat.on('channel-rename', (msg: Message) => {
+    const raw = msg as any;
+    const id = typeof raw.channelId === 'number' ? raw.channelId : null;
+    const name = typeof raw.name === 'string' ? raw.name : null;
+    if (id !== null && name) {
+      update((chs) => chs.map((c) => (c.id === id ? { ...c, name } : c)));
+    }
+  });
+
   chat.on('channel-remove', (msg: Message) => {
     const id = (msg as any).channelId;
     if (typeof id === 'number') {
@@ -85,6 +94,10 @@ function createChannelStore() {
     chat.sendRaw(payload);
   }
 
+  function rename(channelId: number, name: string) {
+    chat.sendRaw({ type: 'rename-channel', channelId, name });
+  }
+
   function remove(channelId: number) {
     chat.sendRaw({ type: 'delete-channel', channelId });
   }
@@ -99,7 +112,7 @@ function createChannelStore() {
     chat.sendRaw({ type: 'reorder-channels', categoryId, order, voice });
   }
 
-  return { subscribe, set, create, remove, move, reorder };
+  return { subscribe, set, create, rename, remove, move, reorder };
 }
 
 export const channels = createChannelStore();

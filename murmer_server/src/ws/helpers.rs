@@ -224,6 +224,17 @@ pub async fn broadcast_channel_topic(state: &Arc<AppState>, channel_id: i32, top
     }
 }
 
+/// Broadcast a channel's new name to all clients.
+pub async fn broadcast_channel_rename(state: &Arc<AppState>, channel_id: i32, name: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "channel-rename",
+        "channelId": channel_id,
+        "name": name,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
 /// Broadcast to all clients that a channel was deleted.
 pub async fn broadcast_remove_channel(state: &Arc<AppState>, channel_id: i32) {
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
@@ -261,6 +272,17 @@ pub async fn broadcast_voice_channel_update(
         "name": info.name,
         "quality": info.quality,
         "bitrate": info.bitrate,
+    })) {
+        let _ = state.tx.send(msg);
+    }
+}
+
+/// Broadcast a voice channel's new name to all clients.
+pub async fn broadcast_voice_channel_rename(state: &Arc<AppState>, channel_id: i32, name: &str) {
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "voice-channel-rename",
+        "channelId": channel_id,
+        "name": name,
     })) {
         let _ = state.tx.send(msg);
     }
