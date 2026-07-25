@@ -114,6 +114,9 @@ pub struct AppState {
     pub voice_session_starts: Arc<Mutex<HashMap<String, Instant>>>,
     /// When each user started screen sharing; mirrors `voice_session_starts`.
     pub screenshare_session_starts: Arc<Mutex<HashMap<String, Instant>>>,
+    /// When each user last played a soundboard sound, for the server-side
+    /// playback cooldown. Entries are dropped on disconnect.
+    pub soundboard_cooldowns: Arc<Mutex<HashMap<String, Instant>>>,
     pub upload_dir: PathBuf,
     pub password: Option<String>,
     pub admin_token: Option<String>,

@@ -286,6 +286,34 @@ pub const EMOJI_UPDATE_FAILED: &str = r#"{"type":"error","message":"emoji-update
 /// The referenced custom emoji does not exist.
 pub const EMOJI_NOT_FOUND: &str = r#"{"type":"error","message":"emoji-not-found"}"#;
 
+/// User lacks permission to manage soundboard sounds.
+pub const SOUND_PERMISSION_DENIED: &str = r#"{"type":"error","message":"sound-permission-denied"}"#;
+
+/// User lacks permission to play soundboard sounds.
+pub const SOUNDBOARD_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"soundboard-permission-denied"}"#;
+
+/// Sound display name failed validation.
+pub const INVALID_SOUND_NAME: &str = r#"{"type":"error","message":"invalid-sound-name"}"#;
+
+/// The referenced upload is not a usable sound file.
+pub const INVALID_SOUND_FILE: &str = r#"{"type":"error","message":"invalid-sound-file"}"#;
+
+/// Another sound already uses this name.
+pub const SOUND_NAME_TAKEN: &str = r#"{"type":"error","message":"sound-name-taken"}"#;
+
+/// The server's soundboard is full.
+pub const SOUND_LIMIT_REACHED: &str = r#"{"type":"error","message":"sound-limit-reached"}"#;
+
+/// Failed to persist a soundboard change.
+pub const SOUND_UPDATE_FAILED: &str = r#"{"type":"error","message":"sound-update-failed"}"#;
+
+/// The referenced sound does not exist.
+pub const SOUND_NOT_FOUND: &str = r#"{"type":"error","message":"sound-not-found"}"#;
+
+/// Sounds are being played too quickly by this user.
+pub const SOUNDBOARD_COOLDOWN: &str = r#"{"type":"error","message":"soundboard-cooldown"}"#;
+
 /// User lacks permission to edit the server identity.
 pub const IDENTITY_PERMISSION_DENIED: &str =
     r#"{"type":"error","message":"identity-permission-denied"}"#;

@@ -3,6 +3,7 @@ import type { Message } from '../types';
 import { session } from './session';
 import { notify } from '../notify';
 import { channelNotifications } from './channelNotifications';
+import { soundboardPrefs } from './soundboardSettings';
 import { prepareMessage, containsMention, normalizeReactions } from '../message-utils';
 import { WebSocketManager } from '../websocket-manager';
 import { connection } from './connection';
@@ -348,6 +349,8 @@ function createChatStore() {
     // is persisted per server; switch both stores to this server's slice.
     unread.setServer(url);
     channelNotifications.setServer(url);
+    // Sound ids and usernames are also only unique per server.
+    soundboardPrefs.setServer(url);
     // Key pins persist per server; in-flight lookups belong to the old one.
     peerKeys.setServer(url);
     clearPeerKeyRequests();

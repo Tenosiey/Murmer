@@ -20,7 +20,7 @@ SQLite database lives on a named volume): `docker compose up --build`.
 - `config.rs` – environment variable parsing and CORS setup
 - `ws/` – WebSocket handshake and message handling (`handlers/` for auth,
   messages, channels, DMs, emojis, identity, moderation, pins, profile,
-  screenshare, stats, uploads and wiki; the dispatch loop lives in
+  screenshare, soundboard, stats, uploads and wiki; the dispatch loop lives in
   `handlers/mod.rs`)
 - `db/` – database connection, schema and queries, split by the same domains
 - `bot/` – REST API for bots (see `BOT_API.md`)
@@ -77,6 +77,20 @@ audio is peer-to-peer. Managers edit overrides through the
 `set-channel-override`/`remove-channel-override`/`get-channel-overrides` frames
 (`ws/handlers/channel_overrides.rs`), and creating a channel with `private: true`
 seeds an `@everyone` View-deny plus a creator allow.
+
+The soundboard (`ws/handlers/soundboard.rs`, `db/soundboard.rs`) stores a
+server-wide sound library. `add/rename/remove-sound` require `MANAGE_SOUNDS`;
+`play-sound` requires `USE_SOUNDBOARD`, that the connection is actually in the
+named voice channel, `can_view_channel` for it, and that the user is not
+server-muted. Audio never touches the server beyond `/upload`: playback is a
+`soundboard-play` broadcast that every client renders locally, so the frame is
+filtered per recipient by `channel_scope`/`channel_frame_hint` like the other
+voice-scoped frames. `AppState.soundboard_cooldowns` enforces the per-user
+playback cooldown and is pruned on disconnect. Adding a sound re-validates the
+referenced upload (extension, `MAX_SOUND_FILE_BYTES`, magic bytes) because the
+upload endpoint is open and these files auto-play on every listener.
+`db::migrate_soundboard_permissions` grants the two flags to pre-soundboard
+databases once, marker-guarded, so an existing server matches a fresh one.
 
 ## Security notes
 - Direct messages are end-to-end encrypted by the clients; the server only

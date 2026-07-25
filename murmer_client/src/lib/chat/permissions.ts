@@ -21,7 +21,9 @@ export const PERMISSIONS = {
   KICK_MEMBERS: 1 << 10,
   BAN_MEMBERS: 1 << 11,
   MUTE_MEMBERS: 1 << 12,
-  ADMINISTRATOR: 1 << 13
+  ADMINISTRATOR: 1 << 13,
+  USE_SOUNDBOARD: 1 << 14,
+  MANAGE_SOUNDS: 1 << 15
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;
@@ -126,6 +128,12 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         flag: PERMISSIONS.SEND_MESSAGES,
         label: 'Send messages',
         description: 'Post messages and add reactions.'
+      },
+      {
+        key: 'USE_SOUNDBOARD',
+        flag: PERMISSIONS.USE_SOUNDBOARD,
+        label: 'Use soundboard',
+        description: 'Play soundboard sounds to everyone in your voice channel.'
       }
     ]
   },
@@ -183,6 +191,12 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         flag: PERMISSIONS.MANAGE_EMOJIS,
         label: 'Manage emojis',
         description: 'Add and remove custom server emojis.'
+      },
+      {
+        key: 'MANAGE_SOUNDS',
+        flag: PERMISSIONS.MANAGE_SOUNDS,
+        label: 'Manage sounds',
+        description: 'Upload, rename and delete soundboard sounds.'
       },
       {
         key: 'MANAGE_ROLES',

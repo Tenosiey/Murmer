@@ -143,6 +143,15 @@ pub(super) async fn record_reaction_added(
     }
 }
 
+/// Record a soundboard playback for the player. Only the player is counted —
+/// listeners are never tallied, so the stat cannot reconstruct who was in a
+/// voice channel together.
+pub(super) async fn note_sound_played(state: &Arc<AppState>, user: &str, sound_name: &str) {
+    if let Err(e) = db::record_sound_played(&state.db, user, sound_name).await {
+        error!("failed to record sound stats for {user}: {e}");
+    }
+}
+
 // ── Voice / screen share session timing ─────────────────────────────────────
 
 /// Note that a user is now in a voice channel. Switching channels keeps the
@@ -360,6 +369,19 @@ async fn send_user_stats(
         .map(|(emoji, count)| serde_json::json!({ "emoji": emoji, "count": count }))
         .collect();
 
+    let favorite_sounds =
+        match db::get_favorite_sounds(&state.db, target, MAX_FAVORITE_SOUNDS).await {
+            Ok(list) => list,
+            Err(e) => {
+                error!("failed to load favorite sounds for {target}: {e}");
+                Vec::new()
+            }
+        };
+    let favorite_sound_entries: Vec<Value> = favorite_sounds
+        .into_iter()
+        .map(|(name, count)| serde_json::json!({ "name": name, "count": count }))
+        .collect();
+
     let payload = serde_json::json!({
         "type": "user-stats",
         "user": target,
@@ -385,8 +407,10 @@ async fn send_user_stats(
             "voiceSeconds": record.voice_seconds,
             "voiceSessions": record.voice_sessions,
             "screenshareSeconds": record.screenshare_seconds,
+            "soundsPlayed": record.sounds_played,
         },
         "favoriteReactions": favorite_entries,
+        "favoriteSounds": favorite_sound_entries,
     });
     let _ = sender.send(Message::Text(payload.to_string().into())).await;
 }

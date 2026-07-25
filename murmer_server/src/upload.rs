@@ -113,6 +113,31 @@ fn detect_file_type(data: &[u8]) -> Option<&'static str> {
     }
 }
 
+/// Detect an audio container by magic bytes.
+///
+/// Used for soundboard sounds, which the client auto-plays to everyone in a
+/// voice channel — a stricter bar than a generic attachment nobody opens. The
+/// generic `/upload` path deliberately does *not* call this: it would reject
+/// legitimate but exotic audio attachments, and those are only ever downloaded
+/// deliberately by a user.
+pub fn detect_audio_type(data: &[u8]) -> Option<&'static str> {
+    if data.starts_with(b"ID3") {
+        Some("audio/mpeg")
+    } else if data.len() >= 2 && data[0] == 0xFF && data[1] & 0xE0 == 0xE0 {
+        // MPEG frame sync: 11 set bits, i.e. a headerless MP3.
+        Some("audio/mpeg")
+    } else if data.len() >= 12 && data.starts_with(b"RIFF") && &data[8..12] == b"WAVE" {
+        Some("audio/wav")
+    } else if data.starts_with(b"OggS") {
+        // Covers both Vorbis and Opus in an Ogg container.
+        Some("audio/ogg")
+    } else if data.len() >= 8 && &data[4..8] == b"ftyp" {
+        Some("audio/mp4")
+    } else {
+        None
+    }
+}
+
 /// Extract the lowercase extension from a filename, if any.
 fn file_extension(filename: &str) -> Option<String> {
     let (stem, ext) = filename.rsplit_once('.')?;

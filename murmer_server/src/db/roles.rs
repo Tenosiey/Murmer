@@ -341,3 +341,41 @@ pub fn migrate_roles(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
     )?;
     Ok(())
 }
+
+/// One-time grant of the soundboard permissions to databases created before
+/// the soundboard existed. Without it the stored `@everyone` mask would keep
+/// the new bits cleared and nobody on an existing server could play a sound,
+/// while a freshly seeded server would allow it — the two must not diverge.
+///
+/// Playing goes to `@everyone` (it is a baseline capability like sending a
+/// message); managing goes to whoever already manages emojis, which is the
+/// closest existing "curates server assets" capability. Marker-guarded so an
+/// owner who deliberately revokes either flag never has it re-granted.
+pub fn migrate_soundboard_permissions(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    let already: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM server_settings WHERE key = 'soundboard_perms'",
+        [],
+        |row| row.get(0),
+    )?;
+    if already > 0 {
+        return Ok(());
+    }
+
+    conn.execute(
+        "UPDATE role_definitions SET permissions = permissions | ?1 WHERE is_default = 1",
+        params![crate::permissions::USE_SOUNDBOARD as i64],
+    )?;
+    conn.execute(
+        "UPDATE role_definitions SET permissions = permissions | ?1 WHERE permissions & ?2 != 0",
+        params![
+            crate::permissions::MANAGE_SOUNDS as i64,
+            crate::permissions::MANAGE_EMOJIS as i64,
+        ],
+    )?;
+
+    conn.execute(
+        "INSERT OR IGNORE INTO server_settings (key, value) VALUES ('soundboard_perms', '1')",
+        [],
+    )?;
+    Ok(())
+}

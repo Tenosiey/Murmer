@@ -5,6 +5,18 @@ export const EMOJI_NAME_RE = /^[a-z0-9_]{2,32}$/;
 export const EMOJI_SHORTCODE_RE = /^:([a-z0-9_]{2,32}):$/;
 export const MAX_EMOJI_FILE_BYTES = 512 * 1024;
 
+/* Soundboard limits; must match the server's validation. The server re-checks
+   all of it (size, extension, magic bytes) — this copy only rejects a file
+   before uploading it and drives the file picker's `accept`. */
+export const MIN_SOUND_NAME_LEN = 2;
+export const MAX_SOUND_NAME_LEN = 32;
+export const MAX_SOUND_FILE_BYTES = 1024 * 1024;
+export const MAX_SOUNDBOARD_SOUNDS = 100;
+export const SOUND_EXTENSIONS = ['mp3', 'wav', 'ogg', 'm4a', 'opus'];
+export const SOUND_ACCEPT = SOUND_EXTENSIONS.map((ext) => `.${ext}`).join(',');
+/** Playback cooldown per user, mirrored from the server for the UI hint. */
+export const SOUNDBOARD_COOLDOWN_MS = 3_000;
+
 /* Server identity limits; must match the server's validation. */
 export const MAX_SERVER_NAME_LENGTH = 64;
 export const MAX_SERVER_DESCRIPTION_LENGTH = 300;

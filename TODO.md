@@ -59,7 +59,8 @@ synced to clients; editing is role-gated like other channel management.
 
 - [ ] Breakout rooms
 - [ ] Collaborative whiteboard during voice chats
-- [ ] Custom sound effects and soundboards
+- [x] Custom sound effects and soundboards (shared sound library, permission-gated
+      upload and playback, per-listener volume/mute and playback stats)
 - [ ] Gesture recognition through webcam
 - [ ] Live polling during meetings
 - [ ] Meeting notes that auto-generate from voice

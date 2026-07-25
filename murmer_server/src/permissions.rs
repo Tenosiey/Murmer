@@ -41,6 +41,10 @@ pub const BAN_MEMBERS: Permissions = 1 << 11;
 pub const MUTE_MEMBERS: Permissions = 1 << 12;
 /// Grants every permission and bypasses hierarchy checks (the Owner role).
 pub const ADMINISTRATOR: Permissions = 1 << 13;
+/// Play soundboard sounds to everyone in the current voice channel.
+pub const USE_SOUNDBOARD: Permissions = 1 << 14;
+/// Upload, rename and delete the server's soundboard sounds.
+pub const MANAGE_SOUNDS: Permissions = 1 << 15;
 
 /// Union of every defined permission flag. Used to reject unknown bits from
 /// clients and to expand [`ADMINISTRATOR`] into a concrete mask.
@@ -57,20 +61,24 @@ pub const ALL: Permissions = VIEW_CHANNELS
     | KICK_MEMBERS
     | BAN_MEMBERS
     | MUTE_MEMBERS
-    | ADMINISTRATOR;
+    | ADMINISTRATOR
+    | USE_SOUNDBOARD
+    | MANAGE_SOUNDS;
 
 /// Baseline permissions granted to every user through the `@everyone` role.
-/// Keeps a fresh or unadministered server usable: everyone can read and chat.
-pub const DEFAULT_EVERYONE: Permissions = VIEW_CHANNELS | SEND_MESSAGES;
+/// Keeps a fresh or unadministered server usable: everyone can read, chat and
+/// play the soundboard.
+pub const DEFAULT_EVERYONE: Permissions = VIEW_CHANNELS | SEND_MESSAGES | USE_SOUNDBOARD;
 
 /// Default permissions seeded for the built-in `Mod` role. Mirrors the legacy
-/// Mod capabilities: manage channels/wiki/emojis, moderate messages and act
-/// against lower-ranked members.
+/// Mod capabilities: manage channels/wiki/emojis/sounds, moderate messages and
+/// act against lower-ranked members.
 pub const DEFAULT_MOD: Permissions = DEFAULT_EVERYONE
     | MANAGE_MESSAGES
     | MANAGE_CHANNELS
     | MANAGE_WIKI
     | MANAGE_EMOJIS
+    | MANAGE_SOUNDS
     | KICK_MEMBERS
     | BAN_MEMBERS
     | MUTE_MEMBERS;

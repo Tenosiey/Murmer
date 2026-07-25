@@ -11,6 +11,7 @@
 //! - [`moderation`] – kick, ban and mute actions
 //! - [`pins`] – shared, persisted message pins
 //! - [`screenshare`] – server-wide screen share configuration (bitrate cap)
+//! - [`soundboard`] – shared sound library and voice-channel playback
 //! - [`stats`] – lifetime user statistics (double opt-in gated)
 //! - [`uploads`] – server-wide upload policy (size cap, file categories)
 //! - [`wiki`] – per-channel Markdown wiki pages
@@ -27,6 +28,7 @@ mod pins;
 mod profile;
 mod roles;
 mod screenshare;
+mod soundboard;
 mod stats;
 mod uploads;
 mod wiki;
@@ -334,6 +336,18 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "remove-emoji" => {
                                 emojis::handle_remove_emoji(&state, &mut sender, &v, &user_name).await;
                             }
+                            "add-sound" => {
+                                soundboard::handle_add_sound(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "rename-sound" => {
+                                soundboard::handle_rename_sound(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "remove-sound" => {
+                                soundboard::handle_remove_sound(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "play-sound" => {
+                                soundboard::handle_play_sound(&state, &mut sender, &v, &voice_channel, &user_name).await;
+                            }
                             "set-server-identity" => {
                                 identity::handle_set_server_identity(&state, &mut sender, &v, &user_name).await;
                             }
@@ -443,6 +457,7 @@ fn channel_frame_hint(msg: &str) -> bool {
         || msg.contains("voice-leave")
         || msg.contains("screenshare-start")
         || msg.contains("screenshare-stop")
+        || msg.contains("soundboard-play")
 }
 
 /// If a broadcast frame is scoped to one channel whose visibility must be
@@ -462,7 +477,8 @@ fn channel_scope(v: &Value) -> Option<(ChannelKind, i32)> {
         | "voice-join"
         | "voice-leave"
         | "screenshare-start"
-        | "screenshare-stop" => ChannelKind::Voice,
+        | "screenshare-stop"
+        | "soundboard-play" => ChannelKind::Voice,
         _ => return None,
     };
     let id = v.get("channelId").and_then(|c| c.as_i64())? as i32;
@@ -895,6 +911,7 @@ async fn handle_disconnect(state: &Arc<AppState>, user_name: Option<String>) {
 
         state.voice_mutes.lock().await.remove(&name);
         state.connection_stats.lock().await.remove(&name);
+        soundboard::clear_cooldown(state, &name).await;
 
         // Clean up any active screen shares owned by the disconnecting user.
         end_screen_shares_for_user(state, &name).await;

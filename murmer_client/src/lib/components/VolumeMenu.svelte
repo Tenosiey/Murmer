@@ -1,6 +1,7 @@
 <script lang="ts">
 
   import { userVolumes, setUserVolume } from '$lib/stores/settings';
+  import { soundboardPrefs } from '$lib/stores/soundboardSettings';
 
   interface Props {
     open: boolean;
@@ -17,6 +18,11 @@
     user,
     onClose
   }: Props = $props();
+
+  /** Whether this user's soundboard clips are silenced for us locally. This is
+      independent of their voice volume above: someone can be perfectly
+      audible while their airhorn is not. */
+  let soundsMuted = $derived(user !== null && $soundboardPrefs.mutedUsers.includes(user));
 </script>
 
 {#if open && user}
@@ -56,6 +62,13 @@
           <button class="preset-btn" onclick={() => user && setUserVolume(user, 0.5)}>50%</button>
           <button class="preset-btn" onclick={() => user && setUserVolume(user, 1.0)}>100%</button>
         </div>
+        <button
+          class="preset-btn sound-mute-btn"
+          class:muted={soundsMuted}
+          onclick={() => user && soundboardPrefs.setUserMuted(user, !soundsMuted)}
+        >
+          {soundsMuted ? 'Unmute their sounds' : 'Mute their sounds'}
+        </button>
       </div>
     </div>
   </div>
@@ -183,5 +196,14 @@
   .preset-btn:hover {
     border-color: var(--color-outline-strong);
     color: var(--color-on-surface);
+  }
+
+  .sound-mute-btn {
+    width: 100%;
+  }
+
+  .sound-mute-btn.muted {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
   }
 </style>

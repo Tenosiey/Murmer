@@ -731,6 +731,50 @@ pub async fn broadcast_emojis(state: &Arc<AppState>) {
     }
 }
 
+/// Serialize the current soundboard library as a `sound-list` frame.
+/// `playCount` is an unattributed aggregate; no per-user data is exposed here.
+async fn sound_list_frame(state: &Arc<AppState>) -> Option<String> {
+    let sounds = match db::get_sounds(&state.db).await {
+        Ok(list) => list,
+        Err(e) => {
+            error!("Failed to load soundboard sounds: {e}");
+            return None;
+        }
+    };
+    let entries: Vec<Value> = sounds
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "id": s.id,
+                "name": s.name,
+                "url": s.url,
+                "uploadedBy": s.uploaded_by,
+                "playCount": s.play_count,
+                "createdAt": s.created_at,
+            })
+        })
+        .collect();
+    serde_json::to_string(&serde_json::json!({
+        "type": "sound-list",
+        "sounds": entries,
+    }))
+    .ok()
+}
+
+/// Send the current soundboard library to a single client.
+pub async fn send_sounds(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    if let Some(msg) = sound_list_frame(state).await {
+        let _ = sender.send(Message::Text(msg.into())).await;
+    }
+}
+
+/// Broadcast the current soundboard library to all connected clients.
+pub async fn broadcast_sounds(state: &Arc<AppState>) {
+    if let Some(msg) = sound_list_frame(state).await {
+        let _ = state.tx.send(msg);
+    }
+}
+
 /// Resolve a user's public key: currently connected users first (in-memory
 /// map), then the persisted name binding, so moderation and role changes
 /// also reach users who are offline.

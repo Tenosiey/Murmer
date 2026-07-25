@@ -122,6 +122,18 @@ export interface ChannelInfo {
   private?: boolean;
 }
 
+/** One sound in the server's shared soundboard library. */
+export interface SoundboardSound {
+  id: number;
+  name: string;
+  /** Relative upload URL (`/files/...`), resolved against the server at play time. */
+  url: string;
+  uploadedBy?: string;
+  /** Unattributed aggregate play count kept by the server. */
+  playCount: number;
+  createdAt?: string;
+}
+
 export interface ScreenShareSettings {
   width: number;
   height: number;

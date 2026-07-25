@@ -238,6 +238,17 @@ export const ACHIEVEMENTS: AchievementDef[] = [
       { name: 'Presenter', threshold: 10 * MINUTE },
       { name: 'Director', threshold: 10 * HOUR }
     ]
+  },
+  {
+    id: 'soundboard',
+    stat: 'soundsPlayed',
+    icon: 'zap',
+    description: 'Soundboard sounds played',
+    tiers: [
+      { name: 'Sound Check', threshold: 10 },
+      { name: 'Foley Artist', threshold: 250 },
+      { name: 'Airhorn Menace', threshold: 2500 }
+    ]
   }
 ];
 

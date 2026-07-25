@@ -25,6 +25,11 @@ export interface FavoriteReaction {
   count: number;
 }
 
+export interface FavoriteSound {
+  name: string;
+  count: number;
+}
+
 export interface UserStats {
   messagesSent: number;
   messageChars: number;
@@ -46,6 +51,7 @@ export interface UserStats {
   voiceSeconds: number;
   voiceSessions: number;
   screenshareSeconds: number;
+  soundsPlayed: number;
 }
 
 export interface UserStatsSnapshot {
@@ -53,6 +59,7 @@ export interface UserStatsSnapshot {
   trackedSince: string | null;
   stats: UserStats;
   favoriteReactions: FavoriteReaction[];
+  favoriteSounds: FavoriteSound[];
 }
 
 const EMPTY_STATS: UserStats = {
@@ -75,7 +82,8 @@ const EMPTY_STATS: UserStats = {
   pinsAdded: 0,
   voiceSeconds: 0,
   voiceSessions: 0,
-  screenshareSeconds: 0
+  screenshareSeconds: 0,
+  soundsPlayed: 0
 };
 
 function toNumber(value: unknown): number {
@@ -95,11 +103,17 @@ function parseSnapshot(msg: Message): UserStatsSnapshot | null {
         .filter((f: any) => f && typeof f.emoji === 'string')
         .map((f: any) => ({ emoji: f.emoji, count: toNumber(f.count) }))
     : [];
+  const favoriteSounds: FavoriteSound[] = Array.isArray(payload.favoriteSounds)
+    ? payload.favoriteSounds
+        .filter((s: any) => s && typeof s.name === 'string')
+        .map((s: any) => ({ name: s.name, count: toNumber(s.count) }))
+    : [];
   return {
     user: payload.user,
     trackedSince: typeof payload.trackedSince === 'string' ? payload.trackedSince : null,
     stats,
-    favoriteReactions: favorites
+    favoriteReactions: favorites,
+    favoriteSounds
   };
 }
 

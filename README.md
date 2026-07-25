@@ -60,6 +60,12 @@ small team can deploy a private chat space quickly.
   identity keys), so the server only ever stores and relays ciphertext
 - Screen sharing in voice channels with adjustable resolution, frame rate and
   bitrate; Owners/Admins can set a server-wide bitrate cap from the dashboard
+- Soundboard: a shared library of short clips anyone in a voice channel can
+  play for everyone present. Uploading is gated by *Manage sounds*, playing by
+  *Use soundboard*, and a server-side cooldown keeps it from becoming a spam
+  toy. Each listener gets their own master volume, per-sound volume/mute and a
+  per-person "mute their sounds" switch — sounds play locally on every client
+  rather than through the speaker's microphone
 - Per-channel Markdown wiki with revisions and `[[wikilinks]]` (also across
   channels via `[[channel/page]]`)
 - Lifetime stats and achievements (messages, voice minutes, GIFs, favorite
@@ -213,8 +219,9 @@ capability is still gated by roles.
 ## Roles and permissions
 
 Authorization is permission-based. A **role** is a named, colored bundle of
-permission toggles (view channels, send messages, manage channels, kick, ban,
-manage roles, manage server, …) with a hierarchy position. Every user
+permission toggles (view channels, send messages, use soundboard, manage
+channels, kick, ban, manage roles, manage sounds, manage server, …) with a
+hierarchy position. Every user
 implicitly has the built-in **@everyone** role; any additional roles they hold
 stack, and their effective permissions are the union. The built-in **Owner**
 role is an administrator (all permissions) and sits at the top; **Admin** and

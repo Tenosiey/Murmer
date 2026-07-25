@@ -6,6 +6,7 @@
   import { browser } from '$app/environment';
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
   import ScreenShareControls from '$lib/components/ScreenShareControls.svelte';
+  import SoundboardPanel from '$lib/components/SoundboardPanel.svelte';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { categories } from '$lib/stores/categories';
@@ -20,6 +21,8 @@
   import { voiceMuteStates } from '$lib/stores/voiceMute';
   import { activeScreenShares } from '$lib/stores/screenShare';
   import { unread } from '$lib/stores/unread';
+  import { can } from '$lib/stores/permissions';
+  import { PERMISSIONS } from '$lib/chat/permissions';
   import { formatVoiceQuality } from '$lib/chat/helpers';
   import type { CategoryInfo, ChannelInfo, VoiceChannelInfo } from '$lib/types';
 
@@ -66,6 +69,10 @@
     voice: boolean;
     categoryId: number | null;
   }
+
+  // Cosmetic soundboard gates; the server re-checks both on every frame.
+  let canUseSoundboard = $derived($can(PERMISSIONS.USE_SOUNDBOARD));
+  let canManageSounds = $derived($can(PERMISSIONS.MANAGE_SOUNDS));
 
   const COLLAPSED_KEY = 'murmer_collapsed_categories';
   const UNCATEGORIZED_KEY = '__uncategorized';
@@ -575,6 +582,12 @@
 
       {#if inVoice}
         <ScreenShareControls currentVoiceChannel={currentVoiceChannelId} {inVoice} />
+        <SoundboardPanel
+          currentVoiceChannel={currentVoiceChannelId}
+          {inVoice}
+          canPlay={canUseSoundboard}
+          canManage={canManageSounds}
+        />
       {/if}
     </div>
   </div>

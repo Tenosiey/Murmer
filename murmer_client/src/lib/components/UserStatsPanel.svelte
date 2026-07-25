@@ -79,7 +79,8 @@
     { label: 'Messages pinned', value: formatNumber(snapshot.stats.pinsAdded) },
     { label: 'Time in voice', value: formatDuration(snapshot.stats.voiceSeconds) },
     { label: 'Voice sessions', value: formatNumber(snapshot.stats.voiceSessions) },
-    { label: 'Time screen sharing', value: formatDuration(snapshot.stats.screenshareSeconds) }
+    { label: 'Time screen sharing', value: formatDuration(snapshot.stats.screenshareSeconds) },
+    { label: 'Sounds played', value: formatNumber(snapshot.stats.soundsPlayed) }
   ]);
 
   // Small stroke-SVG icon set (1.8 stroke width, matching the app style).
@@ -127,6 +128,20 @@
             {:else}
               <span class="favorite-emoji">{favorite.emoji}</span>
             {/if}
+            <span class="favorite-count">{formatNumber(favorite.count)}</span>
+          </span>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if snapshot.favoriteSounds.length > 0}
+    <div class="favorite-reactions">
+      <span class="favorites-label">Favorite sounds</span>
+      <div class="favorites-row">
+        {#each snapshot.favoriteSounds as favorite (favorite.name)}
+          <span class="favorite" title={`Played ${formatNumber(favorite.count)} times`}>
+            <span class="favorite-sound">{favorite.name}</span>
             <span class="favorite-count">{formatNumber(favorite.count)}</span>
           </span>
         {/each}
@@ -235,6 +250,11 @@
   .favorite-emoji {
     font-size: var(--text-md);
     line-height: 1;
+  }
+
+  .favorite-sound {
+    font-size: var(--text-sm);
+    color: var(--color-on-surface);
   }
 
   .favorite-count {

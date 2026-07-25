@@ -43,6 +43,7 @@ pub enum Stat {
     VoiceSeconds,
     VoiceSessions,
     ScreenshareSeconds,
+    SoundsPlayed,
 }
 
 impl Stat {
@@ -69,6 +70,7 @@ impl Stat {
             Stat::VoiceSeconds => "voice_seconds",
             Stat::VoiceSessions => "voice_sessions",
             Stat::ScreenshareSeconds => "screenshare_seconds",
+            Stat::SoundsPlayed => "sounds_played",
         }
     }
 }
@@ -96,6 +98,7 @@ pub struct UserStatsRecord {
     pub voice_seconds: i64,
     pub voice_sessions: i64,
     pub screenshare_seconds: i64,
+    pub sounds_played: i64,
     pub created_at: Option<String>,
 }
 
@@ -133,6 +136,7 @@ CREATE TABLE IF NOT EXISTS user_stats (
     voice_seconds INTEGER NOT NULL DEFAULT 0,
     voice_sessions INTEGER NOT NULL DEFAULT 0,
     screenshare_seconds INTEGER NOT NULL DEFAULT 0,
+    sounds_played INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT ({NOW_UTC})
 );
 CREATE TABLE IF NOT EXISTS user_reaction_stats (
@@ -140,6 +144,12 @@ CREATE TABLE IF NOT EXISTS user_reaction_stats (
     emoji TEXT NOT NULL,
     count INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (user_name, emoji)
+);
+CREATE TABLE IF NOT EXISTS user_sound_stats (
+    user_name TEXT NOT NULL,
+    sound_name TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_name, sound_name)
 );
 "#
     )
@@ -242,6 +252,10 @@ pub async fn purge_user_stats(db: &Db, user: &str) -> Result<(), DbError> {
             "DELETE FROM user_reaction_stats WHERE user_name = ?1",
             params![user],
         )?;
+        conn.execute(
+            "DELETE FROM user_sound_stats WHERE user_name = ?1",
+            params![user],
+        )?;
         Ok(())
     })
     .await
@@ -292,6 +306,52 @@ pub async fn record_user_stats(
     .await
 }
 
+/// Record one soundboard playback: the lifetime counter plus the per-sound
+/// tally behind the "favorite sound" stat. Subject to the same double opt-in
+/// gate as every other counter, which lives inside [`record_user_stats`].
+///
+/// The sound's *name* is stored rather than its id so the stat survives the
+/// sound being deleted or replaced, mirroring how reactions are tallied.
+pub async fn record_sound_played(db: &Db, user: &str, sound_name: &str) -> Result<(), DbError> {
+    let user_for_tally = user.to_owned();
+    let sound_name = sound_name.to_owned();
+    let recorded = record_user_stats(db, user, vec![(Stat::SoundsPlayed, 1)], None).await?;
+    if !recorded {
+        return Ok(());
+    }
+    db.call_db(move |conn| {
+        conn.execute(
+            "INSERT INTO user_sound_stats (user_name, sound_name, count) VALUES (?1, ?2, 1)
+             ON CONFLICT(user_name, sound_name) DO UPDATE SET count = count + 1",
+            params![user_for_tally, sound_name],
+        )?;
+        Ok(())
+    })
+    .await
+}
+
+/// A user's most-played sounds, most played first.
+pub async fn get_favorite_sounds(
+    db: &Db,
+    user: &str,
+    limit: i64,
+) -> Result<Vec<(String, i64)>, DbError> {
+    let user = user.to_owned();
+    db.call_db(move |conn| {
+        let mut stmt = conn.prepare(
+            "SELECT sound_name, count FROM user_sound_stats
+             WHERE user_name = ?1 ORDER BY count DESC, sound_name ASC LIMIT ?2",
+        )?;
+        let rows = stmt
+            .query_map(params![user, limit], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })
+    .await
+}
+
 /// Fetch one user's lifetime counters; `None` when nothing was recorded yet.
 pub async fn get_user_stats(db: &Db, user: &str) -> Result<Option<UserStatsRecord>, DbError> {
     let user = user.to_owned();
@@ -301,7 +361,8 @@ pub async fn get_user_stats(db: &Db, user: &str) -> Result<Option<UserStatsRecor
                     images_sent, gifs_sent, files_sent, upload_bytes, links_shared,
                     replies_sent, mentions_sent, dms_sent, reactions_given,
                     reactions_received, messages_edited, messages_deleted, pins_added,
-                    voice_seconds, voice_sessions, screenshare_seconds, created_at
+                    voice_seconds, voice_sessions, screenshare_seconds, sounds_played,
+                    created_at
              FROM user_stats WHERE user_name = ?1",
             params![user],
             |row| {
@@ -326,7 +387,8 @@ pub async fn get_user_stats(db: &Db, user: &str) -> Result<Option<UserStatsRecor
                     voice_seconds: row.get(17)?,
                     voice_sessions: row.get(18)?,
                     screenshare_seconds: row.get(19)?,
-                    created_at: row.get(20)?,
+                    sounds_played: row.get(20)?,
+                    created_at: row.get(21)?,
                 })
             },
         )

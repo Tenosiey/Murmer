@@ -1,16 +1,32 @@
 import { writable, derived, get } from 'svelte/store';
 import type { RemotePeer, ConnectionStats, VoiceChannelInfo } from '../types';
 import { VoiceManager } from '../voice/manager';
+import { SoundboardPlayer } from '../voice/soundboard';
 
 const peers = writable<RemotePeer[]>([]);
 const manager = new VoiceManager();
 manager.subscribe((list) => peers.set(list));
 
+/**
+ * Plays soundboard clips locally. Its lifecycle is tied to the voice session:
+ * `soundboard-play` frames are only meaningful while joined to the channel they
+ * name, so the player is told which channel we are in here rather than having
+ * every caller remember to.
+ */
+export const soundboardPlayer = new SoundboardPlayer();
+
 export const voice = {
   subscribe: peers.subscribe,
-  join: (user: string, channelId: number, info?: VoiceChannelInfo) =>
-    manager.join(user, channelId, get(peers), info),
-  leave: (channelId: number) => manager.leave(channelId, get(peers))
+  join: async (user: string, channelId: number, info?: VoiceChannelInfo) => {
+    // Only arm the player once the microphone was actually acquired; a failed
+    // join must not leave us playing sounds for a channel we are not in.
+    await manager.join(user, channelId, get(peers), info);
+    soundboardPlayer.setChannel(channelId);
+  },
+  leave: (channelId: number) => {
+    soundboardPlayer.setChannel(null);
+    manager.leave(channelId, get(peers));
+  }
 };
 
 export const voiceStats = derived(voice, ($voice) => {

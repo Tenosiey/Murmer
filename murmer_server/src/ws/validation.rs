@@ -2,9 +2,9 @@
 
 use super::constants::{
     MAX_ALLOWED_VOICE_BITRATE, MAX_EMOJI_NAME_LEN, MAX_ROLE_NAME_LENGTH,
-    MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_TOPIC_LENGTH,
+    MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_SOUND_NAME_LEN, MAX_TOPIC_LENGTH,
     MAX_WELCOME_MESSAGE_LENGTH, MAX_WIKI_SLUG_LENGTH, MAX_WIKI_TITLE_LENGTH, MIN_EMOJI_NAME_LEN,
-    UPLOAD_IMAGE_EXTENSIONS, USER_STATUSES,
+    MIN_SOUND_NAME_LEN, UPLOAD_IMAGE_EXTENSIONS, UPLOAD_SOUND_EXTENSIONS, USER_STATUSES,
 };
 
 /// Normalize a user status string to a valid status value.
@@ -75,11 +75,20 @@ pub fn validate_welcome_message(value: &str) -> bool {
     value.len() <= MAX_WELCOME_MESSAGE_LENGTH && !value.chars().any(|c| c.is_control() && c != '\n')
 }
 
-/// Extract the file key from an uploaded-image URL of the form
-/// `/files/<key>`. Rejects anything that could escape the upload directory:
-/// the key must be a single non-empty path segment with an image extension
-/// from the [`UPLOAD_IMAGE_EXTENSIONS`] safe-list.
-pub fn upload_key_from_url(url: &str) -> Option<&str> {
+/// Validate a soundboard sound's display name. Unlike emoji shortcodes these
+/// are shown as plain text, so spaces and mixed case are fine; control
+/// characters are not, and the name must already be trimmed.
+pub fn validate_sound_name(value: &str) -> bool {
+    value.len() >= MIN_SOUND_NAME_LEN
+        && value.len() <= MAX_SOUND_NAME_LEN
+        && value == value.trim()
+        && !value.chars().any(char::is_control)
+}
+
+/// Extract the file key from an upload URL of the form `/files/<key>`,
+/// accepting only the given extensions. Rejects anything that could escape the
+/// upload directory: the key must be a single non-empty path segment.
+fn upload_key_with_extensions<'a>(url: &'a str, allowed: &[&str]) -> Option<&'a str> {
     let key = url.strip_prefix("/files/")?;
     if key.is_empty()
         || key.contains('/')
@@ -91,10 +100,22 @@ pub fn upload_key_from_url(url: &str) -> Option<&str> {
     }
     let (_, ext) = key.rsplit_once('.')?;
     let ext = ext.to_ascii_lowercase();
-    if !UPLOAD_IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+    if !allowed.contains(&ext.as_str()) {
         return None;
     }
     Some(key)
+}
+
+/// Extract the file key from an uploaded-image URL of the form
+/// `/files/<key>`, restricted to the [`UPLOAD_IMAGE_EXTENSIONS`] safe-list.
+pub fn upload_key_from_url(url: &str) -> Option<&str> {
+    upload_key_with_extensions(url, UPLOAD_IMAGE_EXTENSIONS)
+}
+
+/// Extract the file key from an uploaded-sound URL of the form
+/// `/files/<key>`, restricted to the [`UPLOAD_SOUND_EXTENSIONS`] safe-list.
+pub fn sound_key_from_url(url: &str) -> Option<&str> {
+    upload_key_with_extensions(url, UPLOAD_SOUND_EXTENSIONS)
 }
 
 /// Validate and convert a bitrate value to i32.
@@ -225,6 +246,29 @@ mod tests {
         assert_eq!(upload_key_from_url("/files/script.svg"), None);
         assert_eq!(upload_key_from_url("/files/"), None);
         assert_eq!(upload_key_from_url("https://evil.example/x.png"), None);
+    }
+
+    #[test]
+    fn sound_key_extraction() {
+        assert_eq!(sound_key_from_url("/files/horn.mp3"), Some("horn.mp3"));
+        assert_eq!(sound_key_from_url("/files/a.b.ogg"), Some("a.b.ogg"));
+        // Images and sounds must not be interchangeable in either direction.
+        assert_eq!(sound_key_from_url("/files/icon.png"), None);
+        assert_eq!(upload_key_from_url("/files/horn.mp3"), None);
+        assert_eq!(sound_key_from_url("/files/../etc/passwd"), None);
+        assert_eq!(sound_key_from_url("/files/sub/dir.mp3"), None);
+        assert_eq!(sound_key_from_url("/files/script.svg"), None);
+        assert_eq!(sound_key_from_url("https://evil.example/x.mp3"), None);
+    }
+
+    #[test]
+    fn sound_name_limits() {
+        assert!(validate_sound_name("Air Horn"));
+        assert!(validate_sound_name("wow"));
+        assert!(!validate_sound_name("x"));
+        assert!(!validate_sound_name(" padded "));
+        assert!(!validate_sound_name("bad\u{7}name"));
+        assert!(!validate_sound_name(&"x".repeat(MAX_SOUND_NAME_LEN + 1)));
     }
 
     #[test]

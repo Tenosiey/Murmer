@@ -16,6 +16,7 @@
     noiseSuppression,
     autoGainControl
   } from '$lib/stores/settings';
+  import { soundboardEnabled, soundboardVolume } from '$lib/stores/soundboardSettings';
   import { APP_VERSION } from '$lib/version';
   import { serverInfo } from '$lib/stores/serverInfo';
   import { theme, accent, DEFAULT_ACCENT, accentToHex, hexToAccent, type Accent } from '$lib/stores/theme';
@@ -536,6 +537,36 @@
                 </svg>
               </div>
             </div>
+          </div>
+
+          <div class="setting-group">
+            <label for="soundboard-volume" class="setting-label">
+              Soundboard volume
+              <span class="setting-value">{Math.round($soundboardVolume * 100)}%</span>
+            </label>
+            <div class="slider-container">
+              <input
+                id="soundboard-volume"
+                class="volume-slider"
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                bind:value={$soundboardVolume}
+                disabled={!$soundboardEnabled}
+              />
+              <div class="slider-track-fill" style="width: {$soundboardVolume * 100}%"></div>
+            </div>
+            <label class="toggle-row">
+              <input type="checkbox" bind:checked={$soundboardEnabled} />
+              <span class="toggle-text">
+                <span class="toggle-label">Hear soundboard sounds</span>
+                <span class="toggle-description">
+                  Play sounds others trigger in your voice channel. Individual sounds and people
+                  can be muted from the soundboard panel.
+                </span>
+              </span>
+            </label>
           </div>
         </div>
         {/if}

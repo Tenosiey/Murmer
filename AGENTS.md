@@ -45,7 +45,8 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
 - `src/lib/components/` – reusable UI primitives and overlays
 - `src/lib/stores/` – Svelte stores holding client state
 - `src/lib/chat/` – constants and helpers shared by the chat page
-- `src/lib/voice/` – WebRTC helpers and push-to-talk tooling
+- `src/lib/voice/` – WebRTC helpers, push-to-talk tooling and the soundboard
+  player (local playback, separate `AudioContext` from the voice graph)
 - `src/lib/screenshare/` – WebRTC screen sharing manager
 - `src-tauri/` – Rust-side glue for native integrations
 
@@ -93,10 +94,25 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   Managers (`MANAGE_CHANNELS`) edit overrides via the `set/remove-channel-override`
   frames (`ws/handlers/channel_overrides.rs`); override data is sent only to
   managers.
+- **Soundboard** sounds are a server-wide shared library gated by two
+  permissions: `MANAGE_SOUNDS` (upload/rename/delete) and `USE_SOUNDBOARD`
+  (play), the latter part of the `@everyone` baseline. Playback is *local on
+  every listener*: the server only authorizes `play-sound` and fans out a
+  `soundboard-play` frame; each client fetches and plays the file itself and
+  nothing is ever mixed into a microphone stream. That is what makes the
+  per-listener volume, per-sound mute and per-user mute (all local, persisted
+  per server URL) possible. Uploads reuse `/upload` and are re-validated on
+  registration by extension, size (`MAX_SOUND_FILE_BYTES`) and audio magic
+  bytes (`upload.rs::detect_audio_type`) because these clips auto-play on
+  everyone's machine. Playback carries a **server-side per-user cooldown**
+  (`SOUNDBOARD_COOLDOWN_MS`); the client's is a cosmetic mirror. Server-muted
+  members cannot play sounds either.
 - Lifetime user stats are double opt-in: recording requires the server-wide
   toggle (Owner/Admin) AND the user's own opt-in, enforced in
   `murmer_server/src/db/stats.rs`. Only aggregate counters are stored — never
-  message contents or recipients.
+  message contents or recipients. The soundboard's `play_count`/`last_played_at`
+  live on the sound row instead and are deliberately unattributed, so they need
+  no consent gate — never add a "who played it" column.
 - Production deployments should keep CORS disabled unless explicitly required.
 
 ## Versioning

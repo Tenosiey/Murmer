@@ -40,12 +40,41 @@ pub const MAX_AVATAR_BYTES: u64 = 1024 * 1024;
 /// (custom emojis, server icon). Subset of the upload endpoint's safe-list.
 pub const UPLOAD_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];
 
+/// Maximum number of soundboard sounds a server may register.
+pub const MAX_SOUNDBOARD_SOUNDS: i64 = 100;
+
+/// Maximum file size in bytes for a soundboard sound. Small on purpose: these
+/// clips are auto-played to everyone in a voice channel, so a long file is
+/// abuse rather than a feature.
+pub const MAX_SOUND_FILE_BYTES: u64 = 1024 * 1024;
+
+/// Minimum length of a soundboard sound's display name.
+pub const MIN_SOUND_NAME_LEN: usize = 2;
+
+/// Maximum length of a soundboard sound's display name.
+pub const MAX_SOUND_NAME_LEN: usize = 32;
+
+/// File extensions accepted for soundboard uploads referenced over the
+/// WebSocket. Subset of the upload endpoint's `audio` category.
+pub const UPLOAD_SOUND_EXTENSIONS: &[&str] = &["mp3", "wav", "ogg", "m4a", "opus"];
+
+/// Bytes read from the head of an uploaded sound for magic-byte validation.
+pub const SOUND_MAGIC_BYTES: usize = 12;
+
+/// Minimum interval in milliseconds between two `play-sound` frames from the
+/// same user. Enforced server-side: a soundboard is the most spammable thing
+/// in the app and a patched client must not be able to bypass this.
+pub const SOUNDBOARD_COOLDOWN_MS: u64 = 3_000;
+
 /// Bounds accepted for the screen share bitrate cap in bits per second.
 pub const MIN_SCREENSHARE_BITRATE: u64 = 100_000;
 pub const MAX_SCREENSHARE_BITRATE: u64 = 100_000_000;
 
 /// Maximum number of favorite reactions returned with a stats snapshot.
 pub const MAX_FAVORITE_REACTIONS: i64 = 5;
+
+/// Maximum number of favorite sounds returned with a stats snapshot.
+pub const MAX_FAVORITE_SOUNDS: i64 = 5;
 
 /// Upper bound accepted for reported latency/jitter values in milliseconds.
 pub const MAX_REPORTED_STAT_MS: f64 = 60_000.0;

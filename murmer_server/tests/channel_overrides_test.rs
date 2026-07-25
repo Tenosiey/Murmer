@@ -32,6 +32,7 @@ async fn make_state() -> Arc<AppState> {
         connection_stats: Arc::new(Mutex::new(HashMap::new())),
         voice_session_starts: Arc::new(Mutex::new(HashMap::new())),
         screenshare_session_starts: Arc::new(Mutex::new(HashMap::new())),
+        soundboard_cooldowns: Arc::new(Mutex::new(HashMap::new())),
         upload_dir: PathBuf::from("uploads"),
         password: None,
         admin_token: Some("token".to_string()),

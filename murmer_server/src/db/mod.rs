@@ -19,6 +19,7 @@
 //! - [`reactions`] – emoji reaction operations
 //! - [`roles`] – user role persistence
 //! - [`screenshare`] – server-wide screen share bitrate cap
+//! - [`soundboard`] – the server's shared soundboard sound library
 //! - [`stats`] – lifetime user statistics (double opt-in gated)
 //! - [`uploads`] – server-wide upload size cap and file category safe-list
 //! - [`users`] – user name to public key bindings
@@ -35,6 +36,7 @@ mod pins;
 mod reactions;
 mod roles;
 mod screenshare;
+mod soundboard;
 mod stats;
 mod uploads;
 mod users;
@@ -51,6 +53,7 @@ pub use pins::*;
 pub use reactions::*;
 pub use roles::*;
 pub use screenshare::*;
+pub use soundboard::*;
 pub use stats::*;
 pub use uploads::*;
 pub use users::*;
@@ -268,11 +271,15 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
 
         conn.execute_batch(&stats::stats_schema())?;
         conn.execute_batch(&wiki::wiki_schema())?;
+        conn.execute_batch(&soundboard::soundboard_schema())?;
 
         // Seed built-in roles and migrate any legacy single-role assignments
         // into role_definitions/user_roles. Runs once (marker-guarded); depends
         // on server_settings, created by stats_schema above.
         roles::migrate_roles(conn)?;
+        // Grant the soundboard flags to pre-soundboard databases so an existing
+        // server behaves like a freshly seeded one. Marker-guarded, runs once.
+        roles::migrate_soundboard_permissions(conn)?;
 
         // Columns added after a table first shipped; CREATE TABLE IF NOT
         // EXISTS does not extend existing tables.
@@ -284,6 +291,12 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
             "INTEGER NOT NULL DEFAULT 0",
         )?;
         ensure_column(conn, "user_keys", "avatar", "TEXT NOT NULL DEFAULT ''")?;
+        ensure_column(
+            conn,
+            "user_stats",
+            "sounds_played",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
 
         // One-time wipe of pre-E2EE plaintext direct messages: DMs are
         // end-to-end encrypted now, so old plaintext rows can neither be
