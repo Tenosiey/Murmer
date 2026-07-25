@@ -55,6 +55,7 @@
     { id: 'stats', label: 'Stats', perm: PERMISSIONS.MANAGE_SERVER },
     { id: 'uploads', label: 'Files & Uploads', perm: PERMISSIONS.MANAGE_SERVER },
     { id: 'voice', label: 'Voice', perm: PERMISSIONS.MANAGE_SERVER },
+    { id: 'screenshare', label: 'Screen Share', perm: PERMISSIONS.MANAGE_SERVER },
     { id: 'roles', label: 'Roles', perm: PERMISSIONS.MANAGE_ROLES },
     { id: 'danger', label: 'Danger Zone', perm: PERMISSIONS.ADMINISTRATOR }
   ] as const;
@@ -171,7 +172,7 @@
     serverIdentity.save({ icon: null });
   }
 
-  // ── Screen share bitrate cap (Voice tab) ──────────────────────────────────
+  // ── Screen share bitrate cap (Screen Share tab) ───────────────────────────
   let screenShareCapMbps = $state(0);
   let screenShareFeedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
   /** Set after sending a save; cleared once the broadcast confirms the
@@ -780,7 +781,26 @@
 
         {#if activeTab === 'voice'}
           <div class="settings-section">
-            <h3 class="section-title">Voice &amp; Screen Share</h3>
+            <h3 class="section-title">Voice</h3>
+            <div class="setting-group">
+              <span class="setting-label">Default bitrate <span class="badge">Coming soon</span></span>
+              <input type="number" value="64000" disabled />
+              <div class="setting-description">Bitrate in bits per second assigned to new voice channels.</div>
+            </div>
+            <div class="setting-group">
+              <span class="setting-label">Default quality <span class="badge">Coming soon</span></span>
+              <select disabled>
+                <option>Standard</option>
+                <option>High</option>
+              </select>
+              <div class="setting-description">Quality preset assigned to new voice channels.</div>
+            </div>
+          </div>
+        {/if}
+
+        {#if activeTab === 'screenshare'}
+          <div class="settings-section">
+            <h3 class="section-title">Screen Share</h3>
             <div class="setting-group">
               <span class="setting-label">Screen share max bitrate</span>
               <input
@@ -807,19 +827,6 @@
                   {screenShareFeedback.text}
                 </div>
               {/if}
-            </div>
-            <div class="setting-group">
-              <span class="setting-label">Default bitrate <span class="badge">Coming soon</span></span>
-              <input type="number" value="64000" disabled />
-              <div class="setting-description">Bitrate in bits per second assigned to new voice channels.</div>
-            </div>
-            <div class="setting-group">
-              <span class="setting-label">Default quality <span class="badge">Coming soon</span></span>
-              <select disabled>
-                <option>Standard</option>
-                <option>High</option>
-              </select>
-              <div class="setting-description">Quality preset assigned to new voice channels.</div>
             </div>
           </div>
         {/if}
