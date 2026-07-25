@@ -17,8 +17,12 @@
   } from '$lib/stores/settings';
 
   interface Props {
-    /** Threshold the level is compared against, on the same 0-1 scale. */
-    threshold: number;
+    /**
+     * Threshold the level is compared against, on the same 0-1 scale. Omitted
+     * outside voice-activity mode, where the meter is only a "does my
+     * microphone work" check and has no marker to line up with.
+     */
+    threshold?: number;
     /** Lower end of the displayed scale (the slider's `min`). */
     min: number;
     /** Upper end of the displayed scale (the slider's `max`). */
@@ -26,6 +30,9 @@
   }
 
   let { threshold, min, max }: Props = $props();
+
+  /** Floor separating silence from signal when there is no VAD threshold. */
+  const SIGNAL_FLOOR = 0.02;
 
   let level = $state(0);
   let failed = $state(false);
@@ -66,18 +73,22 @@
   }
 
   const levelPercent = $derived(position(level));
-  const thresholdPercent = $derived(position(threshold));
-  const speaking = $derived(level > threshold);
+  const thresholdPercent = $derived(position(threshold ?? 0));
+  const speaking = $derived(level > (threshold ?? SIGNAL_FLOOR));
 </script>
 
 <div class="meter">
   <div class="meter-track">
     <div class="meter-fill" class:speaking style="width: {levelPercent}%"></div>
-    <div class="meter-threshold" style="left: {thresholdPercent}%"></div>
+    {#if threshold !== undefined}
+      <div class="meter-threshold" style="left: {thresholdPercent}%"></div>
+    {/if}
   </div>
   <span class="meter-status" class:failed>
     {#if failed}
       Microphone unavailable — check the input device and permissions
+    {:else if threshold === undefined}
+      {speaking ? 'Picking up sound' : 'Silent'}
     {:else if speaking}
       Transmitting
     {:else}

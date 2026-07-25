@@ -63,12 +63,13 @@
   let outputs: MediaDeviceInfo[] = $state([]);
   let capturingPttKey = $state(false);
 
-  // Each settings topic lives on its own tab shown in the left rail.
+  // Each settings topic lives on its own tab shown in the left rail. Audio is
+  // split by direction: "Audio" covers everything you hear, "Voice" everything
+  // your microphone sends.
   const TABS = [
     { id: 'appearance', label: 'Appearance' },
     { id: 'audio', label: 'Audio' },
-    { id: 'microphone', label: 'Microphone' },
-    { id: 'voice', label: 'Voice' },
+    { id: 'voice', label: 'Microphone & Voice' },
     { id: 'hotkeys', label: 'Hotkeys' },
     { id: 'identity', label: 'Identity' },
     { id: 'stats', label: 'Stats & Privacy' },
@@ -76,6 +77,11 @@
     { id: 'server', label: 'Server', ownerOnly: true }
   ] as const;
   let activeTab: (typeof TABS)[number]['id'] = $state('appearance');
+
+  // Ends of the VAD sensitivity scale, shared by the slider and the level meter
+  // drawn underneath it so the threshold marker lines up with the slider thumb.
+  const VAD_MIN = 0.01;
+  const VAD_MAX = 0.5;
 
   const REPO_URL = 'https://github.com/Tenosiey/Murmer';
   const ABOUT_LINKS = [
@@ -485,11 +491,11 @@
 
         {#if activeTab === 'audio'}
         <div class="settings-section">
-          <h3 class="section-title">Audio</h3>
-          
+          <h3 class="section-title">Playback</h3>
+
           <div class="setting-group">
             <label for="volume-slider" class="setting-label">
-              Volume
+              Voice volume
               <span class="setting-value">{Math.round($volume * 100)}%</span>
             </label>
             <div class="slider-container">
@@ -504,27 +510,14 @@
               />
               <div class="slider-track-fill" style="width: {$volume * 100}%"></div>
             </div>
-          </div>
-
-          <div class="setting-group">
-            <label for="input-select" class="setting-label">Input Device (Microphone)</label>
-            <div class="select-container">
-              <select id="input-select" class="device-select" bind:value={$inputDeviceId}>
-                <option value="">Default</option>
-                {#each inputs as dev}
-                  <option value={dev.deviceId}>{dev.label || dev.deviceId}</option>
-                {/each}
-              </select>
-              <div class="select-arrow">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6,9 12,15 18,9"></polyline>
-                </svg>
-              </div>
+            <div class="setting-description">
+              How loud other members are. Individual people can be turned up or down in the
+              voice channel's context menu.
             </div>
           </div>
 
           <div class="setting-group">
-            <label for="output-select" class="setting-label">Output Device (Speakers)</label>
+            <label for="output-select" class="setting-label">Output device (speakers)</label>
             <div class="select-container">
               <select id="output-select" class="device-select" bind:value={$outputDeviceId}>
                 <option value="">Default</option>
@@ -539,6 +532,10 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <div class="settings-section">
+          <h3 class="section-title">Soundboard</h3>
 
           <div class="setting-group">
             <label for="soundboard-volume" class="setting-label">
@@ -572,9 +569,26 @@
         </div>
         {/if}
 
-        {#if activeTab === 'microphone'}
+        {#if activeTab === 'voice'}
         <div class="settings-section">
-          <h3 class="section-title">Microphone processing</h3>
+          <h3 class="section-title">Microphone</h3>
+
+          <div class="setting-group">
+            <label for="input-select" class="setting-label">Input device (microphone)</label>
+            <div class="select-container">
+              <select id="input-select" class="device-select" bind:value={$inputDeviceId}>
+                <option value="">Default</option>
+                {#each inputs as dev}
+                  <option value={dev.deviceId}>{dev.label || dev.deviceId}</option>
+                {/each}
+              </select>
+              <div class="select-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6,9 12,15 18,9"></polyline>
+                </svg>
+              </div>
+            </div>
+          </div>
 
           <div class="setting-group">
             <label class="toggle-row">
@@ -603,14 +617,12 @@
             </div>
           </div>
         </div>
-        {/if}
 
-        {#if activeTab === 'voice'}
         <div class="settings-section">
-          <h3 class="section-title">Voice activation</h3>
-          
+          <h3 class="section-title">Transmission</h3>
+
           <div class="setting-group">
-            <label for="voice-mode-select" class="setting-label">Voice Mode</label>
+            <label for="voice-mode-select" class="setting-label">Voice mode</label>
             <div class="select-container">
               <select id="voice-mode-select" class="device-select" bind:value={$voiceMode}>
                 <option value="continuous">Always On</option>
@@ -625,10 +637,35 @@
             </div>
           </div>
 
-          {#if $voiceMode === 'vad'}
+          {#if $voiceMode === 'ptt'}
             <div class="setting-group">
+              <label class="setting-label" for="ptt-key-button">Push-to-talk key</label>
+              <button
+                id="ptt-key-button"
+                class="btn ptt-key-button"
+                class:capturing={capturingPttKey}
+                onclick={capturePttKey}
+                disabled={capturingPttKey}
+              >
+                {#if capturingPttKey}
+                  Press any key...
+                {:else}
+                  {PushToTalkManager.getKeyDisplayName($pttKey)}
+                {/if}
+              </button>
+              <div class="setting-description">
+                Click the button above and press the key you want to use for push-to-talk.
+              </div>
+            </div>
+          {/if}
+
+          <!-- One meter for the whole tab: it doubles as the VAD threshold
+               display and as a plain "is my microphone working" check in the
+               other modes. Only ever one instance, so only one capture. -->
+          <div class="setting-group">
+            {#if $voiceMode === 'vad'}
               <label for="vad-sensitivity-slider" class="setting-label">
-                VAD Sensitivity
+                VAD sensitivity
                 <span class="setting-value">{Math.round((1 - $vadSensitivity) * 100)}%</span>
               </label>
               <div class="slider-container">
@@ -636,45 +673,27 @@
                   id="vad-sensitivity-slider"
                   class="volume-slider"
                   type="range"
-                  min="0.01"
-                  max="0.5"
+                  min={VAD_MIN}
+                  max={VAD_MAX}
                   step="0.01"
                   bind:value={$vadSensitivity}
                 />
-                <div class="slider-track-fill" style="width: {(1 - ($vadSensitivity / 0.5)) * 100}%"></div>
+                <div class="slider-track-fill" style="width: {(1 - ($vadSensitivity / VAD_MAX)) * 100}%"></div>
               </div>
-              <MicLevelMeter threshold={$vadSensitivity} min={0.01} max={0.5} />
+              <MicLevelMeter threshold={$vadSensitivity} min={VAD_MIN} max={VAD_MAX} />
               <div class="setting-description">
                 Higher sensitivity detects quieter speech but may pick up background noise.
                 Speak normally and drag the slider until the bar passes the marker only
                 when you talk.
               </div>
-            </div>
-          {/if}
-
-          {#if $voiceMode === 'ptt'}
-            <div class="setting-group">
-              <label class="setting-label" for="ptt-key-button">Push-to-Talk Key</label>
-              <div class="ptt-key-setting">
-                <button
-                  id="ptt-key-button"
-                  class="btn ptt-key-button"
-                  class:capturing={capturingPttKey}
-                  onclick={capturePttKey}
-                  disabled={capturingPttKey}
-                >
-                  {#if capturingPttKey}
-                    Press any key...
-                  {:else}
-                    {PushToTalkManager.getKeyDisplayName($pttKey)}
-                  {/if}
-                </button>
-                <div class="setting-description">
-                  Click the button above and press the key you want to use for push-to-talk
-                </div>
+            {:else}
+              <span class="setting-label">Input level</span>
+              <MicLevelMeter min={VAD_MIN} max={VAD_MAX} />
+              <div class="setting-description">
+                Speak to check that the selected microphone is picking you up.
               </div>
-            </div>
-          {/if}
+            {/if}
+          </div>
         </div>
         {/if}
 
@@ -728,7 +747,7 @@
               Click a hotkey and press the new key combination — Esc cancels, and assigning a
               combination that is already in use moves it to the new action. Hotkeys without
               Ctrl, Alt or a function key stay inactive while you are typing a message. The
-              push-to-talk key is configured in the Voice tab.
+              push-to-talk key is configured in the Microphone &amp; Voice tab.
             </div>
 
             <label class="toggle-row">
@@ -1288,6 +1307,10 @@
     pointer-events: none;
     color: var(--color-muted);
     display: inline-flex;
+  }
+
+  .ptt-key-button {
+    justify-self: start;
   }
 
   .ptt-key-button.capturing {

@@ -70,8 +70,9 @@ synced to clients; editing is role-gated like other channel management.
 - [x] Noise suppression and echo cancellation
 - [x] Live input level meter next to the VAD sensitivity slider so the threshold
       can be adjusted while watching one's own voice level in real time
-- [ ] Merge the separate Audio / Microphone / Voice settings sections into one
-      coherent audio settings page (check what can sensibly be combined)
+- [x] Merge the separate Audio / Microphone / Voice settings sections into two
+      tabs split by direction: "Audio" (playback, output device, soundboard)
+      and "Microphone & Voice" (input device, processing, transmission mode)
 - [x] Per-user volume boost up to 200% so quiet members can be turned up
       (gain node per remote stream, since an `<audio>` element caps at 100%)
 - [ ] Optional spatial/3D audio
