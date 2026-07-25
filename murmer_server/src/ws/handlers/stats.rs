@@ -109,10 +109,11 @@ pub(super) fn chat_message_deltas(v: &Value) -> Vec<(Stat, i64)> {
 
     if let Some(attachment) = v.get("attachment").and_then(|a| a.as_object()) {
         deltas.push((Stat::FilesSent, 1));
-        // The size is client-reported; clamp it to the upload limit so a
-        // crafted frame cannot inflate the byte counter.
+        // The size is client-reported; clamp it to the largest upload the
+        // server could ever accept so a crafted frame cannot inflate the byte
+        // counter.
         if let Some(size) = attachment.get("size").and_then(|s| s.as_i64()) {
-            let clamped = size.clamp(0, crate::upload::MAX_FILE_SIZE as i64);
+            let clamped = size.clamp(0, crate::upload::MAX_CONFIGURABLE_FILE_SIZE as i64);
             if clamped > 0 {
                 deltas.push((Stat::UploadBytes, clamped));
             }

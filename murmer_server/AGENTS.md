@@ -20,10 +20,12 @@ SQLite database lives on a named volume): `docker compose up --build`.
 - `config.rs` – environment variable parsing and CORS setup
 - `ws/` – WebSocket handshake and message handling (`handlers/` for auth,
   messages, channels, DMs, emojis, identity, moderation, pins, profile,
-  screenshare, stats and wiki; the dispatch loop lives in `handlers/mod.rs`)
+  screenshare, stats, uploads and wiki; the dispatch loop lives in
+  `handlers/mod.rs`)
 - `db/` – database connection, schema and queries, split by the same domains
 - `bot/` – REST API for bots (see `BOT_API.md`)
 - `upload.rs` – multipart file upload endpoint with extension/MIME validation
+  and the categorised safe-list behind the configurable upload policy
 - `admin.rs` – `/role` endpoint guarded by a bearer token
 - `roles.rs` – role definitions and default role color helpers
 - `link_preview.rs` – `/link-preview` endpoint returning OpenGraph metadata
@@ -93,6 +95,7 @@ seeds an `@everyone` View-deny plus a creator allow.
 ## QA checklist
 - Run `cargo fmt`, `cargo clippy --all-targets -- -D warnings` and `cargo test`.
 - Exercise WebSocket authentication (invalid signatures, stale timestamps).
-- Verify file uploads reject invalid MIME types and oversize payloads.
+- Verify file uploads reject invalid MIME types, oversize payloads and
+  categories disabled by the current upload policy.
 - Confirm channel/voice channel management respects role permissions when
   `ADMIN_TOKEN` is configured.

@@ -235,6 +235,7 @@ pub(super) async fn handle_presence(
             }
             super::stats::send_stats_config(state, sender, u).await;
             super::screenshare::send_screenshare_config(state, sender).await;
+            super::uploads::send_upload_config(state, sender).await;
             db::send_history(
                 &state.db,
                 sender,

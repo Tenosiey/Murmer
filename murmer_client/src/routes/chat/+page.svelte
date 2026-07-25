@@ -61,6 +61,11 @@
   import { loadKeyPair, sign } from '$lib/keypair';
   import { httpBaseFromWs } from '$lib/server-url';
   import { connection, connectionError } from '$lib/stores/connection';
+  import {
+    uploadConfig,
+    describeUploadRejection,
+    formatUploadSize
+  } from '$lib/stores/uploadConfig';
   import { describeServerError, isFatalConnectionError } from '$lib/errors';
   import type { Message, UserStatus, ScreenSharePeer } from '$lib/types';
   import {
@@ -172,6 +177,16 @@
   }
 
   function setPendingFile(file: File | null) {
+    // The server enforces its upload policy on /upload; checking here as well
+    // saves a doomed round trip and names the actual reason. Covers the picker,
+    // drag & drop and paste alike.
+    if (file) {
+      const rejection = describeUploadRejection(file);
+      if (rejection) {
+        setCommandFeedback(rejection, 'error');
+        return;
+      }
+    }
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
       previewUrl = null;
@@ -587,7 +602,10 @@
         return;
       }
       if (res.status === 413) {
-        setCommandFeedback('File is too large to upload.', 'error');
+        setCommandFeedback(
+          `File is too large to upload (limit: ${formatUploadSize($uploadConfig.maxBytes)}).`,
+          'error'
+        );
         return;
       }
       if (!res.ok) {

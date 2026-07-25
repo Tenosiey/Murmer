@@ -20,6 +20,7 @@
 //! - [`roles`] – user role persistence
 //! - [`screenshare`] – server-wide screen share bitrate cap
 //! - [`stats`] – lifetime user statistics (double opt-in gated)
+//! - [`uploads`] – server-wide upload size cap and file category safe-list
 //! - [`users`] – user name to public key bindings
 //! - [`wiki`] – per-channel Markdown wiki pages with revision history
 
@@ -35,6 +36,7 @@ mod reactions;
 mod roles;
 mod screenshare;
 mod stats;
+mod uploads;
 mod users;
 mod wiki;
 
@@ -50,6 +52,7 @@ pub use reactions::*;
 pub use roles::*;
 pub use screenshare::*;
 pub use stats::*;
+pub use uploads::*;
 pub use users::*;
 pub use wiki::*;
 

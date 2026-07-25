@@ -2,9 +2,9 @@
   Server management dashboard for moderators and above. Separate from the
   user-facing SettingsModal: everything in here is server-wide state. Tabs are
   tiered by moderation rank (Mod 1 < Admin 2 < Owner 3). The Overview tab
-  (server identity), custom emojis and the stats toggle are fully functional;
-  the remaining sections are placeholders for future server-side settings and
-  render disabled controls.
+  (server identity), custom emojis, the stats toggle, the upload policy, the
+  screen share cap and roles are fully functional; the remaining sections are
+  placeholders for future server-side settings and render disabled controls.
 -->
 <script lang="ts">
   import { onMount, onDestroy, untrack } from 'svelte';
@@ -20,8 +20,12 @@
     MAX_SERVER_NAME_LENGTH,
     MAX_SERVER_DESCRIPTION_LENGTH,
     MAX_WELCOME_MESSAGE_LENGTH,
-    MAX_SERVER_ICON_BYTES
+    MAX_SERVER_ICON_BYTES,
+    MIN_UPLOAD_MAX_BYTES,
+    MAX_UPLOAD_MAX_BYTES,
+    UPLOAD_CATEGORIES
   } from '$lib/chat/constants';
+  import { uploadConfig, setUploadConfig } from '$lib/stores/uploadConfig';
   import { stats, statsConfig } from '$lib/stores/stats';
   import { serverIdentity } from '$lib/stores/serverIdentity';
   import {
@@ -220,6 +224,71 @@
     setServerScreenShareMaxBitrate(mbps > 0 ? Math.round(mbps * 1_000_000) : null);
   }
 
+  // ── Upload policy (Files & Uploads tab) ────────────────────────────────────
+  const BYTES_PER_MB = 1024 * 1024;
+  let uploadMaxMb = $state(0);
+  let uploadCategories: string[] = $state([]);
+  let uploadFeedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
+  /** Set after sending a save; cleared once the broadcast confirms the
+      change or an error frame arrives. */
+  let uploadSavePending = $state(false);
+
+  // (Re-)fill the form whenever the dashboard opens; while it is open,
+  // incoming broadcasts must not clobber what the user is editing.
+  $effect(() => {
+    if (open) {
+      untrack(() => {
+        uploadMaxMb = $uploadConfig.maxBytes / BYTES_PER_MB;
+        uploadCategories = [...$uploadConfig.categories];
+        uploadFeedback = null;
+        uploadSavePending = false;
+      });
+    }
+  });
+
+  let uploadMaxBytesDraft = $derived(
+    Math.round((Number.isFinite(uploadMaxMb) ? uploadMaxMb : 0) * BYTES_PER_MB)
+  );
+  let uploadDirty = $derived(
+    uploadMaxBytesDraft !== $uploadConfig.maxBytes ||
+      uploadCategories.length !== $uploadConfig.categories.length ||
+      !$uploadConfig.categories.every((id) => uploadCategories.includes(id))
+  );
+
+  // A broadcast matching the submitted values confirms the save.
+  $effect(() => {
+    if (uploadSavePending && !uploadDirty) {
+      uploadSavePending = false;
+      uploadFeedback = { text: 'Changes saved.', kind: 'info' };
+    }
+  });
+
+  function toggleUploadCategory(id: string) {
+    uploadCategories = uploadCategories.includes(id)
+      ? uploadCategories.filter((entry) => entry !== id)
+      : [...uploadCategories, id];
+  }
+
+  function saveUploadConfig() {
+    if (
+      uploadMaxBytesDraft < MIN_UPLOAD_MAX_BYTES ||
+      uploadMaxBytesDraft > MAX_UPLOAD_MAX_BYTES
+    ) {
+      uploadFeedback = {
+        text: `Enter a size between ${MIN_UPLOAD_MAX_BYTES / 1024} KB and ${
+          MAX_UPLOAD_MAX_BYTES / BYTES_PER_MB
+        } MB.`,
+        kind: 'error'
+      };
+      return;
+    }
+    uploadFeedback = null;
+    uploadSavePending = true;
+    // Role-checked server-side; the confirmation arrives as a broadcast
+    // upload-config frame which updates the store.
+    setUploadConfig(uploadMaxBytesDraft, uploadCategories);
+  }
+
   // ── Custom emoji management ────────────────────────────────────────────────
   let emojiName = $state('');
   let emojiFile: File | null = $state(null);
@@ -259,6 +328,12 @@
     'screenshare-update-failed'
   ]);
 
+  const UPLOAD_ERROR_CODES = new Set([
+    'upload-permission-denied',
+    'invalid-upload-config',
+    'upload-config-update-failed'
+  ]);
+
   const ROLE_ERROR_CODES = new Set([
     'role-permission-denied',
     'role-target-not-found',
@@ -283,6 +358,9 @@
     } else if (SCREENSHARE_ERROR_CODES.has(code)) {
       screenShareSavePending = false;
       screenShareFeedback = { text: describeServerError(code), kind: 'error' };
+    } else if (UPLOAD_ERROR_CODES.has(code)) {
+      uploadSavePending = false;
+      uploadFeedback = { text: describeServerError(code), kind: 'error' };
     } else if (ROLE_ERROR_CODES.has(code)) {
       roleErrorFeedback(code);
     }
@@ -765,16 +843,63 @@
           <div class="settings-section">
             <h3 class="section-title">Files &amp; Uploads</h3>
             <div class="setting-group">
-              <span class="setting-label">Max upload size <span class="badge">Coming soon</span></span>
-              <input type="number" value="10" disabled />
-              <div class="setting-description">Maximum file size in MB. Currently fixed at 10 MB.</div>
+              <label class="setting-label" for="upload-max-size">Max upload size</label>
+              <input
+                id="upload-max-size"
+                type="number"
+                bind:value={uploadMaxMb}
+                min={MIN_UPLOAD_MAX_BYTES / (1024 * 1024)}
+                max={MAX_UPLOAD_MAX_BYTES / (1024 * 1024)}
+                step="1"
+              />
+              <div class="setting-description">
+                Maximum size in MB for a single file, between 0.0625 MB (64 KB) and
+                {MAX_UPLOAD_MAX_BYTES / (1024 * 1024)} MB. Uploads are stored on the server's
+                disk, so raising this raises the space members can consume.
+              </div>
             </div>
             <div class="setting-group">
-              <span class="setting-label">Allowed file types <span class="badge">Coming soon</span></span>
-              <input type="text" value="images, documents, archives, audio, video" disabled />
+              <span class="setting-label">Allowed file types</span>
               <div class="setting-description">
-                Which upload categories members may attach. Active content (HTML, SVG, scripts) is always rejected.
+                Which upload categories members may attach. Active content (HTML, SVG, scripts)
+                is always rejected and cannot be enabled. Custom emojis, server icons and
+                avatars are uploaded as images too — turning <strong>Images</strong> off blocks
+                those as well.
               </div>
+              {#each UPLOAD_CATEGORIES as category (category.id)}
+                <label class="toggle-row">
+                  <input
+                    type="checkbox"
+                    checked={uploadCategories.includes(category.id)}
+                    onchange={() => toggleUploadCategory(category.id)}
+                  />
+                  <span class="toggle-text">
+                    <span class="toggle-label">{category.label}</span>
+                    <span class="toggle-description upload-extensions">
+                      {category.extensions.map((ext) => `.${ext}`).join(' ')}
+                    </span>
+                  </span>
+                </label>
+              {/each}
+              {#if uploadCategories.length === 0}
+                <div class="setting-description">
+                  With no category enabled, members cannot attach files at all.
+                </div>
+              {/if}
+            </div>
+            <div class="setting-group">
+              <div>
+                <button
+                  class="btn btn-primary"
+                  onclick={saveUploadConfig}
+                  disabled={!uploadDirty}
+                >Save changes</button>
+              </div>
+              {#if uploadFeedback}
+                <div class="identity-feedback" class:error={uploadFeedback.kind === 'error'}>
+                  {uploadFeedback.text}
+                </div>
+              {/if}
             </div>
           </div>
         {/if}
@@ -1164,6 +1289,12 @@
   .identity-feedback {
     font-size: var(--text-sm);
     color: var(--color-muted);
+  }
+
+  .upload-extensions {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    word-break: break-word;
   }
 
   .identity-feedback.error {

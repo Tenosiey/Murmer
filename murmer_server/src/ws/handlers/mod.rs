@@ -12,6 +12,7 @@
 //! - [`pins`] – shared, persisted message pins
 //! - [`screenshare`] – server-wide screen share configuration (bitrate cap)
 //! - [`stats`] – lifetime user statistics (double opt-in gated)
+//! - [`uploads`] – server-wide upload policy (size cap, file categories)
 //! - [`wiki`] – per-channel Markdown wiki pages
 
 mod auth;
@@ -27,6 +28,7 @@ mod profile;
 mod roles;
 mod screenshare;
 mod stats;
+mod uploads;
 mod wiki;
 
 use super::{errors, helpers::*, validation::*};
@@ -277,6 +279,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "set-screenshare-max-bitrate" => {
                                 screenshare::handle_set_screenshare_max_bitrate(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "set-upload-config" => {
+                                uploads::handle_set_upload_config(&state, &mut sender, &v, &user_name).await;
                             }
                             "voice-mute" => {
                                 if claims_own_user(&v, &user_name) {

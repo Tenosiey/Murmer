@@ -392,7 +392,7 @@ must not be marked as pre-release — the updater endpoint
   keypair decrypts past DMs), a lost keypair makes old conversations
   unreadable, and users without a key binding (e.g. bots) cannot receive DMs.
 - IP-based rate limiting protects authentication and chat message throughput.
-- Filenames are sanitised, uploads are limited to a safe-list of extensions and image contents are inspected before saving.
+- Filenames are sanitised, uploads are limited to a safe-list of extensions and image contents are inspected before saving. Owners narrow that further in **Server Dashboard → Files & Uploads** (per-file size cap, plus which of the image/document/archive/audio/video categories are accepted); active content such as HTML, SVG or scripts is never on the safe-list and cannot be enabled.
 - Admin token and server password checks use constant-time comparisons to
   mitigate timing attacks.
 - Every capability is gated by a server-side permission check against the

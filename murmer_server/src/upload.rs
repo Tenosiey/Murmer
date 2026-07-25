@@ -6,6 +6,12 @@
 //! back from `/files` and executed in a browser context. The returned JSON
 //! contains a relative URL that clients can combine with the server URL to
 //! fetch the file later.
+//!
+//! The safe-list is grouped into categories (images, documents, archives,
+//! audio, video). Which categories are accepted and how large a file may be
+//! are server-wide settings managed from the Server Dashboard and persisted by
+//! [`crate::db::upload_config`]; the extension safe-list itself is fixed in
+//! code, so no setting can ever admit active content.
 
 use axum::{
     Json,
@@ -19,26 +25,78 @@ use tracing::{error, warn};
 
 use crate::AppState;
 
-/// Maximum file size in bytes (10MB)
-pub const MAX_FILE_SIZE: usize = 10 * 1024 * 1024;
+/// Default per-file size limit in bytes (10 MB) for servers that have not
+/// configured one.
+pub const DEFAULT_MAX_FILE_SIZE: usize = 10 * 1024 * 1024;
+
+/// Smallest per-file limit an operator may configure (64 KB).
+pub const MIN_CONFIGURABLE_FILE_SIZE: usize = 64 * 1024;
+
+/// Hard ceiling for the configurable per-file limit (100 MB). The request body
+/// limit is derived from this, and uploads are streamed and aborted as soon as
+/// they exceed the *configured* limit, so a high ceiling does not let an
+/// unauthenticated caller buffer more than the operator allowed.
+pub const MAX_CONFIGURABLE_FILE_SIZE: usize = 100 * 1024 * 1024;
 
 /// Allowed MIME types for image uploads
 static ALLOWED_IMAGE_TYPES: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
 
-/// Allowed image file extensions (backup validation)
-static ALLOWED_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];
+/// One group of the extension safe-list, toggled as a unit by server admins.
+pub struct UploadCategory {
+    /// Stable id used in settings and on the wire.
+    pub id: &'static str,
+    /// Human-readable name shown in the client.
+    pub label: &'static str,
+    /// Lowercase extensions belonging to this category.
+    pub extensions: &'static [&'static str],
+}
 
-/// Allowed extensions for non-image attachments. Deliberately excludes
-/// anything a browser might interpret as active content when served from
-/// `/files` (html, svg, xml, js, css, ...).
-static ALLOWED_ATTACHMENT_EXTENSIONS: &[&str] = &[
-    // documents and plain text
-    "pdf", "txt", "md", "log", "csv", "json", "toml", "yaml", "yml", "rtf", "doc", "docx", "xls",
-    "xlsx", "ppt", "pptx", "odt", "ods", "odp", // archives
-    "zip", "gz", "tar", "bz2", "xz", "7z", "rar", // audio
-    "mp3", "wav", "ogg", "flac", "m4a", "opus", // video
-    "mp4", "webm", "mkv", "mov", "avi",
+/// The complete upload safe-list. Deliberately excludes anything a browser
+/// might interpret as active content when served from `/files` (html, svg,
+/// xml, js, css, ...) — admins can narrow this list, never widen it.
+pub static UPLOAD_CATEGORIES: &[UploadCategory] = &[
+    UploadCategory {
+        id: "images",
+        label: "Images",
+        extensions: &["jpg", "jpeg", "png", "gif", "webp"],
+    },
+    UploadCategory {
+        id: "documents",
+        label: "Documents",
+        extensions: &[
+            "pdf", "txt", "md", "log", "csv", "json", "toml", "yaml", "yml", "rtf", "doc", "docx",
+            "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp",
+        ],
+    },
+    UploadCategory {
+        id: "archives",
+        label: "Archives",
+        extensions: &["zip", "gz", "tar", "bz2", "xz", "7z", "rar"],
+    },
+    UploadCategory {
+        id: "audio",
+        label: "Audio",
+        extensions: &["mp3", "wav", "ogg", "flac", "m4a", "opus"],
+    },
+    UploadCategory {
+        id: "video",
+        label: "Video",
+        extensions: &["mp4", "webm", "mkv", "mov", "avi"],
+    },
 ];
+
+/// Id of the image category, whose uploads additionally pass magic-byte checks.
+const IMAGE_CATEGORY: &str = "images";
+
+/// Whether `id` names a category known to this build.
+pub fn is_known_category(id: &str) -> bool {
+    UPLOAD_CATEGORIES.iter().any(|c| c.id == id)
+}
+
+/// Every category id, i.e. the default (fully permissive) configuration.
+pub fn default_category_ids() -> Vec<String> {
+    UPLOAD_CATEGORIES.iter().map(|c| c.id.to_string()).collect()
+}
 
 /// Detect file type by magic bytes
 fn detect_file_type(data: &[u8]) -> Option<&'static str> {
@@ -64,26 +122,27 @@ fn file_extension(filename: &str) -> Option<String> {
     Some(ext.to_lowercase())
 }
 
-/// Classification of an upload derived from its file extension.
-enum UploadKind {
-    Image,
-    Attachment,
-}
-
-fn classify_extension(filename: &str) -> Option<UploadKind> {
+/// Resolve a filename to its safe-list category, or `None` when the extension
+/// is not on the list at all.
+pub fn classify_extension(filename: &str) -> Option<&'static UploadCategory> {
     let ext = file_extension(filename)?;
-    if ALLOWED_IMAGE_EXTENSIONS.contains(&ext.as_str()) {
-        Some(UploadKind::Image)
-    } else if ALLOWED_ATTACHMENT_EXTENSIONS.contains(&ext.as_str()) {
-        Some(UploadKind::Attachment)
-    } else {
-        None
-    }
+    UPLOAD_CATEGORIES
+        .iter()
+        .find(|category| category.extensions.contains(&ext.as_str()))
 }
 
 #[tracing::instrument(skip(state, multipart))]
 pub async fn upload(State(state): State<Arc<AppState>>, mut multipart: Multipart) -> Response {
-    let field = match multipart.next_field().await {
+    // The policy is read per request so dashboard changes apply immediately.
+    let config = match crate::db::upload_config(&state.db).await {
+        Ok(config) => config,
+        Err(e) => {
+            error!("Failed to load upload configuration: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+
+    let mut field = match multipart.next_field().await {
         Ok(Some(field)) => field,
         Ok(None) => return StatusCode::BAD_REQUEST.into_response(),
         Err(err) => {
@@ -101,22 +160,38 @@ pub async fn upload(State(state): State<Arc<AppState>>, mut multipart: Multipart
         filename = "upload".to_string();
     }
 
-    let Some(kind) = classify_extension(&filename) else {
+    let Some(category) = classify_extension(&filename) else {
         warn!("Rejected upload with invalid extension: {}", filename);
         return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
     };
 
-    let data = match field.bytes().await {
-        Ok(bytes) => bytes,
-        Err(err) => {
-            error!(?err, "Failed to read multipart bytes");
-            return StatusCode::BAD_REQUEST.into_response();
-        }
-    };
+    if !config.categories.iter().any(|id| id == category.id) {
+        warn!(
+            "Rejected upload of disabled category '{}': {}",
+            category.id, filename
+        );
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    }
 
-    if data.len() > MAX_FILE_SIZE {
-        warn!("Rejected upload exceeding size limit: {} bytes", data.len());
-        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    // Stream the body so an oversize upload is abandoned as soon as it passes
+    // the configured limit instead of being buffered in full first.
+    let max_bytes = config.max_bytes as usize;
+    let mut data: Vec<u8> = Vec::new();
+    loop {
+        match field.chunk().await {
+            Ok(Some(chunk)) => {
+                if data.len() + chunk.len() > max_bytes {
+                    warn!("Rejected upload exceeding the {max_bytes} byte limit");
+                    return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+                }
+                data.extend_from_slice(&chunk);
+            }
+            Ok(None) => break,
+            Err(err) => {
+                error!(?err, "Failed to read multipart bytes");
+                return StatusCode::BAD_REQUEST.into_response();
+            }
+        }
     }
 
     if data.is_empty() {
@@ -126,7 +201,7 @@ pub async fn upload(State(state): State<Arc<AppState>>, mut multipart: Multipart
 
     // Image extensions must also pass magic-byte validation so a mislabelled
     // file cannot masquerade as an image.
-    if matches!(kind, UploadKind::Image)
+    if category.id == IMAGE_CATEGORY
         && !detect_file_type(&data).is_some_and(|t| ALLOWED_IMAGE_TYPES.contains(&t))
     {
         warn!("Rejected upload with invalid file type for: {}", filename);
@@ -148,10 +223,8 @@ pub async fn upload(State(state): State<Arc<AppState>>, mut multipart: Multipart
                     "url": url,
                     "name": filename,
                     "size": data.len(),
-                    "kind": match kind {
-                        UploadKind::Image => "image",
-                        UploadKind::Attachment => "file",
-                    },
+                    "kind": if category.id == IMAGE_CATEGORY { "image" } else { "file" },
+                    "category": category.id,
                 }))
                 .into_response()
             }

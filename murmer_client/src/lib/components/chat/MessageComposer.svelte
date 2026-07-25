@@ -9,6 +9,7 @@
   import type { Message } from '$lib/types';
   import { formatFileSize, searchResultPreview } from '$lib/chat/helpers';
   import { MESSAGE_INPUT_MAX_HEIGHT } from '$lib/chat/constants';
+  import { uploadAccept } from '$lib/stores/uploadConfig';
 
 
   interface Props {
@@ -130,12 +131,15 @@
     onkeydown={handleKeydown}
   ></textarea>
 
-  <!-- Hidden native input; the visible "Upload file" button proxies to it. -->
+  <!-- Hidden native input; the visible "Upload file" button proxies to it.
+       `accept` follows the server's upload policy, which the chat page also
+       re-checks (drag & drop and paste bypass the picker's filter). -->
   <input
     type="file"
     class="sr-only"
     aria-hidden="true"
     tabindex="-1"
+    accept={$uploadAccept}
     bind:this={fileInput}
     onchange={() => onFileSelected(fileInput?.files?.[0] ?? null)}
   />

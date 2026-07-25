@@ -333,6 +333,17 @@ pub const INVALID_SCREENSHARE_BITRATE: &str =
 pub const SCREENSHARE_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"screenshare-update-failed"}"#;
 
+/// User lacks permission to change the upload policy.
+pub const UPLOAD_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"upload-permission-denied"}"#;
+
+/// Upload size cap or category list failed validation.
+pub const INVALID_UPLOAD_CONFIG: &str = r#"{"type":"error","message":"invalid-upload-config"}"#;
+
+/// Failed to persist or load the upload policy.
+pub const UPLOAD_CONFIG_UPDATE_FAILED: &str =
+    r#"{"type":"error","message":"upload-config-update-failed"}"#;
+
 /// Wiki page slug failed validation.
 pub const INVALID_WIKI_SLUG: &str = r#"{"type":"error","message":"invalid-wiki-slug"}"#;
 

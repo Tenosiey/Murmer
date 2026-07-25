@@ -103,6 +103,11 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-screenshare-bitrate': 'Invalid screen share bitrate setting.',
   'screenshare-update-failed':
     'The server could not update the screen share settings. Please try again.',
+  'upload-permission-denied':
+    'You do not have permission to change the upload settings on this server.',
+  'invalid-upload-config': 'Those upload settings are not valid.',
+  'upload-config-update-failed':
+    'The server could not update the upload settings. Please try again.',
   'stats-permission-denied': 'You do not have permission to change stat tracking on this server.',
   'stats-not-available': "That user's stats are not available.",
   'stats-update-failed': 'The server could not update stat tracking. Please try again.',

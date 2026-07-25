@@ -14,6 +14,32 @@ export const MAX_SERVER_ICON_BYTES = 1024 * 1024;
 /* User avatar size limit; must match the server's validation. */
 export const MAX_AVATAR_BYTES = 1024 * 1024;
 
+/* Upload policy mirror of `murmer_server/src/upload.rs` — the server enforces
+   all of this on `/upload`; the client copy only exists to reject a file
+   before uploading it and to describe the rules in the UI. Keep both in sync. */
+export const MIN_UPLOAD_MAX_BYTES = 64 * 1024;
+export const MAX_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
+export const DEFAULT_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+
+export const UPLOAD_CATEGORIES: Array<{
+  id: string;
+  label: string;
+  extensions: string[];
+}> = [
+  { id: 'images', label: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] },
+  {
+    id: 'documents',
+    label: 'Documents',
+    extensions: [
+      'pdf', 'txt', 'md', 'log', 'csv', 'json', 'toml', 'yaml', 'yml', 'rtf', 'doc', 'docx',
+      'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp'
+    ]
+  },
+  { id: 'archives', label: 'Archives', extensions: ['zip', 'gz', 'tar', 'bz2', 'xz', '7z', 'rar'] },
+  { id: 'audio', label: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'opus'] },
+  { id: 'video', label: 'Video', extensions: ['mp4', 'webm', 'mkv', 'mov', 'avi'] }
+];
+
 /* The channel every server is seeded with. The server places new connections
    into it and refuses to delete it, so the client can rely on it existing. */
 export const DEFAULT_CHANNEL_NAME = 'general';

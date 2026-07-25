@@ -58,7 +58,16 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   (`stores/peerKeys.ts`), block sending on key changes until the user trusts
   the new key, and expose a fingerprint for out-of-band verification.
 - Rate limiting exists for both authentication and chat traffic.
-- File uploads are validated by size and an extension safe-list; images are additionally checked by magic bytes. Active content (HTML, SVG, scripts) is never accepted.
+- File uploads are validated by size and an extension safe-list; images are
+  additionally checked by magic bytes. Active content (HTML, SVG, scripts) is
+  never accepted. The safe-list is grouped into categories (images, documents,
+  archives, audio, video) in `murmer_server/src/upload.rs` and mirrored in
+  `murmer_client/src/lib/chat/constants.ts`. Which categories are accepted and
+  the per-file size cap are server settings (`MANAGE_SERVER`, Server Dashboard →
+  Files & Uploads) persisted in `server_settings` and read by `/upload` on every
+  request. Settings can only *narrow* the safe-list: unknown category ids are
+  rejected on write and dropped on read, so no setting can admit active content.
+  The client copy is cosmetic (picker `accept`, pre-upload check).
 - Authorization is a **permission bitmask**, not fixed roles. Server owners
   define custom roles in the Server Dashboard and toggle each capability
   (view/send/manage channels/kick/ban/manage roles/…) per role. A user's

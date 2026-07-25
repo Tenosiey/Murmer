@@ -155,8 +155,11 @@ async fn main() -> Result<()> {
         )
         .route(
             "/upload",
+            // The body limit is the hard ceiling for what an operator may
+            // configure; the handler streams the body and aborts as soon as
+            // the configured (usually much smaller) limit is passed.
             post(upload::upload).layer(DefaultBodyLimit::max(
-                upload::MAX_FILE_SIZE + (1024_usize * 1024),
+                upload::MAX_CONFIGURABLE_FILE_SIZE + (1024_usize * 1024),
             )),
         )
         .route("/link-preview", get(link_preview::link_preview))
