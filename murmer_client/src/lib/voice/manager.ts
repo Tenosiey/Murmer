@@ -166,6 +166,15 @@ export class VoiceManager {
     return this.rawStream;
   }
 
+  /**
+   * The unprocessed microphone capture of the current voice session, or null
+   * when not in a channel. Exposed so the settings level meter can measure the
+   * same signal the VAD sees instead of opening a second capture of the device.
+   */
+  getCaptureStream(): MediaStream | null {
+    return this.rawStream;
+  }
+
   private updateVadSensitivity() {
     if (get(voiceMode) === 'vad' && this.vad) {
       this.vad.updateSensitivity(get(vadSensitivity));

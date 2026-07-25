@@ -45,8 +45,9 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
 - `src/lib/components/` – reusable UI primitives and overlays
 - `src/lib/stores/` – Svelte stores holding client state
 - `src/lib/chat/` – constants and helpers shared by the chat page
-- `src/lib/voice/` – WebRTC helpers, push-to-talk tooling and the soundboard
-  player (local playback, separate `AudioContext` from the voice graph)
+- `src/lib/voice/` – WebRTC helpers, push-to-talk tooling, microphone level
+  metering for the settings UI and the soundboard player (local playback,
+  separate `AudioContext` from the voice graph)
 - `src/lib/screenshare/` – WebRTC screen sharing manager
 - `src-tauri/` – Rust-side glue for native integrations
 

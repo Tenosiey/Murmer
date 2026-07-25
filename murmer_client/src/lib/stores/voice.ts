@@ -26,7 +26,9 @@ export const voice = {
   leave: (channelId: number) => {
     soundboardPlayer.setChannel(null);
     manager.leave(channelId, get(peers));
-  }
+  },
+  /** Raw microphone capture of the running session, or null when not joined. */
+  captureStream: () => manager.getCaptureStream()
 };
 
 export const voiceStats = derived(voice, ($voice) => {

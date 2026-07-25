@@ -46,6 +46,7 @@
   import { MAX_AVATAR_BYTES } from '$lib/chat/constants';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import UserStatsPanel from '$lib/components/UserStatsPanel.svelte';
+  import MicLevelMeter from '$lib/components/MicLevelMeter.svelte';
   interface Props {
     open: boolean;
     close: () => void;
@@ -642,8 +643,11 @@
                 />
                 <div class="slider-track-fill" style="width: {(1 - ($vadSensitivity / 0.5)) * 100}%"></div>
               </div>
+              <MicLevelMeter threshold={$vadSensitivity} min={0.01} max={0.5} />
               <div class="setting-description">
-                Higher sensitivity detects quieter speech but may pick up background noise
+                Higher sensitivity detects quieter speech but may pick up background noise.
+                Speak normally and drag the slider until the bar passes the marker only
+                when you talk.
               </div>
             </div>
           {/if}

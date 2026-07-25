@@ -3,6 +3,39 @@
  * Monitors audio levels to detect when the user is speaking
  */
 
+const SMOOTHING_FACTOR = 0.3;
+const FFT_SIZE = 256;
+const MIN_DECIBELS = -90;
+const MAX_DECIBELS = -10;
+
+/**
+ * Configure an analyser exactly like the detector does.
+ *
+ * Shared with the settings level meter (`micLevel.ts`): both must measure the
+ * signal identically, otherwise the meter would show a level that cannot be
+ * compared against the sensitivity threshold it is drawn next to.
+ */
+export function configureVadAnalyser(analyser: AnalyserNode): Uint8Array<ArrayBuffer> {
+  analyser.fftSize = FFT_SIZE;
+  analyser.minDecibels = MIN_DECIBELS;
+  analyser.maxDecibels = MAX_DECIBELS;
+  analyser.smoothingTimeConstant = SMOOTHING_FACTOR;
+  return new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
+}
+
+/**
+ * Read the current input level as the average across the frequency spectrum,
+ * normalized to 0-1. This is the value compared against the VAD threshold.
+ */
+export function readVadLevel(analyser: AnalyserNode, dataArray: Uint8Array<ArrayBuffer>): number {
+  analyser.getByteFrequencyData(dataArray);
+  let sum = 0;
+  for (let i = 0; i < dataArray.length; i++) {
+    sum += dataArray[i];
+  }
+  return sum / dataArray.length / 255;
+}
+
 export class VoiceActivityDetector {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
@@ -18,11 +51,6 @@ export class VoiceActivityDetector {
   private holdTime = 800; // Hold transmission for 800ms after voice stops
   private releaseTimeout: number | null = null;
   
-  private readonly SMOOTHING_FACTOR = 0.3;
-  private readonly FFT_SIZE = 256;
-  private readonly MIN_DECIBELS = -90;
-  private readonly MAX_DECIBELS = -10;
-  
   private listeners: Array<(isActive: boolean, level: number) => void> = [];
 
   constructor() {
@@ -33,13 +61,7 @@ export class VoiceActivityDetector {
     try {
       this.audioContext = new AudioContext();
       this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = this.FFT_SIZE;
-      this.analyser.minDecibels = this.MIN_DECIBELS;
-      this.analyser.maxDecibels = this.MAX_DECIBELS;
-      this.analyser.smoothingTimeConstant = this.SMOOTHING_FACTOR;
-      
-      const buffer = new ArrayBuffer(this.analyser.frequencyBinCount);
-      this.dataArray = new Uint8Array(buffer);
+      this.dataArray = configureVadAnalyser(this.analyser);
     } catch (error) {
       console.error('Failed to setup audio context for VAD:', error);
     }
@@ -133,18 +155,8 @@ export class VoiceActivityDetector {
     const analyze = () => {
       if (!this.analyser || !this.dataArray) return;
 
-      this.analyser.getByteFrequencyData(this.dataArray);
-      
-      // Calculate average volume across frequency spectrum
-      let sum = 0;
-      for (let i = 0; i < this.dataArray.length; i++) {
-        sum += this.dataArray[i];
-      }
-      const average = sum / this.dataArray.length;
-      
-      // Normalize to 0-1 range
-      const normalizedLevel = average / 255;
-      
+      const normalizedLevel = readVadLevel(this.analyser, this.dataArray);
+
       // Determine if voice is active based on sensitivity threshold
       // Lower sensitivity values make it more sensitive (easier to trigger)
       const threshold = this.currentSensitivity;
@@ -198,13 +210,7 @@ export class VoiceActivityDetector {
    */
   getCurrentLevel(): number {
     if (!this.analyser || !this.dataArray) return 0;
-
-    this.analyser.getByteFrequencyData(this.dataArray);
-    let sum = 0;
-    for (let i = 0; i < this.dataArray.length; i++) {
-      sum += this.dataArray[i];
-    }
-    return (sum / this.dataArray.length) / 255;
+    return readVadLevel(this.analyser, this.dataArray);
   }
 
   /**

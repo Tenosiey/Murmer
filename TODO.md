@@ -68,7 +68,7 @@ synced to clients; editing is role-gated like other channel management.
 - [ ] Live polling during meetings
 - [ ] Meeting notes that auto-generate from voice
 - [x] Noise suppression and echo cancellation
-- [ ] Live input level meter next to the VAD sensitivity slider so the threshold
+- [x] Live input level meter next to the VAD sensitivity slider so the threshold
       can be adjusted while watching one's own voice level in real time
 - [ ] Merge the separate Audio / Microphone / Voice settings sections into one
       coherent audio settings page (check what can sensibly be combined)
