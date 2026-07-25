@@ -17,6 +17,9 @@
 
   let videoElement: HTMLVideoElement | undefined = $state();
   let isFullscreen = $state(false);
+  // Measured so the video can subtract the header from its height budget; the
+  // container itself is capped at 95vh and clips overflow.
+  let headerHeight = $state(0);
 
   onMount(() => {
     if (videoElement && peer.stream) {
@@ -72,8 +75,15 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="screenshare-overlay" onclick={close}>
-  <div class="screenshare-container" onclick={(e) => e.stopPropagation()} role="dialog" aria-label="Screen share viewer" tabindex="-1">
-    <div class="screenshare-header">
+  <div
+    class="screenshare-container"
+    style="--screenshare-header-height: {headerHeight}px"
+    onclick={(e) => e.stopPropagation()}
+    role="dialog"
+    aria-label="Screen share viewer"
+    tabindex="-1"
+  >
+    <div class="screenshare-header" bind:clientHeight={headerHeight}>
       <h3>{peer.userId}'s Screen</h3>
       <div class="screenshare-controls">
         <button onclick={toggleFullscreen} title="Toggle fullscreen (F)" aria-label="Toggle fullscreen">
@@ -182,16 +192,27 @@
     align-items: center;
     justify-content: center;
     background: #000;
-    min-height: 400px;
+    /* Placeholder size until the stream's dimensions are known, but never so
+       tall that it overflows the container's 95vh cap (which clips). */
+    min-height: min(400px, 50vh);
   }
 
   .screenshare-video {
-    width: 100%;
-    height: 100%;
+    display: block;
+    max-width: 95vw;
+    /* The container's 95vh budget minus its border and the header, so a tall
+       stream letterboxes inside the modal instead of being clipped. */
+    max-height: calc(95vh - var(--screenshare-header-height, 3.5rem) - 2px);
+    width: auto;
+    height: auto;
     object-fit: contain;
   }
 
   .screenshare-video:fullscreen {
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    max-height: none;
     object-fit: contain;
   }
 </style>

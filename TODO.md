@@ -129,7 +129,7 @@ synced to clients; editing is role-gated like other channel management.
 - [ ] Soundboard: uploading a new sound fails
 - [ ] Screen share: after the streamer stops sharing, the overlay controls stop
       responding (state is not reset)
-- [ ] Screen share: the video is slightly cut off at the bottom edge in
+- [x] Screen share: the video is slightly cut off at the bottom edge in
       windowed (non-fullscreen) mode
 
 ---
