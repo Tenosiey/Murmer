@@ -20,7 +20,7 @@ import {
   noiseSuppression,
   autoGainControl
 } from '../stores/settings';
-import { resetRemoteSpeaking } from '../stores/voiceSpeaking';
+import { resetSpeaking, setSpeaking, SPEAKING_RMS_THRESHOLD } from '../stores/voiceSpeaking';
 import { get } from 'svelte/store';
 import type { Message, RemotePeer, ConnectionStats, VoiceChannelInfo } from '../types';
 import { VoiceActivityDetector } from './vad';
@@ -50,6 +50,11 @@ export class VoiceManager {
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private destinationStream: MediaStream | null = null;
   private rawStream: MediaStream | null = null;
+
+  /** Level meter on the outgoing audio, driving our own talking indicator. */
+  private levelAnalyser: AnalyserNode | null = null;
+  private levelBuffer: Uint8Array<ArrayBuffer> | null = null;
+  private levelFrame: number | null = null;
 
   private joinSound = new Audio('/sounds/user_join_voice_sound.mp3');
   private leaveSound = new Audio('/sounds/user_leave_voice_sound.mp3');
@@ -283,6 +288,7 @@ export class VoiceManager {
       this.sourceNode.connect(this.gainNode);
       this.gainNode.connect(destination);
       this.destinationStream = destination.stream;
+      this.startLocalLevelMeter();
       return this.destinationStream;
     } catch (error) {
       console.error('Failed to setup audio processing:', error);
@@ -290,7 +296,51 @@ export class VoiceManager {
     }
   }
 
+  /**
+   * Meter the audio *behind* the transmission gate so our own talking
+   * indicator matches what the other members actually hear: the gain node is
+   * silenced whenever we are muted or not transmitting, which makes this work
+   * the same for "Always On", voice detection and push-to-talk.
+   */
+  private startLocalLevelMeter() {
+    if (!this.audioContext || !this.gainNode) return;
+    this.stopLocalLevelMeter();
+
+    const analyser = this.audioContext.createAnalyser();
+    analyser.fftSize = 512;
+    this.gainNode.connect(analyser);
+    this.levelAnalyser = analyser;
+    this.levelBuffer = new Uint8Array(new ArrayBuffer(analyser.fftSize)) as Uint8Array<ArrayBuffer>;
+
+    const update = () => {
+      if (!this.levelAnalyser || !this.levelBuffer || !this.userName) return;
+      this.levelAnalyser.getByteTimeDomainData(this.levelBuffer);
+      let sum = 0;
+      for (let i = 0; i < this.levelBuffer.length; i++) {
+        const value = (this.levelBuffer[i] - 128) / 128;
+        sum += value * value;
+      }
+      const rms = Math.sqrt(sum / this.levelBuffer.length);
+      setSpeaking(this.userName, rms > SPEAKING_RMS_THRESHOLD);
+      this.levelFrame = requestAnimationFrame(update);
+    };
+    update();
+  }
+
+  private stopLocalLevelMeter() {
+    if (this.levelFrame !== null) {
+      cancelAnimationFrame(this.levelFrame);
+      this.levelFrame = null;
+    }
+    if (this.levelAnalyser) {
+      this.levelAnalyser.disconnect();
+      this.levelAnalyser = null;
+    }
+    this.levelBuffer = null;
+  }
+
   private cleanupAudioProcessing() {
+    this.stopLocalLevelMeter();
     if (this.sourceNode) {
       this.sourceNode.disconnect();
       this.sourceNode = null;
@@ -497,7 +547,7 @@ export class VoiceManager {
           categoryId: null,
           position: 0
         };
-    resetRemoteSpeaking();
+    resetSpeaking();
     chat.on('voice-join', (m) => this.handleJoin(m, peersList));
     chat.on('voice-offer', (m) => this.handleOffer(m, peersList));
     chat.on('voice-answer', (m) => this.handleAnswer(m));
@@ -540,7 +590,7 @@ export class VoiceManager {
     this.channelConfig = null;
     peersList.length = 0;
     this.emit([]);
-    resetRemoteSpeaking();
+    resetSpeaking();
   }
 
   private handleJoin(msg: Message, peersList: RemotePeer[]) {
@@ -625,6 +675,6 @@ export class VoiceManager {
       this.ptt = null;
     }
 
-    resetRemoteSpeaking();
+    resetSpeaking();
   }
 }

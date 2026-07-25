@@ -124,7 +124,7 @@ synced to clients; editing is role-gated like other channel management.
 ## 🐛 Bugs
 
 - [ ] Crackling/popping artefacts in transmitted voice audio while speaking
-- [ ] Own talking indicator in the voice channel does not light up in "Always On"
+- [x] Own talking indicator in the voice channel does not light up in "Always On"
       mode (works for the other transmission modes)
 - [ ] Soundboard: uploading a new sound fails
 - [ ] Screen share: after the streamer stops sharing, the overlay controls stop

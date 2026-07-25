@@ -18,7 +18,7 @@
   import { onlineUsers } from '$lib/stores/online';
   import { offlineUsers } from '$lib/stores/users';
   import { volume, outputDeviceId, outputMuted, microphoneMuted, userVolumes } from '$lib/stores/settings';
-  import { setRemoteSpeaking } from '$lib/stores/voiceSpeaking';
+  import { setSpeaking, SPEAKING_RMS_THRESHOLD } from '$lib/stores/voiceSpeaking';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
@@ -361,7 +361,7 @@
         });
         audioContext = null;
       }
-      setRemoteSpeaking(currentUserId, false);
+      setSpeaking(currentUserId, false);
     };
 
     const startMeter = (stream: MediaStream | null | undefined) => {
@@ -391,8 +391,8 @@
             sum += value * value;
           }
           const rms = Math.sqrt(sum / buffer.length);
-          const speaking = rms > 0.04;
-          setRemoteSpeaking(currentUserId, speaking);
+          const speaking = rms > SPEAKING_RMS_THRESHOLD;
+          setSpeaking(currentUserId, speaking);
           frameId = requestAnimationFrame(update);
         };
         update();
@@ -409,7 +409,7 @@
       update(newData: { stream: MediaStream, userId: string }) {
         node.srcObject = newData.stream;
         if (currentUserId !== newData.userId) {
-          setRemoteSpeaking(currentUserId, false);
+          setSpeaking(currentUserId, false);
           currentUserId = newData.userId;
         }
         startMeter(newData.stream);

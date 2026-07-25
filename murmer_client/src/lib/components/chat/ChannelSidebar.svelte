@@ -17,7 +17,7 @@
   import { leftSidebarWidth } from '$lib/stores/layout';
   import { microphoneMuted, outputMuted, voiceMode, voiceActivity, isPttActive } from '$lib/stores/settings';
   import { canSpeak } from '$lib/stores/voicePermissions';
-  import { remoteSpeaking } from '$lib/stores/voiceSpeaking';
+  import { speakingUsers } from '$lib/stores/voiceSpeaking';
   import { voiceMuteStates } from '$lib/stores/voiceMute';
   import { activeScreenShares } from '$lib/stores/screenShare';
   import { unread } from '$lib/stores/unread';
@@ -438,23 +438,13 @@
                       user === $session.user
                         ? { micMuted: $microphoneMuted, outputMuted: $outputMuted }
                         : ($voiceMuteStates[user] ?? { micMuted: false, outputMuted: false })}
+                    {@const talking = Boolean($speakingUsers[user]) && !mute.micMuted}
                     <li
                       oncontextmenu={(e) => user !== $session.user && onOpenUserVolumeMenu(e, user)}
                       class:clickable={user !== $session.user}
-                      class:talking={
-                        user === $session.user
-                          ? !$microphoneMuted && $voiceActivity
-                          : Boolean($remoteSpeaking[user])
-                      }
+                      class:talking
                     >
-                      <span
-                        class="status voice"
-                        class:talking={
-                          user === $session.user
-                            ? !$microphoneMuted && $voiceActivity
-                            : Boolean($remoteSpeaking[user])
-                        }
-                      ></span>
+                      <span class="status voice" class:talking></span>
                       <span
                         class="username"
                         style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
@@ -523,7 +513,9 @@
         <button
           class="voice-control-btn mute"
           class:muted={inVoice && $microphoneMuted}
-          class:active={inVoice && $voiceMode === 'vad' && $voiceActivity}
+          class:active={inVoice &&
+            $voiceMode !== 'ptt' &&
+            Boolean($session.user && $speakingUsers[$session.user])}
           class:ptt-active={inVoice && $voiceMode === 'ptt' && $isPttActive}
           class:disabled={!inVoice || !$canSpeak}
           onclick={onToggleMicrophone}
