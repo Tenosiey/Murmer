@@ -26,6 +26,9 @@ Use the checkboxes to track progress.
 - [x] Paste images from clipboard / drag & drop
 - [x] Quote/reply to single messages (lightweight alternative to full threading)
 - [x] Pin important messages in a channel (server-persisted, synced to all clients)
+- [ ] Role icons — assign an icon (custom server emoji or uploaded image) per
+      role in the Server Dashboard, shown next to the user name in the member
+      list and messages (roles already carry a color)
 - [ ] Text-to-speech
 - [x] Typing indicators
 - [x] Unread markers and per-channel unread badges
@@ -65,6 +68,11 @@ synced to clients; editing is role-gated like other channel management.
 - [ ] Live polling during meetings
 - [ ] Meeting notes that auto-generate from voice
 - [x] Noise suppression and echo cancellation
+- [ ] Live input level meter next to the VAD sensitivity slider so the threshold
+      can be adjusted while watching one's own voice level in real time
+- [ ] Merge the separate Audio / Microphone / Voice settings sections into one
+      coherent audio settings page (check what can sensibly be combined)
+- [ ] Per-user volume boost up to 200% so quiet members can be turned up
 - [ ] Optional spatial/3D audio
 - [ ] Record and play back voice messages
 - [ ] Real-time transcription of voice to text
@@ -115,7 +123,14 @@ synced to clients; editing is role-gated like other channel management.
 
 ## 🐛 Bugs
 
-_(no known bugs yet)_
+- [ ] Crackling/popping artefacts in transmitted voice audio while speaking
+- [ ] Own talking indicator in the voice channel does not light up in "Always On"
+      mode (works for the other transmission modes)
+- [ ] Soundboard: uploading a new sound fails
+- [ ] Screen share: after the streamer stops sharing, the overlay controls stop
+      responding (state is not reset)
+- [ ] Screen share: the video is slightly cut off at the bottom edge in
+      windowed (non-fullscreen) mode
 
 ---
 
