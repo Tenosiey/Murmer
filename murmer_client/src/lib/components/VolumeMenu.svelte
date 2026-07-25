@@ -1,6 +1,6 @@
 <script lang="ts">
 
-  import { userVolumes, setUserVolume } from '$lib/stores/settings';
+  import { userVolumes, setUserVolume, MAX_USER_VOLUME } from '$lib/stores/settings';
   import { soundboardPrefs } from '$lib/stores/soundboardSettings';
 
   interface Props {
@@ -23,6 +23,11 @@
       independent of their voice volume above: someone can be perfectly
       audible while their airhorn is not. */
   let soundsMuted = $derived(user !== null && $soundboardPrefs.mutedUsers.includes(user));
+
+  let userVolume = $derived(user === null ? 1.0 : ($userVolumes[user] ?? 1.0));
+  /** Above 100% the stream is amplified, which lifts their background noise
+      and any clipping just as much — worth saying out loud. */
+  let boosted = $derived(userVolume > 1);
 </script>
 
 {#if open && user}
@@ -43,25 +48,31 @@
           </span>
           <input
             class="volume-menu-slider"
+            class:boosted
             type="range"
             min="0"
-            max="1"
+            max={MAX_USER_VOLUME}
             step="0.01"
-            value={$userVolumes[user] ?? 1.0}
+            aria-label="Volume for {user}"
+            value={userVolume}
             oninput={(e) => {
               if (!user) return;
               setUserVolume(user, parseFloat(e.currentTarget.value));
             }}
           />
-          <span class="volume-percentage"
-            >{Math.round(($userVolumes[user] ?? 1.0) * 100)}%</span
-          >
+          <span class="volume-percentage" class:boosted>{Math.round(userVolume * 100)}%</span>
         </div>
         <div class="volume-presets">
           <button class="preset-btn" onclick={() => user && setUserVolume(user, 0)}>Mute</button>
           <button class="preset-btn" onclick={() => user && setUserVolume(user, 0.5)}>50%</button>
           <button class="preset-btn" onclick={() => user && setUserVolume(user, 1.0)}>100%</button>
+          <button class="preset-btn" onclick={() => user && setUserVolume(user, MAX_USER_VOLUME)}>
+            {Math.round(MAX_USER_VOLUME * 100)}%
+          </button>
         </div>
+        {#if boosted}
+          <p class="volume-hint">Boosted above 100% — amplifies their background noise too.</p>
+        {/if}
         <button
           class="preset-btn sound-mute-btn"
           class:muted={soundsMuted}
@@ -136,7 +147,12 @@
     min-height: 0;
     padding: 0;
     border-radius: var(--radius-pill);
-    background: var(--color-surface-raised);
+    /* Tick at the midpoint of the track, which is exactly 100% — it marks
+       where the boost range begins. */
+    background:
+      linear-gradient(var(--color-outline-strong), var(--color-outline-strong)) 50% / 2px 100%
+        no-repeat,
+      var(--color-surface-raised);
     border: none;
     outline: none;
   }
@@ -169,12 +185,30 @@
     border: 2px solid var(--color-primary);
   }
 
+  .volume-menu-slider.boosted::-webkit-slider-thumb {
+    border-color: var(--color-warning);
+  }
+
+  .volume-menu-slider.boosted::-moz-range-thumb {
+    border-color: var(--color-warning);
+  }
+
   .volume-percentage {
     font-size: var(--text-sm);
     font-family: var(--font-mono);
     color: var(--color-muted);
     min-width: 2.75rem;
     text-align: right;
+  }
+
+  .volume-percentage.boosted {
+    color: var(--color-warning);
+  }
+
+  .volume-hint {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--color-muted);
   }
 
   .volume-presets {

@@ -77,12 +77,30 @@ outputMuted.subscribe((value) => {
 // Individual user volumes
 const USER_VOLUMES_KEY = 'murmer_user_volumes';
 
+/** Upper bound for the per-user volume. Values above 1 are a real boost: the
+    remote stream is amplified through a gain node, since an `<audio>` element's
+    own `volume` cannot exceed 1. Capped at 2 (200%) because more than that
+    turns clipping and background noise up just as much as the voice. */
+export const MAX_USER_VOLUME = 2;
+
+/** localStorage is user-writable, so every stored entry is re-validated
+    instead of trusted — a bogus value would otherwise end up as a gain. */
+function sanitizeUserVolumes(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const result: Record<string, number> = {};
+  for (const [user, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value !== 'number' || !isFinite(value)) continue;
+    result[user] = Math.max(0, Math.min(MAX_USER_VOLUME, value));
+  }
+  return result;
+}
+
 let initialUserVolumes: Record<string, number> = {};
 if (browser) {
   const stored = localStorage.getItem(USER_VOLUMES_KEY);
   if (stored) {
     try {
-      initialUserVolumes = JSON.parse(stored);
+      initialUserVolumes = sanitizeUserVolumes(JSON.parse(stored));
     } catch (e) {
       console.error('Failed to parse user volumes from localStorage', e);
     }
@@ -100,7 +118,7 @@ userVolumes.subscribe((value) => {
 export function setUserVolume(userId: string, volume: number) {
   userVolumes.update(volumes => ({
     ...volumes,
-    [userId]: Math.max(0, Math.min(1, volume))
+    [userId]: Math.max(0, Math.min(MAX_USER_VOLUME, volume))
   }));
 }
 

@@ -295,23 +295,32 @@
 
 
   function stream(node: HTMLAudioElement, data: { stream: MediaStream, userId: string }) {
-    node.srcObject = data.stream;
     let currentUserId = data.userId;
 
     let audioContext: AudioContext | null = null;
     let analyser: AnalyserNode | null = null;
     let sourceNode: MediaStreamAudioSourceNode | null = null;
+    let gainNode: GainNode | null = null;
     let frameId: number | null = null;
     let buffer: Uint8Array<ArrayBuffer> | null = null;
 
+    // The per-user volume is applied by a gain node rather than the audio
+    // element, because `HTMLMediaElement.volume` is clamped to 1 and quiet
+    // members need to be boosted beyond 100%. The element still carries the
+    // global volume and the output mute, and keeps `setSinkId` working.
+    // If the graph could not be built we fall back to the element alone,
+    // where any boost is clamped back down to 100%.
     const updateVolume = () => {
+      const userVol = $userVolumes[currentUserId] ?? 1.0;
       if ($outputMuted) {
         node.volume = 0;
       } else {
-        const globalVol = $volume;
-        const userVol = $userVolumes[currentUserId] ?? 1.0;
-        node.volume = globalVol * userVol;
+        // Anything outside [0, 1] throws on assignment, so clamp rather than
+        // trusting the stored values.
+        const elementVol = $volume * (gainNode ? 1 : Math.min(userVol, 1));
+        node.volume = Math.max(0, Math.min(1, elementVol));
       }
+      if (gainNode) gainNode.gain.value = userVol;
     };
 
     const unsubVol = volume.subscribe(() => updateVolume());
@@ -333,27 +342,26 @@
     applySink($outputDeviceId);
     updateVolume(); // Initial volume setting
 
-    const stopMeter = () => {
+    const disconnectNode = (audioNode: AudioNode | null, label: string) => {
+      if (!audioNode) return;
+      try {
+        audioNode.disconnect();
+      } catch (err) {
+        if (import.meta.env.DEV) console.warn(`Failed to disconnect ${label}`, err);
+      }
+    };
+
+    const teardownAudio = () => {
       if (frameId !== null) {
         cancelAnimationFrame(frameId);
         frameId = null;
       }
-      if (sourceNode) {
-        try {
-          sourceNode.disconnect();
-        } catch (err) {
-          if (import.meta.env.DEV) console.warn('Failed to disconnect source node', err);
-        }
-        sourceNode = null;
-      }
-      if (analyser) {
-        try {
-          analyser.disconnect();
-        } catch (err) {
-          if (import.meta.env.DEV) console.warn('Failed to disconnect analyser', err);
-        }
-        analyser = null;
-      }
+      disconnectNode(sourceNode, 'source node');
+      sourceNode = null;
+      disconnectNode(analyser, 'analyser');
+      analyser = null;
+      disconnectNode(gainNode, 'gain node');
+      gainNode = null;
       buffer = null;
       if (audioContext) {
         audioContext.close().catch((err) => {
@@ -364,8 +372,9 @@
       setSpeaking(currentUserId, false);
     };
 
-    const startMeter = (stream: MediaStream | null | undefined) => {
-      stopMeter();
+    const setupAudio = (stream: MediaStream | null | undefined) => {
+      teardownAudio();
+      node.srcObject = stream ?? null;
       if (!stream) return;
 
       try {
@@ -381,6 +390,17 @@
         buffer = new Uint8Array(new ArrayBuffer(analyser.fftSize)) as Uint8Array<ArrayBuffer>;
 
         sourceNode.connect(analyser);
+
+        // source -> gain -> destination stream, which the element then plays.
+        // Playing the gained stream back through the element (instead of
+        // sending it to the context destination) keeps `setSinkId` output
+        // device selection and the global volume/mute working as before.
+        gainNode = audioContext.createGain();
+        const destination = audioContext.createMediaStreamDestination();
+        sourceNode.connect(gainNode);
+        gainNode.connect(destination);
+        node.srcObject = destination.stream;
+        updateVolume();
 
         const update = () => {
           if (!analyser || !buffer) return;
@@ -398,21 +418,25 @@
         update();
       } catch (error) {
         if (import.meta.env.DEV) {
-          console.warn('Failed to start voice activity meter', error);
+          console.warn('Failed to build the remote audio graph', error);
         }
+        // Never let a broken graph silence a peer: drop it and play the
+        // stream straight from the element (no boost beyond 100%).
+        teardownAudio();
+        node.srcObject = stream;
+        updateVolume();
       }
     };
 
-    startMeter(data.stream);
+    setupAudio(data.stream);
 
     return {
       update(newData: { stream: MediaStream, userId: string }) {
-        node.srcObject = newData.stream;
         if (currentUserId !== newData.userId) {
           setSpeaking(currentUserId, false);
           currentUserId = newData.userId;
         }
-        startMeter(newData.stream);
+        setupAudio(newData.stream);
         updateVolume();
       },
       destroy() {
@@ -420,7 +444,7 @@
         unsubMute();
         unsubUserVol();
         unsubOut();
-        stopMeter();
+        teardownAudio();
       }
     };
   }

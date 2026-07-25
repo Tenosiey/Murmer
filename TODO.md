@@ -72,7 +72,8 @@ synced to clients; editing is role-gated like other channel management.
       can be adjusted while watching one's own voice level in real time
 - [ ] Merge the separate Audio / Microphone / Voice settings sections into one
       coherent audio settings page (check what can sensibly be combined)
-- [ ] Per-user volume boost up to 200% so quiet members can be turned up
+- [x] Per-user volume boost up to 200% so quiet members can be turned up
+      (gain node per remote stream, since an `<audio>` element caps at 100%)
 - [ ] Optional spatial/3D audio
 - [ ] Record and play back voice messages
 - [ ] Real-time transcription of voice to text
