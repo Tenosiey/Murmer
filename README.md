@@ -80,8 +80,10 @@ small team can deploy a private chat space quickly.
   a server Owner/Admin enables tracking server-wide *and* the user opts in
   themselves; only aggregate counters are stored and users can purge their
   own stats at any time
-- User avatars, uploaded per server and shown in messages, the member list
-  and direct messages
+- User profiles: click a member (or their avatar/name on a message) to see
+  their avatar, display name, roles, member since and "about" text; your own
+  profile is the editor for all three. Avatars are uploaded per server and
+  shown in messages, the member list and direct messages
 - Server identity configurable from the dashboard (Admin/Owner): server name,
   description and icon shown to every member, plus a welcome message delivered
   to first-time members
@@ -222,6 +224,22 @@ Environment variables recognised by the server:
 Without `ADMIN_TOKEN` configured, channel and wiki management stay open to
 everyone so a small unadministered server remains usable; every other
 capability is still gated by roles.
+
+## Profiles and display names
+
+Every member has a profile, opened by clicking them in the member list, their
+avatar or name on a message, or **View Profile** in the user context menu. It
+shows the avatar, display name, account name, roles, the date they joined and
+their "about" text. Opening your own profile (via your name in the header)
+turns it into the editor for your avatar, display name and about text.
+
+The **account name is not editable**: it is bound to your public key on first
+connect and is what the server addresses everywhere — authentication, role
+assignment, moderation, direct messages and message authorship. The display
+name is a per-server label the UI shows in its place, so it may be empty (the
+account name is used then) and may collide with someone else's. Every profile
+shows the account name underneath the display name, which is how you tell two
+members with the same display name apart.
 
 ## Roles and permissions
 

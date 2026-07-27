@@ -10,7 +10,7 @@
 //! The binding row also carries the user's avatar: a `/files/<key>` URL
 //! pointing at a validated upload, or an empty string when unset.
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use super::{Db, DbCall, DbError};
 
@@ -102,6 +102,88 @@ pub async fn count_avatar_references(db: &Db, avatar: &str) -> Result<i64, DbErr
             params![avatar],
             |row| row.get(0),
         )
+    })
+    .await
+}
+
+/// A user's profile as stored on their name/key binding. `display_name` and
+/// `about` are empty when unset; `created_at` is when the name was first
+/// claimed and doubles as "member since".
+#[derive(Clone, Debug)]
+pub struct UserProfile {
+    pub user_name: String,
+    pub display_name: String,
+    pub about: String,
+    pub created_at: String,
+}
+
+/// Update the profile fields of a user's binding row. Only the fields present
+/// in `display_name`/`about` are written, so a client may edit one without
+/// clobbering the other; an empty string clears a field. Returns `true` if the
+/// user has a binding row — users without one (e.g. bots) carry no profile.
+pub async fn set_user_profile(
+    db: &Db,
+    user_name: &str,
+    display_name: Option<&str>,
+    about: Option<&str>,
+) -> Result<bool, DbError> {
+    if display_name.is_none() && about.is_none() {
+        return Ok(true);
+    }
+    let user_name = user_name.to_owned();
+    let display_name = display_name.map(str::to_owned);
+    let about = about.map(str::to_owned);
+    db.call_db(move |conn| {
+        // COALESCE keeps the stored value when the corresponding parameter is
+        // NULL, which is how "field not present in the frame" is expressed.
+        let updated = conn.execute(
+            "UPDATE user_keys SET display_name = COALESCE(?2, display_name), \
+             about = COALESCE(?3, about) WHERE user_name = ?1",
+            params![user_name, display_name, about],
+        )?;
+        Ok(updated > 0)
+    })
+    .await
+}
+
+/// Every known user's profile, for the snapshot sent to new clients.
+pub async fn get_all_profiles(db: &Db) -> Result<Vec<UserProfile>, DbError> {
+    db.call_db(|conn| {
+        let mut stmt =
+            conn.prepare("SELECT user_name, display_name, about, created_at FROM user_keys")?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(UserProfile {
+                    user_name: row.get(0)?,
+                    display_name: row.get(1)?,
+                    about: row.get(2)?,
+                    created_at: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })
+    .await
+}
+
+/// A single user's profile. `None` when the name has no binding.
+pub async fn get_user_profile(db: &Db, user_name: &str) -> Result<Option<UserProfile>, DbError> {
+    let user_name = user_name.to_owned();
+    db.call_db(move |conn| {
+        conn.query_row(
+            "SELECT user_name, display_name, about, created_at FROM user_keys \
+             WHERE user_name = ?1",
+            params![user_name],
+            |row| {
+                Ok(UserProfile {
+                    user_name: row.get(0)?,
+                    display_name: row.get(1)?,
+                    about: row.get(2)?,
+                    created_at: row.get(3)?,
+                })
+            },
+        )
+        .optional()
     })
     .await
 }

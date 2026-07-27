@@ -168,6 +168,15 @@ pub const INVALID_AVATAR: &str = r#"{"type":"error","message":"invalid-avatar"}"
 /// Failed to persist the avatar change.
 pub const AVATAR_UPDATE_FAILED: &str = r#"{"type":"error","message":"avatar-update-failed"}"#;
 
+/// Profile display name validation failed.
+pub const INVALID_DISPLAY_NAME: &str = r#"{"type":"error","message":"invalid-display-name"}"#;
+
+/// Profile about text validation failed.
+pub const INVALID_ABOUT: &str = r#"{"type":"error","message":"invalid-about"}"#;
+
+/// Failed to persist the profile change.
+pub const PROFILE_UPDATE_FAILED: &str = r#"{"type":"error","message":"profile-update-failed"}"#;
+
 /// Channel topic validation failed.
 pub const INVALID_CHANNEL_TOPIC: &str = r#"{"type":"error","message":"invalid-channel-topic"}"#;
 

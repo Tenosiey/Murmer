@@ -40,6 +40,14 @@ pub const MAX_SERVER_ICON_BYTES: u64 = 1024 * 1024;
 /// Maximum file size in bytes for a user avatar image.
 pub const MAX_AVATAR_BYTES: u64 = 1024 * 1024;
 
+/// Maximum length in characters for a user's display name. The display name
+/// is cosmetic — the account name stays the identity — so it only has to fit
+/// next to a message without pushing the timestamp off screen.
+pub const MAX_DISPLAY_NAME_LENGTH: usize = 32;
+
+/// Maximum length in characters for a user's profile "about" text.
+pub const MAX_ABOUT_LENGTH: usize = 300;
+
 /// File extensions accepted for image uploads referenced over the WebSocket
 /// (custom emojis, server icon). Subset of the upload endpoint's safe-list.
 pub const UPLOAD_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];

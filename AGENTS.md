@@ -73,6 +73,14 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
 
 ## Security expectations
 - Authentication relies on Ed25519 signatures with replay protection.
+- **The account name is the identity; the display name is decoration.** A
+  user's profile (`user_keys.display_name`/`about`, edited with `set-profile`,
+  read from `profile-snapshot`/`profile-update`) only changes what the UI
+  renders — `stores/profiles.ts` exposes `$displayNames(user)` for that. Never
+  address a user by display name: auth, roles, moderation, DM routing and
+  message authorship all stay on the account name, which is bound to the user's
+  key on first connect and shown next to the display name on the profile.
+  Display names are deliberately not unique, so any lookup by one is a bug.
 - Direct messages are end-to-end encrypted (NaCl box over X25519 keys derived
   from the users' Ed25519 identity keys via ed2curve). The server only
   validates, stores and relays `nonce`/`ciphertext` pairs — it must never

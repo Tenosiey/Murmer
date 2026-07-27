@@ -96,6 +96,17 @@ upload endpoint is open and these files auto-play on every listener.
 `db::migrate_soundboard_permissions` grants the two flags to pre-soundboard
 databases once, marker-guarded, so an existing server matches a fresh one.
 
+User profiles live on the `user_keys` binding row: `avatar`, `display_name`,
+`about` and the `created_at` that doubles as "member since"
+(`ws/handlers/profile.rs`, `db/users.rs`). `set-avatar` and `set-profile` only
+ever touch the requester's own row; absent fields are left alone and `null`
+clears one. Every client gets an `avatar-snapshot` plus a `profile-snapshot`
+(all bindings, offline users included) after auth and `avatar-update`/
+`profile-update` broadcasts on change. The display name is **cosmetic** — no
+server code resolves one back to a user, which is why it needs no uniqueness
+check; the account name stays the identity for auth, roles, moderation, DMs
+and message authorship.
+
 ## Security notes
 - Direct messages are end-to-end encrypted by the clients; the server only
   shape-checks `nonce`/`ciphertext` (base64, 24-byte nonce, bounded size —

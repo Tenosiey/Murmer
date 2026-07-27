@@ -1,5 +1,6 @@
 <script lang="ts">
 
+  import { displayNames } from '$lib/stores/profiles';
   import { tick } from 'svelte';
   import type { Message } from '$lib/types';
   import { searchResultPreview, formatSearchTimestamp, ephemeralInfo } from '$lib/chat/helpers';
@@ -131,7 +132,9 @@
               <button type="button" class="search-result" onclick={() => focusResult(result)}>
                 <span class="search-result-text">{searchResultPreview(result)}</span>
                 <span class="search-result-meta">
-                  <span class="search-result-user">{result.user ?? 'Unknown'}</span>
+                  <span class="search-result-user">
+                    {result.user ? $displayNames(result.user) : 'Unknown'}
+                  </span>
                   <span class="search-result-time">{formatSearchTimestamp(result)}</span>
                 </span>
                 {#if result.ephemeral}

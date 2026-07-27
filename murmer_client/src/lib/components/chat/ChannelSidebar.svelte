@@ -15,6 +15,7 @@
   import { voiceStats } from '$lib/stores/voice';
   import { session } from '$lib/stores/session';
   import { roles } from '$lib/stores/roles';
+  import { displayNames } from '$lib/stores/profiles';
   import { leftSidebarWidth } from '$lib/stores/layout';
   import { microphoneMuted, outputMuted, voiceMode, voiceActivity, isPttActive } from '$lib/stores/settings';
   import { canSpeak } from '$lib/stores/voicePermissions';
@@ -449,7 +450,7 @@
                       <span
                         class="username"
                         style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
-                        >{user}</span
+                        >{$displayNames(user)}</span
                       >
                       {#if $roles[user]?.icon}
                         <RoleIcon icon={$roles[user].icon} role={$roles[user].iconRole} />

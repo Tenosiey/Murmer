@@ -62,6 +62,21 @@ export interface UserConnectionStats {
   ageSeconds: number;
 }
 
+/**
+ * A user's profile as stored on their name/key binding on the server. The
+ * account `user` name stays the identity everywhere (auth, roles, DMs,
+ * message authorship); `displayName` is only what the UI shows instead.
+ */
+export interface UserProfile {
+  user: string;
+  /** Chosen display name, or an empty string when the account name is used. */
+  displayName: string;
+  /** Free-text "about me", empty when unset. */
+  about: string;
+  /** RFC 3339 timestamp of when the name was first claimed ("member since"). */
+  createdAt: string;
+}
+
 /** A user's display role (highest-position assigned role) shown as a badge. */
 export interface RoleInfo {
   role: string;
