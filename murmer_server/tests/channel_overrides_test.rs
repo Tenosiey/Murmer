@@ -45,6 +45,7 @@ fn role(id: i64, permissions: u64, is_default: bool, is_owner: bool) -> RoleDef 
         id,
         name: format!("role-{id}"),
         color: None,
+        icon: None,
         permissions,
         position: id,
         is_default,

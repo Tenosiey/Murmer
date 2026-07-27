@@ -10,14 +10,18 @@
 
 use crate::permissions::{self, Permissions};
 
-/// A server role: an id, display name/color, a permission bitmask and a
-/// hierarchy position. `is_default` marks the implicit `@everyone` baseline;
-/// `is_owner` marks the protected administrator role.
+/// A server role: an id, display name/color, an optional icon, a permission
+/// bitmask and a hierarchy position. `is_default` marks the implicit
+/// `@everyone` baseline; `is_owner` marks the protected administrator role.
 #[derive(Clone, Debug)]
 pub struct RoleDef {
     pub id: i64,
     pub name: String,
     pub color: Option<String>,
+    /// URL of an uploaded image shown next to the member's name, of the form
+    /// `/files/<key>`. Custom server emojis are stored as the same kind of
+    /// upload, so picking one just copies its URL here.
+    pub icon: Option<String>,
     pub permissions: Permissions,
     pub position: i64,
     pub is_default: bool,

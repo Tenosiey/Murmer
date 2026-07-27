@@ -45,6 +45,7 @@ fn role(id: i64, permissions: u64, position: i64, is_default: bool, is_owner: bo
         id,
         name: format!("role-{id}"),
         color: None,
+        icon: None,
         permissions,
         position,
         is_default,

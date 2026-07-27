@@ -64,6 +64,10 @@ use them to bootstrap the first Owner. Role CRUD and assignment otherwise flow
 through the `create-role`/`update-role`/`delete-role`/`reorder-roles`/
 `set-user-roles` WebSocket frames (`ws/handlers/roles.rs`), all requiring the
 `MANAGE_ROLES` permission and bounded by the hierarchy to prevent escalation.
+`update-role` also carries the optional role `icon` (an `/files/<key>` upload
+URL — an image or a custom emoji's file), re-validated against the upload
+directory and `MAX_ROLE_ICON_BYTES` like the server icon; replaced icon files
+are intentionally left on disk since emojis and other roles may share them.
 Legacy single-role databases are migrated once by `db::migrate_roles`.
 
 Private channels add per-channel allow/deny overrides (`channel_overrides`

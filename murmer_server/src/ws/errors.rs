@@ -117,6 +117,9 @@ pub const INVALID_ROLE_NAME: &str = r#"{"type":"error","message":"invalid-role-n
 /// Role color failed validation.
 pub const INVALID_ROLE_COLOR: &str = r#"{"type":"error","message":"invalid-role-color"}"#;
 
+/// Role icon did not reference a stored upload within the size cap.
+pub const INVALID_ROLE_ICON: &str = r#"{"type":"error","message":"invalid-role-icon"}"#;
+
 /// Role permission mask contained unknown bits.
 pub const INVALID_ROLE_PERMISSIONS: &str =
     r#"{"type":"error","message":"invalid-role-permissions"}"#;

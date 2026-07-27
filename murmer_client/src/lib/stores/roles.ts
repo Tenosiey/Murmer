@@ -24,16 +24,30 @@ function createUserRoleIdsStore() {
 
 export const userRoleIds = createUserRoleIdsStore();
 
-/** The role a user is displayed as: their highest-position assigned role. */
+/**
+ * The role a user is displayed as: their highest-position assigned role.
+ *
+ * The icon is picked separately, from the highest role that actually carries
+ * one — a member whose top role has no icon still shows the badge of a lower
+ * role that does, instead of silently losing it.
+ */
 function displayRole(defs: RoleDef[], ids: number[]): RoleInfo | undefined {
   const byId = new Map(defs.map((d) => [d.id, d]));
   let best: RoleDef | undefined;
+  let bestIcon: RoleDef | undefined;
   for (const id of ids) {
     const def = byId.get(id);
     if (!def || def.isDefault) continue;
     if (!best || def.position > best.position) best = def;
+    if (def.icon && (!bestIcon || def.position > bestIcon.position)) bestIcon = def;
   }
-  return best ? { role: best.name, color: best.color } : undefined;
+  if (!best) return undefined;
+  return {
+    role: best.name,
+    color: best.color,
+    icon: bestIcon?.icon,
+    iconRole: bestIcon?.name
+  };
 }
 
 /**

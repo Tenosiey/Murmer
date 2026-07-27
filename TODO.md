@@ -14,9 +14,6 @@ stays readable. Use the checkboxes to mark something you have picked up.
 ### 🗨️ Chat Features
 
 - [ ] Bot integration/webhooks (a basic REST bot API exists; webhooks do not)
-- [ ] Role icons — assign an icon (custom server emoji or uploaded image) per
-      role in the Server Dashboard, shown next to the user name in the member
-      list and messages (roles already carry a color)
 - [ ] Text-to-speech
 - [ ] User nicknames per server
 - [ ] User profile pages (avatars are done — uploaded per server and shown in

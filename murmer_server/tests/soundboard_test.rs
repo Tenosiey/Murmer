@@ -286,6 +286,7 @@ async fn pre_soundboard_databases_are_granted_the_new_flags() {
         everyone_id,
         "@everyone",
         None,
+        None,
         DEFAULT_EVERYONE & !USE_SOUNDBOARD,
     )
     .await

@@ -9,6 +9,20 @@ function sanitizeColor(raw: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * Role icons are server uploads and are rendered as image sources, so only the
+ * `/files/<key>` shape the server validates on write is accepted here — never
+ * an absolute URL that would let a role definition point the client at a
+ * foreign host.
+ */
+function sanitizeIcon(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  if (!raw.startsWith('/files/')) return undefined;
+  const key = raw.slice('/files/'.length);
+  if (!key || key.includes('/') || key.includes('\\') || key.includes('..')) return undefined;
+  return raw;
+}
+
 function toRoleDef(raw: unknown): RoleDef | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -17,6 +31,7 @@ function toRoleDef(raw: unknown): RoleDef | null {
     id: r.id,
     name: r.name,
     color: sanitizeColor(r.color),
+    icon: sanitizeIcon(r.icon),
     permissions: typeof r.permissions === 'number' ? r.permissions : 0,
     position: typeof r.position === 'number' ? r.position : 0,
     isDefault: r.isDefault === true,

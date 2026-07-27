@@ -64,12 +64,13 @@ async fn create_and_assign_custom_role() {
         vec![id]
     );
 
-    // Updating the permission mask persists.
+    // Updating the permission mask and the icon persists.
     db::update_role_def(
         &database,
         id,
         "Dude",
         Some("#abcdef"),
+        Some("/files/badge.png"),
         VIEW_CHANNELS | MANAGE_SERVER,
     )
     .await
@@ -79,6 +80,24 @@ async fn create_and_assign_custom_role() {
         .expect("query")
         .expect("still present");
     assert!(permissions::mask_allows(def.permissions, MANAGE_SERVER));
+    assert_eq!(def.icon.as_deref(), Some("/files/badge.png"));
+
+    // Passing no icon clears it again.
+    db::update_role_def(
+        &database,
+        id,
+        "Dude",
+        Some("#abcdef"),
+        None,
+        VIEW_CHANNELS | MANAGE_SERVER,
+    )
+    .await
+    .expect("clear icon");
+    let def = db::get_role_def(&database, id)
+        .await
+        .expect("query")
+        .expect("still present");
+    assert!(def.icon.is_none());
 
     // Deleting the role cascades to the assignment.
     assert!(db::delete_role_def(&database, id).await.expect("delete"));

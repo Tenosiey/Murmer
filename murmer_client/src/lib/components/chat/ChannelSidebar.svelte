@@ -7,6 +7,7 @@
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
   import ScreenShareControls from '$lib/components/ScreenShareControls.svelte';
   import SoundboardPanel from '$lib/components/SoundboardPanel.svelte';
+  import RoleIcon from '$lib/components/RoleIcon.svelte';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { categories } from '$lib/stores/categories';
@@ -450,6 +451,9 @@
                         style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
                         >{user}</span
                       >
+                      {#if $roles[user]?.icon}
+                        <RoleIcon icon={$roles[user].icon} role={$roles[user].iconRole} />
+                      {/if}
                       {#if $roles[user]}
                         <span
                           class="role"
