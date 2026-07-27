@@ -141,7 +141,10 @@ export class VoiceManager {
     this.vad = new VoiceActivityDetector();
     this.ptt = new PushToTalkManager(get(pttKey));
 
-    voiceMode.subscribe(() => this.updateTransmissionMode());
+    voiceMode.subscribe(() => {
+      this.updateTransmissionMode();
+      this.syncGlobalPushToTalk();
+    });
     vadSensitivity.subscribe(() => this.updateVadSensitivity());
     echoCancellation.subscribe(() => this.applyMicProcessing());
     noiseSuppression.subscribe(() => this.applyMicProcessing());
@@ -207,6 +210,14 @@ export class VoiceManager {
 
   private getVadStream(): MediaStream | null {
     return this.rawStream;
+  }
+
+  /**
+   * Hold the OS-level push-to-talk grab only while it can actually do
+   * something: in a channel, in push-to-talk mode.
+   */
+  private syncGlobalPushToTalk() {
+    this.ptt?.setGlobalEnabled(this.userName !== null && get(voiceMode) === 'ptt');
   }
 
   private updateVadSensitivity() {
@@ -736,6 +747,7 @@ export class VoiceManager {
     chat.on('voice-leave', (m) => this.handleLeave(m, peersList));
 
     this.updateTransmissionMode(rawStream);
+    this.syncGlobalPushToTalk();
 
     chat.sendRaw({ type: 'voice-join', user, channelId });
     this.broadcastMuteState();
@@ -768,6 +780,7 @@ export class VoiceManager {
     this.userName = null;
     this.channelId = null;
     this.channelConfig = null;
+    this.syncGlobalPushToTalk();
     peersList.length = 0;
     this.emit([]);
     resetSpeaking();

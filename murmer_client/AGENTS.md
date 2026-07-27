@@ -77,4 +77,7 @@ prefer implementing features in Svelte unless native APIs are required.
 ## QA checklist
 - Run `bun run check` before submitting changes.
 - Exercise the reconnect flow and authentication failure cases manually.
-- Verify that push-to-talk works with the configured keybinding on Windows.
+- Verify that push-to-talk works with the configured keybinding on Windows,
+  both with Murmer focused and with another application in front (the latter
+  only applies to combos with a modifier or function key — a bare key is
+  never grabbed system-wide).
