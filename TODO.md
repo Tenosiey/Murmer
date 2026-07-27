@@ -60,13 +60,25 @@ synced to clients; editing is role-gated like other channel management.
 
 ### 🎤 Voice Features
 
+- [ ] Automatic input sensitivity — track the noise floor and derive the VAD
+      threshold from it instead of asking the user to dial in a number, with a
+      manual override for the cases it gets wrong
 - [ ] Breakout rooms
 - [ ] Collaborative whiteboard during voice chats
 - [x] Custom sound effects and soundboards (shared sound library, permission-gated
       upload and playback, per-listener volume/mute and playback stats)
+- [ ] Ducking — drop the soundboard (and other app sounds) while somebody is
+      actually talking, so a clip never buries the conversation
 - [ ] Gesture recognition through webcam
+- [ ] Input volume / mic gain slider — the transmission gate in
+      `voice/manager.ts` is already a gain node, so this is a multiply on the
+      value it ramps to. Today automatic gain control is the only way to lift a
+      quiet microphone, and it is a blunt instrument that also lifts the noise
 - [ ] Live polling during meetings
 - [ ] Meeting notes that auto-generate from voice
+- [ ] Mic test / loopback — record a few seconds and play it back so users can
+      hear what echo cancellation, noise suppression and AGC actually do to
+      their voice, rather than guessing from a level bar
 - [x] Noise suppression and echo cancellation
 - [x] Live input level meter next to the VAD sensitivity slider so the threshold
       can be adjusted while watching one's own voice level in real time
@@ -76,10 +88,26 @@ synced to clients; editing is role-gated like other channel management.
 - [x] Per-user volume boost up to 200% so quiet members can be turned up
       (gain node per remote stream, since an `<audio>` element caps at 100%)
 - [ ] Optional spatial/3D audio
-- [ ] Record and play back voice messages
+- [ ] Opus DTX and inband FEC via SDP munging — DTX stops spending bandwidth on
+      silence, FEC noticeably improves a lossy link. Small diff, real gain
+- [ ] Output limiter / loudness normalisation — a `DynamicsCompressorNode` on
+      the remote graph to tame the one person who is always clipping, without
+      having to ride their per-user volume by hand
 - [ ] Real-time transcription of voice to text
+- [ ] Record and play back voice messages
+- [ ] RNNoise via AudioWorklet + WASM — genuinely better than the browser's
+      built-in `noiseSuppression` constraint, and the most audible quality
+      upgrade available here
 - [ ] Screen-share annotations
+- [ ] Separate volume for the app sounds (join, leave, mute) independent of the
+      voice volume slider, which currently drives both
+- [ ] Share system audio with a screen share — `screenshare/manager.ts`
+      hardcodes `audio: false` in its `getDisplayMedia` call
 - [ ] Temporary voice channels
+- [ ] VAD hold / release-delay slider — the detector already holds the gate
+      open after speech stops, but the timings are the fixed `HOLD_TIME_MS` and
+      `RELEASE_DELAY_MS` constants in `voice/vad.ts`; this exposes them the way
+      Discord's "PTT release delay" does
 - [ ] Virtual backgrounds
 - [ ] Voice activity heatmaps
 - [ ] Voice-controlled commands
