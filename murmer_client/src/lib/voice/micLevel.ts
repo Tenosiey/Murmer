@@ -15,15 +15,17 @@ import {
   noiseSuppression,
   autoGainControl
 } from '../stores/settings';
-import { voice } from '../stores/voice';
+import { captureStream } from '../stores/voiceCapture';
+import { refreshAudioDevices } from '../stores/audioDevices';
+import { getAudioContext, resumeAudioContext } from './audioContext';
+import { subscribeTick } from './ticker';
 import { configureVadAnalyser, readVadLevel } from './vad';
 
 export class MicLevelMonitor {
-  private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   private dataArray: Uint8Array<ArrayBuffer> | null = null;
-  private animationFrame: number | null = null;
+  private stopTicks: (() => void) | null = null;
   /** Only set when we opened the stream ourselves and must close it again. */
   private ownedStream: MediaStream | null = null;
   /**
@@ -34,14 +36,14 @@ export class MicLevelMonitor {
   private generation = 0;
 
   /**
-   * Begin reporting the input level (0-1) on every animation frame.
+   * Begin reporting the input level (0-1) on every audio tick.
    * Rejects when the microphone cannot be opened.
    */
   async start(onLevel: (level: number) => void): Promise<void> {
     this.stop();
     const generation = this.generation;
 
-    let stream = voice.captureStream();
+    let stream = get(captureStream);
     if (!stream) {
       const audio: MediaTrackConstraints = {
         echoCancellation: get(echoCancellation),
@@ -56,47 +58,46 @@ export class MicLevelMonitor {
         return;
       }
       this.ownedStream = stream;
+      // First capture of the session: device labels only become readable once
+      // permission has been granted, so re-enumerate for the settings selects.
+      void refreshAudioDevices();
     }
 
-    this.audioContext = new AudioContext();
-    if (this.audioContext.state === 'suspended') {
-      await this.audioContext.resume();
-    }
-    this.analyser = this.audioContext.createAnalyser();
+    const context = getAudioContext();
+    if (!context) throw new Error('Audio processing is unavailable on this system');
+    resumeAudioContext();
+
+    this.analyser = context.createAnalyser();
     this.dataArray = configureVadAnalyser(this.analyser);
-    this.source = this.audioContext.createMediaStreamSource(stream);
+    this.source = context.createMediaStreamSource(stream);
     this.source.connect(this.analyser);
 
-    const measure = () => {
+    this.stopTicks = subscribeTick(() => {
       if (!this.analyser || !this.dataArray) return;
       onLevel(readVadLevel(this.analyser, this.dataArray));
-      this.animationFrame = requestAnimationFrame(measure);
-    };
-    measure();
+    });
   }
 
   /** Stop measuring and release everything this monitor opened. */
   stop() {
     this.generation++;
 
-    if (this.animationFrame !== null) {
-      cancelAnimationFrame(this.animationFrame);
-      this.animationFrame = null;
+    if (this.stopTicks) {
+      this.stopTicks();
+      this.stopTicks = null;
     }
     if (this.source) {
       this.source.disconnect();
       this.source = null;
     }
-    this.analyser = null;
+    if (this.analyser) {
+      this.analyser.disconnect();
+      this.analyser = null;
+    }
     this.dataArray = null;
     if (this.ownedStream) {
       for (const track of this.ownedStream.getTracks()) track.stop();
       this.ownedStream = null;
-    }
-    if (this.audioContext) {
-      const context = this.audioContext;
-      this.audioContext = null;
-      if (context.state !== 'closed') context.close().catch(() => {});
     }
   }
 }

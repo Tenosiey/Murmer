@@ -17,6 +17,7 @@
     autoGainControl
   } from '$lib/stores/settings';
   import { soundboardEnabled, soundboardVolume } from '$lib/stores/soundboardSettings';
+  import { audioInputs, audioOutputs, refreshAudioDevices } from '$lib/stores/audioDevices';
   import { APP_VERSION } from '$lib/version';
   import { serverInfo } from '$lib/stores/serverInfo';
   import { theme, accent, DEFAULT_ACCENT, accentToHex, hexToAccent, type Accent } from '$lib/stores/theme';
@@ -59,8 +60,6 @@
   let publicKey = $state('');
   let keyCopied = $state(false);
 
-  let inputs: MediaDeviceInfo[] = $state([]);
-  let outputs: MediaDeviceInfo[] = $state([]);
   let capturingPttKey = $state(false);
 
   // Each settings topic lives on its own tab shown in the left rail. Audio is
@@ -155,13 +154,7 @@
     } catch (e) {
       console.error('Failed to load key pair', e);
     }
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      inputs = devices.filter((d) => d.kind === 'audioinput');
-      outputs = devices.filter((d) => d.kind === 'audiooutput');
-    } catch (e) {
-      console.error('Failed to enumerate devices', e);
-    }
+    void refreshAudioDevices();
   });
 
   async function copyPublicKey() {
@@ -521,7 +514,7 @@
             <div class="select-container">
               <select id="output-select" class="device-select" bind:value={$outputDeviceId}>
                 <option value="">Default</option>
-                {#each outputs as dev}
+                {#each $audioOutputs as dev}
                   <option value={dev.deviceId}>{dev.label || dev.deviceId}</option>
                 {/each}
               </select>
@@ -578,7 +571,7 @@
             <div class="select-container">
               <select id="input-select" class="device-select" bind:value={$inputDeviceId}>
                 <option value="">Default</option>
-                {#each inputs as dev}
+                {#each $audioInputs as dev}
                   <option value={dev.deviceId}>{dev.label || dev.deviceId}</option>
                 {/each}
               </select>

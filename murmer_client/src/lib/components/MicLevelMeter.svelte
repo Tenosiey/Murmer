@@ -9,6 +9,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { MicLevelMonitor } from '$lib/voice/micLevel';
+  import { captureStream } from '$lib/stores/voiceCapture';
   import {
     inputDeviceId,
     echoCancellation,
@@ -47,6 +48,10 @@
     void $echoCancellation;
     void $noiseSuppression;
     void $autoGainControl;
+    // A running session's capture is borrowed rather than reopened, so the
+    // meter has to re-attach when the manager swaps it — otherwise switching
+    // the input device mid-call kept metering the old microphone.
+    void $captureStream;
 
     let current = true;
     failed = false;

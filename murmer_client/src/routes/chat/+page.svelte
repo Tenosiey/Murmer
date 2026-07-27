@@ -19,6 +19,8 @@
   import { offlineUsers } from '$lib/stores/users';
   import { volume, outputDeviceId, outputMuted, microphoneMuted, userVolumes } from '$lib/stores/settings';
   import { setSpeaking, SPEAKING_RMS_THRESHOLD } from '$lib/stores/voiceSpeaking';
+  import { getAudioContext, resumeAudioContext } from '$lib/voice/audioContext';
+  import { subscribeTick } from '$lib/voice/ticker';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
@@ -303,11 +305,10 @@
   function stream(node: HTMLAudioElement, data: { stream: MediaStream, userId: string }) {
     let currentUserId = data.userId;
 
-    let audioContext: AudioContext | null = null;
     let analyser: AnalyserNode | null = null;
     let sourceNode: MediaStreamAudioSourceNode | null = null;
     let gainNode: GainNode | null = null;
-    let frameId: number | null = null;
+    let stopTicks: (() => void) | null = null;
     let buffer: Uint8Array<ArrayBuffer> | null = null;
 
     // The per-user volume is applied by a gain node rather than the audio
@@ -358,9 +359,9 @@
     };
 
     const teardownAudio = () => {
-      if (frameId !== null) {
-        cancelAnimationFrame(frameId);
-        frameId = null;
+      if (stopTicks) {
+        stopTicks();
+        stopTicks = null;
       }
       disconnectNode(sourceNode, 'source node');
       sourceNode = null;
@@ -369,12 +370,6 @@
       disconnectNode(gainNode, 'gain node');
       gainNode = null;
       buffer = null;
-      if (audioContext) {
-        audioContext.close().catch((err) => {
-          if (import.meta.env.DEV) console.warn('Failed to close audio context', err);
-        });
-        audioContext = null;
-      }
       setSpeaking(currentUserId, false);
     };
 
@@ -384,12 +379,14 @@
       if (!stream) return;
 
       try {
-        audioContext = new AudioContext();
-        if (audioContext.state === 'suspended') {
-          audioContext.resume().catch(() => {
-            /* ignore */
-          });
-        }
+        // The context is shared with every other graph in the app: browsers
+        // cap concurrent contexts at a handful, and one per peer used to
+        // exhaust that budget in a busy channel — after which this whole
+        // block threw and the per-user boost silently stopped working.
+        const audioContext = getAudioContext();
+        if (!audioContext) throw new Error('no audio context');
+        resumeAudioContext();
+
         sourceNode = audioContext.createMediaStreamSource(stream);
         analyser = audioContext.createAnalyser();
         analyser.fftSize = 512;
@@ -408,7 +405,7 @@
         node.srcObject = destination.stream;
         updateVolume();
 
-        const update = () => {
+        stopTicks = subscribeTick(() => {
           if (!analyser || !buffer) return;
           analyser.getByteTimeDomainData(buffer);
           let sum = 0;
@@ -419,9 +416,7 @@
           const rms = Math.sqrt(sum / buffer.length);
           const speaking = rms > SPEAKING_RMS_THRESHOLD;
           setSpeaking(currentUserId, speaking);
-          frameId = requestAnimationFrame(update);
-        };
-        update();
+        });
       } catch (error) {
         if (import.meta.env.DEV) {
           console.warn('Failed to build the remote audio graph', error);

@@ -46,8 +46,14 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
 - `src/lib/stores/` – Svelte stores holding client state
 - `src/lib/chat/` – constants and helpers shared by the chat page
 - `src/lib/voice/` – WebRTC helpers, push-to-talk tooling, microphone level
-  metering for the settings UI and the soundboard player (local playback,
-  separate `AudioContext` from the voice graph)
+  metering for the settings UI and the soundboard player (local playback).
+  Every graph in the app shares one `AudioContext` (`voice/audioContext.ts`)
+  because browsers cap how many may exist at once; the microphone chain still
+  ends at its own `MediaStreamAudioDestinationNode`, so playback rendered to
+  the context destination cannot leak into the outgoing track. Level meters
+  are driven by an audio-worklet tick (`voice/ticker.ts`) rather than
+  `requestAnimationFrame`, which stops while the window is minimised and used
+  to freeze voice-activity detection with the microphone stuck open.
 - `src/lib/screenshare/` – WebRTC screen sharing manager
 - `src-tauri/` – Rust-side glue for native integrations
 

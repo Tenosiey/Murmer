@@ -2,6 +2,8 @@
  * Voice Activity Detection (VAD) utility
  * Monitors audio levels to detect when the user is speaking
  */
+import { getAudioContext, resumeAudioContext } from './audioContext';
+import { subscribeTick } from './ticker';
 
 const SMOOTHING_FACTOR = 0.3;
 const FFT_SIZE = 256;
@@ -36,58 +38,55 @@ export function readVadLevel(analyser: AnalyserNode, dataArray: Uint8Array<Array
   return sum / dataArray.length / 255;
 }
 
+/** How long transmission stays open after the level drops below threshold. */
+const HOLD_TIME_MS = 800;
+
+/** Extra delay before closing, so brief dips mid-sentence don't chop words. */
+const RELEASE_DELAY_MS = 100;
+
 export class VoiceActivityDetector {
-  private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   private dataArray: Uint8Array<ArrayBuffer> | null = null;
-  private animationFrame: number | null = null;
+  private stopTicks: (() => void) | null = null;
   private isActive = false;
   private currentSensitivity = 0.1;
   private currentStream: MediaStream | null = null;
-  
+
   // Debouncing for voice activity
   private lastVoiceTime = 0;
-  private holdTime = 800; // Hold transmission for 800ms after voice stops
-  private releaseTimeout: number | null = null;
-  
+
   private listeners: Array<(isActive: boolean, level: number) => void> = [];
 
-  constructor() {
-    this.setupAudioContext();
-  }
-
-  private setupAudioContext() {
-    try {
-      this.audioContext = new AudioContext();
-      this.analyser = this.audioContext.createAnalyser();
-      this.dataArray = configureVadAnalyser(this.analyser);
-    } catch (error) {
-      console.error('Failed to setup audio context for VAD:', error);
-    }
-  }
-
   /**
-   * Start monitoring the given audio stream for voice activity
+   * Start monitoring the given audio stream for voice activity.
+   *
+   * The analyser is built on demand: the detector used to open an
+   * `AudioContext` at app startup even for users who never enable
+   * voice-activity mode, which counted against the browser's context limit
+   * for nothing.
    */
   start(stream: MediaStream, sensitivity: number = 0.1) {
-    if (!this.audioContext || !this.analyser || !this.dataArray) {
-      console.error('Audio context not initialized');
-      return;
-    }
-
     // Stop any existing monitoring first
     this.stop();
 
+    const context = getAudioContext();
+    if (!context) {
+      console.error('Audio context unavailable, cannot detect voice activity');
+      return;
+    }
+
     try {
-      // Resume audio context if suspended (required by some browsers)
-      if (this.audioContext.state === 'suspended') {
-        this.audioContext.resume();
+      resumeAudioContext();
+
+      if (!this.analyser) {
+        this.analyser = context.createAnalyser();
+        this.dataArray = configureVadAnalyser(this.analyser);
       }
 
       this.currentStream = stream;
       this.currentSensitivity = sensitivity;
-      this.source = this.audioContext.createMediaStreamSource(stream);
+      this.source = context.createMediaStreamSource(stream);
       this.source.connect(this.analyser);
 
       this.startAnalysis(sensitivity);
@@ -108,24 +107,12 @@ export class VoiceActivityDetector {
   }
 
   /**
-   * Set the hold time (how long to keep transmission active after voice stops)
-   */
-  setHoldTime(milliseconds: number) {
-    this.holdTime = Math.max(0, milliseconds);
-  }
-
-  /**
    * Stop monitoring voice activity
    */
   stop() {
-    if (this.animationFrame) {
-      cancelAnimationFrame(this.animationFrame);
-      this.animationFrame = null;
-    }
-
-    if (this.releaseTimeout) {
-      clearTimeout(this.releaseTimeout);
-      this.releaseTimeout = null;
+    if (this.stopTicks) {
+      this.stopTicks();
+      this.stopTicks = null;
     }
 
     if (this.source) {
@@ -149,6 +136,12 @@ export class VoiceActivityDetector {
     };
   }
 
+  /**
+   * Sample the level on every audio tick and drive the open/close state
+   * machine. Ticks come from the audio thread rather than animation frames
+   * because a minimised window stops the latter, which used to freeze the
+   * state machine — leaving the microphone open until the window came back.
+   */
   private startAnalysis(sensitivity: number) {
     if (!this.analyser || !this.dataArray) return;
 
@@ -162,41 +155,30 @@ export class VoiceActivityDetector {
       const threshold = this.currentSensitivity;
       const currentTime = Date.now();
       const rawVoiceDetected = normalizedLevel > threshold;
-      
-      // Update last voice time if we detect voice
+
       if (rawVoiceDetected) {
         this.lastVoiceTime = currentTime;
-        
-        // Clear any pending release timeout
-        if (this.releaseTimeout) {
-          clearTimeout(this.releaseTimeout);
-          this.releaseTimeout = null;
-        }
-        
         // Immediately activate if not already active
         if (!this.isActive) {
           this.isActive = true;
           this.notifyListeners(true, normalizedLevel);
         }
-      } else {
-        // No voice detected, but check if we're within hold time
-        const timeSinceLastVoice = currentTime - this.lastVoiceTime;
-        const shouldHold = timeSinceLastVoice < this.holdTime;
-        
-        if (this.isActive && !shouldHold && !this.releaseTimeout) {
-          // Start release timeout
-          this.releaseTimeout = window.setTimeout(() => {
-            this.isActive = false;
-            this.releaseTimeout = null;
-            this.notifyListeners(false, normalizedLevel);
-          }, 100); // Small delay to prevent rapid toggling
-        }
+        return;
       }
 
-      this.animationFrame = requestAnimationFrame(analyze);
+      // Below threshold: hold the gate open a moment so a pause mid-sentence
+      // doesn't chop the next word, then close it. The deadline is compared
+      // against the clock on each tick rather than armed as a `setTimeout`,
+      // because timers in a hidden window are throttled to once a second (and
+      // eventually once a minute) — long enough to keep the microphone open
+      // well after the user stopped talking.
+      if (this.isActive && currentTime - this.lastVoiceTime >= HOLD_TIME_MS + RELEASE_DELAY_MS) {
+        this.isActive = false;
+        this.notifyListeners(false, normalizedLevel);
+      }
     };
 
-    analyze();
+    this.stopTicks = subscribeTick(analyze);
   }
 
   private notifyListeners(isActive: boolean, level: number) {
@@ -225,9 +207,11 @@ export class VoiceActivityDetector {
    */
   destroy() {
     this.stop();
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      this.audioContext.close();
+    if (this.analyser) {
+      this.analyser.disconnect();
+      this.analyser = null;
     }
+    this.dataArray = null;
     this.listeners = [];
   }
 }
