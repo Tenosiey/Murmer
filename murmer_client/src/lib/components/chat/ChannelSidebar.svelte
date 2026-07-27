@@ -19,7 +19,7 @@
   import { canSpeak } from '$lib/stores/voicePermissions';
   import { speakingUsers } from '$lib/stores/voiceSpeaking';
   import { voiceMuteStates } from '$lib/stores/voiceMute';
-  import { activeScreenShares } from '$lib/stores/screenShare';
+  import { activeScreenShares, screenSharePreview } from '$lib/stores/screenShare';
   import { unread } from '$lib/stores/unread';
   import { can } from '$lib/stores/permissions';
   import { PERMISSIONS } from '$lib/chat/permissions';
@@ -471,12 +471,17 @@
                           {/if}
                         </span>
                       {/if}
-                      {#if $activeScreenShares[ch.id]?.includes(user) && user !== $session.user}
+                      {#if $activeScreenShares[ch.id]?.includes(user)}
+                        {@const isOwnShare = user === $session.user}
+                        {@const selfLabel = $screenSharePreview
+                          ? 'Hide your screen preview'
+                          : 'Preview your own screen'}
                         <button
                           class="screenshare-indicator"
+                          class:muted={isOwnShare && !$screenSharePreview}
                           onclick={() => onViewScreenShare(user)}
-                          title="View {user}'s screen"
-                          aria-label="View {user}'s screen share"
+                          title={isOwnShare ? selfLabel : `View ${user}'s screen`}
+                          aria-label={isOwnShare ? selfLabel : `View ${user}'s screen share`}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                           <span>LIVE</span>
@@ -961,6 +966,13 @@
   .channels button.screenshare-indicator:hover {
     background: color-mix(in srgb, var(--color-primary) 24%, transparent);
     color: var(--color-primary);
+  }
+
+  /* Our own share with the self-preview switched off: still live, just not
+     being rendered back to us. */
+  .channels button.screenshare-indicator.muted {
+    background: var(--color-surface-raised);
+    color: var(--color-muted);
   }
 
   .screenshare-indicator svg {

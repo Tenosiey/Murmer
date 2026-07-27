@@ -4,7 +4,8 @@
  * Manages the global screen share instance and tracks active screen shares
  * across all voice channels.
  */
-import { writable, derived, get } from 'svelte/store';
+import { writable, get } from 'svelte/store';
+import { browser } from '$app/environment';
 import { ScreenShareManager } from '../screenshare/manager';
 import type { ScreenSharePeer, ScreenShareActive, ScreenShareSettings } from '../types';
 import { chat } from './chat';
@@ -35,6 +36,41 @@ export const activeScreenShares = writable<Record<number, string[]>>({});
  * Store for local screen share state
  */
 export const isScreenSharing = writable<boolean>(false);
+
+/**
+ * The sharer's own capture stream while sharing (null otherwise), so the
+ * sharer can watch a self-preview and verify what everyone else receives.
+ */
+export const localScreenShareStream = writable<MediaStream | null>(null);
+
+const PREVIEW_KEY = 'murmer_screenshare_preview';
+
+/**
+ * Whether the sharer's self-preview is shown. Decoding and compositing the
+ * captured frames a second time costs real CPU/GPU, so the preview can be
+ * switched off — when this is false nothing renders the stream at all. The
+ * choice is remembered across shares and restarts.
+ */
+export const screenSharePreview = writable<boolean>(
+  browser ? localStorage.getItem(PREVIEW_KEY) !== 'false' : true
+);
+
+screenSharePreview.subscribe((value) => {
+  if (browser) localStorage.setItem(PREVIEW_KEY, String(value));
+});
+
+/** Show/hide the sharer's own preview. */
+export function toggleScreenSharePreview(): void {
+  screenSharePreview.update((shown) => !shown);
+}
+
+// The capture can also end from the browser/OS "stop sharing" bar, which never
+// goes through stopScreenShare() — mirror the manager's stream instead of
+// flipping the flags at the call sites so that path stays consistent too.
+screenShareManager.subscribeLocalStream((stream) => {
+  localScreenShareStream.set(stream);
+  isScreenSharing.set(stream !== null);
+});
 
 /**
  * Store for screen share settings (quality/FPS)
@@ -70,7 +106,6 @@ connection.subscribe((state) => {
     // remote share list — channel ids are only unique per server, so stale
     // entries would show phantom "live" badges after a reconnect.
     screenShareManager.stopSharing();
-    isScreenSharing.set(false);
     activeScreenShares.set({});
   }
 });
@@ -136,7 +171,6 @@ chat.on('screenshare-stop', (msg: Message) => {
 export async function startScreenShare(user: string, channelId: number): Promise<void> {
   const settings = get(screenShareSettings);
   await screenShareManager.startSharing(user, channelId, settings);
-  isScreenSharing.set(true);
 }
 
 /**
@@ -144,7 +178,6 @@ export async function startScreenShare(user: string, channelId: number): Promise
  */
 export function stopScreenShare(): void {
   screenShareManager.stopSharing();
-  isScreenSharing.set(false);
 }
 
 /**
