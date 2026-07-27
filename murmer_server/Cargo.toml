@@ -29,5 +29,5 @@ tokio-rusqlite = { version = "0.7.0", features = ["bundled"] }
 rusqlite = { version = "0.37", features = ["bundled", "chrono"] }
 
 [dev-dependencies]
-serial_test = "3"
+serial_test = "4"
 temp-env = "0.3"
