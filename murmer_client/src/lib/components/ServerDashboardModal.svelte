@@ -21,6 +21,7 @@
     MAX_SERVER_DESCRIPTION_LENGTH,
     MAX_WELCOME_MESSAGE_LENGTH,
     MAX_SERVER_ICON_BYTES,
+    MAX_ROLE_ICON_BYTES,
     MIN_UPLOAD_MAX_BYTES,
     MAX_UPLOAD_MAX_BYTES,
     UPLOAD_CATEGORIES
@@ -344,6 +345,7 @@
     'role-limit-reached',
     'invalid-role-name',
     'invalid-role-color',
+    'invalid-role-icon',
     'invalid-role-permissions'
   ]);
 
@@ -449,8 +451,12 @@
   let selectedRoleId: number | null = $state(null);
   let draftName = $state('');
   let draftColor = $state('');
+  /** Role icon URL (`/files/<key>`), empty when the role has none. */
+  let draftIcon = $state('');
   let draftPermissions = $state(0);
   let roleFeedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
+  let roleIconInput: HTMLInputElement | null = $state(null);
+  let roleIconUploading = $state(false);
 
   let rolesHighToLow = $derived([...$roleDefinitions].sort((a, b) => b.position - a.position));
   let selectedRole = $derived(
@@ -478,6 +484,7 @@
       untrack(() => {
         draftName = role.name;
         draftColor = role.color ?? '';
+        draftIcon = role.icon ?? '';
         draftPermissions = role.permissions;
       });
     }
@@ -510,14 +517,68 @@
   function saveRole() {
     if (!selectedRole) return;
     const color = draftColor.trim();
+    const icon = draftIcon.trim();
     chat.sendRaw({
       type: 'update-role',
       id: selectedRole.id,
       name: draftName.trim(),
       color: color === '' ? null : color,
+      icon: icon === '' ? null : icon,
       permissions: draftPermissions >>> 0
     });
     roleFeedback = { text: 'Changes sent.', kind: 'info' };
+  }
+
+  /**
+   * Upload an image and stage it as this role's icon. Like the emoji and
+   * server-icon flows the file goes through `/upload` first; the URL is only
+   * registered when the role is saved, and the server re-validates it.
+   */
+  async function uploadRoleIcon(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    input.value = '';
+    if (!file || !httpBase) return;
+    roleFeedback = null;
+    if (file.size > MAX_ROLE_ICON_BYTES) {
+      roleFeedback = { text: 'Role icons must be 512 KB or smaller.', kind: 'error' };
+      return;
+    }
+    roleIconUploading = true;
+    const form = new FormData();
+    form.append('file', file);
+    try {
+      const res = await fetch(httpBase + '/upload', { method: 'POST', body: form });
+      if (res.status === 415) {
+        roleFeedback = { text: 'This image type is not allowed on the server.', kind: 'error' };
+        return;
+      }
+      if (res.status === 413) {
+        roleFeedback = { text: 'That image is too large to upload.', kind: 'error' };
+        return;
+      }
+      if (!res.ok) throw new Error(`upload failed with status ${res.status}`);
+      const data = await res.json();
+      if (typeof data.url !== 'string') throw new Error('upload response missing url');
+      draftIcon = data.url;
+      roleFeedback = { text: 'Icon ready — save to apply it.', kind: 'info' };
+    } catch (e) {
+      console.error('role icon upload failed', e);
+      roleFeedback = { text: 'Icon upload failed. Please try again.', kind: 'error' };
+    } finally {
+      roleIconUploading = false;
+    }
+  }
+
+  // Picking a custom emoji just reuses its uploaded image, so no second copy
+  // of the file is created.
+  function pickEmojiIcon(event: Event) {
+    const select = event.currentTarget as HTMLSelectElement;
+    const url = select.value;
+    select.value = '';
+    if (!url) return;
+    draftIcon = url;
+    roleFeedback = { text: 'Icon ready — save to apply it.', kind: 'info' };
   }
 
   async function createRole() {
@@ -980,6 +1041,9 @@
                       style={`background: ${role.color ?? 'var(--color-muted)'}`}
                       aria-hidden="true"
                     ></span>
+                    {#if role.icon}
+                      <img class="role-row-icon" src={httpBase + role.icon} alt="" />
+                    {/if}
                     <span class="role-row-name">{role.name}</span>
                     {#if role.isOwner}<span class="badge">Owner</span>{/if}
                     {#if role.isDefault}<span class="badge">Default</span>{/if}
@@ -1018,6 +1082,58 @@
                         style={`background: ${draftColor.trim() || 'var(--color-muted)'}`}
                         aria-hidden="true"
                       ></span>
+                    </div>
+                  </div>
+
+                  <div class="setting-group">
+                    <span class="setting-label">Icon</span>
+                    <div class="setting-description">
+                      Shown next to the name of every member holding this role. Pick a
+                      custom emoji or upload an image (PNG, JPEG, GIF or WebP, up to
+                      512 KB).
+                    </div>
+                    <div class="role-icon-row">
+                      <span class="role-icon-preview">
+                        {#if draftIcon}
+                          <img src={httpBase + draftIcon} alt="" />
+                        {:else}
+                          <span class="role-icon-empty">None</span>
+                        {/if}
+                      </span>
+                      <select
+                        class="field role-icon-select"
+                        disabled={!nameEditable || $customEmojiList.length === 0}
+                        onchange={pickEmojiIcon}
+                        aria-label="Use a custom emoji as the role icon"
+                      >
+                        <option value="">
+                          {$customEmojiList.length === 0 ? 'No custom emojis' : 'Use an emoji…'}
+                        </option>
+                        {#each $customEmojiList as emoji (emoji.name)}
+                          <option value={emoji.url}>:{emoji.name}:</option>
+                        {/each}
+                      </select>
+                      <button
+                        type="button"
+                        class="btn"
+                        disabled={!nameEditable || roleIconUploading}
+                        onclick={() => roleIconInput?.click()}
+                      >{roleIconUploading ? 'Uploading…' : 'Upload image…'}</button>
+                      {#if draftIcon}
+                        <button
+                          type="button"
+                          class="btn btn-ghost"
+                          disabled={!nameEditable}
+                          onclick={() => (draftIcon = '')}
+                        >Remove</button>
+                      {/if}
+                      <input
+                        bind:this={roleIconInput}
+                        type="file"
+                        accept="image/png,image/jpeg,image/gif,image/webp"
+                        class="sr-only"
+                        onchange={uploadRoleIcon}
+                      />
                     </div>
                   </div>
 
@@ -1454,6 +1570,48 @@
     height: 12px;
     border-radius: var(--radius-pill, 50%);
     flex-shrink: 0;
+  }
+
+  .role-row-icon {
+    width: var(--space-4);
+    height: var(--space-4);
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+
+  .role-icon-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .role-icon-preview {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--space-7);
+    height: var(--space-7);
+    border: 1px solid var(--color-surface-outline);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-raised);
+    flex-shrink: 0;
+  }
+
+  .role-icon-preview img {
+    width: var(--space-5);
+    height: var(--space-5);
+    object-fit: contain;
+  }
+
+  .role-icon-empty {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+  }
+
+  .role-icon-select {
+    width: auto;
+    min-width: 10rem;
   }
 
   .role-dot.large {

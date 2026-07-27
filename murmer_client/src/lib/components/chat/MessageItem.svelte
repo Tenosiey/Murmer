@@ -24,6 +24,7 @@
   import { httpBaseFromWs } from '$lib/server-url';
   import LinkPreview from '$lib/components/LinkPreview.svelte';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
+  import RoleIcon from '$lib/components/RoleIcon.svelte';
 
 
   interface Props {
@@ -126,6 +127,9 @@
     {#if !continuation}
       <div class="meta">
         <span class="username">{message.user}</span>
+        {#if roleInfo?.icon}
+          <RoleIcon icon={roleInfo.icon} role={roleInfo.iconRole} />
+        {/if}
         {#if message.bot}
           <span class="bot-badge">BOT</span>
         {/if}

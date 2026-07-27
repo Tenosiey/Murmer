@@ -97,6 +97,12 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   role and every role assigned to them; `ADMINISTRATOR` (the Owner role) grants
   everything. The flag set is defined in `murmer_server/src/permissions.rs` and
   mirrored in `murmer_client/src/lib/chat/permissions.ts` — keep them in sync.
+  A role may also carry an **icon**: an upload URL (`/files/<key>`) pointing at
+  an uploaded image or an existing custom emoji's file, validated on write like
+  the server icon (image safe-list, file must exist, size cap) and sanitized
+  again client-side before it is used as an image source. Replaced icons are
+  never deleted from disk because the same file may back a custom emoji or
+  another role.
   Roles stack (a user may hold several) and carry a hierarchy `position`;
   moderation and role management require strictly outranking the target, and a
   manager can never grant a permission it lacks. Every check is enforced

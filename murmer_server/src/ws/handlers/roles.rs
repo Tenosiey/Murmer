@@ -90,6 +90,42 @@ async fn parse_color(
     }
 }
 
+/// Read and validate an optional `icon` field. Returns `Ok(None)` when the
+/// field is absent/empty/null (clearing the icon) and `Err(())` after sending
+/// an error for anything that is not a stored upload within the size cap.
+///
+/// The value is just an upload URL, so a custom server emoji and a freshly
+/// uploaded image are indistinguishable here — the dashboard offers both and
+/// both land in the same `/files/<key>` shape. The referenced file is checked
+/// on disk for the same reason emoji registration does it: the upload endpoint
+/// is open, so a URL alone proves nothing.
+async fn parse_icon(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+) -> Result<Option<String>, ()> {
+    let url = match v.get("icon") {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::String(s)) if s.is_empty() => return Ok(None),
+        Some(Value::String(s)) => s.clone(),
+        Some(_) => {
+            send_error(sender, errors::INVALID_ROLE_ICON).await;
+            return Err(());
+        }
+    };
+    let Some(key) = upload_key_from_url(&url) else {
+        send_error(sender, errors::INVALID_ROLE_ICON).await;
+        return Err(());
+    };
+    match tokio::fs::metadata(state.upload_dir.join(key)).await {
+        Ok(meta) if meta.is_file() && meta.len() <= MAX_ROLE_ICON_BYTES => Ok(Some(url)),
+        Ok(_) | Err(_) => {
+            send_error(sender, errors::INVALID_ROLE_ICON).await;
+            Err(())
+        }
+    }
+}
+
 /// Snapshot the current role definitions from the in-memory map.
 async fn snapshot_defs(state: &Arc<AppState>) -> Vec<RoleDef> {
     state.role_defs.lock().await.values().cloned().collect()
@@ -164,6 +200,8 @@ pub(super) async fn handle_create_role(
         id,
         name: name.to_string(),
         color,
+        // New roles start without an icon; it is set from the role editor.
+        icon: None,
         permissions: perms,
         position,
         is_default: false,
@@ -237,6 +275,14 @@ pub(super) async fn handle_update_role(
         },
     };
 
+    let icon = match v.get("icon") {
+        None => target.icon.clone(),
+        Some(_) => match parse_icon(state, sender, v).await {
+            Ok(i) => i,
+            Err(()) => return,
+        },
+    };
+
     // The Owner role is locked to ADMINISTRATOR; otherwise keep the existing
     // permissions when the field is omitted.
     let perms = if target.is_owner {
@@ -255,7 +301,19 @@ pub(super) async fn handle_update_role(
         return;
     }
 
-    if let Err(e) = db::update_role_def(&state.db, id, &name, color.as_deref(), perms).await {
+    // The replaced icon file is deliberately left on disk: a role icon may
+    // point at a custom emoji's upload, and deleting it would break the emoji
+    // (and every other role reusing the same image).
+    if let Err(e) = db::update_role_def(
+        &state.db,
+        id,
+        &name,
+        color.as_deref(),
+        icon.as_deref(),
+        perms,
+    )
+    .await
+    {
         error!("failed to update role {id}: {e}");
         send_error(sender, errors::ROLE_UPDATE_FAILED).await;
         return;
@@ -265,6 +323,7 @@ pub(super) async fn handle_update_role(
         if let Some(def) = map.get_mut(&id) {
             def.name = name.clone();
             def.color = color;
+            def.icon = icon;
             def.permissions = perms;
         }
     }

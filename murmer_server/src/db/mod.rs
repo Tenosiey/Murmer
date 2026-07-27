@@ -196,7 +196,8 @@ CREATE TABLE IF NOT EXISTS role_definitions (
     permissions INTEGER NOT NULL DEFAULT 0,
     position INTEGER NOT NULL DEFAULT 0,
     is_default INTEGER NOT NULL DEFAULT 0,
-    is_owner INTEGER NOT NULL DEFAULT 0
+    is_owner INTEGER NOT NULL DEFAULT 0,
+    icon TEXT
 );
 CREATE TABLE IF NOT EXISTS user_roles (
     public_key TEXT NOT NULL,
@@ -291,6 +292,7 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
             "INTEGER NOT NULL DEFAULT 0",
         )?;
         ensure_column(conn, "user_keys", "avatar", "TEXT NOT NULL DEFAULT ''")?;
+        ensure_column(conn, "role_definitions", "icon", "TEXT")?;
         ensure_column(
             conn,
             "user_stats",

@@ -12,6 +12,10 @@ pub const MAX_ROLES: usize = 100;
 /// Maximum length in bytes for a role name.
 pub const MAX_ROLE_NAME_LENGTH: usize = 32;
 
+/// Maximum file size in bytes for a role icon image. Role icons render at
+/// badge size next to a name, so they get the emoji budget, not the icon one.
+pub const MAX_ROLE_ICON_BYTES: u64 = 512 * 1024;
+
 /// Maximum file size in bytes for a custom emoji image.
 pub const MAX_EMOJI_FILE_BYTES: u64 = 512 * 1024;
 

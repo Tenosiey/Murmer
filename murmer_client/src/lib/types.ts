@@ -66,6 +66,10 @@ export interface UserConnectionStats {
 export interface RoleInfo {
   role: string;
   color?: string;
+  /** Icon of the highest assigned role that has one, as a `/files/<key>` URL. */
+  icon?: string;
+  /** Name of the role the icon belongs to; used as the icon's alt text. */
+  iconRole?: string;
 }
 
 /** A server role definition as broadcast in the `role-definitions` frame. */
@@ -73,6 +77,8 @@ export interface RoleDef {
   id: number;
   name: string;
   color?: string;
+  /** Uploaded image (or custom emoji) shown next to members holding the role. */
+  icon?: string;
   /** Permission bitmask (see `src/lib/chat/permissions.ts`). */
   permissions: number;
   /** Hierarchy position; higher outranks lower. */

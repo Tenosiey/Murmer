@@ -41,6 +41,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'role-limit-reached': 'This server has reached its role limit.',
   'invalid-role-name': 'That role name is not allowed.',
   'invalid-role-color': 'That role color is not a valid hex color.',
+  'invalid-role-icon': 'That role icon is not a valid uploaded image.',
   'invalid-role-permissions': 'Those permissions are not valid.',
   'send-permission-denied': 'You do not have permission to send messages in this channel.',
   'channel-override-permission-denied':

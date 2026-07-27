@@ -235,7 +235,11 @@ role is an administrator (all permissions) and sits at the top; **Admin** and
 **Mod** are seeded as convenient starting points and can be edited or deleted.
 
 Server owners create custom roles and tune each permission from the **Roles**
-tab of the Server Dashboard. Because server-wide roles only *grant*, restrict a
+tab of the Server Dashboard. A role can also carry an **icon** — a custom
+server emoji or an uploaded image (up to 512 KB) — which is shown next to the
+name of every member holding it, in the member list, the voice channel list and
+on their messages. Members display the icon of the highest role they hold that
+has one. Because server-wide roles only *grant*, restrict a
 capability by lowering the **@everyone** baseline and granting it through a
 role — e.g. turn **Send messages** off for @everyone and give a "Member" role
 that has it, so anyone with only a view-only role cannot post.

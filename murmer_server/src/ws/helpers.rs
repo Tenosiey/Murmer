@@ -112,6 +112,7 @@ fn role_definitions_frame(defs: &HashMap<i64, RoleDef>) -> Option<String> {
                 "id": d.id,
                 "name": d.name,
                 "color": d.color,
+                "icon": d.icon,
                 "permissions": d.permissions,
                 "position": d.position,
                 "isDefault": d.is_default,

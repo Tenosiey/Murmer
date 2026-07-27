@@ -11,6 +11,7 @@
   import { STATUS_LABELS } from '$lib/stores/status';
   import { ensureStatus } from '$lib/chat/helpers';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
+  import RoleIcon from '$lib/components/RoleIcon.svelte';
   import type { UserStatus } from '$lib/types';
 
   interface Props {
@@ -50,6 +51,9 @@
           style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
           >{user}</span
         >
+        {#if $roles[user]?.icon}
+          <RoleIcon icon={$roles[user].icon} role={$roles[user].iconRole} />
+        {/if}
         {#if $dmUnread[user]}
           <span class="dm-badge" title="Unread direct messages">{$dmUnread[user]}</span>
         {/if}
@@ -84,6 +88,9 @@
           style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
           >{user}</span
         >
+        {#if $roles[user]?.icon}
+          <RoleIcon icon={$roles[user].icon} role={$roles[user].iconRole} />
+        {/if}
         {#if $dmUnread[user]}
           <span class="dm-badge" title="Unread direct messages">{$dmUnread[user]}</span>
         {/if}

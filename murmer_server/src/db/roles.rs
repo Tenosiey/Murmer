@@ -18,7 +18,7 @@ use crate::permissions::Permissions;
 use crate::roles::{BUILTIN_ROLES, RoleDef};
 
 /// Build a [`RoleDef`] from a `role_definitions` row in column order
-/// `id, name, color, permissions, position, is_default, is_owner`.
+/// `id, name, color, permissions, position, is_default, is_owner, icon`.
 fn row_to_def(row: &rusqlite::Row) -> rusqlite::Result<RoleDef> {
     let permissions: i64 = row.get(3)?;
     Ok(RoleDef {
@@ -29,11 +29,12 @@ fn row_to_def(row: &rusqlite::Row) -> rusqlite::Result<RoleDef> {
         position: row.get(4)?,
         is_default: row.get::<_, i64>(5)? != 0,
         is_owner: row.get::<_, i64>(6)? != 0,
+        icon: row.get(7)?,
     })
 }
 
-const SELECT_DEF: &str =
-    "SELECT id, name, color, permissions, position, is_default, is_owner FROM role_definitions";
+const SELECT_DEF: &str = "SELECT id, name, color, permissions, position, is_default, is_owner, \
+     icon FROM role_definitions";
 
 /// Load every role definition, ordered by ascending position.
 pub async fn list_role_defs(db: &Db) -> Result<Vec<RoleDef>, DbError> {
@@ -94,20 +95,23 @@ pub async fn create_role_def(
     .await
 }
 
-/// Update a role's name, color and permission mask.
+/// Update a role's name, color, icon and permission mask.
 pub async fn update_role_def(
     db: &Db,
     id: i64,
     name: &str,
     color: Option<&str>,
+    icon: Option<&str>,
     permissions: Permissions,
 ) -> Result<(), DbError> {
     let name = name.to_owned();
     let color = color.map(str::to_owned);
+    let icon = icon.map(str::to_owned);
     db.call_db(move |conn| {
         conn.execute(
-            "UPDATE role_definitions SET name = ?2, color = ?3, permissions = ?4 WHERE id = ?1",
-            params![id, name, color, permissions as i64],
+            "UPDATE role_definitions SET name = ?2, color = ?3, permissions = ?4, icon = ?5 \
+             WHERE id = ?1",
+            params![id, name, color, permissions as i64, icon],
         )?;
         Ok(())
     })
@@ -227,6 +231,7 @@ pub async fn assign_named_role(
                     id: tx.last_insert_rowid(),
                     name: name.clone(),
                     color: color.clone(),
+                    icon: None,
                     permissions,
                     position,
                     is_default: false,
