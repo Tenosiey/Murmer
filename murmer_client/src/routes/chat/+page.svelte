@@ -55,9 +55,13 @@
     screenSharePeers,
     viewScreenShare,
     leaveScreenShareAsViewer,
-    stopScreenShare
+    stopScreenShare,
+    localScreenShareStream,
+    screenSharePreview,
+    toggleScreenSharePreview
   } from '$lib/stores/screenShare';
   import ScreenShareViewer from '$lib/components/ScreenShareViewer.svelte';
+  import ScreenSharePreview from '$lib/components/ScreenSharePreview.svelte';
   import { loadKeyPair, sign } from '$lib/keypair';
   import { httpBaseFromWs } from '$lib/server-url';
   import { connection, connectionError } from '$lib/stores/connection';
@@ -134,6 +138,8 @@
 
   let viewingScreenShare: ScreenSharePeer | null = $state(null);
   let pendingScreenShareView: string | null = $state(null);
+  // Own capture blown up to the full viewer instead of the small preview.
+  let expandedOwnScreenShare = $state(false);
 
 
   let replyingTo: Message | null = $state(null);
@@ -962,8 +968,12 @@
         return;
       }
 
-      if (userId === $session.user) return;
-      
+      // Our own share needs no peer connection — show/hide the local preview.
+      if (userId === $session.user) {
+        toggleScreenSharePreview();
+        return;
+      }
+
       pendingScreenShareView = userId;
       await viewScreenShare(userId, $session.user, currentVoiceChannelId);
 
@@ -1651,6 +1661,10 @@
       }
     }
   });
+  $effect(() => {
+    // Once sharing ends the next share starts from the small preview again.
+    if (!$localScreenShareStream) expandedOwnScreenShare = false;
+  });
   let channelMessages = $derived($chat.filter((m) => m.channelId === currentChatChannelId));
   let messageBlocks = $derived(buildMessageBlocks(channelMessages, {
     unreadAfterId: unreadMarkerAfterId,
@@ -2034,6 +2048,24 @@
 
 {#if viewingScreenShare}
   <ScreenShareViewer peer={viewingScreenShare} onClose={closeScreenShareViewer} />
+{/if}
+
+<!-- The sharer's own capture: a small floating preview while sharing, which
+     can be expanded to the full viewer or hidden entirely. -->
+{#if $localScreenShareStream && $screenSharePreview}
+  {#if expandedOwnScreenShare}
+    <ScreenShareViewer
+      peer={{ userId: $session.user ?? 'You', stream: $localScreenShareStream }}
+      isSelf
+      onClose={() => (expandedOwnScreenShare = false)}
+    />
+  {:else}
+    <ScreenSharePreview
+      stream={$localScreenShareStream}
+      onExpand={() => (expandedOwnScreenShare = true)}
+      onHide={() => screenSharePreview.set(false)}
+    />
+  {/if}
 {/if}
 
 {#if $connection === 'connecting' || $connection === 'disconnected' || $connection === 'failed'}

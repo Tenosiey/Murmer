@@ -59,7 +59,10 @@ small team can deploy a private chat space quickly.
   badges: message text is encrypted on-device (NaCl box over the users'
   identity keys), so the server only ever stores and relays ciphertext
 - Screen sharing in voice channels with adjustable resolution, frame rate and
-  bitrate; Owners/Admins can set a server-wide bitrate cap from the dashboard
+  bitrate; Owners/Admins can set a server-wide bitrate cap from the dashboard.
+  The sharer gets a floating self-preview to check what is actually being sent,
+  which can be hidden (it costs CPU/GPU to render) and stays hidden until
+  turned back on
 - Soundboard: a shared library of short clips anyone in a voice channel can
   play for everyone present. Uploading is gated by *Manage sounds*, playing by
   *Use soundboard*, and a server-side cooldown keeps it from becoming a spam

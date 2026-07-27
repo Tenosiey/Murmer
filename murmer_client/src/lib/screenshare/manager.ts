@@ -33,6 +33,7 @@ export class ScreenShareManager {
   private userName: string | null = null;
   private channelId: number | null = null;
   private listeners: Array<(peers: ScreenSharePeer[]) => void> = [];
+  private localStreamListeners: Array<(stream: MediaStream | null) => void> = [];
   private settings: ScreenShareSettings = DEFAULT_SETTINGS;
   /** Server-enforced bitrate cap in bits per second (null = no cap). */
   private serverMaxBitrate: number | null = null;
@@ -61,6 +62,24 @@ export class ScreenShareManager {
 
   private emit(peers: ScreenSharePeer[]) {
     for (const cb of this.listeners) cb(peers);
+  }
+
+  /**
+   * Observe the local capture stream (null while not sharing). This is the
+   * only reliable signal that sharing ended, because the capture can also be
+   * stopped from the browser/OS "stop sharing" bar rather than through
+   * `stopSharing()`.
+   */
+  subscribeLocalStream(cb: (stream: MediaStream | null) => void) {
+    this.localStreamListeners.push(cb);
+    cb(this.localStream);
+    return () => {
+      this.localStreamListeners = this.localStreamListeners.filter((fn) => fn !== cb);
+    };
+  }
+
+  private emitLocalStream() {
+    for (const cb of this.localStreamListeners) cb(this.localStream);
   }
 
   private getPeersList(): ScreenSharePeer[] {
@@ -102,6 +121,7 @@ export class ScreenShareManager {
       });
 
       this.localStream = stream;
+      this.emitLocalStream();
 
       // 'detail' keeps text sharp for mostly-static content; at 60 fps the
       // intent is motion (gameplay), where dropping resolution beats
@@ -131,6 +151,7 @@ export class ScreenShareManager {
 
     this.localStream.getTracks().forEach((track) => track.stop());
     this.localStream = null;
+    this.emitLocalStream();
 
     chat.sendRaw({
       type: 'screenshare-stop',

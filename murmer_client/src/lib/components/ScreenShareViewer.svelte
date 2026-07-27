@@ -1,7 +1,8 @@
 <!--
   Screen Share Viewer Component
-  
-  Displays a remote user's screen share in a modal window with controls.
+
+  Displays a screen share in a modal window with controls — either a remote
+  user's stream or, with `isSelf`, the sharer's own capture as a preview.
 -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
@@ -11,9 +12,11 @@
   interface Props {
     peer: ScreenSharePeer;
     onClose: () => void;
+    /** Viewing our own capture: there is no peer connection to tear down. */
+    isSelf?: boolean;
   }
 
-  let { peer, onClose }: Props = $props();
+  let { peer, onClose, isSelf = false }: Props = $props();
 
   let videoElement: HTMLVideoElement | undefined = $state();
   let isFullscreen = $state(false);
@@ -21,18 +24,18 @@
   // container itself is capped at 95vh and clips overflow.
   let headerHeight = $state(0);
 
-  onMount(() => {
+  $effect(() => {
     if (videoElement && peer.stream) {
       videoElement.srcObject = peer.stream;
     }
   });
 
   onDestroy(() => {
-    stopViewingScreenShare(peer.userId);
+    if (!isSelf) stopViewingScreenShare(peer.userId);
   });
 
   function close() {
-    stopViewingScreenShare(peer.userId);
+    if (!isSelf) stopViewingScreenShare(peer.userId);
     onClose();
   }
 
@@ -84,7 +87,7 @@
     tabindex="-1"
   >
     <div class="screenshare-header" bind:clientHeight={headerHeight}>
-      <h3>{peer.userId}'s Screen</h3>
+      <h3>{isSelf ? 'Your screen (preview)' : `${peer.userId}'s Screen`}</h3>
       <div class="screenshare-controls">
         <button onclick={toggleFullscreen} title="Toggle fullscreen (F)" aria-label="Toggle fullscreen">
           {#if isFullscreen}
@@ -110,6 +113,7 @@
         bind:this={videoElement}
         autoplay
         playsinline
+        muted={isSelf}
         class="screenshare-video"
       ></video>
     </div>
