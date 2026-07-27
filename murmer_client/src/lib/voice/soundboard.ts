@@ -14,6 +14,7 @@
 import { get } from 'svelte/store';
 import { chat } from '../stores/chat';
 import { selectedServer } from '../stores/servers';
+import { outputMuted } from '../stores/settings';
 import { effectiveGain } from '../stores/soundboardSettings';
 import { httpBaseFromWs } from '../server-url';
 import { getAudioContext, resumeAudioContext } from './audioContext';
@@ -112,6 +113,9 @@ export class SoundboardPlayer {
     if (typeof channelId !== 'number' || channelId !== this.channelId) return;
     if (typeof user !== 'string' || typeof name !== 'string') return;
     if (typeof url !== 'string' || !url.startsWith('/files/')) return;
+
+    // Deafening means hearing nothing from the channel — clips included.
+    if (get(outputMuted)) return;
 
     const gain = effectiveGain(soundId, user);
     if (gain === null) return;
