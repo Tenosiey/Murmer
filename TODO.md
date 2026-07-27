@@ -60,8 +60,6 @@ surfacing two things the server already stores.
 - [ ] Screen-share annotations
 - [ ] Separate volume for the app sounds (join, leave, mute) independent of the
       voice volume slider, which currently drives both
-- [ ] Share system audio with a screen share — `screenshare/manager.ts`
-      hardcodes `audio: false` in its `getDisplayMedia` call
 - [ ] Temporary voice channels
 - [ ] VAD hold / release-delay slider — the detector already holds the gate
       open after speech stops, but the timings are the fixed `HOLD_TIME_MS` and

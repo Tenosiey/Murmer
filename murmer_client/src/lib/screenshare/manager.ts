@@ -29,6 +29,8 @@ export type QualityPreset = keyof typeof QUALITY_PRESETS;
 
 export class ScreenShareManager {
   private peers: Record<string, RTCPeerConnection> = {};
+  /** Incoming stream per sharer, reused across renegotiations (see below). */
+  private remoteStreams: Record<string, MediaStream> = {};
   private localStream: MediaStream | null = null;
   private userName: string | null = null;
   private channelId: number | null = null;
@@ -85,14 +87,34 @@ export class ScreenShareManager {
   private getPeersList(): ScreenSharePeer[] {
     const peers: ScreenSharePeer[] = [];
     for (const [userId, pc] of Object.entries(this.peers)) {
-      const receivers = pc.getReceivers();
-      for (const receiver of receivers) {
-        if (receiver.track && receiver.track.kind === 'video') {
-          const stream = new MediaStream([receiver.track]);
-          peers.push({ userId, stream });
-          break;
-        }
+      // Only transceivers that actually receive. Every transceiver owns a
+      // receiver with a track, including the send-only ones on the sharer's
+      // side and the audio one of a share that turned out to be silent —
+      // going by `getReceivers()` would list all of those as incoming media.
+      const tracks: MediaStreamTrack[] = [];
+      for (const transceiver of pc.getTransceivers()) {
+        const direction = transceiver.currentDirection;
+        if (direction !== 'recvonly' && direction !== 'sendrecv') continue;
+        if (transceiver.receiver.track) tracks.push(transceiver.receiver.track);
       }
+      if (!tracks.some((track) => track.kind === 'video')) continue;
+
+      // The stream object is kept and updated in place rather than rebuilt:
+      // handing the viewer a new `MediaStream` re-attaches the video
+      // element's source, which restarts playback from black.
+      let stream = this.remoteStreams[userId];
+      if (!stream) {
+        stream = new MediaStream();
+        this.remoteStreams[userId] = stream;
+      }
+      for (const track of tracks) {
+        if (!stream.getTrackById(track.id)) stream.addTrack(track);
+      }
+      for (const track of stream.getTracks()) {
+        if (!tracks.includes(track)) stream.removeTrack(track);
+      }
+
+      peers.push({ userId, stream, hasAudio: stream.getAudioTracks().length > 0 });
     }
     return peers;
   }
@@ -117,7 +139,17 @@ export class ScreenShareManager {
           height: { ideal: this.settings.height },
           frameRate: { ideal: this.settings.frameRate }
         },
-        audio: false
+        // Asking for audio only puts the "share audio" checkbox in the OS
+        // picker — the user decides, and a declined one simply yields a stream
+        // without an audio track. The voice-chat processing is switched off
+        // explicitly: this is game or video audio, and running it through
+        // noise suppression or automatic gain control (all tuned for speech)
+        // would mangle it.
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        }
       });
 
       this.localStream = stream;
@@ -128,6 +160,13 @@ export class ScreenShareManager {
       // dropping frames.
       const track = stream.getVideoTracks()[0];
       track.contentHint = this.settings.frameRate >= 60 ? 'motion' : 'detail';
+
+      // Shared audio is music/effects, not a voice: the hint keeps the
+      // encoder from applying the speech optimisations it would otherwise
+      // default to on an audio track.
+      for (const audioTrack of stream.getAudioTracks()) {
+        audioTrack.contentHint = 'music';
+      }
 
       chat.sendRaw({
         type: 'screenshare-start',
@@ -218,6 +257,11 @@ export class ScreenShareManager {
       this.applyBitrateLimit();
     } else if (initiator) {
       pc.addTransceiver('video', { direction: 'recvonly' });
+      // An answer can only fill m-lines the offer already contains, so
+      // without asking for audio up front the sharer would have nowhere to
+      // put its audio track and the shared sound would never leave the
+      // machine. Shares without audio simply answer this one inactive.
+      pc.addTransceiver('audio', { direction: 'recvonly' });
     }
 
     pc.ontrack = () => {
@@ -325,6 +369,7 @@ export class ScreenShareManager {
     if (pc) {
       pc.close();
       delete this.peers[userId];
+      delete this.remoteStreams[userId];
       this.emit(this.getPeersList());
     }
   }
