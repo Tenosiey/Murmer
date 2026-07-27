@@ -48,7 +48,8 @@ small team can deploy a private chat space quickly.
   `/ephemeral`, `/search`)
 - Link previews with server-side OpenGraph fetching (client IPs stay hidden from linked sites)
 - Configurable input volume, noise suppression, echo cancellation and automatic
-  gain control, with a live input level meter
+  gain control, with a live input level meter and a record-and-play-back
+  microphone test
 - Customizable hotkeys (mute, deafen, join/leave voice, search, settings, help)
   under Settings → Hotkeys; the voice hotkeys also work system-wide while the
   app is in the background (can be disabled)

@@ -22,7 +22,8 @@ pinned to major 6.
 - `src/lib/components/chat/` – sections of the chat page (sidebar, header, …)
 - `src/lib/stores/` – Svelte stores holding client state
 - `src/lib/chat/` – constants and helper functions for the chat page
-- `src/lib/voice/` – WebRTC helpers and push-to-talk tooling
+- `src/lib/voice/` – WebRTC helpers, push-to-talk tooling and the settings-UI
+  microphone tools (level meter, record-and-play-back test)
 - `src/lib/screenshare/` – WebRTC screen sharing manager
 - `src-tauri/` – Rust-side glue for native integrations
 

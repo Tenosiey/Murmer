@@ -31,6 +31,7 @@ import { VoiceActivityDetector } from './vad';
 import { PushToTalkManager } from './ptt';
 import { getAudioContext, resumeAudioContext } from './audioContext';
 import { subscribeTick } from './ticker';
+import { micProcessingConstraints, openMicrophone } from './capture';
 
 const DEFAULT_AUDIO_BITRATE = 64_000;
 
@@ -48,16 +49,6 @@ const GATE_RAMP_SECONDS = 0.015;
  * every change is ramped over a few dozen milliseconds instead.
  */
 const INPUT_GAIN_RAMP_SECONDS = 0.05;
-
-/**
- * Whether a `getUserMedia` rejection means "that device is gone" rather than
- * "you may not record". Only the former is worth retrying on the default
- * device — retrying a denied permission would just prompt again.
- */
-function isDeviceUnavailable(error: unknown): boolean {
-  const name = (error as { name?: string } | null)?.name;
-  return name === 'OverconstrainedError' || name === 'NotFoundError' || name === 'NotReadableError';
-}
 
 export class VoiceManager {
   private peers: Record<string, RTCPeerConnection> = {};
@@ -237,37 +228,6 @@ export class VoiceManager {
     }
   }
 
-  private micProcessingConstraints(): MediaTrackConstraints {
-    return {
-      echoCancellation: get(echoCancellation),
-      noiseSuppression: get(noiseSuppression),
-      autoGainControl: get(autoGainControl)
-    };
-  }
-
-  /**
-   * Open the microphone with the current device and processing settings.
-   *
-   * A device that has since been unplugged rejects with `exact`, which used
-   * to fail the whole join; fall back to the default device rather than
-   * leaving the user unable to talk because of a stale setting.
-   */
-  private async openCapture(): Promise<MediaStream> {
-    const audio = this.micProcessingConstraints();
-    const device = get(inputDeviceId);
-    if (device) {
-      try {
-        return await navigator.mediaDevices.getUserMedia({
-          audio: { ...audio, deviceId: { exact: device } }
-        });
-      } catch (error) {
-        if (!isDeviceUnavailable(error)) throw error;
-        console.warn('Configured microphone unavailable, using the default device:', error);
-      }
-    }
-    return navigator.mediaDevices.getUserMedia({ audio });
-  }
-
   /**
    * Recover from the microphone being unplugged mid-call: the track ends and
    * the capture goes permanently silent, which used to leave the user
@@ -295,7 +255,7 @@ export class VoiceManager {
   private applyMicProcessing() {
     const track = this.rawStream?.getAudioTracks()[0];
     if (!track) return;
-    track.applyConstraints(this.micProcessingConstraints()).catch(() => {
+    track.applyConstraints(micProcessingConstraints()).catch(() => {
       this.swapCapture();
     });
   }
@@ -314,7 +274,7 @@ export class VoiceManager {
         const context = getAudioContext();
         if (!context) return;
 
-        const stream = await this.openCapture();
+        const stream = await openMicrophone();
         // The session may have ended while the device was opening.
         if (!this.userName || !this.inputGainNode) {
           for (const track of stream.getTracks()) track.stop();
@@ -748,7 +708,7 @@ export class VoiceManager {
 
     // Acquire the microphone and build the graph before touching any state:
     // these are the only steps that can fail.
-    const rawStream = await this.openCapture();
+    const rawStream = await openMicrophone();
     try {
       this.localStream = this.setupAudioProcessing(rawStream);
     } catch (error) {

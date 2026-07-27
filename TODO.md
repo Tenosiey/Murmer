@@ -46,9 +46,6 @@ surfacing two things the server already stores.
 - [ ] Gesture recognition through webcam
 - [ ] Live polling during meetings
 - [ ] Meeting notes that auto-generate from voice
-- [ ] Mic test / loopback — record a few seconds and play it back so users can
-      hear what echo cancellation, noise suppression and AGC actually do to
-      their voice, rather than guessing from a level bar
 - [ ] Optional spatial/3D audio
 - [ ] Opus DTX and inband FEC via SDP munging — DTX stops spending bandwidth on
       silence, FEC noticeably improves a lossy link. Small diff, real gain

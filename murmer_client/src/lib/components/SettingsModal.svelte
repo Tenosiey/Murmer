@@ -50,6 +50,7 @@
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import UserStatsPanel from '$lib/components/UserStatsPanel.svelte';
   import MicLevelMeter from '$lib/components/MicLevelMeter.svelte';
+  import MicTestPanel from '$lib/components/MicTestPanel.svelte';
   interface Props {
     open: boolean;
     close: () => void;
@@ -641,6 +642,11 @@
             <div class="setting-description">
               Changes apply immediately, including while you are in a voice channel.
             </div>
+          </div>
+
+          <div class="setting-group">
+            <span class="setting-label">Microphone test</span>
+            <MicTestPanel />
           </div>
         </div>
 
