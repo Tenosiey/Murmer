@@ -34,7 +34,19 @@ function comboToAccelerator(combo: string): string {
 
 type ActionCallbacks = Partial<Record<HotkeyActionId, () => void>>;
 
+/**
+ * Push-to-talk is registered here rather than from the voice code because
+ * every resync calls `unregisterAll()` — a shortcut registered anywhere else
+ * would be dropped the next time a binding changed.
+ */
+export interface GlobalPushToTalk {
+  combo: string;
+  press: () => void;
+  release: () => void;
+}
+
 let callbacks: ActionCallbacks = {};
+let pushToTalk: GlobalPushToTalk | null = null;
 let suspended = false;
 
 // register/unregister are async; funnel every resync through one promise
@@ -70,6 +82,20 @@ async function applyBindings() {
       console.warn(`Could not register global hotkey "${combo}":`, e);
     }
   }
+
+  // Push-to-talk is the one binding that needs both edges: the key going down
+  // opens the microphone and the key coming up closes it again.
+  const ptt = pushToTalk;
+  if (!ptt) return;
+  try {
+    await register(comboToAccelerator(ptt.combo), (event) => {
+      if (event.state === 'Pressed') ptt.press();
+      else ptt.release();
+    });
+  } catch (e) {
+    // Most likely the combo is already bound to one of the actions above.
+    console.warn(`Could not register global push-to-talk "${ptt.combo}":`, e);
+  }
 }
 
 /**
@@ -85,6 +111,19 @@ export function setGlobalHotkeyActions(map: ActionCallbacks) {
 export function clearGlobalHotkeyActions() {
   callbacks = {};
   resync();
+}
+
+/**
+ * Arm or disarm the system-wide push-to-talk key. Passing null releases the
+ * grab, which the voice manager does on leaving a channel — holding a
+ * system-wide key while not in a call would take it away from other
+ * applications for nothing.
+ */
+export function setGlobalPushToTalk(handlers: GlobalPushToTalk | null) {
+  const changed =
+    handlers?.combo !== pushToTalk?.combo || (handlers === null) !== (pushToTalk === null);
+  pushToTalk = handlers;
+  if (changed) resync();
 }
 
 /**

@@ -277,15 +277,16 @@
 
   async function capturePttKey() {
     capturingPttKey = true;
+    // The current binding may itself be a registered global shortcut, which
+    // the OS would consume before the capture handler ever saw it.
+    suspendGlobalHotkeys();
     try {
-      const pttManager = new PushToTalkManager();
-      const newKey = await pttManager.captureKey();
-      pttKey.set(newKey);
-      pttManager.destroy();
+      pttKey.set(await PushToTalkManager.captureKey());
     } catch (error) {
       console.error('Failed to capture PTT key:', error);
     } finally {
       capturingPttKey = false;
+      resumeGlobalHotkeys();
     }
   }
 
@@ -648,6 +649,13 @@
               </button>
               <div class="setting-description">
                 Click the button above and press the key you want to use for push-to-talk.
+                {#if PushToTalkManager.isGlobalCapable($pttKey)}
+                  This combination also works while another application is focused.
+                {:else}
+                  A plain key only works while Murmer is focused — it cannot be reserved
+                  system-wide without swallowing it in every other program. Add Ctrl or Alt,
+                  or pick a function key, to talk while gaming.
+                {/if}
               </div>
             </div>
           {/if}
