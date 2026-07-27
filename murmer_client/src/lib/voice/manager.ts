@@ -21,12 +21,33 @@ import {
   autoGainControl
 } from '../stores/settings';
 import { resetSpeaking, setSpeaking, SPEAKING_RMS_THRESHOLD } from '../stores/voiceSpeaking';
+import { captureStream } from '../stores/voiceCapture';
 import { get } from 'svelte/store';
 import type { Message, RemotePeer, ConnectionStats, VoiceChannelInfo } from '../types';
 import { VoiceActivityDetector } from './vad';
 import { PushToTalkManager } from './ptt';
+import { getAudioContext, resumeAudioContext } from './audioContext';
+import { subscribeTick } from './ticker';
 
 const DEFAULT_AUDIO_BITRATE = 64_000;
+
+/**
+ * Time constant for opening and closing the transmission gate. Switching the
+ * gain between 0 and 1 in a single sample produces an audible click at the
+ * start and end of every voice-activated or push-to-talk burst; ramping over
+ * a few milliseconds is inaudible and removes it.
+ */
+const GATE_RAMP_SECONDS = 0.015;
+
+/**
+ * Whether a `getUserMedia` rejection means "that device is gone" rather than
+ * "you may not record". Only the former is worth retrying on the default
+ * device — retrying a denied permission would just prompt again.
+ */
+function isDeviceUnavailable(error: unknown): boolean {
+  const name = (error as { name?: string } | null)?.name;
+  return name === 'OverconstrainedError' || name === 'NotFoundError' || name === 'NotReadableError';
+}
 
 export class VoiceManager {
   private peers: Record<string, RTCPeerConnection> = {};
@@ -54,7 +75,14 @@ export class VoiceManager {
   /** Level meter on the outgoing audio, driving our own talking indicator. */
   private levelAnalyser: AnalyserNode | null = null;
   private levelBuffer: Uint8Array<ArrayBuffer> | null = null;
-  private levelFrame: number | null = null;
+  private stopLevelTicks: (() => void) | null = null;
+
+  /**
+   * Serialises microphone re-acquisitions. Toggling several processing
+   * settings in a row (or switching device mid-swap) would otherwise leave
+   * two captures racing to own `rawStream`, and the loser's device stays open.
+   */
+  private captureSwap: Promise<void> = Promise.resolve();
 
   private joinSound = new Audio('/sounds/user_join_voice_sound.mp3');
   private leaveSound = new Audio('/sounds/user_leave_voice_sound.mp3');
@@ -106,6 +134,9 @@ export class VoiceManager {
     echoCancellation.subscribe(() => this.applyMicProcessing());
     noiseSuppression.subscribe(() => this.applyMicProcessing());
     autoGainControl.subscribe(() => this.applyMicProcessing());
+    // The device used to be read once at join time, so picking a different
+    // microphone mid-call did nothing until you left and rejoined.
+    inputDeviceId.subscribe(() => this.swapCapture());
     pttKey.subscribe((key) => {
       if (this.ptt) {
         this.ptt.setKey(key);
@@ -166,15 +197,6 @@ export class VoiceManager {
     return this.rawStream;
   }
 
-  /**
-   * The unprocessed microphone capture of the current voice session, or null
-   * when not in a channel. Exposed so the settings level meter can measure the
-   * same signal the VAD sees instead of opening a second capture of the device.
-   */
-  getCaptureStream(): MediaStream | null {
-    return this.rawStream;
-  }
-
   private updateVadSensitivity() {
     if (get(voiceMode) === 'vad' && this.vad) {
       this.vad.updateSensitivity(get(vadSensitivity));
@@ -189,13 +211,98 @@ export class VoiceManager {
     };
   }
 
-  /** Re-apply the mic processing settings to the live capture track. */
+  /**
+   * Open the microphone with the current device and processing settings.
+   *
+   * A device that has since been unplugged rejects with `exact`, which used
+   * to fail the whole join; fall back to the default device rather than
+   * leaving the user unable to talk because of a stale setting.
+   */
+  private async openCapture(): Promise<MediaStream> {
+    const audio = this.micProcessingConstraints();
+    const device = get(inputDeviceId);
+    if (device) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          audio: { ...audio, deviceId: { exact: device } }
+        });
+      } catch (error) {
+        if (!isDeviceUnavailable(error)) throw error;
+        console.warn('Configured microphone unavailable, using the default device:', error);
+      }
+    }
+    return navigator.mediaDevices.getUserMedia({ audio });
+  }
+
+  /**
+   * Recover from the microphone being unplugged mid-call: the track ends and
+   * the capture goes permanently silent, which used to leave the user
+   * apparently connected but inaudible until they rejoined.
+   */
+  private watchCaptureTrack(stream: MediaStream) {
+    const track = stream.getAudioTracks()[0];
+    if (!track) return;
+    track.addEventListener('ended', () => {
+      // Only react while this is still the live capture.
+      if (this.rawStream !== stream || !this.userName) return;
+      console.warn('Microphone capture ended, reopening');
+      this.swapCapture();
+    });
+  }
+
+  /**
+   * Re-apply the mic processing settings to the live capture track.
+   *
+   * `applyConstraints` is the cheap path, but not every platform can
+   * reconfigure audio processing on a running track (WebKit rejects), and a
+   * rejection there left the settings silently doing nothing despite the UI
+   * promising they apply immediately. Re-opening the microphone always works.
+   */
   private applyMicProcessing() {
     const track = this.rawStream?.getAudioTracks()[0];
     if (!track) return;
-    track.applyConstraints(this.micProcessingConstraints()).catch((error) => {
-      console.warn('Failed to apply microphone processing constraints:', error);
+    track.applyConstraints(this.micProcessingConstraints()).catch(() => {
+      this.swapCapture();
     });
+  }
+
+  /**
+   * Replace the live capture with a freshly opened one. The outgoing track
+   * belongs to the gain node's destination, not to the microphone, so the
+   * peer connections are untouched — nobody hears a gap and no renegotiation
+   * is needed.
+   */
+  private swapCapture() {
+    if (!this.userName) return; // Settings apply at the next join.
+    this.captureSwap = this.captureSwap
+      .then(async () => {
+        if (!this.userName || !this.gainNode) return;
+        const context = getAudioContext();
+        if (!context) return;
+
+        const stream = await this.openCapture();
+        // The session may have ended while the device was opening.
+        if (!this.userName || !this.gainNode) {
+          for (const track of stream.getTracks()) track.stop();
+          return;
+        }
+
+        if (this.sourceNode) this.sourceNode.disconnect();
+        if (this.rawStream) {
+          for (const track of this.rawStream.getTracks()) track.stop();
+        }
+
+        this.rawStream = stream;
+        this.sourceNode = context.createMediaStreamSource(stream);
+        this.sourceNode.connect(this.gainNode);
+        this.watchCaptureTrack(stream);
+        captureStream.set(stream);
+        // The detector holds a source node on the old stream.
+        this.updateTransmissionMode(stream);
+      })
+      .catch((error) => {
+        console.error('Failed to switch the microphone:', error);
+      });
   }
 
   /**
@@ -251,7 +358,20 @@ export class VoiceManager {
   private applyTransmissionState() {
     if (!this.gainNode) return;
     const shouldTransmitAudio = this.shouldTransmit && !get(microphoneMuted);
-    this.gainNode.gain.value = shouldTransmitAudio ? 1.0 : 0.0;
+    const target = shouldTransmitAudio ? 1.0 : 0.0;
+    const gain = this.gainNode.gain;
+    const now = this.gainNode.context.currentTime;
+    // Ramp instead of stepping: an instant gain change clicks on every open
+    // and close of the gate. The ramp is linear rather than exponential
+    // because closing the gate has to reach exactly zero — an exponential
+    // approach would leave the microphone very quietly open forever.
+    try {
+      gain.cancelScheduledValues(now);
+      gain.setValueAtTime(gain.value, now);
+      gain.linearRampToValueAtTime(target, now + GATE_RAMP_SECONDS);
+    } catch {
+      gain.value = target;
+    }
   }
 
   private configureSender(sender: RTCRtpSender) {
@@ -286,13 +406,28 @@ export class VoiceManager {
     }
   }
 
-  private async setupAudioProcessing(inputStream: MediaStream): Promise<MediaStream> {
+  /**
+   * Build microphone -> gate -> outgoing-track graph.
+   *
+   * Throws when the graph cannot be built. The caller aborts the join in that
+   * case rather than falling back to sending the raw capture: without the
+   * gain node there is no gate, and push-to-talk or voice-activity mode would
+   * quietly become an always-open microphone.
+   */
+  private setupAudioProcessing(inputStream: MediaStream): MediaStream {
+    this.rawStream = inputStream;
+    this.audioContext = getAudioContext();
+    if (!this.audioContext) {
+      throw new Error('Audio processing is unavailable on this system');
+    }
+    resumeAudioContext();
     try {
-      this.rawStream = inputStream;
-      this.audioContext = new AudioContext();
       this.sourceNode = this.audioContext.createMediaStreamSource(inputStream);
       this.gainNode = this.audioContext.createGain();
-      this.gainNode.gain.value = 1.0;
+      // Start closed and let `updateTransmissionState` open it: joining in
+      // push-to-talk or voice-activity mode must not leak the first instants
+      // of audio before the first gate evaluation.
+      this.gainNode.gain.value = 0;
       const destination = this.audioContext.createMediaStreamDestination();
       this.sourceNode.connect(this.gainNode);
       this.gainNode.connect(destination);
@@ -300,8 +435,9 @@ export class VoiceManager {
       this.startLocalLevelMeter();
       return this.destinationStream;
     } catch (error) {
-      console.error('Failed to setup audio processing:', error);
-      return inputStream;
+      console.error('Failed to set up audio processing:', error);
+      this.cleanupAudioProcessing();
+      throw error;
     }
   }
 
@@ -321,7 +457,7 @@ export class VoiceManager {
     this.levelAnalyser = analyser;
     this.levelBuffer = new Uint8Array(new ArrayBuffer(analyser.fftSize)) as Uint8Array<ArrayBuffer>;
 
-    const update = () => {
+    this.stopLevelTicks = subscribeTick(() => {
       if (!this.levelAnalyser || !this.levelBuffer || !this.userName) return;
       this.levelAnalyser.getByteTimeDomainData(this.levelBuffer);
       let sum = 0;
@@ -331,15 +467,13 @@ export class VoiceManager {
       }
       const rms = Math.sqrt(sum / this.levelBuffer.length);
       setSpeaking(this.userName, rms > SPEAKING_RMS_THRESHOLD);
-      this.levelFrame = requestAnimationFrame(update);
-    };
-    update();
+    });
   }
 
   private stopLocalLevelMeter() {
-    if (this.levelFrame !== null) {
-      cancelAnimationFrame(this.levelFrame);
-      this.levelFrame = null;
+    if (this.stopLevelTicks) {
+      this.stopLevelTicks();
+      this.stopLevelTicks = null;
     }
     if (this.levelAnalyser) {
       this.levelAnalyser.disconnect();
@@ -358,16 +492,16 @@ export class VoiceManager {
       this.gainNode.disconnect();
       this.gainNode = null;
     }
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      this.audioContext.close();
-      this.audioContext = null;
-    }
+    // The context is shared app-wide and outlives the session — only our own
+    // nodes are torn down.
+    this.audioContext = null;
     if (this.rawStream) {
       for (const track of this.rawStream.getTracks()) {
         track.stop();
       }
       this.rawStream = null;
     }
+    captureStream.set(null);
     this.destinationStream = null;
   }
 
@@ -523,19 +657,24 @@ export class VoiceManager {
   /**
    * Join a voice channel and start streaming the local microphone.
    *
-   * Rejects (without changing any state) when microphone access fails, so a
-   * denied permission prompt doesn't leave the manager stuck in a half-joined
-   * state that blocks all future joins.
+   * Rejects (without changing any state) when microphone access or the audio
+   * graph fails, so a denied permission prompt doesn't leave the manager
+   * stuck in a half-joined state that blocks all future joins.
    */
   async join(user: string, channelId: number, peersList: RemotePeer[], info?: VoiceChannelInfo) {
     if (this.userName) return;
 
-    // Acquire the microphone before touching any state: this is the only
-    // step that can fail.
-    const device = get(inputDeviceId);
-    const audio: MediaTrackConstraints = this.micProcessingConstraints();
-    if (device) audio.deviceId = { exact: device };
-    const rawStream = await navigator.mediaDevices.getUserMedia({ audio });
+    // Acquire the microphone and build the graph before touching any state:
+    // these are the only steps that can fail.
+    const rawStream = await this.openCapture();
+    try {
+      this.localStream = this.setupAudioProcessing(rawStream);
+    } catch (error) {
+      for (const track of rawStream.getTracks()) track.stop();
+      throw error;
+    }
+    this.watchCaptureTrack(rawStream);
+    captureStream.set(rawStream);
 
     this.userName = user;
     this.channelId = channelId;
@@ -563,7 +702,6 @@ export class VoiceManager {
     chat.on('voice-candidate', (m) => this.handleCandidate(m));
     chat.on('voice-leave', (m) => this.handleLeave(m, peersList));
 
-    this.localStream = await this.setupAudioProcessing(rawStream);
     this.updateTransmissionMode(rawStream);
 
     chat.sendRaw({ type: 'voice-join', user, channelId });

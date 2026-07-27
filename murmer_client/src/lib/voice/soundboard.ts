@@ -6,16 +6,17 @@
  * plays the file itself. That is what makes per-listener volume and per-sound
  * mute possible, and it keeps the clip out of the 64 kbit mono voice codec.
  *
- * Playback runs in its own `AudioContext`, deliberately separate from the
- * `VoiceManager` graph — a sound must never leak into the outgoing track.
- * Decoded buffers are cached so a repeated sound costs one gain node.
+ * Playback renders to the shared context's destination — never into the
+ * microphone chain, which ends at its own `MediaStreamAudioDestinationNode`,
+ * so a sound cannot leak into the outgoing track. Decoded buffers are cached
+ * so a repeated sound costs one gain node.
  */
 import { get } from 'svelte/store';
 import { chat } from '../stores/chat';
 import { selectedServer } from '../stores/servers';
-import { outputDeviceId } from '../stores/settings';
 import { effectiveGain } from '../stores/soundboardSettings';
 import { httpBaseFromWs } from '../server-url';
+import { getAudioContext, resumeAudioContext } from './audioContext';
 import type { Message } from '../types';
 
 /** A playback that reached the speakers, for the transient "played X" hint. */
@@ -27,13 +28,11 @@ export interface SoundPlayEvent {
 }
 
 export class SoundboardPlayer {
-  private context: AudioContext | null = null;
   private buffers = new Map<number, AudioBuffer>();
   /** In-flight decodes, so a burst of the same sound fetches it once. */
   private pending = new Map<number, Promise<AudioBuffer | null>>();
   private channelId: number | null = null;
   private listeners: Array<(event: SoundPlayEvent) => void> = [];
-  private unsubscribeOutput: (() => void) | null = null;
 
   // Kept so `destroy` can unregister exactly these handlers: `chat.off(type)`
   // without a callback drops every handler for the type, which would take the
@@ -70,28 +69,6 @@ export class SoundboardPlayer {
     }
   }
 
-  private ensureContext(): AudioContext | null {
-    if (this.context) return this.context;
-    try {
-      this.context = new AudioContext();
-    } catch (error) {
-      console.error('Failed to create the soundboard audio context:', error);
-      return null;
-    }
-    // Follow the output device the user picked in Settings, the same way the
-    // voice elements do.
-    this.applySink(get(outputDeviceId));
-    this.unsubscribeOutput = outputDeviceId.subscribe((id) => this.applySink(id));
-    return this.context;
-  }
-
-  private applySink(deviceId: string | null) {
-    const context = this.context as (AudioContext & { setSinkId?: (id: string) => Promise<void> }) | null;
-    if (!context?.setSinkId) return;
-    context.setSinkId(deviceId || '').catch((error: unknown) => {
-      console.warn('Failed to route soundboard audio to the selected output:', error);
-    });
-  }
 
   /** Fetch and decode a sound, caching the result. */
   private async loadBuffer(context: AudioContext, id: number, url: string) {
@@ -139,13 +116,11 @@ export class SoundboardPlayer {
     const gain = effectiveGain(soundId, user);
     if (gain === null) return;
 
-    const context = this.ensureContext();
+    const context = getAudioContext();
     if (!context) return;
     // Browsers start the context suspended until a user gesture; by the time a
     // sound arrives the user has clicked their way into a voice channel.
-    if (context.state === 'suspended') {
-      await context.resume().catch(() => {});
-    }
+    resumeAudioContext();
 
     const buffer = await this.loadBuffer(context, soundId, url);
     if (!buffer) return;
@@ -170,13 +145,7 @@ export class SoundboardPlayer {
   destroy() {
     chat.off('soundboard-play', this.onPlay);
     chat.off('sound-list', this.onSoundList);
-    this.unsubscribeOutput?.();
-    this.unsubscribeOutput = null;
     this.buffers.clear();
     this.pending.clear();
-    if (this.context && this.context.state !== 'closed') {
-      void this.context.close();
-    }
-    this.context = null;
   }
 }
