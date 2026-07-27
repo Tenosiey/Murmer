@@ -3,17 +3,20 @@
  *
  * Measures the input exactly like the VAD does (`configureVadAnalyser` /
  * `readVadLevel`) so the reported level can be compared against the sensitivity
- * threshold directly. While a voice session is running it borrows that
- * session's capture stream instead of opening a second capture of the same
- * device; otherwise it opens — and owns — its own stream using the configured
- * input device and microphone processing settings.
+ * threshold directly — which includes applying the same input gain the voice
+ * manager puts ahead of its detector. While a voice session is running it
+ * borrows that session's capture stream instead of opening a second capture of
+ * the same device; otherwise it opens — and owns — its own stream using the
+ * configured input device and microphone processing settings.
  */
 import { get } from 'svelte/store';
 import {
   inputDeviceId,
   echoCancellation,
   noiseSuppression,
-  autoGainControl
+  autoGainControl,
+  micGain,
+  clampMicGain
 } from '../stores/settings';
 import { captureStream } from '../stores/voiceCapture';
 import { refreshAudioDevices } from '../stores/audioDevices';
@@ -24,6 +27,8 @@ import { configureVadAnalyser, readVadLevel } from './vad';
 export class MicLevelMonitor {
   private analyser: AnalyserNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
+  private gain: GainNode | null = null;
+  private stopGainSubscription: (() => void) | null = null;
   private dataArray: Uint8Array<ArrayBuffer> | null = null;
   private stopTicks: (() => void) | null = null;
   /** Only set when we opened the stream ourselves and must close it again. */
@@ -70,7 +75,14 @@ export class MicLevelMonitor {
     this.analyser = context.createAnalyser();
     this.dataArray = configureVadAnalyser(this.analyser);
     this.source = context.createMediaStreamSource(stream);
-    this.source.connect(this.analyser);
+    // The borrowed capture stream is the *raw* microphone, so the gain has to
+    // be re-applied here; dragging the slider updates it without a restart.
+    this.gain = context.createGain();
+    this.stopGainSubscription = micGain.subscribe((value) => {
+      if (this.gain) this.gain.gain.value = clampMicGain(value);
+    });
+    this.source.connect(this.gain);
+    this.gain.connect(this.analyser);
 
     this.stopTicks = subscribeTick(() => {
       if (!this.analyser || !this.dataArray) return;
@@ -86,9 +98,17 @@ export class MicLevelMonitor {
       this.stopTicks();
       this.stopTicks = null;
     }
+    if (this.stopGainSubscription) {
+      this.stopGainSubscription();
+      this.stopGainSubscription = null;
+    }
     if (this.source) {
       this.source.disconnect();
       this.source = null;
+    }
+    if (this.gain) {
+      this.gain.disconnect();
+      this.gain = null;
     }
     if (this.analyser) {
       this.analyser.disconnect();

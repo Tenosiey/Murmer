@@ -14,7 +14,9 @@
     pttKey,
     echoCancellation,
     noiseSuppression,
-    autoGainControl
+    autoGainControl,
+    micGain,
+    MAX_MIC_GAIN
   } from '$lib/stores/settings';
   import { soundboardEnabled, soundboardVolume } from '$lib/stores/soundboardSettings';
   import { audioInputs, audioOutputs, refreshAudioDevices } from '$lib/stores/audioDevices';
@@ -581,6 +583,36 @@
                   <polyline points="6,9 12,15 18,9"></polyline>
                 </svg>
               </div>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label for="mic-gain-slider" class="setting-label">
+              Input volume
+              <span class="setting-value">{Math.round($micGain * 100)}%</span>
+            </label>
+            <div class="slider-container">
+              <input
+                id="mic-gain-slider"
+                class="volume-slider"
+                type="range"
+                min="0"
+                max={MAX_MIC_GAIN}
+                step="0.05"
+                bind:value={$micGain}
+              />
+              <div class="slider-track-fill" style="width: {($micGain / MAX_MIC_GAIN) * 100}%"></div>
+            </div>
+            <button
+              class="btn reset-gain"
+              onclick={() => micGain.set(1)}
+              disabled={$micGain === 1}
+            >Reset to 100%</button>
+            <div class="setting-description">
+              Amplifies your microphone before it is sent. Turn it up for a quiet headset —
+              unlike automatic gain control this is a fixed factor, so it does not chase your
+              voice, but above 100% it lifts background noise just as much and loud peaks may
+              distort. The level meter further down shows the result.
             </div>
           </div>
 
@@ -1308,6 +1340,10 @@
     pointer-events: none;
     color: var(--color-muted);
     display: inline-flex;
+  }
+
+  .reset-gain {
+    justify-self: start;
   }
 
   .ptt-key-button {

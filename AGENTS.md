@@ -53,7 +53,12 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   the context destination cannot leak into the outgoing track. Level meters
   are driven by an audio-worklet tick (`voice/ticker.ts`) rather than
   `requestAnimationFrame`, which stops while the window is minimised and used
-  to freeze voice-activity detection with the microphone stuck open.
+  to freeze voice-activity detection with the microphone stuck open. The
+  outgoing chain is `capture -> input gain -> transmission gate -> outgoing
+  track`: voice detection and the settings level meter tap *after* the input
+  gain (the "Input volume" slider), so the level compared against the VAD
+  threshold is the one the peers actually receive — turning a quiet microphone
+  up must not make voice detection harder to trigger.
 - `src/lib/screenshare/` – WebRTC screen sharing manager
 - `src-tauri/` – Rust-side glue for native integrations
 

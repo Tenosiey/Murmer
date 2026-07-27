@@ -19,7 +19,9 @@ import {
   voiceActivity,
   echoCancellation,
   noiseSuppression,
-  autoGainControl
+  autoGainControl,
+  micGain,
+  clampMicGain
 } from '../stores/settings';
 import { resetSpeaking, setSpeaking, SPEAKING_RMS_THRESHOLD } from '../stores/voiceSpeaking';
 import { captureStream } from '../stores/voiceCapture';
@@ -39,6 +41,13 @@ const DEFAULT_AUDIO_BITRATE = 64_000;
  * a few milliseconds is inaudible and removes it.
  */
 const GATE_RAMP_SECONDS = 0.015;
+
+/**
+ * Time constant for input gain changes. Dragging the slider steps the value
+ * many times a second; applying each step instantly produces zipper noise, so
+ * every change is ramped over a few dozen milliseconds instead.
+ */
+const INPUT_GAIN_RAMP_SECONDS = 0.05;
 
 /**
  * Whether a `getUserMedia` rejection means "that device is gone" rather than
@@ -69,6 +78,11 @@ export class VoiceManager {
 
   private audioContext: AudioContext | null = null;
   private gainNode: GainNode | null = null;
+  /**
+   * Input volume, applied ahead of the gate so voice detection and the level
+   * meters see the same signal the peers receive.
+   */
+  private inputGainNode: GainNode | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private destinationStream: MediaStream | null = null;
   private rawStream: MediaStream | null = null;
@@ -149,6 +163,7 @@ export class VoiceManager {
     echoCancellation.subscribe(() => this.applyMicProcessing());
     noiseSuppression.subscribe(() => this.applyMicProcessing());
     autoGainControl.subscribe(() => this.applyMicProcessing());
+    micGain.subscribe(() => this.applyInputGain());
     // The device used to be read once at join time, so picking a different
     // microphone mid-call did nothing until you left and rejoined.
     inputDeviceId.subscribe(() => this.swapCapture());
@@ -193,23 +208,19 @@ export class VoiceManager {
     });
   }
 
-  private updateTransmissionMode(rawStream?: MediaStream) {
-    const streamToUse = rawStream || this.getVadStream();
-    if (!streamToUse) return;
+  private updateTransmissionMode() {
+    const source = this.inputGainNode;
+    if (!source) return;
 
     const mode = get(voiceMode);
 
     if (mode === 'vad' && this.vad) {
-      this.vad.start(streamToUse, get(vadSensitivity));
+      this.vad.start(source, get(vadSensitivity));
     } else if (this.vad) {
       this.vad.stop();
     }
 
     this.updateTransmissionState();
-  }
-
-  private getVadStream(): MediaStream | null {
-    return this.rawStream;
   }
 
   /**
@@ -299,13 +310,13 @@ export class VoiceManager {
     if (!this.userName) return; // Settings apply at the next join.
     this.captureSwap = this.captureSwap
       .then(async () => {
-        if (!this.userName || !this.gainNode) return;
+        if (!this.userName || !this.inputGainNode) return;
         const context = getAudioContext();
         if (!context) return;
 
         const stream = await this.openCapture();
         // The session may have ended while the device was opening.
-        if (!this.userName || !this.gainNode) {
+        if (!this.userName || !this.inputGainNode) {
           for (const track of stream.getTracks()) track.stop();
           return;
         }
@@ -317,11 +328,11 @@ export class VoiceManager {
 
         this.rawStream = stream;
         this.sourceNode = context.createMediaStreamSource(stream);
-        this.sourceNode.connect(this.gainNode);
+        this.sourceNode.connect(this.inputGainNode);
         this.watchCaptureTrack(stream);
         captureStream.set(stream);
-        // The detector holds a source node on the old stream.
-        this.updateTransmissionMode(stream);
+        // The detector listens on the input gain node, which the swap leaves
+        // in place, so it keeps running across the device change untouched.
       })
       .catch((error) => {
         console.error('Failed to switch the microphone:', error);
@@ -399,6 +410,21 @@ export class VoiceManager {
     this.applyTransmissionState();
   }
 
+  /** Push the configured input volume onto the live graph. */
+  private applyInputGain() {
+    if (!this.inputGainNode) return;
+    const target = clampMicGain(get(micGain));
+    const gain = this.inputGainNode.gain;
+    const now = this.inputGainNode.context.currentTime;
+    try {
+      gain.cancelScheduledValues(now);
+      gain.setValueAtTime(gain.value, now);
+      gain.linearRampToValueAtTime(target, now + INPUT_GAIN_RAMP_SECONDS);
+    } catch {
+      gain.value = target;
+    }
+  }
+
   private applyTransmissionState() {
     if (!this.gainNode) return;
     const shouldTransmitAudio = this.shouldTransmit && !get(microphoneMuted);
@@ -451,7 +477,12 @@ export class VoiceManager {
   }
 
   /**
-   * Build microphone -> gate -> outgoing-track graph.
+   * Build microphone -> input volume -> gate -> outgoing-track graph.
+   *
+   * The two gain nodes are kept separate on purpose even though multiplying
+   * them would send identical audio: the detector and the level meters tap
+   * the input node, so they measure the amplified signal while the gate
+   * stays a plain open/closed switch.
    *
    * Throws when the graph cannot be built. The caller aborts the join in that
    * case rather than falling back to sending the raw capture: without the
@@ -467,13 +498,16 @@ export class VoiceManager {
     resumeAudioContext();
     try {
       this.sourceNode = this.audioContext.createMediaStreamSource(inputStream);
+      this.inputGainNode = this.audioContext.createGain();
+      this.inputGainNode.gain.value = clampMicGain(get(micGain));
       this.gainNode = this.audioContext.createGain();
       // Start closed and let `updateTransmissionState` open it: joining in
       // push-to-talk or voice-activity mode must not leak the first instants
       // of audio before the first gate evaluation.
       this.gainNode.gain.value = 0;
       const destination = this.audioContext.createMediaStreamDestination();
-      this.sourceNode.connect(this.gainNode);
+      this.sourceNode.connect(this.inputGainNode);
+      this.inputGainNode.connect(this.gainNode);
       this.gainNode.connect(destination);
       this.destinationStream = destination.stream;
       this.startLocalLevelMeter();
@@ -531,6 +565,10 @@ export class VoiceManager {
     if (this.sourceNode) {
       this.sourceNode.disconnect();
       this.sourceNode = null;
+    }
+    if (this.inputGainNode) {
+      this.inputGainNode.disconnect();
+      this.inputGainNode = null;
     }
     if (this.gainNode) {
       this.gainNode.disconnect();
@@ -746,7 +784,7 @@ export class VoiceManager {
     chat.on('voice-candidate', (m) => this.handleCandidate(m));
     chat.on('voice-leave', (m) => this.handleLeave(m, peersList));
 
-    this.updateTransmissionMode(rawStream);
+    this.updateTransmissionMode();
     this.syncGlobalPushToTalk();
 
     chat.sendRaw({ type: 'voice-join', user, channelId });

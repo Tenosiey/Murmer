@@ -155,6 +155,38 @@ autoGainControl.subscribe((value) => {
   if (browser) localStorage.setItem(AUTO_GAIN_KEY, String(value));
 });
 
+// Input (microphone) gain, applied as a plain multiplication on the captured
+// signal before voice detection and before the transmission gate.
+const MIC_GAIN_KEY = 'murmer_mic_gain';
+
+/** Upper bound for the input gain. A quiet headset microphone needs real
+    amplification to be audible, but this is a straight multiply — past 3x
+    (300%) the room noise is louder than most people's voice was to begin
+    with, and the encoder starts clipping on peaks. */
+export const MAX_MIC_GAIN = 3;
+
+export function clampMicGain(value: number): number {
+  if (!isFinite(value)) return 1;
+  return Math.max(0, Math.min(MAX_MIC_GAIN, value));
+}
+
+let initialMicGain = 1;
+if (browser) {
+  const stored = localStorage.getItem(MIC_GAIN_KEY);
+  if (stored !== null) {
+    const num = parseFloat(stored);
+    if (!isNaN(num)) initialMicGain = clampMicGain(num);
+  }
+}
+
+export const micGain = writable<number>(initialMicGain);
+
+micGain.subscribe((value) => {
+  if (browser) {
+    localStorage.setItem(MIC_GAIN_KEY, String(value));
+  }
+});
+
 // Voice activation and push-to-talk settings
 export type VoiceMode = 'continuous' | 'vad' | 'ptt';
 
