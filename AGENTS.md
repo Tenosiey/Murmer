@@ -62,7 +62,13 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   gain (the "Input volume" slider), so the level compared against the VAD
   threshold is the one the peers actually receive — turning a quiet microphone
   up must not make voice detection harder to trigger.
-- `src/lib/screenshare/` – WebRTC screen sharing manager
+- `src/lib/screenshare/` – WebRTC screen sharing manager. A share may carry
+  system audio, so the viewer offers **recvonly video *and* audio**
+  transceivers: an answer can only fill m-lines the offer already contains, and
+  without the audio one the sharer would have nowhere to put its audio track.
+  Silent shares answer it `inactive`, which is how the viewer knows whether to
+  show its volume/mute controls (`currentDirection`, not `getReceivers()` —
+  every transceiver owns a receiver track, including the ones carrying nothing).
 - `src-tauri/` – Rust-side glue for native integrations
 
 ## Security expectations

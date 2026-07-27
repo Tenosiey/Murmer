@@ -145,6 +145,12 @@ export interface ScreenShareSettings {
 export interface ScreenSharePeer {
   userId: string;
   stream: MediaStream;
+  /**
+   * Whether the share carries audio. Sharing system audio is a checkbox in the
+   * OS picker, so most shares are silent — the viewer only offers volume and
+   * mute controls when there is something to control.
+   */
+  hasAudio: boolean;
 }
 
 export interface ScreenShareActive {

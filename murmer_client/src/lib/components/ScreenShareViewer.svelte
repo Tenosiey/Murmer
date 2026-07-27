@@ -8,6 +8,12 @@
   import { onMount, onDestroy } from 'svelte';
   import type { ScreenSharePeer } from '$lib/types';
   import { stopViewingScreenShare } from '$lib/stores/screenShare';
+  import {
+    screenShareVolume,
+    screenShareMuted,
+    outputMuted,
+    outputDeviceId
+  } from '$lib/stores/settings';
 
   interface Props {
     peer: ScreenSharePeer;
@@ -24,10 +30,37 @@
   // container itself is capped at 95vh and clips overflow.
   let headerHeight = $state(0);
 
+  /** Volume and mute are only worth showing when there is audio to control. */
+  let showAudioControls = $derived(peer.hasAudio && !isSelf);
+
   $effect(() => {
-    if (videoElement && peer.stream) {
+    // The stream object is stable for the lifetime of the share, so this only
+    // re-attaches when the viewer is actually pointed at a different one —
+    // re-assigning `srcObject` restarts playback from black.
+    if (videoElement && peer.stream && videoElement.srcObject !== peer.stream) {
       videoElement.srcObject = peer.stream;
     }
+  });
+
+  $effect(() => {
+    if (!videoElement) return;
+    // The sharer's own preview stays silent: it would play the audio the
+    // machine is already producing a second time.
+    // Deafening covers this too — it means "nothing from this channel".
+    videoElement.muted = isSelf || $outputMuted || $screenShareMuted;
+    videoElement.volume = $screenShareVolume;
+  });
+
+  // Like the peer voice elements, the share has to be routed to the chosen
+  // output device individually; without this it plays on the system default
+  // while everything else goes to the headset.
+  $effect(() => {
+    const element = videoElement as
+      | (HTMLVideoElement & { setSinkId?: (id: string) => Promise<void> })
+      | undefined;
+    element?.setSinkId?.($outputDeviceId || '').catch((error: unknown) => {
+      console.warn('Failed to route the screen share to the selected output:', error);
+    });
   });
 
   onDestroy(() => {
@@ -87,8 +120,46 @@
     tabindex="-1"
   >
     <div class="screenshare-header" bind:clientHeight={headerHeight}>
-      <h3>{isSelf ? 'Your screen (preview)' : `${peer.userId}'s Screen`}</h3>
+      <div class="screenshare-title">
+        <h3>{isSelf ? 'Your screen (preview)' : `${peer.userId}'s Screen`}</h3>
+        {#if isSelf}
+          <!-- Sharing audio is a checkbox in the OS picker that is easy to
+               miss, so the sharer is told which way it went. -->
+          <span class="audio-note">
+            {peer.hasAudio ? 'Sharing system audio' : 'No system audio'}
+          </span>
+        {/if}
+      </div>
       <div class="screenshare-controls">
+        {#if showAudioControls}
+          <button
+            onclick={() => screenShareMuted.update((muted) => !muted)}
+            title={$screenShareMuted ? 'Unmute the shared audio' : 'Mute the shared audio'}
+            aria-label={$screenShareMuted ? 'Unmute the shared audio' : 'Mute the shared audio'}
+            aria-pressed={$screenShareMuted}
+          >
+            {#if $screenShareMuted || $screenShareVolume === 0}
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 9.75L21 13.5m0-3.75l-3.75 3.75M11.25 4.5L6.75 8.25H3.75a.75.75 0 00-.75.75v6c0 .414.336.75.75.75h3l4.5 3.75a.75.75 0 001.25-.575V5.075a.75.75 0 00-1.25-.575z" />
+              </svg>
+            {:else}
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 4.5L6.75 8.25H3.75a.75.75 0 00-.75.75v6c0 .414.336.75.75.75h3l4.5 3.75a.75.75 0 001.25-.575V5.075a.75.75 0 00-1.25-.575zM16.5 8.25a5.25 5.25 0 010 7.5M19.5 5.25a9 9 0 010 13.5" />
+              </svg>
+            {/if}
+          </button>
+          <input
+            class="volume-slider"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            bind:value={$screenShareVolume}
+            disabled={$screenShareMuted}
+            title="Shared audio volume"
+            aria-label="Shared audio volume"
+          />
+        {/if}
         <button onclick={toggleFullscreen} title="Toggle fullscreen (F)" aria-label="Toggle fullscreen">
           {#if isFullscreen}
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -155,6 +226,13 @@
     border-bottom: 1px solid var(--color-surface-outline);
   }
 
+  .screenshare-title {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    min-width: 0;
+  }
+
   .screenshare-header h3 {
     margin: 0;
     font-size: var(--text-lg);
@@ -162,9 +240,28 @@
     color: var(--color-on-surface);
   }
 
+  .audio-note {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+    white-space: nowrap;
+  }
+
   .screenshare-controls {
     display: flex;
+    align-items: center;
     gap: var(--space-1);
+  }
+
+  .volume-slider {
+    width: 6rem;
+    min-height: 0;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+  }
+
+  .volume-slider:disabled {
+    opacity: 0.45;
+    cursor: default;
   }
 
   .screenshare-controls button {

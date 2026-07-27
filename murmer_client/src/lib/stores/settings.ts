@@ -20,6 +20,36 @@ volume.subscribe((value) => {
   }
 });
 
+// Screen share audio, heard by the viewer. Kept separate from the voice
+// volume: a game or video is usually far louder than the people talking over
+// it, and turning one down must not turn the other down with it.
+const SCREENSHARE_VOLUME_KEY = 'murmer_screenshare_volume';
+const SCREENSHARE_MUTE_KEY = 'murmer_screenshare_muted';
+
+let initialScreenShareVolume = 1;
+if (browser) {
+  const stored = localStorage.getItem(SCREENSHARE_VOLUME_KEY);
+  if (stored !== null) {
+    const num = parseFloat(stored);
+    // A media element's volume is a 0-1 fraction; anything else is rejected
+    // rather than clamped, since it can only come from a hand-edited entry.
+    if (!isNaN(num) && num >= 0 && num <= 1) initialScreenShareVolume = num;
+  }
+}
+
+export const screenShareVolume = writable<number>(initialScreenShareVolume);
+export const screenShareMuted = writable<boolean>(
+  browser ? localStorage.getItem(SCREENSHARE_MUTE_KEY) === 'true' : false
+);
+
+screenShareVolume.subscribe((value) => {
+  if (browser) localStorage.setItem(SCREENSHARE_VOLUME_KEY, String(value));
+});
+
+screenShareMuted.subscribe((value) => {
+  if (browser) localStorage.setItem(SCREENSHARE_MUTE_KEY, String(value));
+});
+
 // Persist selected input and output devices
 const IN_KEY = 'murmer_input_device';
 const OUT_KEY = 'murmer_output_device';

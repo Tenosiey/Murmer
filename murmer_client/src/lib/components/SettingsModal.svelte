@@ -16,7 +16,9 @@
     noiseSuppression,
     autoGainControl,
     micGain,
-    MAX_MIC_GAIN
+    MAX_MIC_GAIN,
+    screenShareVolume,
+    screenShareMuted
   } from '$lib/stores/settings';
   import { soundboardEnabled, soundboardVolume } from '$lib/stores/soundboardSettings';
   import { audioInputs, audioOutputs, refreshAudioDevices } from '$lib/stores/audioDevices';
@@ -511,6 +513,36 @@
               How loud other members are. Individual people can be turned up or down in the
               voice channel's context menu.
             </div>
+          </div>
+
+          <div class="setting-group">
+            <label for="screenshare-volume" class="setting-label">
+              Screen share volume
+              <span class="setting-value">{Math.round($screenShareVolume * 100)}%</span>
+            </label>
+            <div class="slider-container">
+              <input
+                id="screenshare-volume"
+                class="volume-slider"
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                bind:value={$screenShareVolume}
+                disabled={$screenShareMuted}
+              />
+              <div class="slider-track-fill" style="width: {$screenShareVolume * 100}%"></div>
+            </div>
+            <label class="toggle-row">
+              <input type="checkbox" bind:checked={$screenShareMuted} />
+              <span class="toggle-text">
+                <span class="toggle-label">Mute screen share audio</span>
+                <span class="toggle-description">
+                  Sharers can include their system audio. This silences it without touching the
+                  voices — the same controls sit in the screen share window.
+                </span>
+              </span>
+            </label>
           </div>
 
           <div class="setting-group">

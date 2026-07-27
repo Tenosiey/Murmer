@@ -1651,9 +1651,12 @@
   });
   $effect(() => {
     if (viewingScreenShare && $screenSharePeers) {
-      if (!$screenSharePeers.find(p => p.userId === viewingScreenShare?.userId)) {
-        viewingScreenShare = null;
-      }
+      // Re-read the entry rather than only checking that it is still there:
+      // the manager republishes it when the share changes (audio arriving
+      // alongside the video, say), and a stale object would keep the viewer
+      // on the state the share had when it was opened.
+      const peer = $screenSharePeers.find(p => p.userId === viewingScreenShare?.userId) ?? null;
+      if (peer !== viewingScreenShare) viewingScreenShare = peer;
     }
   });
   $effect(() => {
@@ -2050,7 +2053,11 @@
 {#if $localScreenShareStream && $screenSharePreview}
   {#if expandedOwnScreenShare}
     <ScreenShareViewer
-      peer={{ userId: $session.user ?? 'You', stream: $localScreenShareStream }}
+      peer={{
+        userId: $session.user ?? 'You',
+        stream: $localScreenShareStream,
+        hasAudio: $localScreenShareStream.getAudioTracks().length > 0
+      }}
       isSelf
       onClose={() => (expandedOwnScreenShare = false)}
     />

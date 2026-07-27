@@ -64,7 +64,9 @@ small team can deploy a private chat space quickly.
   bitrate; Owners/Admins can set a server-wide bitrate cap from the dashboard.
   The sharer gets a floating self-preview to check what is actually being sent,
   which can be hidden (it costs CPU/GPU to render) and stays hidden until
-  turned back on
+  turned back on. System audio can be shared along with the picture (a checkbox
+  in the OS picker); viewers get their own volume slider and mute for it,
+  separate from the voice volume
 - Soundboard: a shared library of short clips anyone in a voice channel can
   play for everyone present. Uploading is gated by *Manage sounds*, playing by
   *Use soundboard*, and a server-side cooldown keeps it from becoming a spam
