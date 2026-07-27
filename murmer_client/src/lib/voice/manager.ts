@@ -9,6 +9,7 @@ import { chat } from '../stores/chat';
 import {
   volume,
   inputDeviceId,
+  outputDeviceId,
   microphoneMuted,
   outputMuted,
   voiceMode,
@@ -97,10 +98,21 @@ export class VoiceManager {
 
   constructor() {
     volume.subscribe((v) => {
-      this.joinSound.volume = v;
-      this.leaveSound.volume = v;
-      this.muteSound.volume = v;
-      this.unmuteSound.volume = v;
+      for (const sound of this.notificationSounds()) {
+        sound.volume = v;
+      }
+    });
+
+    // These are plain elements rather than nodes on the shared context, so
+    // they need the output device applied individually — without this they
+    // always played on the system default while voice went to the headset.
+    outputDeviceId.subscribe((id) => {
+      for (const sound of this.notificationSounds()) {
+        const element = sound as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+        element.setSinkId?.(id || '').catch((error: unknown) => {
+          console.warn('Failed to route notification sounds to the selected output:', error);
+        });
+      }
     });
 
     // Skip the first (synchronous) subscribe call so the persisted mute state
@@ -321,13 +333,34 @@ export class VoiceManager {
     });
   }
 
-  /** Play the short mute/unmute feedback blip. */
-  private playMuteSound(muted: boolean) {
-    const sound = muted ? this.muteSound : this.unmuteSound;
+  private notificationSounds(): HTMLAudioElement[] {
+    return [this.joinSound, this.leaveSound, this.muteSound, this.unmuteSound];
+  }
+
+  private playSound(sound: HTMLAudioElement) {
     try {
       sound.currentTime = 0;
       sound.play().catch(() => {});
     } catch {}
+  }
+
+  /**
+   * Play the short mute/unmute feedback blip. Deliberately audible even while
+   * deafened: it is confirmation of the key you just pressed, which is the
+   * one thing you still need to hear when everything else is silenced — and
+   * the hotkey usually gets pressed with the window out of sight.
+   */
+  private playMuteSound(muted: boolean) {
+    this.playSound(muted ? this.muteSound : this.unmuteSound);
+  }
+
+  /**
+   * Play a sound caused by somebody else. Deafening means "I hear nothing
+   * from this channel", so these are suppressed along with the voice itself.
+   */
+  private playPeerSound(sound: HTMLAudioElement) {
+    if (get(outputMuted)) return;
+    this.playSound(sound);
   }
 
   private updateTransmissionState() {
@@ -748,10 +781,7 @@ export class VoiceManager {
     )
       return;
     this.createPeer(msg.user as string, true, peersList);
-    try {
-      this.joinSound.currentTime = 0;
-      this.joinSound.play();
-    } catch {}
+    this.playPeerSound(this.joinSound);
   }
 
   private async handleOffer(msg: Message, peersList: RemotePeer[]) {
@@ -805,10 +835,7 @@ export class VoiceManager {
   private handleLeave(msg: Message, peersList: RemotePeer[]) {
     if (!this.userName || (msg as any).channelId !== this.channelId) return;
     this.cleanupPeer(msg.user as string, peersList);
-    try {
-      this.leaveSound.currentTime = 0;
-      this.leaveSound.play();
-    } catch {}
+    this.playPeerSound(this.leaveSound);
   }
 
   destroy() {
