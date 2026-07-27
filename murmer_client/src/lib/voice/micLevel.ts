@@ -10,16 +10,10 @@
  * configured input device and microphone processing settings.
  */
 import { get } from 'svelte/store';
-import {
-  inputDeviceId,
-  echoCancellation,
-  noiseSuppression,
-  autoGainControl,
-  micGain,
-  clampMicGain
-} from '../stores/settings';
+import { micGain, clampMicGain } from '../stores/settings';
 import { captureStream } from '../stores/voiceCapture';
 import { refreshAudioDevices } from '../stores/audioDevices';
+import { openMicrophone } from './capture';
 import { getAudioContext, resumeAudioContext } from './audioContext';
 import { subscribeTick } from './ticker';
 import { configureVadAnalyser, readVadLevel } from './vad';
@@ -50,14 +44,7 @@ export class MicLevelMonitor {
 
     let stream = get(captureStream);
     if (!stream) {
-      const audio: MediaTrackConstraints = {
-        echoCancellation: get(echoCancellation),
-        noiseSuppression: get(noiseSuppression),
-        autoGainControl: get(autoGainControl)
-      };
-      const device = get(inputDeviceId);
-      if (device) audio.deviceId = { exact: device };
-      stream = await navigator.mediaDevices.getUserMedia({ audio });
+      stream = await openMicrophone();
       if (generation !== this.generation) {
         for (const track of stream.getTracks()) track.stop();
         return;

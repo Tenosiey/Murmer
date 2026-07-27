@@ -46,7 +46,10 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
 - `src/lib/stores/` – Svelte stores holding client state
 - `src/lib/chat/` – constants and helpers shared by the chat page
 - `src/lib/voice/` – WebRTC helpers, push-to-talk tooling, microphone level
-  metering for the settings UI and the soundboard player (local playback).
+  metering and the record-and-play-back mic test for the settings UI, and the
+  soundboard player (local playback). The manager, the level meter and the mic
+  test all open the microphone through `voice/capture.ts` so they capture the
+  same signal.
   Every graph in the app shares one `AudioContext` (`voice/audioContext.ts`)
   because browsers cap how many may exist at once; the microphone chain still
   ends at its own `MediaStreamAudioDestinationNode`, so playback rendered to
