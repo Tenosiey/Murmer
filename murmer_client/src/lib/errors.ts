@@ -43,6 +43,9 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-role-color': 'That role color is not a valid hex color.',
   'invalid-role-icon': 'That role icon is not a valid uploaded image.',
   'invalid-role-permissions': 'Those permissions are not valid.',
+  'invalid-display-name': 'That display name is not allowed.',
+  'invalid-about': 'That about text is not allowed.',
+  'profile-update-failed': 'The server could not update your profile. Please try again.',
   'send-permission-denied': 'You do not have permission to send messages in this channel.',
   'channel-override-permission-denied':
     'You do not have permission to edit this channel’s permissions.',

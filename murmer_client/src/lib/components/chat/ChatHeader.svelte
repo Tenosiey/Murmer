@@ -8,6 +8,7 @@
   import ConnectionStatsPanel from '$lib/components/ConnectionStatsPanel.svelte';
   import { ping } from '$lib/stores/ping';
   import { session } from '$lib/stores/session';
+  import { displayNames } from '$lib/stores/profiles';
   import { selectedServer } from '$lib/stores/servers';
   import { serverIdentity } from '$lib/stores/serverIdentity';
   import { httpBaseFromWs } from '$lib/server-url';
@@ -33,6 +34,8 @@
     onOpenServerDashboard?: () => void;
     onLeaveServer: () => void;
     onLogout: () => void;
+    /** Open the signed-in user's own profile (where it can be edited). */
+    onOpenProfile: () => void;
   }
 
   let {
@@ -49,7 +52,8 @@
     showServerDashboard = false,
     onOpenServerDashboard = () => {},
     onLeaveServer,
-    onLogout
+    onLogout,
+    onOpenProfile
   }: Props = $props();
 
   let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
@@ -192,7 +196,11 @@
   </div>
   <div class="actions">
     <div class="action-group">
-      <div class="user">{$session.user}</div>
+      <button
+        class="user"
+        onclick={onOpenProfile}
+        title="Your profile"
+      >{$session.user ? $displayNames($session.user) : ''}</button>
       <div class="status-control">
       <button
         class="btn btn-ghost status-button"
@@ -600,6 +608,7 @@
     border-left: 1px solid var(--color-surface-outline);
   }
 
+  /* Own name: a button that opens the profile editor, styled as plain text. */
   .user {
     display: inline-flex;
     align-items: center;
@@ -607,6 +616,14 @@
     color: var(--color-on-surface-variant);
     font-weight: 600;
     font-size: var(--text-sm);
+    background: none;
+    border: none;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  .user:hover {
+    color: var(--color-on-surface);
   }
 
   .status-control {

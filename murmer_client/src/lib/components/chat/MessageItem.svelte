@@ -8,6 +8,7 @@
 <script lang="ts">
   import type { Message } from '$lib/types';
   import { roles } from '$lib/stores/roles';
+  import { displayNames } from '$lib/stores/profiles';
   import { session } from '$lib/stores/session';
   import { renderMarkdown } from '$lib/markdown';
   import { emojifyHtml, isEmojiOnlyText } from '$lib/emoji';
@@ -46,6 +47,7 @@
     onOpenEmojiPicker: (id: number, event: MouseEvent) => void;
     onToggleReaction: (id: number, emoji: string, users: string[]) => void;
     onOpenThread: (id: number) => void;
+    onOpenProfile: (user: string) => void;
   }
 
   let {
@@ -66,7 +68,8 @@
     onDelete,
     onOpenEmojiPicker,
     onToggleReaction,
-    onOpenThread
+    onOpenThread,
+    onOpenProfile
   }: Props = $props();
 
   let messageId = $derived(typeof message.id === 'number' ? message.id : null);
@@ -103,7 +106,14 @@
 >
   <div class="gutter">
     {#if !continuation}
-      <UserAvatar name={message.user ?? '?'} />
+      <button
+        type="button"
+        class="avatar-btn"
+        onclick={() => message.user && onOpenProfile(message.user)}
+        aria-label={`View ${message.user ?? 'user'}'s profile`}
+      >
+        <UserAvatar name={message.user ?? '?'} />
+      </button>
     {:else}
       <span class="gutter-time" aria-hidden="true" title={fullTime}>{shortTime}</span>
     {/if}
@@ -116,17 +126,21 @@
         type="button"
         class="reply-quote"
         onclick={() => onFocusMessage(reply.id)}
-        title={`Jump to ${reply.user}'s message`}
+        title={`Jump to ${$displayNames(reply.user)}'s message`}
       >
         <span class="reply-quote-arrow" aria-hidden="true">↪</span>
-        <span class="reply-quote-user">{reply.user}</span>
+        <span class="reply-quote-user">{$displayNames(reply.user)}</span>
         <span class="reply-quote-text">{reply.text || 'Original message'}</span>
       </button>
     {/if}
 
     {#if !continuation}
       <div class="meta">
-        <span class="username">{message.user}</span>
+        <button
+          type="button"
+          class="username"
+          onclick={() => message.user && onOpenProfile(message.user)}
+        >{message.user ? $displayNames(message.user) : message.user}</button>
         {#if roleInfo?.icon}
           <RoleIcon icon={roleInfo.icon} role={roleInfo.iconRole} />
         {/if}
@@ -342,10 +356,29 @@
     min-width: 0;
   }
 
+  /* The author's name and avatar are buttons opening their profile, styled to
+     stay looking like plain text/an avatar. */
   .username {
     font-weight: 600;
     font-size: var(--text-md);
     color: var(--color-on-surface);
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  .username:hover {
+    text-decoration: underline;
+  }
+
+  .avatar-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    display: inline-flex;
+    cursor: pointer;
   }
 
   .timestamp {

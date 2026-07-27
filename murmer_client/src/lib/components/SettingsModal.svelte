@@ -49,6 +49,7 @@
   import { selectedServer } from '$lib/stores/servers';
   import { httpBaseFromWs } from '$lib/server-url';
   import { MAX_AVATAR_BYTES } from '$lib/chat/constants';
+  import { uploadImage } from '$lib/upload';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import UserStatsPanel from '$lib/components/UserStatsPanel.svelte';
   import MicLevelMeter from '$lib/components/MicLevelMeter.svelte';
@@ -184,38 +185,16 @@
     input.value = '';
     if (!file || !$selectedServer) return;
     avatarError = '';
-    if (file.size > MAX_AVATAR_BYTES) {
-      avatarError = 'Avatars must be 1 MB or smaller.';
+    avatarUploading = true;
+    const result = await uploadImage(httpBaseFromWs($selectedServer), file, MAX_AVATAR_BYTES);
+    avatarUploading = false;
+    if (!result.ok) {
+      avatarError = result.message;
       return;
     }
-    avatarUploading = true;
-    const form = new FormData();
-    form.append('file', file);
-    try {
-      const res = await fetch(httpBaseFromWs($selectedServer) + '/upload', {
-        method: 'POST',
-        body: form
-      });
-      if (res.status === 415) {
-        avatarError = 'This image type is not allowed on the server.';
-        return;
-      }
-      if (res.status === 413) {
-        avatarError = 'That image is too large to upload.';
-        return;
-      }
-      if (!res.ok) throw new Error(`upload failed with status ${res.status}`);
-      const data = await res.json();
-      if (typeof data.url !== 'string') throw new Error('upload response missing url');
-      // Validated and registered server-side; the confirmation arrives as a
-      // broadcast avatar-update frame which updates the store.
-      avatars.setSelf(data.url);
-    } catch (e) {
-      console.error('avatar upload failed', e);
-      avatarError = 'Avatar upload failed. Please try again.';
-    } finally {
-      avatarUploading = false;
-    }
+    // Validated and registered server-side; the confirmation arrives as a
+    // broadcast avatar-update frame which updates the store.
+    avatars.setSelf(result.url);
   }
 
   function removeAvatar() {

@@ -1,11 +1,12 @@
 <!-- Right-hand sidebar listing online/offline users with status and roles.
-     Clicking a user opens a direct message conversation; right-clicking opens
-     the user menu (DM, roles, moderation). -->
+     Clicking a user opens their profile (which offers "Send message");
+     right-clicking opens the user menu (profile, DM, roles, moderation). -->
 <script lang="ts">
   import { onlineUsers } from '$lib/stores/online';
   import { offlineUsers } from '$lib/stores/users';
   import { roles } from '$lib/stores/roles';
   import { session } from '$lib/stores/session';
+  import { displayNames } from '$lib/stores/profiles';
   import { dm } from '$lib/stores/dm';
   import { rightSidebarWidth } from '$lib/stores/layout';
   import { STATUS_LABELS } from '$lib/stores/status';
@@ -17,17 +18,12 @@
   interface Props {
     statusMap: Record<string, UserStatus>;
     onUserContextMenu: (event: MouseEvent, user: string) => void;
-    onOpenDm: (user: string) => void;
+    onOpenProfile: (user: string) => void;
   }
 
-  let { statusMap, onUserContextMenu, onOpenDm }: Props = $props();
+  let { statusMap, onUserContextMenu, onOpenProfile }: Props = $props();
 
   const dmUnread = dm.unread;
-
-  function handleClick(user: string) {
-    if (user === $session.user) return;
-    onOpenDm(user);
-  }
 </script>
 
 <div class="sidebar" style="width: {$rightSidebarWidth}px">
@@ -37,9 +33,9 @@
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <li
-        class:clickable={user !== $session.user}
+        class="clickable"
         title={STATUS_LABELS[ensureStatus(statusMap, user, 'online')]}
-        onclick={() => handleClick(user)}
+        onclick={() => onOpenProfile(user)}
         oncontextmenu={(e) => onUserContextMenu(e, user)}
       >
         <span class="avatar-wrap">
@@ -49,7 +45,7 @@
         <span
           class="username"
           style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
-          >{user}</span
+          >{$displayNames(user)}</span
         >
         {#if $roles[user]?.icon}
           <RoleIcon icon={$roles[user].icon} role={$roles[user].iconRole} />
@@ -73,10 +69,9 @@
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <li
-        class="offline-user"
-        class:clickable={user !== $session.user}
+        class="offline-user clickable"
         title={STATUS_LABELS[ensureStatus(statusMap, user)]}
-        onclick={() => handleClick(user)}
+        onclick={() => onOpenProfile(user)}
         oncontextmenu={(e) => onUserContextMenu(e, user)}
       >
         <span class="avatar-wrap">
@@ -86,7 +81,7 @@
         <span
           class="username"
           style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
-          >{user}</span
+          >{$displayNames(user)}</span
         >
         {#if $roles[user]?.icon}
           <RoleIcon icon={$roles[user].icon} role={$roles[user].iconRole} />

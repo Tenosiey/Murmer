@@ -11,7 +11,7 @@
 
   interface Props {
     name: string;
-    size?: 'sm' | 'md';
+    size?: 'sm' | 'md' | 'lg';
   }
 
   let { name, size = 'md' }: Props = $props();
@@ -82,5 +82,13 @@
     width: var(--space-5);
     height: var(--space-5);
     font-size: var(--text-xs);
+  }
+
+  /* Profile-sized: the only place the avatar is the subject rather than a
+     marker next to a name. */
+  .avatar.lg {
+    width: var(--space-8);
+    height: var(--space-8);
+    font-size: var(--text-lg);
   }
 </style>

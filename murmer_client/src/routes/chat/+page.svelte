@@ -13,6 +13,7 @@
   import { can, myTopPosition, myPermissions } from '$lib/stores/permissions';
   import { PERMISSIONS, hasPermission, computeTopPosition } from '$lib/chat/permissions';
   import { session } from '$lib/stores/session';
+  import { displayNames, profiles } from '$lib/stores/profiles';
   import { voice } from '$lib/stores/voice';
   import { selectedServer, servers } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
@@ -104,6 +105,7 @@
   import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
   import ChannelPermissionsModal from '$lib/components/ChannelPermissionsModal.svelte';
   import UserStatsModal from '$lib/components/UserStatsModal.svelte';
+  import UserProfileModal from '$lib/components/UserProfileModal.svelte';
   import WikiView from '$lib/components/wiki/WikiView.svelte';
   import { wikilinks } from '$lib/wiki/links';
 
@@ -549,6 +551,7 @@
     userRoleIds.reset();
     roleDefinitions.reset();
     channelOverrides.reset();
+    profiles.reset();
     expiryTicker = window.setInterval(() => {
       now = Date.now();
     }, 1000);
@@ -578,6 +581,7 @@
     userRoleIds.reset();
     roleDefinitions.reset();
     channelOverrides.reset();
+    profiles.reset();
     if (highlightTimer) {
       clearTimeout(highlightTimer);
       highlightTimer = null;
@@ -1235,6 +1239,18 @@
     statsUser = null;
   }
 
+  /** The member whose profile is open, or null. Works for the own profile
+      too, where the modal doubles as the profile editor. */
+  let profileUser: string | null = $state(null);
+
+  function openProfile(user: string) {
+    profileUser = user;
+  }
+
+  function closeProfile() {
+    profileUser = null;
+  }
+
   async function editTopic() {
     const existing = $channelTopics[currentChatChannelId] ?? '';
     const input = await dialogs.prompt({
@@ -1677,7 +1693,7 @@
   let typingLabel = $derived.by(() => {
     const users = Object.entries($typing[currentChatChannelId] ?? {})
       .filter(([user, expiry]) => user !== $session.user && expiry > now)
-      .map(([user]) => user);
+      .map(([user]) => $displayNames(user));
     if (users.length === 0) return null;
     if (users.length === 1) return `${users[0]} is typing…`;
     if (users.length === 2) return `${users[0]} and ${users[1]} are typing…`;
@@ -1725,6 +1741,7 @@
     if (!userRoleMenuTarget) return [];
     const target = userRoleMenuTarget;
     const items: ContextMenuItem[] = [];
+    items.push({ label: 'View Profile', action: () => openProfile(target) });
     items.push({ label: 'Send Message', action: () => openDm(target) });
     items.push({ label: 'View Stats', action: () => openUserStats(target) });
     // Role assignment: a checklist of grantable roles, shown only to managers
@@ -1873,6 +1890,7 @@
         onOpenServerDashboard={openServerDashboard}
         onLeaveServer={leaveServer}
         onLogout={logout}
+        onOpenProfile={() => $session.user && openProfile($session.user)}
       />
       <SettingsModal open={settingsOpen} close={closeSettings} />
       <ServerDashboardModal
@@ -1888,6 +1906,12 @@
         channelName={channelPermsName}
       />
       <UserStatsModal open={statsUser !== null} user={statsUser} close={closeUserStats} />
+      <UserProfileModal
+        open={profileUser !== null}
+        user={profileUser}
+        close={closeProfile}
+        onOpenDm={openDm}
+      />
       <HelpOverlay bind:this={helpOverlay} open={helpOpen} onClose={closeHelp} />
       <SearchOverlay
         bind:this={searchOverlay}
@@ -1956,6 +1980,7 @@
                 onOpenEmojiPicker={openEmojiPicker}
                 onToggleReaction={toggleReaction}
                 onOpenThread={openThread}
+                onOpenProfile={openProfile}
               />
             {/if}
           {:else}
@@ -1999,10 +2024,10 @@
       {#if $dmActivePeer}
         <ConversationPanel
           kind="dm"
-          title={$dmActivePeer}
+          title={$displayNames($dmActivePeer)}
           messages={dmMessages}
           emptyText="No messages yet. Say hi!"
-          placeholder={`Message ${$dmActivePeer}…`}
+          placeholder={`Message ${$displayNames($dmActivePeer)}…`}
           onSend={sendDmMessage}
           onClose={closeDm}
           emphasize={(msg) => msg.from === $session.user}
@@ -2021,7 +2046,7 @@
     <UserList
       {statusMap}
       onUserContextMenu={openUserRoleMenu}
-      onOpenDm={openDm}
+      onOpenProfile={openProfile}
     />
 </div>
 

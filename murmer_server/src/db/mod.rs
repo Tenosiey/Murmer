@@ -219,6 +219,8 @@ CREATE TABLE IF NOT EXISTS user_keys (
     user_name TEXT PRIMARY KEY,
     public_key TEXT NOT NULL,
     avatar TEXT NOT NULL DEFAULT '',
+    display_name TEXT NOT NULL DEFAULT '',
+    about TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT ({NOW_UTC})
 );
 CREATE TABLE IF NOT EXISTS bans (
@@ -293,6 +295,13 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         )?;
         ensure_column(conn, "user_keys", "avatar", "TEXT NOT NULL DEFAULT ''")?;
         ensure_column(conn, "role_definitions", "icon", "TEXT")?;
+        ensure_column(
+            conn,
+            "user_keys",
+            "display_name",
+            "TEXT NOT NULL DEFAULT ''",
+        )?;
+        ensure_column(conn, "user_keys", "about", "TEXT NOT NULL DEFAULT ''")?;
         ensure_column(
             conn,
             "user_stats",

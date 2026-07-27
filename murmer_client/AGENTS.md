@@ -56,6 +56,11 @@ sync, see the Brand section in `README.md`.
 - Per-channel client state that persists (last-read markers, notification
   preferences) is namespaced by server URL — channel ids are only unique per
   server. Follow that pattern for any new per-channel persistence.
+- Names: render `$displayNames(user)` from `stores/profiles.ts`, never the raw
+  user name — that is the account name and stays the key for every lookup
+  (`$roles[user]`, `$avatars[user]`, DM peers, mentions). `UserProfileModal`
+  shows both and is the only place a user edits their own display name, about
+  text and avatar.
 
 ## Security considerations
 - Key pairs are stored in `localStorage`; treat this as acceptable for the

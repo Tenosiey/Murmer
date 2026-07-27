@@ -16,8 +16,6 @@ stays readable. Use the checkboxes to mark something you have picked up.
 - [ ] Bot integration/webhooks (a basic REST bot API exists; webhooks do not)
 - [ ] Text-to-speech
 - [ ] User nicknames per server
-- [ ] User profile pages (avatars are done — uploaded per server and shown in
-      messages, the member list and DMs; a profile view is not)
 
 ### 📚 Channel Wiki
 

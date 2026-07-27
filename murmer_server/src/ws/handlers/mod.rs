@@ -216,6 +216,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "set-avatar" => {
                                 profile::handle_set_avatar(&state, &mut sender, &v, &user_name).await;
                             }
+                            "set-profile" => {
+                                profile::handle_set_profile(&state, &mut sender, &v, &user_name).await;
+                            }
                             "ping" => {
                                 handle_ping(&mut sender, &v).await;
                             }

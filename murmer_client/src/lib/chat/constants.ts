@@ -29,6 +29,10 @@ export const MAX_AVATAR_BYTES = 1024 * 1024;
 /* Role icon size limit; must match the server's validation. */
 export const MAX_ROLE_ICON_BYTES = 512 * 1024;
 
+/* User profile limits; must match the server's validation. */
+export const MAX_DISPLAY_NAME_LENGTH = 32;
+export const MAX_ABOUT_LENGTH = 300;
+
 /* Upload policy mirror of `murmer_server/src/upload.rs` — the server enforces
    all of this on `/upload`; the client copy only exists to reject a file
    before uploading it and to describe the rules in the UI. Keep both in sync. */

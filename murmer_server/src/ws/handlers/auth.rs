@@ -223,6 +223,7 @@ pub(super) async fn handle_presence(
             send_all_user_roles(state, sender).await;
             send_all_statuses(state, sender).await;
             super::profile::send_all_avatars(state, sender).await;
+            super::profile::send_all_profiles(state, sender).await;
             send_categories(state, sender).await;
             send_channels(state, sender, Some(u)).await;
             send_emojis(state, sender).await;
@@ -302,6 +303,7 @@ pub(super) async fn handle_bot_presence(
     send_all_user_roles(state, sender).await;
     send_all_statuses(state, sender).await;
     super::profile::send_all_avatars(state, sender).await;
+    super::profile::send_all_profiles(state, sender).await;
     send_channels(state, sender, user_name.as_deref()).await;
     send_emojis(state, sender).await;
     send_sounds(state, sender).await;

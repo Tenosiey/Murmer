@@ -1,10 +1,18 @@
-//! Handlers for the user profile (currently the avatar).
+//! Handlers for the user profile: avatar, display name and about text.
 //!
 //! Avatars travel through the regular `/upload` endpoint (which enforces the
 //! image safe-list and magic-byte validation) and are registered here by URL,
 //! mirroring the server icon. Every user may only set their own avatar; the
 //! value persists on the user's name/key binding, is broadcast on change and
 //! snapshotted to every client after authentication.
+//!
+//! The display name and about text live on the same binding row and follow the
+//! same shape (self-service, broadcast, snapshotted). The **display name is
+//! cosmetic**: the account name remains the identity used for authentication,
+//! role assignment, moderation, DM routing and message authorship, so nothing
+//! server-side ever resolves a display name back to a user. That is what keeps
+//! it safe to let it collide with another user's name — clients show the
+//! account name alongside it on the profile.
 
 use crate::ws::{constants::*, errors, helpers::*, validation::*};
 use crate::{AppState, db};
@@ -39,6 +47,42 @@ pub(super) async fn send_all_avatars(
     })) {
         let _ = sender.send(Message::Text(msg.into())).await;
     }
+}
+
+/// Send every known user's profile to a newly connected client. Includes users
+/// who are currently offline: the member list shows them too, and "member
+/// since" must be available without a round trip when a profile is opened.
+pub(super) async fn send_all_profiles(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+) {
+    let profiles = match db::get_all_profiles(&state.db).await {
+        Ok(list) => list,
+        Err(e) => {
+            error!("Failed to load profiles: {e}");
+            return;
+        }
+    };
+    if profiles.is_empty() {
+        return;
+    }
+    let list: Vec<Value> = profiles.into_iter().map(profile_json).collect();
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "profile-snapshot",
+        "profiles": list,
+    })) {
+        let _ = sender.send(Message::Text(msg.into())).await;
+    }
+}
+
+/// Serialize one profile row for the snapshot and update frames.
+fn profile_json(profile: db::UserProfile) -> Value {
+    serde_json::json!({
+        "user": profile.user_name,
+        "displayName": profile.display_name,
+        "about": profile.about,
+        "createdAt": profile.created_at,
+    })
 }
 
 /// Broadcast a user's avatar change to all clients. `None` clears the avatar.
@@ -132,4 +176,107 @@ pub(super) async fn handle_set_avatar(
     info!(requester, "Avatar updated");
     let avatar = (!new_avatar.is_empty()).then_some(new_avatar);
     broadcast_avatar(state, requester, avatar.as_deref()).await;
+}
+
+/// Read an optional profile text field. `Ok(None)` means "not in the frame,
+/// leave it alone"; `null` and `""` both clear it. `Err(())` after sending
+/// `error` for a malformed or over-long value.
+async fn parse_profile_field(
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    field: &str,
+    valid: impl Fn(&str) -> bool,
+    error: &'static str,
+) -> Result<Option<String>, ()> {
+    match v.get(field) {
+        None => Ok(None),
+        Some(raw) if raw.is_null() => Ok(Some(String::new())),
+        Some(raw) => {
+            let Some(text) = raw.as_str().map(str::trim) else {
+                send_error(sender, error).await;
+                return Err(());
+            };
+            if !valid(text) {
+                send_error(sender, error).await;
+                return Err(());
+            }
+            Ok(Some(text.to_string()))
+        }
+    }
+}
+
+/// Handle `set-profile`: update the requester's own display name and/or about
+/// text. Absent fields are left untouched, `null` (or an empty string) clears
+/// one. The change is persisted and broadcast to every client.
+pub(super) async fn handle_set_profile(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(requester) = user_name.as_deref() else {
+        send_error(sender, errors::PROFILE_UPDATE_FAILED).await;
+        return;
+    };
+
+    let Ok(display_name) = parse_profile_field(
+        sender,
+        v,
+        "displayName",
+        validate_display_name,
+        errors::INVALID_DISPLAY_NAME,
+    )
+    .await
+    else {
+        return;
+    };
+    let Ok(about) =
+        parse_profile_field(sender, v, "about", validate_about, errors::INVALID_ABOUT).await
+    else {
+        return;
+    };
+    if display_name.is_none() && about.is_none() {
+        return;
+    }
+
+    match db::set_user_profile(
+        &state.db,
+        requester,
+        display_name.as_deref(),
+        about.as_deref(),
+    )
+    .await
+    {
+        Ok(true) => {}
+        // No binding row — bots and half-authenticated sessions have no
+        // profile to edit.
+        Ok(false) => {
+            send_error(sender, errors::PROFILE_UPDATE_FAILED).await;
+            return;
+        }
+        Err(e) => {
+            error!("Failed to store profile for {requester}: {e}");
+            send_error(sender, errors::PROFILE_UPDATE_FAILED).await;
+            return;
+        }
+    }
+
+    // Re-read the row so the broadcast carries the full profile even when the
+    // frame only touched one field.
+    match db::get_user_profile(&state.db, requester).await {
+        Ok(Some(profile)) => {
+            info!(requester, "Profile updated");
+            if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+                "type": "profile-update",
+                "profile": profile_json(profile),
+            })) {
+                let _ = state.tx.send(msg);
+            }
+        }
+        Ok(None) => send_error(sender, errors::PROFILE_UPDATE_FAILED).await,
+        Err(e) => {
+            error!("Failed to reload profile for {requester}: {e}");
+            send_error(sender, errors::PROFILE_UPDATE_FAILED).await;
+        }
+    }
 }
