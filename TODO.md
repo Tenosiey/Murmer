@@ -44,10 +44,6 @@ surfacing two things the server already stores.
 - [ ] Ducking — drop the soundboard (and other app sounds) while somebody is
       actually talking, so a clip never buries the conversation
 - [ ] Gesture recognition through webcam
-- [ ] Input volume / mic gain slider — the transmission gate in
-      `voice/manager.ts` is already a gain node, so this is a multiply on the
-      value it ramps to. Today automatic gain control is the only way to lift a
-      quiet microphone, and it is a blunt instrument that also lifts the noise
 - [ ] Live polling during meetings
 - [ ] Meeting notes that auto-generate from voice
 - [ ] Mic test / loopback — record a few seconds and play it back so users can

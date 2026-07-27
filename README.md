@@ -47,7 +47,8 @@ small team can deploy a private chat space quickly.
 - Slash commands (`/help`, `/me`, `/shrug`, `/topic`, `/status`,
   `/ephemeral`, `/search`)
 - Link previews with server-side OpenGraph fetching (client IPs stay hidden from linked sites)
-- Configurable noise suppression, echo cancellation and automatic gain control
+- Configurable input volume, noise suppression, echo cancellation and automatic
+  gain control, with a live input level meter
 - Customizable hotkeys (mute, deafen, join/leave voice, search, settings, help)
   under Settings → Hotkeys; the voice hotkeys also work system-wide while the
   app is in the background (can be disabled)

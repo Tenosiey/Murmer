@@ -46,12 +46,12 @@ const RELEASE_DELAY_MS = 100;
 
 export class VoiceActivityDetector {
   private analyser: AnalyserNode | null = null;
-  private source: MediaStreamAudioSourceNode | null = null;
+  /** Node this detector listens on. Owned by the caller, never by us. */
+  private source: AudioNode | null = null;
   private dataArray: Uint8Array<ArrayBuffer> | null = null;
   private stopTicks: (() => void) | null = null;
   private isActive = false;
   private currentSensitivity = 0.1;
-  private currentStream: MediaStream | null = null;
 
   // Debouncing for voice activity
   private lastVoiceTime = 0;
@@ -59,14 +59,19 @@ export class VoiceActivityDetector {
   private listeners: Array<(isActive: boolean, level: number) => void> = [];
 
   /**
-   * Start monitoring the given audio stream for voice activity.
+   * Start monitoring the given audio node for voice activity.
+   *
+   * The caller passes a node rather than a stream so the detector sees the
+   * signal *after* the input gain — the level compared against the threshold
+   * is then the one that is actually transmitted, and the microphone can be
+   * turned up without silently making voice detection harder to trigger.
    *
    * The analyser is built on demand: the detector used to open an
    * `AudioContext` at app startup even for users who never enable
    * voice-activity mode, which counted against the browser's context limit
    * for nothing.
    */
-  start(stream: MediaStream, sensitivity: number = 0.1) {
+  start(source: AudioNode, sensitivity: number = 0.1) {
     // Stop any existing monitoring first
     this.stop();
 
@@ -84,9 +89,8 @@ export class VoiceActivityDetector {
         this.dataArray = configureVadAnalyser(this.analyser);
       }
 
-      this.currentStream = stream;
       this.currentSensitivity = sensitivity;
-      this.source = context.createMediaStreamSource(stream);
+      this.source = source;
       this.source.connect(this.analyser);
 
       this.startAnalysis(sensitivity);
@@ -101,8 +105,9 @@ export class VoiceActivityDetector {
   updateSensitivity(sensitivity: number) {
     this.currentSensitivity = sensitivity;
     // If we're currently monitoring, restart with new sensitivity
-    if (this.currentStream && this.source) {
-      this.start(this.currentStream, sensitivity);
+    const source = this.source;
+    if (source) {
+      this.start(source, sensitivity);
     }
   }
 
@@ -115,12 +120,17 @@ export class VoiceActivityDetector {
       this.stopTicks = null;
     }
 
-    if (this.source) {
-      this.source.disconnect();
-      this.source = null;
+    if (this.source && this.analyser) {
+      // Only the edge into our analyser is cut: the node belongs to the
+      // caller's graph and still has to feed the transmission gate.
+      try {
+        this.source.disconnect(this.analyser);
+      } catch {
+        // Already disconnected (e.g. the graph was torn down first).
+      }
     }
+    this.source = null;
 
-    this.currentStream = null;
     this.isActive = false;
     this.lastVoiceTime = 0;
     this.notifyListeners(false, 0);
