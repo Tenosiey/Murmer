@@ -66,8 +66,7 @@
     screenSharePreview,
     toggleScreenSharePreview
   } from '$lib/stores/screenShare';
-  import ScreenShareStage from '$lib/components/ScreenShareStage.svelte';
-  import ScreenSharePreview from '$lib/components/ScreenSharePreview.svelte';
+  import ScreenShareLayer from '$lib/components/ScreenShareLayer.svelte';
   import { loadKeyPair, sign } from '$lib/keypair';
   import { httpBaseFromWs } from '$lib/server-url';
   import { connection, connectionError } from '$lib/stores/connection';
@@ -142,10 +141,6 @@
 
   let now = $state(Date.now());
   let expiryTicker: number | null = null;
-
-  // Own capture blown up onto the share stage instead of the small preview.
-  let expandedOwnScreenShare = $state(false);
-
 
   let replyingTo: Message | null = $state(null);
   let threadRootId: number | null = $state(null);
@@ -1653,10 +1648,11 @@
     }
   });
   let currentChatChannelName = $derived($channels.find(c => c.id === currentChatChannelId)?.name ?? '');
-  // One tile per share being watched, plus our own capture when it is
-  // expanded. The peer is looked up on every change rather than captured once:
-  // it is absent while the connection comes up, and the manager republishes it
-  // when the share changes (audio arriving alongside the video, say).
+  // One window per share being watched, plus our own capture while the
+  // self-preview is on. The peer is looked up on every change rather than
+  // captured once: it is absent while the connection comes up, and the manager
+  // republishes it when the share changes (audio arriving alongside the video,
+  // say).
   let screenShareTiles = $derived.by<WatchedScreenShare[]>(() => {
     const tiles: WatchedScreenShare[] = $watchedScreenShares.map((userId) => ({
       key: `peer:${userId}`,
@@ -1665,25 +1661,19 @@
       isSelf: false,
       onClose: () => closeScreenShare(userId)
     }));
-    if (expandedOwnScreenShare && $localScreenShareStream) {
+    if ($localScreenShareStream && $screenSharePreview) {
       const stream = $localScreenShareStream;
       tiles.push({
         key: 'self',
         userId: $session.user ?? 'You',
         peer: { userId: $session.user ?? 'You', stream, hasAudio: stream.getAudioTracks().length > 0 },
         isSelf: true,
-        onClose: () => (expandedOwnScreenShare = false)
+        // Closing the preview window is the same thing as switching the
+        // preview off — nothing renders the capture a second time then.
+        onClose: () => screenSharePreview.set(false)
       });
     }
     return tiles;
-  });
-  function closeScreenShareStage() {
-    closeAllScreenShares();
-    expandedOwnScreenShare = false;
-  }
-  $effect(() => {
-    // Once sharing ends the next share starts from the small preview again.
-    if (!$localScreenShareStream) expandedOwnScreenShare = false;
   });
   let channelMessages = $derived($chat.filter((m) => m.channelId === currentChatChannelId));
   let messageBlocks = $derived(buildMessageBlocks(channelMessages, {
@@ -2075,18 +2065,10 @@
   onClose={closeEmojiPicker}
 />
 
-<!-- Every share being watched, side by side. Our own capture joins them when
-     it is expanded; otherwise it stays a small floating preview. -->
+<!-- Every share being watched, each in its own floating window over the app;
+     our own capture joins them as a corner preview while sharing. -->
 {#if screenShareTiles.length > 0}
-  <ScreenShareStage tiles={screenShareTiles} onCloseAll={closeScreenShareStage} />
-{/if}
-
-{#if $localScreenShareStream && $screenSharePreview && !expandedOwnScreenShare}
-  <ScreenSharePreview
-    stream={$localScreenShareStream}
-    onExpand={() => (expandedOwnScreenShare = true)}
-    onHide={() => screenSharePreview.set(false)}
-  />
+  <ScreenShareLayer tiles={screenShareTiles} onCloseAll={closeAllScreenShares} />
 {/if}
 
 {#if $connection === 'connecting' || $connection === 'disconnected' || $connection === 'failed'}
