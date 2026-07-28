@@ -11,6 +11,7 @@
     outputDeviceId,
     voiceMode,
     vadSensitivity,
+    vadAutoSensitivity,
     pttKey,
     echoCancellation,
     noiseSuppression,
@@ -30,6 +31,7 @@
   import { loadKeyPair } from '$lib/keypair';
   import { onMount, onDestroy } from 'svelte';
   import { PushToTalkManager } from '$lib/voice/ptt';
+  import { VAD_THRESHOLD_MIN, VAD_THRESHOLD_MAX } from '$lib/voice/vad';
   import {
     hotkeys,
     HOTKEY_ACTIONS,
@@ -85,8 +87,10 @@
 
   // Ends of the VAD sensitivity scale, shared by the slider and the level meter
   // drawn underneath it so the threshold marker lines up with the slider thumb.
-  const VAD_MIN = 0.01;
-  const VAD_MAX = 0.5;
+  // They come from the detector, which clamps automatic thresholds to the same
+  // range — a marker off the end of the meter would be a lie.
+  const VAD_MIN = VAD_THRESHOLD_MIN;
+  const VAD_MAX = VAD_THRESHOLD_MAX;
 
   const REPO_URL = 'https://github.com/Tenosiey/Murmer';
   const ABOUT_LINKS = [
@@ -714,27 +718,49 @@
                other modes. Only ever one instance, so only one capture. -->
           <div class="setting-group">
             {#if $voiceMode === 'vad'}
-              <label for="vad-sensitivity-slider" class="setting-label">
-                VAD sensitivity
-                <span class="setting-value">{Math.round((1 - $vadSensitivity) * 100)}%</span>
+              <label class="toggle-row">
+                <input type="checkbox" bind:checked={$vadAutoSensitivity} />
+                <span class="toggle-text">
+                  <span class="toggle-label">Automatic sensitivity</span>
+                  <span class="toggle-description">
+                    Measure the background noise and set the threshold just above it
+                  </span>
+                </span>
               </label>
-              <div class="slider-container">
-                <input
-                  id="vad-sensitivity-slider"
-                  class="volume-slider"
-                  type="range"
-                  min={VAD_MIN}
-                  max={VAD_MAX}
-                  step="0.01"
-                  bind:value={$vadSensitivity}
-                />
-                <div class="slider-track-fill" style="width: {(1 - ($vadSensitivity / VAD_MAX)) * 100}%"></div>
-              </div>
-              <MicLevelMeter threshold={$vadSensitivity} min={VAD_MIN} max={VAD_MAX} />
+              {#if !$vadAutoSensitivity}
+                <label for="vad-sensitivity-slider" class="setting-label">
+                  VAD sensitivity
+                  <span class="setting-value">{Math.round((1 - $vadSensitivity) * 100)}%</span>
+                </label>
+                <div class="slider-container">
+                  <input
+                    id="vad-sensitivity-slider"
+                    class="volume-slider"
+                    type="range"
+                    min={VAD_MIN}
+                    max={VAD_MAX}
+                    step="0.01"
+                    bind:value={$vadSensitivity}
+                  />
+                  <div class="slider-track-fill" style="width: {(1 - ($vadSensitivity / VAD_MAX)) * 100}%"></div>
+                </div>
+              {/if}
+              <MicLevelMeter
+                threshold={$vadAutoSensitivity ? undefined : $vadSensitivity}
+                automatic={$vadAutoSensitivity}
+                min={VAD_MIN}
+                max={VAD_MAX}
+              />
               <div class="setting-description">
-                Higher sensitivity detects quieter speech but may pick up background noise.
-                Speak normally and drag the slider until the bar passes the marker only
-                when you talk.
+                {#if $vadAutoSensitivity}
+                  The marker follows your room: stay quiet for a moment and it settles just
+                  above the noise, then rises again if a fan or a fridge kicks in. Turn this
+                  off if it clips the start of your words or lets noise through.
+                {:else}
+                  Higher sensitivity detects quieter speech but may pick up background noise.
+                  Speak normally and drag the slider until the bar passes the marker only
+                  when you talk.
+                {/if}
               </div>
             {:else}
               <span class="setting-label">Input level</span>

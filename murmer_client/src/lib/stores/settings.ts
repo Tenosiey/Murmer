@@ -222,10 +222,15 @@ export type VoiceMode = 'continuous' | 'vad' | 'ptt';
 
 const VOICE_MODE_KEY = 'murmer_voice_mode';
 const VAD_SENSITIVITY_KEY = 'murmer_vad_sensitivity';
+const VAD_AUTO_KEY = 'murmer_vad_auto';
 const PTT_KEY_KEY = 'murmer_ptt_key';
 
 let initialVoiceMode: VoiceMode = 'continuous';
 let initialVadSensitivity = 0.1; // 0-1 range, lower = more sensitive
+// On by default: the threshold that works in one room with one microphone is
+// wrong in the next, so deriving it from the measured noise floor beats asking
+// for a number. `vadSensitivity` stays the manual override.
+let initialVadAutoSensitivity = true;
 let initialPttKey = 'Space';
 
 if (browser) {
@@ -242,6 +247,11 @@ if (browser) {
     }
   }
   
+  const storedVadAuto = localStorage.getItem(VAD_AUTO_KEY);
+  if (storedVadAuto !== null) {
+    initialVadAutoSensitivity = storedVadAuto === 'true';
+  }
+
   const storedPttKey = localStorage.getItem(PTT_KEY_KEY);
   if (storedPttKey) {
     initialPttKey = storedPttKey;
@@ -250,6 +260,7 @@ if (browser) {
 
 export const voiceMode = writable<VoiceMode>(initialVoiceMode);
 export const vadSensitivity = writable<number>(initialVadSensitivity);
+export const vadAutoSensitivity = writable<boolean>(initialVadAutoSensitivity);
 export const pttKey = writable<string>(initialPttKey);
 export const isPttActive = writable<boolean>(false);
 export const voiceActivity = writable<boolean>(false);
@@ -263,6 +274,12 @@ voiceMode.subscribe((value) => {
 vadSensitivity.subscribe((value) => {
   if (browser) {
     localStorage.setItem(VAD_SENSITIVITY_KEY, String(value));
+  }
+});
+
+vadAutoSensitivity.subscribe((value) => {
+  if (browser) {
+    localStorage.setItem(VAD_AUTO_KEY, String(value));
   }
 });
 

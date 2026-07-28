@@ -16,7 +16,7 @@ import { refreshAudioDevices } from '../stores/audioDevices';
 import { openMicrophone } from './capture';
 import { getAudioContext, resumeAudioContext } from './audioContext';
 import { subscribeTick } from './ticker';
-import { configureVadAnalyser, readVadLevel } from './vad';
+import { configureVadAnalyser, NoiseFloorTracker, readVadLevel } from './vad';
 
 export class MicLevelMonitor {
   private analyser: AnalyserNode | null = null;
@@ -25,6 +25,13 @@ export class MicLevelMonitor {
   private stopGainSubscription: (() => void) | null = null;
   private dataArray: Uint8Array<ArrayBuffer> | null = null;
   private stopTicks: (() => void) | null = null;
+  /**
+   * Own estimate of the background noise, so the meter can draw the threshold
+   * automatic mode would use. The detector tracks its own on the same signal —
+   * sharing one would mean the marker went blank whenever the other side is
+   * not running, which is most of the time the settings are open.
+   */
+  private noiseFloor = new NoiseFloorTracker();
   /** Only set when we opened the stream ourselves and must close it again. */
   private ownedStream: MediaStream | null = null;
   /**
@@ -35,10 +42,11 @@ export class MicLevelMonitor {
   private generation = 0;
 
   /**
-   * Begin reporting the input level (0-1) on every audio tick.
+   * Begin reporting the input level and the threshold automatic sensitivity
+   * derives from the current noise floor (both 0-1) on every audio tick.
    * Rejects when the microphone cannot be opened.
    */
-  async start(onLevel: (level: number) => void): Promise<void> {
+  async start(onSample: (level: number, autoThreshold: number) => void): Promise<void> {
     this.stop();
     const generation = this.generation;
 
@@ -71,9 +79,11 @@ export class MicLevelMonitor {
     this.source.connect(this.gain);
     this.gain.connect(this.analyser);
 
+    this.noiseFloor.reset();
     this.stopTicks = subscribeTick(() => {
       if (!this.analyser || !this.dataArray) return;
-      onLevel(readVadLevel(this.analyser, this.dataArray));
+      const level = readVadLevel(this.analyser, this.dataArray);
+      onSample(level, this.noiseFloor.update(level));
     });
   }
 

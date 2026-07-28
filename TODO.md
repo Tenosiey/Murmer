@@ -31,7 +31,7 @@ surfacing two things the server already stores.
 
 ### 🎤 Voice Features
 
-- [ ] Automatic input sensitivity — track the noise floor and derive the VAD
+- [x] Automatic input sensitivity — track the noise floor and derive the VAD
       threshold from it instead of asking the user to dial in a number, with a
       manual override for the cases it gets wrong
 - [ ] Breakout rooms

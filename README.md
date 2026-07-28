@@ -50,6 +50,9 @@ small team can deploy a private chat space quickly.
 - Configurable input volume, noise suppression, echo cancellation and automatic
   gain control, with a live input level meter and a record-and-play-back
   microphone test
+- Voice activation with automatic sensitivity: the client tracks the background
+  noise level and keeps the threshold just above it, with a manual slider for
+  the cases it gets wrong
 - Customizable hotkeys (mute, deafen, join/leave voice, search, settings, help)
   under Settings → Hotkeys; the voice hotkeys also work system-wide while the
   app is in the background (can be disabled)
