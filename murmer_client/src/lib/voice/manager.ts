@@ -19,7 +19,7 @@ import {
   isPttActive,
   voiceActivity,
   echoCancellation,
-  noiseSuppression,
+  noiseSuppressionMode,
   autoGainControl,
   micGain,
   clampMicGain
@@ -33,6 +33,7 @@ import { PushToTalkManager } from './ptt';
 import { getAudioContext, resumeAudioContext } from './audioContext';
 import { subscribeTick } from './ticker';
 import { micProcessingConstraints, openMicrophone } from './capture';
+import { connectMicSource, type MicSource } from './denoise';
 import { withOpusFeatures } from './sdp';
 
 const DEFAULT_AUDIO_BITRATE = 64_000;
@@ -101,7 +102,8 @@ export class VoiceManager {
    * meters see the same signal the peers receive.
    */
   private inputGainNode: GainNode | null = null;
-  private sourceNode: MediaStreamAudioSourceNode | null = null;
+  /** Microphone end of the chain, including the RNNoise node when enabled. */
+  private micSource: MicSource | null = null;
   private destinationStream: MediaStream | null = null;
   private rawStream: MediaStream | null = null;
 
@@ -180,8 +182,11 @@ export class VoiceManager {
     vadSensitivity.subscribe(() => this.updateVadSensitivity());
     vadAutoSensitivity.subscribe(() => this.updateVadSensitivity());
     echoCancellation.subscribe(() => this.applyMicProcessing());
-    noiseSuppression.subscribe(() => this.applyMicProcessing());
     autoGainControl.subscribe(() => this.applyMicProcessing());
+    // Unlike the other two this changes the shape of the graph and not just
+    // the capture constraints — RNNoise is a node in the chain — so it always
+    // takes the full rebuild rather than trying `applyConstraints` first.
+    noiseSuppressionMode.subscribe(() => this.swapCapture());
     micGain.subscribe(() => this.applyInputGain());
     // The device used to be read once at join time, so picking a different
     // microphone mid-call did nothing until you left and rejoined.
@@ -309,14 +314,24 @@ export class VoiceManager {
           return;
         }
 
-        if (this.sourceNode) this.sourceNode.disconnect();
+        if (this.micSource) {
+          this.micSource.disconnect();
+          this.micSource = null;
+        }
         if (this.rawStream) {
           for (const track of this.rawStream.getTracks()) track.stop();
         }
 
+        const micSource = await connectMicSource(context, stream, this.inputGainNode);
+        // Building the chain may have to load RNNoise first, so check again.
+        if (!this.userName || !this.inputGainNode) {
+          micSource.disconnect();
+          for (const track of stream.getTracks()) track.stop();
+          return;
+        }
+
         this.rawStream = stream;
-        this.sourceNode = context.createMediaStreamSource(stream);
-        this.sourceNode.connect(this.inputGainNode);
+        this.micSource = micSource;
         this.watchCaptureTrack(stream);
         captureStream.set(stream);
         // The detector listens on the input gain node, which the swap leaves
@@ -465,19 +480,22 @@ export class VoiceManager {
   }
 
   /**
-   * Build microphone -> input volume -> gate -> outgoing-track graph.
+   * Build microphone -> [noise suppression] -> input volume -> gate ->
+   * outgoing-track graph.
    *
    * The two gain nodes are kept separate on purpose even though multiplying
    * them would send identical audio: the detector and the level meters tap
    * the input node, so they measure the amplified signal while the gate
-   * stays a plain open/closed switch.
+   * stays a plain open/closed switch. Noise suppression goes in ahead of both
+   * (see `denoise.ts`), so everything measured downstream is measured on the
+   * cleaned-up signal.
    *
    * Throws when the graph cannot be built. The caller aborts the join in that
    * case rather than falling back to sending the raw capture: without the
    * gain node there is no gate, and push-to-talk or voice-activity mode would
    * quietly become an always-open microphone.
    */
-  private setupAudioProcessing(inputStream: MediaStream): MediaStream {
+  private async setupAudioProcessing(inputStream: MediaStream): Promise<MediaStream> {
     this.rawStream = inputStream;
     this.audioContext = getAudioContext();
     if (!this.audioContext) {
@@ -485,7 +503,6 @@ export class VoiceManager {
     }
     resumeAudioContext();
     try {
-      this.sourceNode = this.audioContext.createMediaStreamSource(inputStream);
       this.inputGainNode = this.audioContext.createGain();
       this.inputGainNode.gain.value = clampMicGain(get(micGain));
       this.gainNode = this.audioContext.createGain();
@@ -494,9 +511,9 @@ export class VoiceManager {
       // of audio before the first gate evaluation.
       this.gainNode.gain.value = 0;
       const destination = this.audioContext.createMediaStreamDestination();
-      this.sourceNode.connect(this.inputGainNode);
       this.inputGainNode.connect(this.gainNode);
       this.gainNode.connect(destination);
+      this.micSource = await connectMicSource(this.audioContext, inputStream, this.inputGainNode);
       this.destinationStream = destination.stream;
       this.startLocalLevelMeter();
       return this.destinationStream;
@@ -550,9 +567,9 @@ export class VoiceManager {
 
   private cleanupAudioProcessing() {
     this.stopLocalLevelMeter();
-    if (this.sourceNode) {
-      this.sourceNode.disconnect();
-      this.sourceNode = null;
+    if (this.micSource) {
+      this.micSource.disconnect();
+      this.micSource = null;
     }
     if (this.inputGainNode) {
       this.inputGainNode.disconnect();
@@ -771,7 +788,7 @@ export class VoiceManager {
     // these are the only steps that can fail.
     const rawStream = await openMicrophone();
     try {
-      this.localStream = this.setupAudioProcessing(rawStream);
+      this.localStream = await this.setupAudioProcessing(rawStream);
     } catch (error) {
       for (const track of rawStream.getTracks()) track.stop();
       throw error;

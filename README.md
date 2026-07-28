@@ -53,6 +53,10 @@ small team can deploy a private chat space quickly.
 - Configurable input volume, noise suppression, echo cancellation and automatic
   gain control, with a live input level meter and a record-and-play-back
   microphone test
+- RNNoise noise suppression (the default): a neural filter running locally in an
+  audio worklet that removes keyboards, fans and background voices the platform's
+  own suppressor leaves in. Selectable per user against the built-in suppressor
+  or none at all, and comparable with the microphone test
 - Independent playback volumes for voices, the app's own join/leave/mute blips,
   screen share audio and the soundboard, so turning one down leaves the rest
   where they were
@@ -462,6 +466,18 @@ must not be marked as pre-release — the updater endpoint
   mitigate timing attacks.
 - Every capability is gated by a server-side permission check against the
   user's roles; client-side gating is only cosmetic.
+
+## Third-party components
+
+Most dependencies are pulled in as source, but the client ships one prebuilt
+binary in its installer and it is worth naming:
+
+- Noise suppression is [RNNoise](https://github.com/xiph/rnnoise) (Xiph.Org,
+  BSD-3-Clause), as the WebAssembly build from
+  [shiguredo/rnnoise-wasm](https://github.com/shiguredo/rnnoise-wasm)
+  (Apache-2.0), wrapped by
+  [@sapphi-red/web-noise-suppressor](https://github.com/sapphi-red/web-noise-suppressor)
+  (MIT) for the audio-worklet plumbing.
 
 ## Contributing
 

@@ -3,24 +3,26 @@
  *
  * Measures the input exactly like the VAD does (`configureVadAnalyser` /
  * `readVadLevel`) so the reported level can be compared against the sensitivity
- * threshold directly — which includes applying the same input gain the voice
- * manager puts ahead of its detector. While a voice session is running it
- * borrows that session's capture stream instead of opening a second capture of
- * the same device; otherwise it opens — and owns — its own stream using the
- * configured input device and microphone processing settings.
+ * threshold directly — which includes running the same noise suppression and
+ * applying the same input gain the voice manager puts ahead of its detector.
+ * While a voice session is running it borrows that session's capture stream
+ * instead of opening a second capture of the same device; otherwise it opens —
+ * and owns — its own stream using the configured input device and microphone
+ * processing settings.
  */
 import { get } from 'svelte/store';
 import { micGain, clampMicGain } from '../stores/settings';
 import { captureStream } from '../stores/voiceCapture';
 import { refreshAudioDevices } from '../stores/audioDevices';
 import { openMicrophone } from './capture';
+import { connectMicSource, type MicSource } from './denoise';
 import { getAudioContext, resumeAudioContext } from './audioContext';
 import { subscribeTick } from './ticker';
 import { configureVadAnalyser, NoiseFloorTracker, readVadLevel } from './vad';
 
 export class MicLevelMonitor {
   private analyser: AnalyserNode | null = null;
-  private source: MediaStreamAudioSourceNode | null = null;
+  private source: MicSource | null = null;
   private gain: GainNode | null = null;
   private stopGainSubscription: (() => void) | null = null;
   private dataArray: Uint8Array<ArrayBuffer> | null = null;
@@ -67,17 +69,32 @@ export class MicLevelMonitor {
     if (!context) throw new Error('Audio processing is unavailable on this system');
     resumeAudioContext();
 
-    this.analyser = context.createAnalyser();
-    this.dataArray = configureVadAnalyser(this.analyser);
-    this.source = context.createMediaStreamSource(stream);
-    // The borrowed capture stream is the *raw* microphone, so the gain has to
-    // be re-applied here; dragging the slider updates it without a restart.
-    this.gain = context.createGain();
+    // Built into locals and only published once the chain is complete: loading
+    // RNNoise takes a moment, and a `stop()` in the middle of it must not find
+    // half a graph on the instance.
+    const analyser = context.createAnalyser();
+    const dataArray = configureVadAnalyser(analyser);
+    // The borrowed capture stream is the *raw* microphone, so the noise
+    // suppression and the gain both have to be re-applied here; dragging the
+    // slider updates the latter without a restart.
+    const gain = context.createGain();
+    gain.gain.value = clampMicGain(get(micGain));
+    gain.connect(analyser);
+    const source = await connectMicSource(context, stream, gain);
+    if (generation !== this.generation) {
+      source.disconnect();
+      gain.disconnect();
+      analyser.disconnect();
+      return;
+    }
+
+    this.analyser = analyser;
+    this.dataArray = dataArray;
+    this.gain = gain;
+    this.source = source;
     this.stopGainSubscription = micGain.subscribe((value) => {
       if (this.gain) this.gain.gain.value = clampMicGain(value);
     });
-    this.source.connect(this.gain);
-    this.gain.connect(this.analyser);
 
     this.noiseFloor.reset();
     this.stopTicks = subscribeTick(() => {

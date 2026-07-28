@@ -184,7 +184,7 @@ export function getUserVolume(userId: string): number {
 
 // Microphone processing (applied as getUserMedia constraints)
 const ECHO_CANCEL_KEY = 'murmer_echo_cancellation';
-const NOISE_SUPPRESS_KEY = 'murmer_noise_suppression';
+const NOISE_SUPPRESS_MODE_KEY = 'murmer_noise_suppression_mode';
 const AUTO_GAIN_KEY = 'murmer_auto_gain';
 
 function loadBool(key: string, def: boolean): boolean {
@@ -193,16 +193,43 @@ function loadBool(key: string, def: boolean): boolean {
   return stored === null ? def : stored === 'true';
 }
 
+/**
+ * Which noise suppression runs on the microphone.
+ *
+ * The two filters are deliberately mutually exclusive rather than checkboxes
+ * that stack: the browser's suppressor runs inside the capture, so it would
+ * hand RNNoise an already-mangled signal and make the better of the two filters
+ * work from worse input.
+ *
+ * - `off`      – nothing, the raw capture goes out
+ * - `browser`  – the platform's `noiseSuppression` capture constraint
+ * - `rnnoise`  – the RNNoise worklet in `voice/denoise.ts`, ahead of the input
+ *                gain
+ */
+export type NoiseSuppressionMode = 'off' | 'browser' | 'rnnoise';
+
+const NOISE_SUPPRESSION_MODES: NoiseSuppressionMode[] = ['off', 'browser', 'rnnoise'];
+
+function loadNoiseSuppressionMode(): NoiseSuppressionMode {
+  if (!browser) return 'rnnoise';
+  const stored = localStorage.getItem(NOISE_SUPPRESS_MODE_KEY);
+  return NOISE_SUPPRESSION_MODES.includes(stored as NoiseSuppressionMode)
+    ? (stored as NoiseSuppressionMode)
+    : 'rnnoise';
+}
+
 export const echoCancellation = writable<boolean>(loadBool(ECHO_CANCEL_KEY, true));
-export const noiseSuppression = writable<boolean>(loadBool(NOISE_SUPPRESS_KEY, true));
+/** Defaults to RNNoise: it is audibly better than the capture constraint and
+    costs about a percent of one core. */
+export const noiseSuppressionMode = writable<NoiseSuppressionMode>(loadNoiseSuppressionMode());
 export const autoGainControl = writable<boolean>(loadBool(AUTO_GAIN_KEY, true));
 
 echoCancellation.subscribe((value) => {
   if (browser) localStorage.setItem(ECHO_CANCEL_KEY, String(value));
 });
 
-noiseSuppression.subscribe((value) => {
-  if (browser) localStorage.setItem(NOISE_SUPPRESS_KEY, String(value));
+noiseSuppressionMode.subscribe((value) => {
+  if (browser) localStorage.setItem(NOISE_SUPPRESS_MODE_KEY, value);
 });
 
 autoGainControl.subscribe((value) => {
