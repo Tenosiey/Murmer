@@ -73,9 +73,13 @@ small team can deploy a private chat space quickly.
   turned back on. System audio can be shared along with the picture (a checkbox
   in the OS picker); viewers get their own volume slider and mute for it,
   separate from the voice volume. Everyone in a voice channel can share at
-  once, and a viewer can watch any number of those shares side by side —
-  each one is resizable, has its own volume and mute, and is closed on its own
-  without disturbing the others
+  once, and a viewer can watch any number of those shares at the same time:
+  each share opens as its own window floating over the app — move it, resize it
+  from any corner, shrink it into a corner as picture-in-picture, maximize it or
+  go fullscreen, with its own volume and mute. Nothing is blocked while a share
+  is on screen, so chatting on keeps working next to it; "Tile" arranges every
+  open window into a grid, and each window's position and size are remembered
+  per person
 - Soundboard: a shared library of short clips anyone in a voice channel can
   play for everyone present. Uploading is gated by *Manage sounds*, playing by
   *Use soundboard*, and a server-side cooldown keeps it from becoming a spam

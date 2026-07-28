@@ -4,6 +4,7 @@ import { session } from './session';
 import { notify } from '../notify';
 import { channelNotifications } from './channelNotifications';
 import { soundboardPrefs } from './soundboardSettings';
+import { screenShareWindows } from './screenShareWindows';
 import { prepareMessage, containsMention, normalizeReactions } from '../message-utils';
 import { WebSocketManager } from '../websocket-manager';
 import { connection } from './connection';
@@ -351,6 +352,8 @@ function createChatStore() {
     channelNotifications.setServer(url);
     // Sound ids and usernames are also only unique per server.
     soundboardPrefs.setServer(url);
+    // Screen share windows are remembered per sharer, which is a username too.
+    screenShareWindows.setServer(url);
     // Key pins persist per server; in-flight lookups belong to the old one.
     peerKeys.setServer(url);
     clearPeerKeyRequests();

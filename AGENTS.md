@@ -91,13 +91,22 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   `role`; one map keyed by name alone would hand a mutual pair of sharers a
   single connection for two sessions. Stopping your own share therefore only
   closes `outgoing` — the shares you are watching keep running.
-  The viewer side is a **stage of tiles** (`ScreenShareStage`/`ScreenShareTile`
-  with `watchedScreenShares` in `stores/screenShare.ts`): shares open side by
-  side, each resizable and closable on its own, each with its own volume/mute
-  overriding the app-wide `screenShareVolume`/`screenShareMuted` default. A
-  watched entry with no peer yet is still negotiating and stays up; one whose
-  peer disappears has ended and is closed, which is what keeps a tile from
-  hanging on "Connecting…" forever.
+  The viewer side is a **layer of floating windows**
+  (`ScreenShareLayer`/`ScreenShareWindow` over `watchedScreenShares` in
+  `stores/screenShare.ts`): watching never blocks the app, so the layer is
+  `pointer-events: none` and only the windows themselves take input. Each
+  window is dragged, resized from any corner, shrunk into a corner
+  (picture-in-picture), maximized or made fullscreen on its own, and carries
+  its own volume/mute overriding the app-wide
+  `screenShareVolume`/`screenShareMuted` default; the sharer's self-preview is
+  one of these windows and starts in picture-in-picture. Geometry lives in
+  `stores/screenShareWindows.ts`, which owns every clamping rule (a window may
+  never leave the viewport — a header dragged off screen can never be grabbed
+  again) and is handed the viewport by the layer instead of reading `window`,
+  so all of it is testable. Layouts persist per sharer, namespaced by server
+  URL like the other per-name state. A watched entry with no peer yet is still
+  negotiating and stays up; one whose peer disappears has ended and is closed,
+  which is what keeps a window from hanging on "Connecting…" forever.
 - `src-tauri/` – Rust-side glue for native integrations
 
 ## Security expectations
