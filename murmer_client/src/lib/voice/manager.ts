@@ -33,6 +33,7 @@ import { PushToTalkManager } from './ptt';
 import { getAudioContext, resumeAudioContext } from './audioContext';
 import { subscribeTick } from './ticker';
 import { micProcessingConstraints, openMicrophone } from './capture';
+import { withOpusFeatures } from './sdp';
 
 const DEFAULT_AUDIO_BITRATE = 64_000;
 
@@ -51,6 +52,14 @@ const GATE_RAMP_SECONDS = 0.015;
  */
 const INPUT_GAIN_RAMP_SECONDS = 0.05;
 
+/**
+ * Packets a loss window must hold before its percentage is recomputed. At the
+ * 50 packets/s of an active stream this is a fraction of a second; on a stream
+ * that DTX has reduced to comfort noise it spans several polls, which is the
+ * point — see `updateStats`.
+ */
+const MIN_LOSS_SAMPLE_PACKETS = 20;
+
 export class VoiceManager {
   private peers: Record<string, RTCPeerConnection> = {};
   private statsIntervals: Record<string, number> = {};
@@ -58,6 +67,23 @@ export class VoiceManager {
   private prevPacketCounts: Record<
     string,
     { received: number; lost: number; sent: number; remoteLost: number }
+  > = {};
+  /**
+   * Packets counted towards the loss percentage currently on screen, per peer.
+   * The counters reset every time a percentage is computed; `inbound`/
+   * `outbound` hold the last result so the bars have a value to show while the
+   * next window fills.
+   */
+  private lossWindows: Record<
+    string,
+    {
+      received: number;
+      lost: number;
+      sent: number;
+      remoteLost: number;
+      inbound: number;
+      outbound: number;
+    }
   > = {};
   private localStream: MediaStream | null = null;
   private userName: string | null = null;
@@ -571,6 +597,7 @@ export class VoiceManager {
         delete this.statsIntervals[id];
       }
       delete this.prevPacketCounts[id];
+      delete this.lossWindows[id];
     }
     this.emit(peersList.filter((r) => r.id !== id));
   }
@@ -609,19 +636,51 @@ export class VoiceManager {
         }
       });
 
-      // Loss over the window since the previous poll, in both directions:
-      // packets we didn't receive plus packets the peer reports missing from
-      // us. Deltas are clamped because the cumulative counters may decrease
-      // (e.g. after duplicate packets or an SSRC restart).
+      // Loss in both directions: packets we didn't receive plus packets the
+      // peer reports missing from us. Deltas are clamped because the
+      // cumulative counters may decrease (e.g. after duplicate packets or an
+      // SSRC restart).
       const prev = this.prevPacketCounts[id] ?? { received: 0, lost: 0, sent: 0, remoteLost: 0 };
       this.prevPacketCounts[id] = { received, lost, sent, remoteLost };
       const dReceived = Math.max(0, received - prev.received);
       const dLost = Math.max(0, lost - prev.lost);
       const dSent = Math.max(0, sent - prev.sent);
       const dRemoteLost = Math.max(0, remoteLost - prev.remoteLost);
-      const inboundLoss = dReceived + dLost > 0 ? (dLost / (dReceived + dLost)) * 100 : 0;
-      const outboundLoss = dSent > 0 ? Math.min(100, (dRemoteLost / dSent) * 100) : 0;
-      const packetLoss = Math.max(inboundLoss, outboundLoss);
+
+      // The percentage is only recomputed once enough packets have gone by,
+      // not once per poll. With DTX a silent stream carries a handful of
+      // comfort-noise packets a second, and dividing by that few would turn a
+      // single lost packet into "50 % loss" and drop the connection bars to
+      // one for everyone who is not currently talking. Deltas accumulate into
+      // the next window instead of being dropped, so real loss on a quiet
+      // link still surfaces — it just takes a couple of seconds. While
+      // somebody talks the stream fills a window in well under a second, so
+      // the bars stay as responsive as they were.
+      const window = this.lossWindows[id] ?? {
+        received: 0,
+        lost: 0,
+        sent: 0,
+        remoteLost: 0,
+        inbound: 0,
+        outbound: 0
+      };
+      window.received += dReceived;
+      window.lost += dLost;
+      window.sent += dSent;
+      window.remoteLost += dRemoteLost;
+      const inboundSample = window.received + window.lost;
+      if (inboundSample >= MIN_LOSS_SAMPLE_PACKETS) {
+        window.inbound = (window.lost / inboundSample) * 100;
+        window.received = 0;
+        window.lost = 0;
+      }
+      if (window.sent >= MIN_LOSS_SAMPLE_PACKETS) {
+        window.outbound = Math.min(100, (window.remoteLost / window.sent) * 100);
+        window.sent = 0;
+        window.remoteLost = 0;
+      }
+      this.lossWindows[id] = window;
+      const packetLoss = Math.max(window.inbound, window.outbound);
 
       let strength =
         rtt === 0 ? 5 : rtt < 50 ? 5 : rtt < 100 ? 4 : rtt < 200 ? 3 : rtt < 400 ? 2 : 1;
@@ -685,7 +744,7 @@ export class VoiceManager {
     };
     this.statsIntervals[id] = window.setInterval(() => this.updateStats(id, peersList), 1000);
     if (initiator && this.userName) {
-      const offer = await pc.createOffer();
+      const offer = withOpusFeatures(await pc.createOffer());
       await pc.setLocalDescription(offer);
       chat.sendRaw({
         type: 'voice-offer',
@@ -805,8 +864,14 @@ export class VoiceManager {
     )
       return;
     const pc = await this.createPeer(msg.user as string, false, peersList);
-    await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp as any));
-    const answer = await pc.createAnswer();
+    // The peer's description is munged too, not just ours: the encoder takes
+    // its DTX/FEC settings from the *remote* side of the negotiation, so this
+    // is what guarantees our own uplink stops paying for silence even if the
+    // offer arrived without the parameters.
+    await pc.setRemoteDescription(
+      new RTCSessionDescription(withOpusFeatures(msg.sdp as RTCSessionDescriptionInit))
+    );
+    const answer = withOpusFeatures(await pc.createAnswer());
     await pc.setLocalDescription(answer);
     chat.sendRaw({
       type: 'voice-answer',
@@ -826,7 +891,9 @@ export class VoiceManager {
       return;
     const pc = this.peers[msg.user as string];
     if (pc && !pc.currentRemoteDescription) {
-      await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp as any));
+      await pc.setRemoteDescription(
+        new RTCSessionDescription(withOpusFeatures(msg.sdp as RTCSessionDescriptionInit))
+      );
     }
   }
 

@@ -32,7 +32,10 @@ small team can deploy a private chat space quickly.
 ## Features
 
 - Persistent text chat stored in an embedded SQLite database
-- WebRTC voice rooms with presence tracking
+- WebRTC voice rooms with presence tracking. Opus runs with DTX and in-band
+  FEC: a silent or muted participant costs a fraction of the packets an open
+  microphone does — which adds up, since every client holds a connection to
+  every other — and a single lost packet is reconstructed rather than concealed
 - Ed25519 signature authentication with nonce-based replay protection
 - Rate limiting on authentication and chat events
 - Markdown rendering with DOMPurify sanitisation and syntax highlighting

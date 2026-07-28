@@ -42,8 +42,6 @@ surfacing two things the server already stores.
 - [ ] Live polling during meetings
 - [ ] Meeting notes that auto-generate from voice
 - [ ] Optional spatial/3D audio
-- [ ] Opus DTX and inband FEC via SDP munging — DTX stops spending bandwidth on
-      silence, FEC noticeably improves a lossy link. Small diff, real gain
 - [ ] Output limiter / loudness normalisation — a `DynamicsCompressorNode` on
       the remote graph to tame the one person who is always clipping, without
       having to ride their per-user volume by hand

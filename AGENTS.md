@@ -78,6 +78,20 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   Tune it towards never gating a talking user: transmitting a few more seconds
   of fan noise is the cheaper mistake. Each measurement chain runs its own
   tracker (the detector's and the settings meter's) on the same signal.
+  Opus is negotiated with `usedtx=1;useinbandfec=1`, written into every
+  offer/answer by `voice/sdp.ts`. Those fmtp parameters are *receiver-to-sender*
+  preferences (RFC 7587), so the description we **send** configures the peer's
+  encoder and the one we **receive** configures ours — which is why both the
+  local and the remote description are munged. The rewrite is a pure,
+  idempotent function that only appends to Opus fmtp lines and hands back
+  anything it cannot parse; a call must still connect when munging fails.
+  DTX pairs with the transmission gate, which feeds the encoder digital zero
+  while muted or not transmitting: a silent uplink drops from ~50 packets/s to
+  a handful (measured 50 -> 6.7). That is also why `updateStats` only
+  recomputes packet loss once `MIN_LOSS_SAMPLE_PACKETS` have gone by instead of
+  once per poll — dividing by the two or three packets a DTX'd stream carries
+  per second turned a single loss into "50 % loss" and emptied the connection
+  bars of everyone who was not talking.
 - `src/lib/screenshare/` – WebRTC screen sharing manager. A share may carry
   system audio, so the viewer offers **recvonly video *and* audio**
   transceivers: an answer can only fill m-lines the offer already contains, and
