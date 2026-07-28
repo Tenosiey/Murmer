@@ -28,8 +28,10 @@ pinned to major 6.
 - `src/lib/screenshare/` – WebRTC screen sharing manager
 - `src-tauri/` – Rust-side glue for native integrations
 - `test/` – Vitest harness: the `localStorage` stub (`setup.ts`) and the
-  `$app/environment` stand-in (`stubs/`). Tests themselves live next to the
-  module they cover as `*.test.ts`.
+  `$app/environment` stand-in (`stubs/`), plus `server-mirror.test.ts`, which
+  parses `murmer_server/src/{permissions,upload}.rs` and asserts the client's
+  copies of those tables still match. Everything else lives next to the module
+  it covers as `*.test.ts`.
 
 Prefer small, composable Svelte components. Styling rules: components use
 the design tokens defined in `src/routes/+layout.svelte` —

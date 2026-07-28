@@ -113,14 +113,18 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   Files & Uploads) persisted in `server_settings` and read by `/upload` on every
   request. Settings can only *narrow* the safe-list: unknown category ids are
   rejected on write and dropped on read, so no setting can admit active content.
-  The client copy is cosmetic (picker `accept`, pre-upload check).
+  The client copy is cosmetic (picker `accept`, pre-upload check) but is held
+  to the server's list by `murmer_client/test/server-mirror.test.ts`, which
+  also asserts neither copy ever admits active content.
 - Authorization is a **permission bitmask**, not fixed roles. Server owners
   define custom roles in the Server Dashboard and toggle each capability
   (view/send/manage channels/kick/ban/manage roles/…) per role. A user's
   effective permissions are the union of the built-in `@everyone` baseline
   role and every role assigned to them; `ADMINISTRATOR` (the Owner role) grants
   everything. The flag set is defined in `murmer_server/src/permissions.rs` and
-  mirrored in `murmer_client/src/lib/chat/permissions.ts` — keep them in sync.
+  mirrored in `murmer_client/src/lib/chat/permissions.ts` — keep them in sync;
+  `murmer_client/test/server-mirror.test.ts` parses the Rust source and fails
+  when the two drift.
   A role may also carry an **icon**: an upload URL (`/files/<key>`) pointing at
   an uploaded image or an existing custom emoji's file, validated on write like
   the server icon (image safe-list, file must exist, size cap) and sanitized
