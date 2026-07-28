@@ -15,6 +15,7 @@ pinned to major 6.
 - `bun run build` – produce static assets consumed by Tauri
 - `bun run tauri build` – package installers/bundles for distribution
 - `bun run check` – TypeScript + Svelte diagnostics (run before committing)
+- `bun run test` – Vitest unit tests (`bun run test:watch` while iterating)
 
 ## Code organisation
 - `src/routes/` – SvelteKit pages (login, server selection, chat)
@@ -26,6 +27,9 @@ pinned to major 6.
   microphone tools (level meter, record-and-play-back test)
 - `src/lib/screenshare/` – WebRTC screen sharing manager
 - `src-tauri/` – Rust-side glue for native integrations
+- `test/` – Vitest harness: the `localStorage` stub (`setup.ts`) and the
+  `$app/environment` stand-in (`stubs/`). Tests themselves live next to the
+  module they cover as `*.test.ts`.
 
 Prefer small, composable Svelte components. Styling rules: components use
 the design tokens defined in `src/routes/+layout.svelte` —
@@ -81,7 +85,13 @@ The native shell lives in `src-tauri/`. After making changes there, run
 prefer implementing features in Svelte unless native APIs are required.
 
 ## QA checklist
-- Run `bun run check` before submitting changes.
+- Run `bun run check` and `bun run test` before submitting changes.
+- Store logic worth a test is the kind whose failure is invisible in the UI:
+  state namespaced per server URL, request/response correlation, parsing of
+  untrusted server frames. Stores are module-level singletons that wire
+  themselves up on import, so tests take a fresh instance with
+  `vi.resetModules()` plus a dynamic `import()`, and mock `./chat` rather than
+  pulling in the WebSocket manager.
 - Exercise the reconnect flow and authentication failure cases manually.
 - Verify that push-to-talk works with the configured keybinding on Windows,
   both with Murmer focused and with another application in front (the latter

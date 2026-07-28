@@ -35,8 +35,15 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
 ## Quality checks
 - Server: `cargo fmt`, `cargo clippy --all-targets -- -D warnings` and
   `cargo test` inside `murmer_server/` — all three pass clean; keep it that way.
-- Client: `bun run check` inside `murmer_client/` (0 errors, 0 warnings);
-  `cargo clippy` in `murmer_client/src-tauri/` for the shell.
+- Client: `bun run check` inside `murmer_client/` (0 errors, 0 warnings) and
+  `bun run test` (Vitest); `cargo clippy` in `murmer_client/src-tauri/` for
+  the shell.
+- Client unit tests sit next to their module (`src/lib/**/*.test.ts`), run in
+  a plain Node environment (`vitest.config.ts`) and stub only what the stores
+  need from the framework — `$app/environment` and `localStorage`, both in
+  `murmer_client/test/`. Cover store logic whose failure modes are invisible
+  in the UI (per-server namespacing, request/response correlation, parsing of
+  server frames); do not add component-rendering tests.
 - Document complex security-sensitive logic with inline comments.
 - Sanitize or validate all user-supplied data before acting on it.
 
