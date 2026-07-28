@@ -174,6 +174,26 @@ export interface ScreenSharePeer {
   hasAudio: boolean;
 }
 
+/** One tile on the screen share stage. */
+export interface WatchedScreenShare {
+  /** Stable list key; the sharer's own preview and a peer never collide. */
+  key: string;
+  /** Account name of the sharer. */
+  userId: string;
+  /** The incoming stream, or null while the connection is still coming up. */
+  peer: ScreenSharePeer | null;
+  /** Our own capture, shown as a preview instead of received from a peer. */
+  isSelf: boolean;
+  onClose: () => void;
+}
+
+/** Playback settings of a single watched screen share. */
+export interface ScreenShareAudio {
+  /** Media element volume, a 0-1 fraction. */
+  volume: number;
+  muted: boolean;
+}
+
 export interface ScreenShareActive {
   userId: string;
   channelId: number;

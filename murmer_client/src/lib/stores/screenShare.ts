@@ -4,12 +4,18 @@
  * Manages the global screen share instance and tracks active screen shares
  * across all voice channels.
  */
-import { writable, get } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
 import { ScreenShareManager } from '../screenshare/manager';
-import type { ScreenSharePeer, ScreenShareActive, ScreenShareSettings } from '../types';
+import type {
+  ScreenSharePeer,
+  ScreenShareActive,
+  ScreenShareAudio,
+  ScreenShareSettings
+} from '../types';
 import { chat } from './chat';
 import { connection } from './connection';
+import { screenShareMuted, screenShareVolume } from './settings';
 import type { Message } from '../types';
 
 /**
@@ -22,8 +28,57 @@ const screenShareManager = new ScreenShareManager();
  */
 const screenSharePeersStore = writable<ScreenSharePeer[]>([]);
 
+/**
+ * Account names whose share we are watching, in the order they were opened —
+ * one tile on the viewer stage per entry. Several shares of the same channel
+ * can be watched at once; each has its own peer connection, so closing one
+ * leaves the others running.
+ */
+export const watchedScreenShares = writable<string[]>([]);
+
+/**
+ * Sharers whose stream has arrived at least once. A watched entry without a
+ * peer is still negotiating and has to stay on the stage; one that had a peer
+ * and lost it (the sharer stopped, or the connection failed) is gone for good,
+ * and leaving its tile up would strand it on "Connecting…" forever.
+ */
+const streamed = new Set<string>();
+
+/**
+ * Per-share audio overrides, keyed by the sharer's account name. Shares
+ * without an entry follow the app-wide `screenShareVolume`/`screenShareMuted`
+ * settings; watching two shares at once is what makes the distinction matter,
+ * since muting one of them must not silence the other.
+ */
+const screenShareAudioOverrides = writable<Record<string, ScreenShareAudio>>({});
+
+/**
+ * The volume and mute state to play a share at: `$shareAudio(user)`, the
+ * override if there is one and the app-wide setting otherwise.
+ */
+export const shareAudio = derived(
+  [screenShareAudioOverrides, screenShareVolume, screenShareMuted],
+  ([$overrides, $volume, $muted]) =>
+    (userId: string): ScreenShareAudio =>
+      $overrides[userId] ?? { volume: $volume, muted: $muted }
+);
+
+/** Override volume/mute for a single share. */
+export function setShareAudio(userId: string, audio: ScreenShareAudio): void {
+  screenShareAudioOverrides.update((all) => ({ ...all, [userId]: audio }));
+}
+
 screenShareManager.subscribe((peers) => {
   screenSharePeersStore.set(peers);
+
+  // Reconcile the watched list with the manager's peers: a share that was
+  // streaming and no longer is has ended, whether or not a `screenshare-stop`
+  // frame explained why.
+  const live = new Set(peers.map((peer) => peer.userId));
+  for (const userId of live) streamed.add(userId);
+  for (const userId of get(watchedScreenShares)) {
+    if (!live.has(userId) && streamed.has(userId)) closeScreenShare(userId);
+  }
 });
 
 /**
@@ -102,10 +157,12 @@ connection.subscribe((state) => {
     screenShareServerMaxBitrate.set(null);
     screenShareManager.setServerMaxBitrate(null);
     // Without a connection the signaling is gone: stop a running local
-    // capture (otherwise it would keep recording invisibly) and drop the
-    // remote share list — channel ids are only unique per server, so stale
-    // entries would show phantom "live" badges after a reconnect.
+    // capture (otherwise it would keep recording invisibly), close every
+    // share we were watching and drop the remote share list — channel ids are
+    // only unique per server, so stale entries would show phantom "live"
+    // badges after a reconnect.
     screenShareManager.stopSharing();
+    leaveScreenShareAsViewer();
     activeScreenShares.set({});
   }
 });
@@ -162,6 +219,11 @@ chat.on('screenshare-stop', (msg: Message) => {
         [channelId]: channelShares.filter((u) => u !== user)
       };
     });
+    // Take the tile down explicitly rather than waiting for the peer list to
+    // change: a share that stops while we are still negotiating never had a
+    // stream, so the reconciliation above would leave its tile connecting for
+    // good.
+    closeScreenShare(user);
   }
 });
 
@@ -181,27 +243,47 @@ export function stopScreenShare(): void {
 }
 
 /**
- * View a user's screen share
+ * Start watching a user's screen share. The tile appears immediately and
+ * shows a placeholder until the stream arrives — connecting takes a moment,
+ * and a click that seems to do nothing invites a second one.
  */
-export async function viewScreenShare(
+export async function openScreenShare(
   userId: string,
   viewerName?: string,
   channelId?: number
 ): Promise<void> {
+  watchedScreenShares.update((watched) =>
+    watched.includes(userId) ? watched : [...watched, userId]
+  );
   await screenShareManager.viewScreenShare(userId, viewerName, channelId);
 }
 
 /**
- * Stop viewing a user's screen share
+ * Stop watching one user's screen share, leaving every other share open. Its
+ * peer connection is closed, so the stream stops being sent to this client.
  */
-export function stopViewingScreenShare(userId: string): void {
+export function closeScreenShare(userId: string): void {
+  watchedScreenShares.update((watched) => watched.filter((name) => name !== userId));
+  streamed.delete(userId);
+  screenShareAudioOverrides.update((audio) => {
+    if (!(userId in audio)) return audio;
+    const next = { ...audio };
+    delete next[userId];
+    return next;
+  });
   screenShareManager.stopViewing(userId);
+}
+
+/** Stop watching every share at once. */
+export function closeAllScreenShares(): void {
+  for (const userId of get(watchedScreenShares)) closeScreenShare(userId);
 }
 
 /**
  * Leave screen share session as a viewer
  */
 export function leaveScreenShareAsViewer(): void {
+  closeAllScreenShares();
   screenShareManager.leaveAsViewer();
 }
 

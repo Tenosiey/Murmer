@@ -546,7 +546,8 @@
                 <span class="toggle-label">Mute screen share audio</span>
                 <span class="toggle-description">
                   Sharers can include their system audio. This silences it without touching the
-                  voices — the same controls sit in the screen share window.
+                  voices. It is the starting point for every share you open; each one you are
+                  watching also carries its own volume and mute in its title bar.
                 </span>
               </span>
             </label>

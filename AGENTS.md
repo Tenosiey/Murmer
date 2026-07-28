@@ -85,6 +85,19 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   Silent shares answer it `inactive`, which is how the viewer knows whether to
   show its volume/mute controls (`currentDirection`, not `getReceivers()` —
   every transceiver owns a receiver track, including the ones carrying nothing).
+  Everyone in a voice channel may share at the same time and watch each other,
+  so connections are keyed by *direction as well as* peer name (`incoming` per
+  sharer, `outgoing` per viewer) and every signaling frame carries the sender's
+  `role`; one map keyed by name alone would hand a mutual pair of sharers a
+  single connection for two sessions. Stopping your own share therefore only
+  closes `outgoing` — the shares you are watching keep running.
+  The viewer side is a **stage of tiles** (`ScreenShareStage`/`ScreenShareTile`
+  with `watchedScreenShares` in `stores/screenShare.ts`): shares open side by
+  side, each resizable and closable on its own, each with its own volume/mute
+  overriding the app-wide `screenShareVolume`/`screenShareMuted` default. A
+  watched entry with no peer yet is still negotiating and stays up; one whose
+  peer disappears has ended and is closed, which is what keeps a tile from
+  hanging on "Connecting…" forever.
 - `src-tauri/` – Rust-side glue for native integrations
 
 ## Security expectations

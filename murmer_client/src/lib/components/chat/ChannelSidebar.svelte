@@ -21,7 +21,11 @@
   import { canSpeak } from '$lib/stores/voicePermissions';
   import { speakingUsers } from '$lib/stores/voiceSpeaking';
   import { voiceMuteStates } from '$lib/stores/voiceMute';
-  import { activeScreenShares, screenSharePreview } from '$lib/stores/screenShare';
+  import {
+    activeScreenShares,
+    screenSharePreview,
+    watchedScreenShares
+  } from '$lib/stores/screenShare';
   import { unread } from '$lib/stores/unread';
   import { can } from '$lib/stores/permissions';
   import { PERMISSIONS } from '$lib/chat/permissions';
@@ -478,15 +482,21 @@
                       {/if}
                       {#if $activeScreenShares[ch.id]?.includes(user)}
                         {@const isOwnShare = user === $session.user}
+                        {@const watching = $watchedScreenShares.includes(user)}
                         {@const selfLabel = $screenSharePreview
                           ? 'Hide your screen preview'
                           : 'Preview your own screen'}
+                        {@const peerLabel = watching
+                          ? `Stop watching ${$displayNames(user)}'s screen`
+                          : `Watch ${$displayNames(user)}'s screen`}
                         <button
                           class="screenshare-indicator"
                           class:muted={isOwnShare && !$screenSharePreview}
+                          class:watching={!isOwnShare && watching}
                           onclick={() => onViewScreenShare(user)}
-                          title={isOwnShare ? selfLabel : `View ${user}'s screen`}
-                          aria-label={isOwnShare ? selfLabel : `View ${user}'s screen share`}
+                          title={isOwnShare ? selfLabel : peerLabel}
+                          aria-label={isOwnShare ? selfLabel : peerLabel}
+                          aria-pressed={isOwnShare ? $screenSharePreview : watching}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                           <span>LIVE</span>
@@ -971,6 +981,18 @@
   .channels button.screenshare-indicator:hover {
     background: color-mix(in srgb, var(--color-primary) 24%, transparent);
     color: var(--color-primary);
+  }
+
+  /* A share we currently have open on the stage — clicking it again stops
+     watching that one and leaves the other shares alone. */
+  .channels button.screenshare-indicator.watching {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+
+  .channels button.screenshare-indicator.watching:hover {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
   }
 
   /* Our own share with the self-preview switched off: still live, just not
