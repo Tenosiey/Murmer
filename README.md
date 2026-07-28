@@ -184,6 +184,7 @@ bun install          # install dependencies / refresh bun.lock
 bun run dev          # hot module reloading for the Svelte UI
 bun run tauri dev    # launch the native shell
 bun run check        # TypeScript + Svelte diagnostics
+bun run test         # Vitest unit tests (bun run test:watch to iterate)
 ```
 
 ### Server
@@ -208,8 +209,17 @@ cargo audit          # requires cargo-audit (cargo install cargo-audit)
 
 cd ../murmer_client
 bun run check
+bun run test
 bun audit
 ```
+
+Client unit tests use [Vitest](https://vitest.dev) and live next to the module
+they cover (`src/lib/**/*.test.ts`); shared harness code is in `test/`. They
+target logic that is easy to get subtly wrong and hard to spot by clicking
+around — the per-server namespacing of unread state, the wiki store's
+request/response correlation — not UI rendering. `vitest.config.ts` runs them
+in a plain Node environment and stubs the two framework pieces the stores
+touch: the `$app/environment` browser flag and `localStorage`.
 
 ## Configuration
 
