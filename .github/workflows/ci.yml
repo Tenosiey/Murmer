@@ -1,0 +1,116 @@
+# Fast quality gate for the checks listed in AGENTS.md. Runs on pushes to the
+# integration branches (feature branches are merged into `dev` locally, so the
+# push *is* the integration event) and on pull requests, which is how
+# Dependabot updates arrive. Restricting `push` to main/dev keeps Dependabot's
+# own branches from triggering a second, identical run alongside their PR.
+#
+# The slow part — installers, signing, updater manifest — stays in
+# `release.yml`, which is tag-triggered.
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+# A newer push to the same branch makes the in-flight run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  client:
+    name: Client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('murmer_client/bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-
+
+      - name: Install frontend dependencies
+        working-directory: murmer_client
+        run: bun install --frozen-lockfile
+
+      - name: TypeScript + Svelte diagnostics
+        working-directory: murmer_client
+        run: bun run check
+
+      - name: Unit tests
+        working-directory: murmer_client
+        run: bun run test
+
+      # Also produces `murmer_client/build/`, which the Tauri shell needs:
+      # `frontendDist` points at it and tauri-build fails when it is missing.
+      - name: Build frontend
+        working-directory: murmer_client
+        run: bun run build
+
+      # Tauri 2 links against the system WebKitGTK stack; without these the
+      # shell does not even compile on a bare runner. Matches the Linux
+      # prerequisites in the Tauri docs, minus the bundling-only tools.
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            build-essential \
+            file
+
+      # Installs the toolchain pinned in the repo-root `rust-toolchain.toml`
+      # (channel + clippy/rustfmt). Naming a channel here instead would only
+      # download a second toolchain that rustup then overrides.
+      - name: Install pinned Rust toolchain
+        run: rustup show
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: murmer_client/src-tauri
+
+      - name: Rust formatting (Tauri shell)
+        working-directory: murmer_client/src-tauri
+        run: cargo fmt --check
+
+      - name: Clippy (Tauri shell)
+        working-directory: murmer_client/src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+  server:
+    name: Server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install pinned Rust toolchain
+        run: rustup show
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: murmer_server
+
+      - name: Rust formatting
+        working-directory: murmer_server
+        run: cargo fmt --check
+
+      # rusqlite is built with the `bundled` feature, so SQLite compiles from
+      # source here — no libsqlite3-dev needed.
+      - name: Clippy
+        working-directory: murmer_server
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Tests
+        working-directory: murmer_server
+        run: cargo test

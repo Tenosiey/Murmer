@@ -198,7 +198,10 @@ cargo clippy -- -D warnings
 
 ## Quality checks
 
-Run the following commands before opening a pull request:
+`.github/workflows/ci.yml` runs these on every push to `main`/`dev` and on
+every pull request (two parallel jobs, client and server). `cargo audit` and
+`bun audit` are not part of it — run them locally. Run the rest before pushing
+so you find breakage before CI does:
 
 ```bash
 cd murmer_server
