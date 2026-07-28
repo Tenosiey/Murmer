@@ -91,9 +91,15 @@ surfacing two things the server already stores.
 
 ## 🔧 Tech debt / hardening
 
-- [ ] Add a JS test runner (vitest) to the client — store logic like the
-      per-server unread namespacing and the wiki request tracking is complex
-      enough to deserve tests
+- [ ] Cover `markdown.ts` sanitisation — DOMPurify needs a DOM, so this is the
+      one file worth a `// @vitest-environment happy-dom` docblock rather than
+      moving the whole suite off the Node default. It is a security boundary
+      (`{@html}` renders its output) and currently has no tests
+- [ ] Cover the client's remaining pure helpers with Vitest — `wiki/slug.ts`
+      (mirrors the server's `validate_wiki_slug`), `chat/helpers.ts` message
+      grouping and expiry formatting, `emoji.ts` (`emojifyHtml` escapes),
+      `errors.ts`, `invite.ts` and `utils.ts::normalizeServerUrl`. Individually
+      small, collectively most of the untested logic in `src/lib/`
 - [ ] Gate the `/upload` endpoint behind authentication (or at least IP rate
       limiting like auth) — currently anyone who can reach the server can
       write 10 MB files to disk; needs a small client change to send
@@ -102,6 +108,24 @@ surfacing two things the server already stores.
       `security.rs` can be covered by a regression test in
       `tests/security_limits.rs` (the 60 s window uses `std::time::Instant`
       directly and cannot be fast-forwarded)
+- [ ] Property-test `NoiseFloorTracker` in `voice/vad.ts` — the invariants are
+      already written down (the floor may never rise above the quietest level
+      of the last 20 s, and not at all until the input has been quiet for
+      `QUIET_DWELL_MS`), and a regression gates users mid-sentence, which no
+      quick smoke test catches. Needs `vi.useFakeTimers({ toFake: ['performance'] })`
+- [ ] Reject wrong-length peer keys in `dm-crypto.ts::dhKeys` —
+      `ed2curve.convertPublicKey` does not check its input length, so
+      `encryptDm` accepts a truncated key and produces a ciphertext nobody can
+      open: the sender believes the DM went out while the peer sees a permanent
+      decrypt-failure placeholder. Low severity (a malicious server
+      substituting a *valid* key already reads those DMs, and TOFU pinning
+      limits both to first contact), but the failure mode should be honest.
+      `dm-crypto.test.ts` has a test named for the current behaviour — delete
+      it with the fix
+- [ ] Test the server's wiki, pins and screen-share modules — `db/wiki.rs` and
+      `ws/handlers/wiki.rs` carry the revision compare-and-swap and have no
+      `tests/` file at all, while the client's wiki store is now covered;
+      `db/pins.rs` and `db/screenshare.rs` are untested too
 
 ---
 
