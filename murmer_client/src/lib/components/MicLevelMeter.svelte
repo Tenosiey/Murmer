@@ -15,7 +15,7 @@
   import {
     inputDeviceId,
     echoCancellation,
-    noiseSuppression,
+    noiseSuppressionMode,
     autoGainControl
   } from '$lib/stores/settings';
 
@@ -56,7 +56,7 @@
     // Tracked dependencies: any of these changes the captured signal.
     void $inputDeviceId;
     void $echoCancellation;
-    void $noiseSuppression;
+    void $noiseSuppressionMode;
     void $autoGainControl;
     // A running session's capture is borrowed rather than reopened, so the
     // meter has to re-attach when the manager swaps it — otherwise switching

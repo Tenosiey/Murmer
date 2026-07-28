@@ -2,10 +2,11 @@
  * Microphone test / loopback for the settings UI.
  *
  * Records a few seconds of the input exactly as a voice session would capture
- * it — same device, same processing constraints, same input gain — and plays
- * it back locally. A level bar only says "something is arriving"; hearing the
- * recording is the only way to judge what echo cancellation, noise suppression
- * and automatic gain control are doing to a voice.
+ * it — same device, same processing constraints, same noise suppression, same
+ * input gain — and plays it back locally. A level bar only says "something is
+ * arriving"; hearing the recording is the only way to judge what echo
+ * cancellation, noise suppression and automatic gain control are doing to a
+ * voice, and it is how the two noise suppression modes get compared.
  *
  * Playback is rendered to the shared context's destination, which is routed to
  * the selected output device. That destination is *not* the microphone chain's
@@ -17,6 +18,7 @@ import { micGain, clampMicGain } from '../stores/settings';
 import { captureStream } from '../stores/voiceCapture';
 import { refreshAudioDevices } from '../stores/audioDevices';
 import { openMicrophone } from './capture';
+import { connectMicSource, type MicSource } from './denoise';
 import { getAudioContext, resumeAudioContext } from './audioContext';
 
 const WORKLET_URL = '/audio/recorder-processor.js';
@@ -28,7 +30,7 @@ export class MicTest {
   private context: AudioContext | null = null;
   /** Only set when we opened the stream ourselves and must close it again. */
   private ownedStream: MediaStream | null = null;
-  private source: MediaStreamAudioSourceNode | null = null;
+  private source: MicSource | null = null;
   private gain: GainNode | null = null;
   private recorder: AudioWorkletNode | null = null;
   /** Muted sink that keeps the graph pulling the recorder node. */
@@ -83,25 +85,41 @@ export class MicTest {
       return null;
     }
 
-    this.context = context;
-    this.source = context.createMediaStreamSource(stream);
+    // Built into locals and only published once the chain is complete: loading
+    // RNNoise takes a moment, and a test abandoned in the middle of it must
+    // take its whole graph with it rather than leave half of it connected.
     // The same amplification the outgoing chain applies, so the playback is
     // as loud as the peers hear it.
-    this.gain = context.createGain();
-    this.gain.gain.value = clampMicGain(get(micGain));
-    this.recorder = new AudioWorkletNode(context, 'recorder-processor', {
+    const gain = context.createGain();
+    gain.gain.value = clampMicGain(get(micGain));
+    const recorder = new AudioWorkletNode(context, 'recorder-processor', {
       numberOfInputs: 1,
       numberOfOutputs: 1,
       outputChannelCount: [1]
     });
     // The recorder writes no output; it is connected only so the rendering
     // graph keeps calling its `process`.
-    this.sink = context.createGain();
-    this.sink.gain.value = 0;
-    this.source.connect(this.gain);
-    this.gain.connect(this.recorder);
-    this.recorder.connect(this.sink);
-    this.sink.connect(context.destination);
+    const sink = context.createGain();
+    sink.gain.value = 0;
+    gain.connect(recorder);
+    recorder.connect(sink);
+    sink.connect(context.destination);
+    // Same noise suppression the outgoing chain runs, which is most of what
+    // this test exists to let the user judge.
+    const source = await connectMicSource(context, stream, gain);
+    if (generation !== this.generation) {
+      source.disconnect();
+      gain.disconnect();
+      recorder.disconnect();
+      sink.disconnect();
+      return null;
+    }
+
+    this.context = context;
+    this.gain = gain;
+    this.recorder = recorder;
+    this.sink = sink;
+    this.source = source;
 
     const limit = Math.round(MIC_TEST_SECONDS * context.sampleRate);
     return new Promise<AudioBuffer | null>((resolve) => {

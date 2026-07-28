@@ -64,11 +64,29 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   are driven by an audio-worklet tick (`voice/ticker.ts`) rather than
   `requestAnimationFrame`, which stops while the window is minimised and used
   to freeze voice-activity detection with the microphone stuck open. The
-  outgoing chain is `capture -> input gain -> transmission gate -> outgoing
-  track`: voice detection and the settings level meter tap *after* the input
-  gain (the "Input volume" slider), so the level compared against the VAD
-  threshold is the one the peers actually receive — turning a quiet microphone
-  up must not make voice detection harder to trigger.
+  outgoing chain is `capture -> noise suppression -> input gain -> transmission
+  gate -> outgoing track`: voice detection and the settings level meter tap
+  *after* the input gain (the "Input volume" slider), so the level compared
+  against the VAD threshold is the one the peers actually receive — turning a
+  quiet microphone up must not make voice detection harder to trigger.
+  Noise suppression is one of three modes (`stores/settings.ts`'s
+  `noiseSuppressionMode`), never two at once: `browser` asks the platform for
+  its `noiseSuppression` capture constraint, `rnnoise` (the default) runs the
+  RNNoise worklet from `voice/denoise.ts` instead, and stacking them would hand
+  the better filter a signal the other one already mangled. RNNoise sits ahead
+  of the input gain so it sees speech at capture level, which also collapses the
+  noise floor the VAD tracks. Three things it needs, all of which fail quietly
+  if forgotten: the WASM binary is fetched on the main thread and passed in as
+  an `ArrayBuffer` (an `AudioWorkletGlobalScope` has no `fetch`), the CSP in
+  `tauri.conf.json` must keep `'wasm-unsafe-eval'` in `script-src` (the dev
+  server sends no CSP, so a mistake there only surfaces in a packaged build),
+  and the shared `AudioContext` must run at 48 kHz — the only rate RNNoise is
+  trained for, which is why `voice/audioContext.ts` asks for it. Every failure
+  path drops the node and keeps the microphone working.
+  All three chains — the manager's, the settings level meter's and the
+  microphone test's — build their microphone end through
+  `denoise.ts::connectMicSource`, so a meter can never show a level that was
+  measured on a different signal than the one being gated.
   The VAD threshold is derived from a tracked noise floor by default
   (`NoiseFloorTracker` in `voice/vad.ts`); `vadSensitivity` is only the manual
   override used when `vadAutoSensitivity` is off. The tracker drops fast and

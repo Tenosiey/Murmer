@@ -10,15 +10,21 @@ import { get } from 'svelte/store';
 import {
   inputDeviceId,
   echoCancellation,
-  noiseSuppression,
+  noiseSuppressionMode,
   autoGainControl
 } from '../stores/settings';
 
-/** The microphone processing settings, as `getUserMedia` constraints. */
+/**
+ * The microphone processing settings, as `getUserMedia` constraints.
+ *
+ * The platform's own suppressor is asked for only in `browser` mode: in
+ * `rnnoise` mode it would filter the capture before RNNoise ever sees it, which
+ * gives the better of the two filters worse input to work from.
+ */
 export function micProcessingConstraints(): MediaTrackConstraints {
   return {
     echoCancellation: get(echoCancellation),
-    noiseSuppression: get(noiseSuppression),
+    noiseSuppression: get(noiseSuppressionMode) === 'browser',
     autoGainControl: get(autoGainControl)
   };
 }

@@ -22,6 +22,15 @@ import { outputDeviceId } from '../stores/settings';
 
 type SinkCapableContext = AudioContext & { setSinkId?: (id: string) => Promise<void> };
 
+/**
+ * Rate the context is asked for. RNNoise is trained on 48 kHz and its worklet
+ * refuses anything else, so a context running at the device's 44.1 kHz would
+ * silently cost the user the better noise suppression. Everything else in the
+ * app is rate-agnostic — decoding resamples, and Opus wants 48 kHz anyway — so
+ * asking for it costs nothing but a resample on output.
+ */
+const PREFERRED_SAMPLE_RATE = 48_000;
+
 let context: SinkCapableContext | null = null;
 let creationFailed = false;
 
@@ -47,11 +56,20 @@ export function getAudioContext(): AudioContext | null {
   if (context) return context;
   if (creationFailed) return null;
   try {
-    context = new AudioContext() as SinkCapableContext;
+    context = new AudioContext({ sampleRate: PREFERRED_SAMPLE_RATE }) as SinkCapableContext;
   } catch (error) {
-    creationFailed = true;
-    console.error('Failed to create the shared audio context:', error);
-    return null;
+    // Some platforms refuse a rate their hardware cannot run at. Losing
+    // RNNoise is much better than losing all audio, so fall back to whatever
+    // the device offers; `voice/denoise.ts` checks the rate before inserting
+    // its node.
+    console.warn('Audio context rejected 48 kHz, falling back to the device rate:', error);
+    try {
+      context = new AudioContext() as SinkCapableContext;
+    } catch (fallbackError) {
+      creationFailed = true;
+      console.error('Failed to create the shared audio context:', fallbackError);
+      return null;
+    }
   }
   applySink(get(outputDeviceId));
   outputDeviceId.subscribe(applySink);

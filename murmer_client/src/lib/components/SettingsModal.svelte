@@ -15,7 +15,7 @@
     vadAutoSensitivity,
     pttKey,
     echoCancellation,
-    noiseSuppression,
+    noiseSuppressionMode,
     autoGainControl,
     micGain,
     MAX_MIC_GAIN,
@@ -658,13 +658,31 @@
           </div>
 
           <div class="setting-group">
-            <label class="toggle-row">
-              <input type="checkbox" bind:checked={$noiseSuppression} />
-              <span class="toggle-text">
-                <span class="toggle-label">Noise suppression</span>
-                <span class="toggle-description">Filter out constant background noise like fans or keyboards</span>
-              </span>
-            </label>
+            <label for="noise-suppression-select" class="setting-label">Noise suppression</label>
+            <div class="select-container">
+              <select
+                id="noise-suppression-select"
+                class="device-select"
+                bind:value={$noiseSuppressionMode}
+              >
+                <option value="rnnoise">RNNoise (recommended)</option>
+                <option value="browser">Built-in</option>
+                <option value="off">Off</option>
+              </select>
+              <div class="select-arrow">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6,9 12,15 18,9"></polyline>
+                </svg>
+              </div>
+            </div>
+            <div class="setting-description">
+              RNNoise is a neural filter that runs on your own machine. It removes keyboards,
+              fans and background voices that the built-in suppression leaves in, at the cost of
+              about a percent of one CPU core. Use the microphone test below to compare them.
+            </div>
+          </div>
+
+          <div class="setting-group">
             <label class="toggle-row">
               <input type="checkbox" bind:checked={$echoCancellation} />
               <span class="toggle-text">

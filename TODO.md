@@ -47,9 +47,6 @@ surfacing two things the server already stores.
       having to ride their per-user volume by hand
 - [ ] Real-time transcription of voice to text
 - [ ] Record and play back voice messages
-- [ ] RNNoise via AudioWorklet + WASM — genuinely better than the browser's
-      built-in `noiseSuppression` constraint, and the most audible quality
-      upgrade available here
 - [ ] Screen-share annotations
 - [x] Separate volume for the app sounds (join, leave, mute) independent of the
       voice volume slider, which currently drives both
