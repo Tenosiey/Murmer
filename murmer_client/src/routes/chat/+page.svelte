@@ -56,14 +56,17 @@
   import { dmFingerprint } from '$lib/dm-crypto';
   import {
     screenSharePeers,
-    viewScreenShare,
+    watchedScreenShares,
+    openScreenShare,
+    closeScreenShare,
+    closeAllScreenShares,
     leaveScreenShareAsViewer,
     stopScreenShare,
     localScreenShareStream,
     screenSharePreview,
     toggleScreenSharePreview
   } from '$lib/stores/screenShare';
-  import ScreenShareViewer from '$lib/components/ScreenShareViewer.svelte';
+  import ScreenShareStage from '$lib/components/ScreenShareStage.svelte';
   import ScreenSharePreview from '$lib/components/ScreenSharePreview.svelte';
   import { loadKeyPair, sign } from '$lib/keypair';
   import { httpBaseFromWs } from '$lib/server-url';
@@ -74,7 +77,7 @@
     formatUploadSize
   } from '$lib/stores/uploadConfig';
   import { describeServerError, isFatalConnectionError } from '$lib/errors';
-  import type { Message, UserStatus, ScreenSharePeer } from '$lib/types';
+  import type { Message, UserStatus, WatchedScreenShare } from '$lib/types';
   import {
     pingToStrength,
     buildMessageBlocks,
@@ -140,9 +143,7 @@
   let now = $state(Date.now());
   let expiryTicker: number | null = null;
 
-  let viewingScreenShare: ScreenSharePeer | null = $state(null);
-  let pendingScreenShareView: string | null = $state(null);
-  // Own capture blown up to the full viewer instead of the small preview.
+  // Own capture blown up onto the share stage instead of the small preview.
   let expandedOwnScreenShare = $state(false);
 
 
@@ -950,13 +951,16 @@
     inVoice = false;
     resetVoicePermissions();
     // A screen share cannot outlive the voice session — stop our own
-    // capture and close any viewer state.
+    // capture and close every share we were watching.
     stopScreenShare();
-    viewingScreenShare = null;
-    pendingScreenShareView = null;
     leaveScreenShareAsViewer();
   }
 
+  /**
+   * Toggle a share on the stage. Watching several at once is the point, so
+   * this only ever adds or removes the one share that was clicked; a second
+   * click on a share we already watch closes it and leaves the rest running.
+   */
   async function handleViewScreenShare(userId: string) {
     try {
       if (!$session.user || currentVoiceChannelId === null) {
@@ -973,27 +977,20 @@
         return;
       }
 
-      pendingScreenShareView = userId;
-      await viewScreenShare(userId, $session.user, currentVoiceChannelId);
-
-      // Check if the peer stream is already available (rare but possible)
-      const peer = $screenSharePeers.find(p => p.userId === userId);
-      if (peer) {
-        viewingScreenShare = peer;
-        pendingScreenShareView = null;
+      if ($watchedScreenShares.includes(userId)) {
+        closeScreenShare(userId);
+        return;
       }
+
+      await openScreenShare(userId, $session.user, currentVoiceChannelId);
     } catch (error) {
-      pendingScreenShareView = null;
+      closeScreenShare(userId);
       console.error('Failed to view screen share:', error);
       dialogs.alert({
         title: 'Screen share unavailable',
         message: 'Could not open this screen share. The stream may have ended.'
       });
     }
-  }
-
-  function closeScreenShareViewer() {
-    viewingScreenShare = null;
   }
 
   function leaveServer() {
@@ -1656,25 +1653,34 @@
     }
   });
   let currentChatChannelName = $derived($channels.find(c => c.id === currentChatChannelId)?.name ?? '');
-  $effect(() => {
-    if (pendingScreenShareView && $screenSharePeers) {
-      const peer = $screenSharePeers.find(p => p.userId === pendingScreenShareView);
-      if (peer) {
-        viewingScreenShare = peer;
-        pendingScreenShareView = null;
-      }
+  // One tile per share being watched, plus our own capture when it is
+  // expanded. The peer is looked up on every change rather than captured once:
+  // it is absent while the connection comes up, and the manager republishes it
+  // when the share changes (audio arriving alongside the video, say).
+  let screenShareTiles = $derived.by<WatchedScreenShare[]>(() => {
+    const tiles: WatchedScreenShare[] = $watchedScreenShares.map((userId) => ({
+      key: `peer:${userId}`,
+      userId,
+      peer: $screenSharePeers.find((p) => p.userId === userId) ?? null,
+      isSelf: false,
+      onClose: () => closeScreenShare(userId)
+    }));
+    if (expandedOwnScreenShare && $localScreenShareStream) {
+      const stream = $localScreenShareStream;
+      tiles.push({
+        key: 'self',
+        userId: $session.user ?? 'You',
+        peer: { userId: $session.user ?? 'You', stream, hasAudio: stream.getAudioTracks().length > 0 },
+        isSelf: true,
+        onClose: () => (expandedOwnScreenShare = false)
+      });
     }
+    return tiles;
   });
-  $effect(() => {
-    if (viewingScreenShare && $screenSharePeers) {
-      // Re-read the entry rather than only checking that it is still there:
-      // the manager republishes it when the share changes (audio arriving
-      // alongside the video, say), and a stale object would keep the viewer
-      // on the state the share had when it was opened.
-      const peer = $screenSharePeers.find(p => p.userId === viewingScreenShare?.userId) ?? null;
-      if (peer !== viewingScreenShare) viewingScreenShare = peer;
-    }
-  });
+  function closeScreenShareStage() {
+    closeAllScreenShares();
+    expandedOwnScreenShare = false;
+  }
   $effect(() => {
     // Once sharing ends the next share starts from the small preview again.
     if (!$localScreenShareStream) expandedOwnScreenShare = false;
@@ -2069,30 +2075,18 @@
   onClose={closeEmojiPicker}
 />
 
-{#if viewingScreenShare}
-  <ScreenShareViewer peer={viewingScreenShare} onClose={closeScreenShareViewer} />
+<!-- Every share being watched, side by side. Our own capture joins them when
+     it is expanded; otherwise it stays a small floating preview. -->
+{#if screenShareTiles.length > 0}
+  <ScreenShareStage tiles={screenShareTiles} onCloseAll={closeScreenShareStage} />
 {/if}
 
-<!-- The sharer's own capture: a small floating preview while sharing, which
-     can be expanded to the full viewer or hidden entirely. -->
-{#if $localScreenShareStream && $screenSharePreview}
-  {#if expandedOwnScreenShare}
-    <ScreenShareViewer
-      peer={{
-        userId: $session.user ?? 'You',
-        stream: $localScreenShareStream,
-        hasAudio: $localScreenShareStream.getAudioTracks().length > 0
-      }}
-      isSelf
-      onClose={() => (expandedOwnScreenShare = false)}
-    />
-  {:else}
-    <ScreenSharePreview
-      stream={$localScreenShareStream}
-      onExpand={() => (expandedOwnScreenShare = true)}
-      onHide={() => screenSharePreview.set(false)}
-    />
-  {/if}
+{#if $localScreenShareStream && $screenSharePreview && !expandedOwnScreenShare}
+  <ScreenSharePreview
+    stream={$localScreenShareStream}
+    onExpand={() => (expandedOwnScreenShare = true)}
+    onHide={() => screenSharePreview.set(false)}
+  />
 {/if}
 
 {#if $connection === 'connecting' || $connection === 'disconnected' || $connection === 'failed'}

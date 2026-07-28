@@ -27,8 +27,22 @@ export const QUALITY_PRESETS = {
 
 export type QualityPreset = keyof typeof QUALITY_PRESETS;
 
+/**
+ * Which end of a connection a signaling frame comes from. Two users can share
+ * *and* watch each other at the same time, so a peer's name alone does not
+ * identify a connection — the frames say which of the two they belong to.
+ */
+export type ScreenShareRole = 'viewer' | 'sharer';
+
 export class ScreenShareManager {
-  private peers: Record<string, RTCPeerConnection> = {};
+  /**
+   * Connections carrying someone else's share to us, keyed by the sharer.
+   * Kept apart from `outgoing` because both directions can exist for the same
+   * person: everyone in a channel may share, and watch every other share.
+   */
+  private incoming: Record<string, RTCPeerConnection> = {};
+  /** Connections carrying our capture to a viewer, keyed by that viewer. */
+  private outgoing: Record<string, RTCPeerConnection> = {};
   /** Incoming stream per sharer, reused across renegotiations (see below). */
   private remoteStreams: Record<string, MediaStream> = {};
   private localStream: MediaStream | null = null;
@@ -86,11 +100,11 @@ export class ScreenShareManager {
 
   private getPeersList(): ScreenSharePeer[] {
     const peers: ScreenSharePeer[] = [];
-    for (const [userId, pc] of Object.entries(this.peers)) {
+    for (const [userId, pc] of Object.entries(this.incoming)) {
       // Only transceivers that actually receive. Every transceiver owns a
-      // receiver with a track, including the send-only ones on the sharer's
-      // side and the audio one of a share that turned out to be silent —
-      // going by `getReceivers()` would list all of those as incoming media.
+      // receiver with a track, including the audio one of a share that turned
+      // out to be silent — going by `getReceivers()` would list that as
+      // incoming media and offer volume controls for silence.
       const tracks: MediaStreamTrack[] = [];
       for (const transceiver of pc.getTransceivers()) {
         const direction = transceiver.currentDirection;
@@ -198,13 +212,18 @@ export class ScreenShareManager {
       channelId: this.channelId
     });
 
-    for (const userId of Object.keys(this.peers)) {
-      this.cleanupPeer(userId);
+    // Only the connections that were carrying our capture. Shares we are
+    // watching do not end because we stopped our own, so the identity and
+    // channel used for their signaling have to stay as well.
+    for (const userId of Object.keys(this.outgoing)) {
+      this.closeOutgoing(userId);
     }
 
-    this.userName = null;
-    this.channelId = null;
-    this.emit([]);
+    if (Object.keys(this.incoming).length === 0) {
+      this.userName = null;
+      this.channelId = null;
+    }
+    this.emit(this.getPeersList());
   }
 
   updateSettings(settings: Partial<ScreenShareSettings>): void {
@@ -229,7 +248,7 @@ export class ScreenShareManager {
   private applyBitrateLimit(): void {
     const limit = this.effectiveMaxBitrate();
     if (!Number.isFinite(limit) || limit <= 0) return;
-    for (const pc of Object.values(this.peers)) {
+    for (const pc of Object.values(this.outgoing)) {
       for (const sender of pc.getSenders()) {
         if (sender.track?.kind !== 'video') continue;
         const params = sender.getParameters();
@@ -244,37 +263,20 @@ export class ScreenShareManager {
     }
   }
 
-  private async createPeer(userId: string, initiator: boolean): Promise<RTCPeerConnection> {
-    if (this.peers[userId]) return this.peers[userId];
-
-    const pc = new RTCPeerConnection(this.config);
-    this.peers[userId] = pc;
-
-    if (this.localStream) {
-      for (const track of this.localStream.getTracks()) {
-        pc.addTrack(track, this.localStream);
-      }
-      this.applyBitrateLimit();
-    } else if (initiator) {
-      pc.addTransceiver('video', { direction: 'recvonly' });
-      // An answer can only fill m-lines the offer already contains, so
-      // without asking for audio up front the sharer would have nowhere to
-      // put its audio track and the shared sound would never leave the
-      // machine. Shares without audio simply answer this one inactive.
-      pc.addTransceiver('audio', { direction: 'recvonly' });
-    }
-
-    pc.ontrack = () => {
-      this.emit(this.getPeersList());
-    };
-
+  /**
+   * ICE and failure handling, identical for both directions. `role` is our
+   * own role on this connection and travels with every frame we send, so the
+   * other side can tell which of the two connections it belongs to.
+   */
+  private wirePeer(pc: RTCPeerConnection, remote: string, role: ScreenShareRole): void {
     pc.onicecandidate = (ev) => {
       if (ev.candidate && this.userName) {
         chat.sendRaw({
           type: 'screenshare-candidate',
           user: this.userName,
-          target: userId,
+          target: remote,
           channelId: this.channelId,
+          role,
           candidate: ev.candidate
         });
       }
@@ -282,35 +284,72 @@ export class ScreenShareManager {
 
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-        this.cleanupPeer(userId);
+        if (role === 'viewer') this.closeIncoming(remote);
+        else this.closeOutgoing(remote);
       }
     };
-
-    if (initiator && this.userName) {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      chat.sendRaw({
-        type: 'screenshare-offer',
-        user: this.userName,
-        target: userId,
-        channelId: this.channelId,
-        sdp: offer
-      });
-    }
-
-    return pc;
   }
 
-  private async handleOffer(msg: Message): Promise<void> {
-    if (
-      !this.userName ||
-      msg.target !== this.userName ||
-      (msg as any).channelId !== this.channelId
-    )
-      return;
+  /** Open the connection that pulls `sharer`'s screen to us. */
+  private async openIncoming(sharer: string): Promise<void> {
+    if (this.incoming[sharer]) return;
 
-    const userId = msg.user as string;
-    const pc = await this.createPeer(userId, false);
+    const pc = new RTCPeerConnection(this.config);
+    this.incoming[sharer] = pc;
+
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    // An answer can only fill m-lines the offer already contains, so without
+    // asking for audio up front the sharer would have nowhere to put its
+    // audio track and the shared sound would never leave the machine. Shares
+    // without audio simply answer this one inactive.
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+
+    pc.ontrack = () => {
+      this.emit(this.getPeersList());
+    };
+
+    this.wirePeer(pc, sharer, 'viewer');
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    chat.sendRaw({
+      type: 'screenshare-offer',
+      user: this.userName,
+      target: sharer,
+      channelId: this.channelId,
+      role: 'viewer',
+      sdp: offer
+    });
+  }
+
+  /** Whether a signaling frame is addressed to us in our current channel. */
+  private isForUs(msg: Message): boolean {
+    return (
+      !!this.userName &&
+      msg.target === this.userName &&
+      (msg as any).channelId === this.channelId
+    );
+  }
+
+  /**
+   * A viewer asking for our capture. Offers are only ever sent by viewers, so
+   * this is always the outgoing direction — and pointless while we are not
+   * sharing anything.
+   */
+  private async handleOffer(msg: Message): Promise<void> {
+    if (!this.isForUs(msg) || !this.localStream) return;
+
+    const viewer = msg.user as string;
+    let pc = this.outgoing[viewer];
+    if (!pc) {
+      pc = new RTCPeerConnection(this.config);
+      this.outgoing[viewer] = pc;
+      for (const track of this.localStream.getTracks()) {
+        pc.addTrack(track, this.localStream);
+      }
+      this.wirePeer(pc, viewer, 'sharer');
+      this.applyBitrateLimit();
+    }
 
     await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp as any));
     const answer = await pc.createAnswer();
@@ -319,35 +358,33 @@ export class ScreenShareManager {
     chat.sendRaw({
       type: 'screenshare-answer',
       user: this.userName,
-      target: userId,
+      target: viewer,
       channelId: this.channelId,
+      role: 'sharer',
       sdp: answer
     });
   }
 
+  /** Answers only ever come from a sharer, so they belong to `incoming`. */
   private async handleAnswer(msg: Message): Promise<void> {
-    if (
-      !this.userName ||
-      msg.target !== this.userName ||
-      (msg as any).channelId !== this.channelId
-    )
-      return;
+    if (!this.isForUs(msg)) return;
 
-    const pc = this.peers[msg.user as string];
+    const pc = this.incoming[msg.user as string];
     if (pc && !pc.currentRemoteDescription) {
       await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp as any));
     }
   }
 
+  /**
+   * Candidates carry the sender's role, which picks the connection: what the
+   * other side sends as a viewer belongs to the share we send them, and what
+   * it sends as a sharer belongs to the share we receive.
+   */
   private async handleCandidate(msg: Message): Promise<void> {
-    if (
-      !this.userName ||
-      msg.target !== this.userName ||
-      (msg as any).channelId !== this.channelId
-    )
-      return;
+    if (!this.isForUs(msg)) return;
 
-    const pc = this.peers[msg.user as string];
+    const remote = msg.user as string;
+    const pc = (msg as any).role === 'viewer' ? this.outgoing[remote] : this.incoming[remote];
     if (pc) {
       try {
         await pc.addIceCandidate(msg.candidate as any);
@@ -358,20 +395,27 @@ export class ScreenShareManager {
   }
 
   private handleRemoteStop(msg: Message): void {
-    const userId = msg.user as string;
+    // Their share ended, so the stream we were pulling from them is gone. Any
+    // connection in the other direction is theirs to end, not ours.
     if ((msg as any).channelId === this.channelId) {
-      this.cleanupPeer(userId);
+      this.closeIncoming(msg.user as string);
     }
   }
 
-  private cleanupPeer(userId: string): void {
-    const pc = this.peers[userId];
-    if (pc) {
-      pc.close();
-      delete this.peers[userId];
-      delete this.remoteStreams[userId];
-      this.emit(this.getPeersList());
-    }
+  private closeIncoming(sharer: string): void {
+    const pc = this.incoming[sharer];
+    if (!pc) return;
+    pc.close();
+    delete this.incoming[sharer];
+    delete this.remoteStreams[sharer];
+    this.emit(this.getPeersList());
+  }
+
+  private closeOutgoing(viewer: string): void {
+    const pc = this.outgoing[viewer];
+    if (!pc) return;
+    pc.close();
+    delete this.outgoing[viewer];
   }
 
   async viewScreenShare(userId: string, viewerName?: string, channelId?: number): Promise<void> {
@@ -384,17 +428,17 @@ export class ScreenShareManager {
       throw new Error('Not in a voice channel');
     }
 
-    await this.createPeer(userId, true);
+    await this.openIncoming(userId);
   }
 
   stopViewing(userId: string): void {
-    this.cleanupPeer(userId);
+    this.closeIncoming(userId);
   }
 
   leaveAsViewer(): void {
     if (!this.isSharing()) {
-      for (const userId of Object.keys(this.peers)) {
-        this.cleanupPeer(userId);
+      for (const userId of Object.keys(this.incoming)) {
+        this.closeIncoming(userId);
       }
       this.userName = null;
       this.channelId = null;
@@ -412,6 +456,9 @@ export class ScreenShareManager {
 
   destroy(): void {
     this.stopSharing();
+    for (const userId of Object.keys(this.incoming)) {
+      this.closeIncoming(userId);
+    }
     chat.off('screenshare-offer');
     chat.off('screenshare-answer');
     chat.off('screenshare-candidate');
