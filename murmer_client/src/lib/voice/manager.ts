@@ -7,7 +7,7 @@
  */
 import { chat } from '../stores/chat';
 import {
-  volume,
+  appSoundVolume,
   inputDeviceId,
   outputDeviceId,
   microphoneMuted,
@@ -103,7 +103,7 @@ export class VoiceManager {
   private channelConfig: VoiceChannelInfo | null = null;
 
   constructor() {
-    volume.subscribe((v) => {
+    appSoundVolume.subscribe((v) => {
       for (const sound of this.notificationSounds()) {
         sound.volume = v;
       }

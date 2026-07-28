@@ -7,6 +7,7 @@
 
   import {
     volume,
+    appSoundVolume,
     inputDeviceId,
     outputDeviceId,
     voiceMode,
@@ -495,6 +496,29 @@
             <div class="setting-description">
               How loud other members are. Individual people can be turned up or down in the
               voice channel's context menu.
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label for="app-sound-volume" class="setting-label">
+              App sound volume
+              <span class="setting-value">{Math.round($appSoundVolume * 100)}%</span>
+            </label>
+            <div class="slider-container">
+              <input
+                id="app-sound-volume"
+                class="volume-slider"
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                bind:value={$appSoundVolume}
+              />
+              <div class="slider-track-fill" style="width: {$appSoundVolume * 100}%"></div>
+            </div>
+            <div class="setting-description">
+              The blips Murmer itself plays when somebody joins or leaves your voice channel
+              and when you mute or unmute. Set it to 0% to silence them.
             </div>
           </div>
 
