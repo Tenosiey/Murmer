@@ -62,6 +62,15 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   gain (the "Input volume" slider), so the level compared against the VAD
   threshold is the one the peers actually receive — turning a quiet microphone
   up must not make voice detection harder to trigger.
+  The VAD threshold is derived from a tracked noise floor by default
+  (`NoiseFloorTracker` in `voice/vad.ts`); `vadSensitivity` is only the manual
+  override used when `vadAutoSensitivity` is off. The tracker drops fast and
+  rises very slowly, and can never rise above the quietest level of the last
+  20 s — speech returns to the room between syllables, so that cap is what
+  stops a long sentence from ratcheting the threshold up under the speaker.
+  Tune it towards never gating a talking user: transmitting a few more seconds
+  of fan noise is the cheaper mistake. Each measurement chain runs its own
+  tracker (the detector's and the settings meter's) on the same signal.
 - `src/lib/screenshare/` – WebRTC screen sharing manager. A share may carry
   system audio, so the viewer offers **recvonly video *and* audio**
   transceivers: an answer can only fill m-lines the offer already contains, and

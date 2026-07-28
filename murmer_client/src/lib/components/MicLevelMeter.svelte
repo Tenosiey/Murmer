@@ -1,7 +1,9 @@
 <!--
   Live microphone level meter drawn on the same scale as the VAD sensitivity
   slider it sits under: the threshold marker lines up with the slider thumb, so
-  the threshold can be dialled in while watching one's own voice level.
+  the threshold can be dialled in while watching one's own voice level. With
+  automatic sensitivity there is no slider and the marker instead shows where
+  the tracked noise floor currently puts the threshold.
 
   The meter only measures while it is mounted; unmounting releases the
   microphone it opened (unless it borrowed a running voice session's capture).
@@ -21,21 +23,29 @@
     /**
      * Threshold the level is compared against, on the same 0-1 scale. Omitted
      * outside voice-activity mode, where the meter is only a "does my
-     * microphone work" check and has no marker to line up with.
+     * microphone work" check and has no marker to line up with, and in
+     * automatic mode, where the marker follows the measured noise floor.
      */
     threshold?: number;
+    /**
+     * Draw the threshold automatic sensitivity derives from the noise floor
+     * instead of a fixed one — the marker then moves on its own as the room
+     * gets louder or quieter.
+     */
+    automatic?: boolean;
     /** Lower end of the displayed scale (the slider's `min`). */
     min: number;
     /** Upper end of the displayed scale (the slider's `max`). */
     max: number;
   }
 
-  let { threshold, min, max }: Props = $props();
+  let { threshold, automatic = false, min, max }: Props = $props();
 
   /** Floor separating silence from signal when there is no VAD threshold. */
   const SIGNAL_FLOOR = 0.02;
 
   let level = $state(0);
+  let autoThreshold = $state(0);
   let failed = $state(false);
 
   const monitor = new MicLevelMonitor();
@@ -56,9 +66,12 @@
     let current = true;
     failed = false;
     level = 0;
+    autoThreshold = 0;
     monitor
-      .start((value) => {
-        if (current) level = value;
+      .start((value, derivedThreshold) => {
+        if (!current) return;
+        level = value;
+        autoThreshold = derivedThreshold;
       })
       .catch((error) => {
         if (current) failed = true;
@@ -77,22 +90,23 @@
     return Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
   }
 
+  const marker = $derived(automatic ? autoThreshold : threshold);
   const levelPercent = $derived(position(level));
-  const thresholdPercent = $derived(position(threshold ?? 0));
-  const speaking = $derived(level > (threshold ?? SIGNAL_FLOOR));
+  const thresholdPercent = $derived(position(marker ?? 0));
+  const speaking = $derived(level > (marker ?? SIGNAL_FLOOR));
 </script>
 
 <div class="meter">
   <div class="meter-track">
     <div class="meter-fill" class:speaking style="width: {levelPercent}%"></div>
-    {#if threshold !== undefined}
-      <div class="meter-threshold" style="left: {thresholdPercent}%"></div>
+    {#if marker !== undefined}
+      <div class="meter-threshold" class:automatic style="left: {thresholdPercent}%"></div>
     {/if}
   </div>
   <span class="meter-status" class:failed>
     {#if failed}
       Microphone unavailable — check the input device and permissions
-    {:else if threshold === undefined}
+    {:else if marker === undefined}
       {speaking ? 'Picking up sound' : 'Silent'}
     {:else if speaking}
       Transmitting
@@ -137,6 +151,13 @@
     width: 2px;
     margin-left: -1px;
     background: var(--color-on-surface);
+  }
+
+  /* The automatic marker moves on its own; easing it keeps small corrections
+     from reading as jitter. The manual one must stay glued to the slider
+     thumb, so it is deliberately left untransitioned. */
+  .meter-threshold.automatic {
+    transition: left 0.2s ease-out;
   }
 
   .meter-status {

@@ -14,6 +14,7 @@ import {
   outputMuted,
   voiceMode,
   vadSensitivity,
+  vadAutoSensitivity,
   pttKey,
   isPttActive,
   voiceActivity,
@@ -151,6 +152,7 @@ export class VoiceManager {
       this.syncGlobalPushToTalk();
     });
     vadSensitivity.subscribe(() => this.updateVadSensitivity());
+    vadAutoSensitivity.subscribe(() => this.updateVadSensitivity());
     echoCancellation.subscribe(() => this.applyMicProcessing());
     noiseSuppression.subscribe(() => this.applyMicProcessing());
     autoGainControl.subscribe(() => this.applyMicProcessing());
@@ -206,7 +208,7 @@ export class VoiceManager {
     const mode = get(voiceMode);
 
     if (mode === 'vad' && this.vad) {
-      this.vad.start(source, get(vadSensitivity));
+      this.vad.start(source, get(vadSensitivity), get(vadAutoSensitivity));
     } else if (this.vad) {
       this.vad.stop();
     }
@@ -224,7 +226,7 @@ export class VoiceManager {
 
   private updateVadSensitivity() {
     if (get(voiceMode) === 'vad' && this.vad) {
-      this.vad.updateSensitivity(get(vadSensitivity));
+      this.vad.updateSensitivity(get(vadSensitivity), get(vadAutoSensitivity));
     }
   }
 
