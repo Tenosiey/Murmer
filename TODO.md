@@ -53,7 +53,7 @@ surfacing two things the server already stores.
       built-in `noiseSuppression` constraint, and the most audible quality
       upgrade available here
 - [ ] Screen-share annotations
-- [ ] Separate volume for the app sounds (join, leave, mute) independent of the
+- [x] Separate volume for the app sounds (join, leave, mute) independent of the
       voice volume slider, which currently drives both
 - [ ] Temporary voice channels
 - [ ] VAD hold / release-delay slider — the detector already holds the gate

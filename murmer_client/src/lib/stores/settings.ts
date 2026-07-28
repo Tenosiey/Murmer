@@ -20,6 +20,30 @@ volume.subscribe((value) => {
   }
 });
 
+// The app's own blips (join, leave, mute, unmute). Kept separate from the
+// voice volume, which used to drive both: these are short and near-constant in
+// loudness, so the level that makes them a discreet cue is nothing like the
+// level that makes a quiet talker audible, and turning people up should not
+// turn the notifications up with them.
+const APP_SOUND_VOLUME_KEY = 'murmer_app_sound_volume';
+
+let initialAppSoundVolume = 1;
+if (browser) {
+  const stored = localStorage.getItem(APP_SOUND_VOLUME_KEY);
+  if (stored !== null) {
+    const num = parseFloat(stored);
+    // A media element's volume is a 0-1 fraction; anything else is rejected
+    // rather than clamped, since it can only come from a hand-edited entry.
+    if (!isNaN(num) && num >= 0 && num <= 1) initialAppSoundVolume = num;
+  }
+}
+
+export const appSoundVolume = writable<number>(initialAppSoundVolume);
+
+appSoundVolume.subscribe((value) => {
+  if (browser) localStorage.setItem(APP_SOUND_VOLUME_KEY, String(value));
+});
+
 // Screen share audio, heard by the viewer. Kept separate from the voice
 // volume: a game or video is usually far louder than the people talking over
 // it, and turning one down must not turn the other down with it.
