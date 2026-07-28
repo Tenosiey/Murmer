@@ -188,7 +188,8 @@ skipped. When asked to bump versions:
 See `README.md` for the full release process.
 
 ## Validation checklist
-- Ensure CI-equivalent commands above pass before opening a pull request.
+- Ensure the commands above pass before pushing; `.github/workflows/ci.yml`
+  runs the same ones on every push to `main`/`dev` and on every pull request.
 - Perform manual smoke tests after changing networking, authentication or file
   handling logic.
 - Keep documentation (`README.md`, `AGENTS.md`) in sync with code behaviour.
