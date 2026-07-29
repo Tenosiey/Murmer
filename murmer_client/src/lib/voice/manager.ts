@@ -35,6 +35,8 @@ import { subscribeTick } from './ticker';
 import { micProcessingConstraints, openMicrophone } from './capture';
 import { connectMicSource, type MicSource } from './denoise';
 import { withOpusFeatures } from './sdp';
+import { remoteFingerprint } from '../webrtc/fingerprint';
+import { PeerRecovery } from '../webrtc/recovery';
 
 const DEFAULT_AUDIO_BITRATE = 64_000;
 
@@ -90,6 +92,21 @@ export class VoiceManager {
   private userName: string | null = null;
   private channelId: number | null = null;
   private listeners: Array<(peers: RemotePeer[]) => void> = [];
+
+  /**
+   * The peer list of the current session. Held here as well as threaded
+   * through the handlers because connection repairs are driven by timers
+   * rather than by an incoming frame, so they have no call site to take it
+   * from. Empty while not in a channel.
+   */
+  private activePeers: RemotePeer[] = [];
+
+  /** Keeps peers whose connection breaks alive instead of dropping them. */
+  private recovery = new PeerRecovery({
+    restart: (id) => void this.restartPeerIce(id),
+    rebuild: (id) => this.rebuildPeer(id),
+    setReconnecting: (id, reconnecting) => this.markReconnecting(id, reconnecting)
+  });
 
   private vad: VoiceActivityDetector | null = null;
   private ptt: PushToTalkManager | null = null;
@@ -604,6 +621,7 @@ export class VoiceManager {
   }
 
   private cleanupPeer(id: string, peersList: RemotePeer[]) {
+    this.recovery.forget(id);
     const pc = this.peers[id];
     if (pc) {
       pc.close();
@@ -616,12 +634,85 @@ export class VoiceManager {
       delete this.prevPacketCounts[id];
       delete this.lossWindows[id];
     }
-    this.emit(peersList.filter((r) => r.id !== id));
+    // Remove in place. `peersList` is the array every other emit spreads, so a
+    // peer that was only filtered out of the copy handed to subscribers comes
+    // back the moment anything else emits — a closed connection reappearing in
+    // the member list with a dead stream.
+    const index = peersList.findIndex((r) => r.id === id);
+    if (index !== -1) peersList.splice(index, 1);
+    this.emit([...peersList]);
+  }
+
+  /**
+   * Offer a broken peer a fresh ICE transport over whatever path is reachable
+   * now. Both ends see the same breakage, so exactly one of them may offer or
+   * the two renegotiations collide; comparing the two names picks the same
+   * side on both machines without needing a round trip to agree. The other end
+   * answers the offer that arrives through the normal `voice-offer` path.
+   */
+  private async restartPeerIce(id: string) {
+    const pc = this.peers[id];
+    if (!pc || !this.userName || pc.signalingState === 'closed') return;
+    // Names are unique per server, so this is never a tie.
+    if (this.userName < id) return;
+    try {
+      pc.restartIce();
+      const offer = withOpusFeatures(await pc.createOffer());
+      await pc.setLocalDescription(offer);
+      chat.sendRaw({
+        type: 'voice-offer',
+        user: this.userName,
+        target: id,
+        channelId: this.channelId,
+        sdp: offer
+      });
+    } catch (error) {
+      // A restart that throws is just an attempt that did not land; the
+      // controller retries, and the deadline still ends in a rebuild.
+      if (import.meta.env.DEV) console.error('ICE restart failed', error);
+    }
+  }
+
+  /**
+   * Throw a connection away and start a new one. This is where a peer ends up
+   * after the repair deadline: their client may have been offline for the
+   * whole window and come back on a different network, which no amount of ICE
+   * restarting on a dead transport recovers from. Nothing is scheduled after
+   * this — if the peer really left, the server's `voice-leave` removes them,
+   * and until then the new connection retries on its own timers.
+   */
+  private rebuildPeer(id: string) {
+    if (!this.userName || !this.peers[id]) return;
+    this.cleanupPeer(id, this.activePeers);
+    // Same tiebreak as the ICE restart: one side offers, the other picks the
+    // new session up from that offer.
+    if (this.userName > id) {
+      void this.createPeer(id, true, this.activePeers);
+    }
+  }
+
+  /** Flag a peer as under repair so the UI can say so instead of going quiet. */
+  private markReconnecting(id: string, reconnecting: boolean) {
+    const peer = this.activePeers.find((p) => p.id === id);
+    if (!peer || peer.reconnecting === reconnecting) return;
+    peer.reconnecting = reconnecting;
+    this.emit([...this.activePeers]);
   }
 
   private async updateStats(id: string, peersList: RemotePeer[]) {
     const pc = this.peers[id];
     if (!pc) return;
+    // A connection that is not up reports no round-trip time, and `rtt === 0`
+    // is read as "excellent" further down — so a peer being repaired, or one
+    // that never connected at all, would sit there showing five full bars
+    // while carrying no audio. Report it as what it is instead.
+    if (pc.connectionState !== 'connected') {
+      for (const p of peersList) {
+        if (p.id === id) p.stats = { rtt: 0, jitter: 0, packetLoss: 0, strength: 0 };
+      }
+      this.emit([...peersList]);
+      return;
+    }
     try {
       const reports = await pc.getStats();
       let rtt = 0;
@@ -755,9 +846,13 @@ export class VoiceManager {
       }
     };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
-        this.cleanupPeer(id, peersList);
-      }
+      // `disconnected` and `failed` are handed to the repair controller rather
+      // than acted on here: neither is a reason to lose the peer, and the
+      // rules for when they become one are in `recovery.ts`.
+      this.recovery.observe(id, pc.connectionState);
+      // `closed` is only ever reached because we closed it ourselves, but the
+      // peer still has to leave the list when that happened elsewhere.
+      if (pc.connectionState === 'closed') this.cleanupPeer(id, peersList);
     };
     this.statsIntervals[id] = window.setInterval(() => this.updateStats(id, peersList), 1000);
     if (initiator && this.userName) {
@@ -798,6 +893,7 @@ export class VoiceManager {
 
     this.userName = user;
     this.channelId = channelId;
+    this.activePeers = peersList;
     this.channelConfig = info
       ? {
           id: channelId,
@@ -835,6 +931,9 @@ export class VoiceManager {
   leave(channelId: number, peersList: RemotePeer[]) {
     if (!this.userName) return;
     chat.sendRaw({ type: 'voice-leave', user: this.userName, channelId });
+    // Before the teardown, so no timer can fire a restart or a rebuild against
+    // a session that is on its way out.
+    this.recovery.clear();
     for (const id of Object.keys(this.peers)) {
       this.cleanupPeer(id, peersList);
     }
@@ -856,6 +955,7 @@ export class VoiceManager {
     this.userName = null;
     this.channelId = null;
     this.channelConfig = null;
+    this.activePeers = [];
     this.syncGlobalPushToTalk();
     peersList.length = 0;
     this.emit([]);
@@ -880,7 +980,24 @@ export class VoiceManager {
       (msg as any).channelId !== this.channelId
     )
       return;
-    const pc = await this.createPeer(msg.user as string, false, peersList);
+    const remote = msg.user as string;
+    const offerSdp = (msg.sdp as RTCSessionDescriptionInit | undefined)?.sdp;
+    // Two very different offers arrive on an existing connection. An ICE
+    // restart is a renegotiation of *this* connection and is answered on it;
+    // an offer from a peer that gave up and built a new `RTCPeerConnection`
+    // (see `rebuildPeer`) carries a different certificate and can only be
+    // answered on a new one of ours. A connection already past saving is
+    // replaced either way.
+    const existing = this.peers[remote];
+    if (existing) {
+      const rebuilt =
+        existing.currentRemoteDescription != null &&
+        remoteFingerprint(offerSdp) !== remoteFingerprint(existing.currentRemoteDescription.sdp);
+      if (rebuilt || existing.connectionState === 'failed' || existing.signalingState === 'closed') {
+        this.cleanupPeer(remote, peersList);
+      }
+    }
+    const pc = await this.createPeer(remote, false, peersList);
     // The peer's description is munged too, not just ours: the encoder takes
     // its DTX/FEC settings from the *remote* side of the negotiation, so this
     // is what guarantees our own uplink stops paying for silence even if the
@@ -907,7 +1024,11 @@ export class VoiceManager {
     )
       return;
     const pc = this.peers[msg.user as string];
-    if (pc && !pc.currentRemoteDescription) {
+    // Accept an answer whenever one is outstanding, not just the first one:
+    // an ICE restart is a second round of offer/answer on a connection that
+    // already has a remote description, and gating on that description being
+    // absent is what would silently drop every repair.
+    if (pc && pc.signalingState === 'have-local-offer') {
       await pc.setRemoteDescription(
         new RTCSessionDescription(withOpusFeatures(msg.sdp as RTCSessionDescriptionInit))
       );

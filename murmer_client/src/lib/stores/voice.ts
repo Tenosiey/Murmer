@@ -29,6 +29,15 @@ export const voice = {
   }
 };
 
+/** Names of the peers whose connection is currently being repaired. */
+export const voiceReconnecting = derived(voice, ($voice) => {
+  const names = new Set<string>();
+  for (const p of $voice as unknown as RemotePeer[]) {
+    if (p.reconnecting) names.add(p.id);
+  }
+  return names;
+});
+
 export const voiceStats = derived(voice, ($voice) => {
   const map: Record<string, ConnectionStats> = {};
   for (const p of $voice as unknown as RemotePeer[]) {

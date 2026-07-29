@@ -42,6 +42,12 @@ export interface RemotePeer {
   id: string;
   stream: MediaStream;
   stats?: ConnectionStats;
+  /**
+   * True while the connection to this peer is being repaired (see
+   * `voice/recovery.ts`). They are still in the channel and their audio is
+   * expected back — the UI says so rather than leaving the silence unexplained.
+   */
+  reconnecting?: boolean;
 }
 
 export interface ConnectionStats {
@@ -172,6 +178,12 @@ export interface ScreenSharePeer {
    * mute controls when there is something to control.
    */
   hasAudio: boolean;
+  /**
+   * The connection carrying this share dropped and is being repaired (see
+   * `webrtc/recovery.ts`). The last frame stays on screen while it is — the
+   * share has not ended, so its window must not close.
+   */
+  reconnecting?: boolean;
 }
 
 /** One tile on the screen share stage. */

@@ -124,6 +124,7 @@ Key documentation for contributors:
 - `murmer_server/AGENTS.md` – server-specific tips
 - `murmer_server/BOT_API.md` – REST API reference for bots
 - `CONTRIBUTING.md` – code style and PR guidelines
+- `docs/turn-support.md` – design note on TURN/relay support (not implemented)
 
 ## Brand
 
