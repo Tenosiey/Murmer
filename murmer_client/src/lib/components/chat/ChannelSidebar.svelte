@@ -12,7 +12,7 @@
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { categories } from '$lib/stores/categories';
   import { voiceUsers } from '$lib/stores/voiceUsers';
-  import { voiceStats } from '$lib/stores/voice';
+  import { voiceStats, voiceReconnecting } from '$lib/stores/voice';
   import { session } from '$lib/stores/session';
   import { roles } from '$lib/stores/roles';
   import { displayNames } from '$lib/stores/profiles';
@@ -504,6 +504,7 @@
                       {/if}
                       <ConnectionBars
                         strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)}
+                        reconnecting={user !== $session.user && $voiceReconnecting.has(user)}
                       />
                     </li>
                   {/each}

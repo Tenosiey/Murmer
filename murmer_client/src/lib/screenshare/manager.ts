@@ -6,6 +6,8 @@
  * Uses the same signaling infrastructure as voice chat.
  */
 import { chat } from '../stores/chat';
+import { remoteFingerprint } from '../webrtc/fingerprint';
+import { PeerRecovery } from '../webrtc/recovery';
 import type { Message, ScreenShareSettings, ScreenSharePeer } from '../types';
 
 const DEFAULT_SETTINGS: ScreenShareSettings = {
@@ -34,6 +36,30 @@ export type QualityPreset = keyof typeof QUALITY_PRESETS;
  */
 export type ScreenShareRole = 'viewer' | 'sharer';
 
+/**
+ * How many times a share we are watching may be rebuilt from scratch before it
+ * is treated as gone. Unlike a voice peer — a row in a member list — a share is
+ * a window on the viewer's screen, and one that says "Reconnecting" forever is
+ * worse than one that closes. Three rebuilds is roughly a minute and a half of
+ * a share that never comes back.
+ */
+const MAX_REBUILDS = 3;
+
+/**
+ * The key a connection is repaired under. A pair of users can share to each
+ * other at the same time, so the two connections with the same peer are told
+ * apart by our own role on them, exactly as the signaling frames are.
+ */
+function recoveryKey(role: ScreenShareRole, remote: string): string {
+  return `${role}:${remote}`;
+}
+
+/** The role and peer a `recoveryKey` was built from. */
+function splitKey(key: string): [ScreenShareRole, string] {
+  const separator = key.indexOf(':');
+  return [key.slice(0, separator) as ScreenShareRole, key.slice(separator + 1)];
+}
+
 export class ScreenShareManager {
   /**
    * Connections carrying someone else's share to us, keyed by the sharer.
@@ -54,9 +80,24 @@ export class ScreenShareManager {
   /** Server-enforced bitrate cap in bits per second (null = no cap). */
   private serverMaxBitrate: number | null = null;
 
+  /** Rebuilds spent on each share we are watching, keyed by the sharer. */
+  private rebuilds: Record<string, number> = {};
+
   private config: RTCConfiguration = {
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   };
+
+  /**
+   * Repairs connections that break mid-share instead of closing them. Both
+   * directions go through it, but only the viewer ever re-offers: offers are
+   * the viewer's to make in this protocol, which settles who acts without the
+   * tiebreak the voice manager needs.
+   */
+  private recovery = new PeerRecovery({
+    restart: (key) => void this.restartIce(key),
+    rebuild: (key) => this.rebuildConnection(key),
+    setReconnecting: () => this.emit(this.getPeersList())
+  });
 
   constructor() {
     this.setupSignaling();
@@ -98,6 +139,16 @@ export class ScreenShareManager {
     for (const cb of this.localStreamListeners) cb(this.localStream);
   }
 
+  /**
+   * Everyone whose share we are watching, including one whose connection is
+   * mid-rebuild and so has no entry in `incoming` at this instant. Anything
+   * that tears watching down has to go by this rather than by the connections
+   * alone, or a repair in flight survives the teardown.
+   */
+  private watchedSharers(): string[] {
+    return [...new Set([...Object.keys(this.incoming), ...Object.keys(this.remoteStreams)])];
+  }
+
   private getPeersList(): ScreenSharePeer[] {
     const peers: ScreenSharePeer[] = [];
     for (const [userId, pc] of Object.entries(this.incoming)) {
@@ -128,7 +179,30 @@ export class ScreenShareManager {
         if (!tracks.includes(track)) stream.removeTrack(track);
       }
 
-      peers.push({ userId, stream, hasAudio: stream.getAudioTracks().length > 0 });
+      peers.push({
+        userId,
+        stream,
+        hasAudio: stream.getAudioTracks().length > 0,
+        reconnecting: this.recovery.isRecovering(recoveryKey('viewer', userId))
+      });
+    }
+
+    // A share under repair reports nothing above for a while: mid-rebuild it
+    // has no connection at all, and the replacement has no video until the
+    // first frame arrives. It still has to appear here — the viewer's window
+    // closes the instant a share it once had media from drops out of this
+    // list, and a repair is precisely when it must not. The retained stream is
+    // what says the share is still ours to keep; every real teardown deletes
+    // it along with the connection.
+    const listed = new Set(peers.map((peer) => peer.userId));
+    for (const [userId, stream] of Object.entries(this.remoteStreams)) {
+      if (listed.has(userId)) continue;
+      peers.push({
+        userId,
+        stream,
+        hasAudio: stream.getAudioTracks().length > 0,
+        reconnecting: true
+      });
     }
     return peers;
   }
@@ -219,7 +293,10 @@ export class ScreenShareManager {
       this.closeOutgoing(userId);
     }
 
-    if (Object.keys(this.incoming).length === 0) {
+    // `remoteStreams` counts too: a share being rebuilt has no connection for
+    // a moment, and dropping the identity then would leave its own repair
+    // signaling with no one to send as.
+    if (this.watchedSharers().length === 0) {
       this.userName = null;
       this.channelId = null;
     }
@@ -283,11 +360,94 @@ export class ScreenShareManager {
     };
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+      // `disconnected` and `failed` go to the repair controller instead of
+      // ending the share. Closing on them meant a two-second Wi-Fi hiccup took
+      // the viewer's window down for good, since the store treats a share that
+      // vanishes from the peer list as one that ended.
+      this.recovery.observe(recoveryKey(role, remote), pc.connectionState);
+      if (pc.connectionState === 'closed') {
         if (role === 'viewer') this.closeIncoming(remote);
         else this.closeOutgoing(remote);
       }
     };
+  }
+
+  /**
+   * Re-offer the connection over whatever path is reachable now. Only the
+   * viewer does this — offers travel one way in this protocol — so the sharer
+   * side simply waits for the offer that follows.
+   */
+  private async restartIce(key: string): Promise<void> {
+    const [role, remote] = splitKey(key);
+    if (role !== 'viewer') return;
+    const pc = this.incoming[remote];
+    if (!pc || !this.userName || pc.signalingState === 'closed') return;
+    try {
+      pc.restartIce();
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      chat.sendRaw({
+        type: 'screenshare-offer',
+        user: this.userName,
+        target: remote,
+        channelId: this.channelId,
+        role: 'viewer',
+        sdp: offer
+      });
+    } catch (error) {
+      // Just an attempt that did not land; the controller retries and the
+      // deadline still ends in a rebuild.
+      console.warn('Screen share ICE restart failed:', error);
+    }
+  }
+
+  /**
+   * Replace a connection that ICE restarts could not save. The viewer builds a
+   * new one and offers it; the sharer drops its side and lets the viewer's
+   * offer recreate it. The viewer gives up after `MAX_REBUILDS` so a share
+   * that is never coming back stops occupying the screen.
+   */
+  private rebuildConnection(key: string): void {
+    const [role, remote] = splitKey(key);
+    if (role === 'sharer') {
+      // Nothing to rebuild from this end: without a viewer asking there is no
+      // connection to make. Dropping ours frees the encode until they do.
+      this.closeOutgoing(remote);
+      return;
+    }
+
+    if (!this.incoming[remote]) return;
+    const attempts = (this.rebuilds[remote] ?? 0) + 1;
+    if (attempts > MAX_REBUILDS) {
+      // Honest failure: close the share rather than leave a window that says
+      // it is reconnecting and never will.
+      this.closeIncoming(remote);
+      return;
+    }
+    this.rebuilds[remote] = attempts;
+
+    // Deliberately not `closeIncoming`: that drops the retained stream and
+    // emits a peer list without this share, which is the store's signal to
+    // close the window. The stream is kept and handed to the new connection.
+    this.discardIncoming(remote);
+    this.openIncoming(remote).catch((error) => {
+      console.error('Failed to rebuild screen share connection:', error);
+      // The stream is still in `remoteStreams` with nothing to fill it, which
+      // would leave the window reconnecting forever. Close it properly.
+      this.closeIncoming(remote);
+    });
+  }
+
+  /** Close an incoming connection but keep the stream, for a rebuild. */
+  private discardIncoming(sharer: string): void {
+    const pc = this.incoming[sharer];
+    if (!pc) return;
+    this.recovery.forget(recoveryKey('viewer', sharer));
+    // The handler would call `closeIncoming` on the `closed` state and take
+    // the retained stream with it.
+    pc.onconnectionstatechange = null;
+    pc.close();
+    delete this.incoming[sharer];
   }
 
   /** Open the connection that pulls `sharer`'s screen to us. */
@@ -305,6 +465,9 @@ export class ScreenShareManager {
     pc.addTransceiver('audio', { direction: 'recvonly' });
 
     pc.ontrack = () => {
+      // Media arriving is the only proof a rebuild worked, so the budget for
+      // further ones resets here rather than on the connection state.
+      delete this.rebuilds[sharer];
       this.emit(this.getPeersList());
     };
 
@@ -340,6 +503,22 @@ export class ScreenShareManager {
     if (!this.isForUs(msg) || !this.localStream) return;
 
     const viewer = msg.user as string;
+    const offerSdp = (msg.sdp as RTCSessionDescriptionInit | undefined)?.sdp;
+
+    // Two kinds of re-offer arrive on a connection we already have. An ICE
+    // restart renegotiates this one and is answered on it; a viewer that gave
+    // up and built a new connection (see `rebuildConnection`) presents a new
+    // certificate, which only a new connection of ours can answer.
+    const current = this.outgoing[viewer];
+    if (current) {
+      const rebuilt =
+        current.currentRemoteDescription != null &&
+        remoteFingerprint(offerSdp) !== remoteFingerprint(current.currentRemoteDescription.sdp);
+      if (rebuilt || current.connectionState === 'failed' || current.signalingState === 'closed') {
+        this.closeOutgoing(viewer);
+      }
+    }
+
     let pc = this.outgoing[viewer];
     if (!pc) {
       pc = new RTCPeerConnection(this.config);
@@ -370,7 +549,11 @@ export class ScreenShareManager {
     if (!this.isForUs(msg)) return;
 
     const pc = this.incoming[msg.user as string];
-    if (pc && !pc.currentRemoteDescription) {
+    // Accept an answer whenever one is outstanding, not just the first: an ICE
+    // restart is a *second* round of offer/answer on a connection that already
+    // has a remote description, and gating on that being absent would drop
+    // every repair without a trace.
+    if (pc && pc.signalingState === 'have-local-offer') {
       await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp as any));
     }
   }
@@ -403,15 +586,22 @@ export class ScreenShareManager {
   }
 
   private closeIncoming(sharer: string): void {
-    const pc = this.incoming[sharer];
-    if (!pc) return;
-    pc.close();
-    delete this.incoming[sharer];
+    // Also runs for a share being rebuilt, whose connection is already gone:
+    // the retained stream and the repair timers have to go either way, or the
+    // share stays listed as reconnecting with nothing behind it.
+    this.recovery.forget(recoveryKey('viewer', sharer));
     delete this.remoteStreams[sharer];
+    delete this.rebuilds[sharer];
+    const pc = this.incoming[sharer];
+    if (pc) {
+      pc.close();
+      delete this.incoming[sharer];
+    }
     this.emit(this.getPeersList());
   }
 
   private closeOutgoing(viewer: string): void {
+    this.recovery.forget(recoveryKey('sharer', viewer));
     const pc = this.outgoing[viewer];
     if (!pc) return;
     pc.close();
@@ -437,7 +627,7 @@ export class ScreenShareManager {
 
   leaveAsViewer(): void {
     if (!this.isSharing()) {
-      for (const userId of Object.keys(this.incoming)) {
+      for (const userId of this.watchedSharers()) {
         this.closeIncoming(userId);
       }
       this.userName = null;
@@ -456,7 +646,7 @@ export class ScreenShareManager {
 
   destroy(): void {
     this.stopSharing();
-    for (const userId of Object.keys(this.incoming)) {
+    for (const userId of this.watchedSharers()) {
       this.closeIncoming(userId);
     }
     chat.off('screenshare-offer');

@@ -369,6 +369,15 @@
         onresize={updateAspect}
         ondblclick={toggleMaximized}
       ></video>
+      {#if peer.reconnecting}
+        <!-- The last frame stays up underneath: the share has not ended, and
+             replacing a frozen picture with a spinner hides which share this
+             window even is. -->
+        <div class="window-reconnecting" role="status">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Reconnecting…</span>
+        </div>
+      {/if}
     {:else}
       <div class="window-placeholder">
         <span class="spinner" aria-hidden="true"></span>
@@ -501,6 +510,23 @@
     align-items: center;
     justify-content: center;
     background: #000;
+    position: relative;
+  }
+
+  /* Sits over the frozen last frame rather than replacing it. */
+  .window-reconnecting {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: color-mix(in srgb, var(--color-bg) 65%, transparent);
+    color: var(--color-on-surface);
+    font-size: var(--text-sm);
+    text-align: center;
   }
 
   /* The window is sized by the user, so the stream is letterboxed into

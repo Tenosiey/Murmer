@@ -62,11 +62,12 @@ async function loadScreenShare() {
 }
 
 /** Publish a peer list the way the manager does after a track arrives. */
-function emitPeers(users: string[]) {
+function emitPeers(users: string[], reconnecting: string[] = []) {
   const peers = users.map((userId) => ({
     userId,
     stream: {} as MediaStream,
-    hasAudio: false
+    hasAudio: false,
+    reconnecting: reconnecting.includes(userId)
   }));
   for (const listener of mocks.peerListeners) listener(peers);
 }
@@ -150,6 +151,36 @@ describe('screenShare — shares that end', () => {
 
     expect(get(watchedScreenShares)).toEqual(['alice']);
     expect(mocks.stoppedViewing).toEqual([]);
+  });
+
+  it('keeps a share whose connection is being repaired on the stage', async () => {
+    const { watchedScreenShares, screenSharePeers, openScreenShare } = await loadScreenShare();
+
+    await openScreenShare('alice', 'me', 1);
+    await openScreenShare('bob', 'me', 1);
+    emitPeers(['alice', 'bob']);
+    // Alice's connection broke. The manager keeps reporting her (see
+    // `ScreenShareManager.getPeersList`) precisely so this reconciliation does
+    // not read a repair as a share that ended and close her window — the
+    // coupling is easy to break from either side.
+    emitPeers(['alice', 'bob'], ['alice']);
+
+    expect(get(watchedScreenShares)).toEqual(['alice', 'bob']);
+    expect(mocks.stoppedViewing).toEqual([]);
+    expect(get(screenSharePeers).find((p) => p.userId === 'alice')?.reconnecting).toBe(true);
+  });
+
+  it('closes a share that a repair gave up on', async () => {
+    const { watchedScreenShares, openScreenShare } = await loadScreenShare();
+
+    await openScreenShare('alice', 'me', 1);
+    emitPeers(['alice']);
+    emitPeers(['alice'], ['alice']);
+    // Out of rebuilds: the manager drops it from the list for good.
+    emitPeers([]);
+
+    expect(get(watchedScreenShares)).toEqual([]);
+    expect(mocks.stoppedViewing).toEqual(['alice']);
   });
 
   it('takes down a share that stops while it is still connecting', async () => {

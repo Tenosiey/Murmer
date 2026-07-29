@@ -96,6 +96,16 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   Tune it towards never gating a talking user: transmitting a few more seconds
   of fan noise is the cheaper mistake. Each measurement chain runs its own
   tracker (the detector's and the settings meter's) on the same signal.
+  A peer connection that breaks mid-call is **repaired, never dropped** — see
+  `src/lib/webrtc/` below, which both this manager and screen sharing use.
+  Two voice-side rules hold it together: `handleAnswer` gates on
+  `signalingState === 'have-local-offer'` rather than on there being no remote
+  description yet (a repair is a *second* round of offer/answer, so the old
+  check silently dropped every one of them), and `updateStats` reports zero
+  bars for anything not `connected` — an rtt of 0 otherwise reads as
+  "excellent", which showed five full bars for a peer carrying no audio at all.
+  Which of the two ends re-offers is decided by comparing the account names, so
+  both machines pick the same side without a round trip to agree.
   Opus is negotiated with `usedtx=1;useinbandfec=1`, written into every
   offer/answer by `voice/sdp.ts`. Those fmtp parameters are *receiver-to-sender*
   preferences (RFC 7587), so the description we **send** configures the peer's
@@ -110,6 +120,21 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   once per poll — dividing by the two or three packets a DTX'd stream carries
   per second turned a single loss into "50 % loss" and emptied the connection
   bars of everyone who was not talking.
+- `src/lib/webrtc/` – the parts both WebRTC managers share. `recovery.ts` is
+  the repair policy for a connection that breaks mid-session: `disconnected` is
+  a Wi-Fi roam or a lid closed for a second and usually heals itself, so it is
+  given a grace period; only if it does not resolve — or on `failed`, which
+  never resolves — is ICE restarted, retried until a deadline, and finally the
+  connection thrown away and rebuilt. Closing on `disconnected` (what this
+  replaced) turned every brief hiccup into a peer that was still listed and
+  carried no audio, or a screen-share window that shut for good. The controller
+  is free of `window`, WebRTC and store imports precisely so these timings —
+  the part that fails invisibly — are unit-tested against fake timers.
+  `fingerprint.ts` tells the two kinds of re-offer apart: an ICE restart keeps
+  the DTLS certificate and is answered on the existing connection, while a peer
+  that rebuilt presents a new one and can only be answered on a new connection.
+  Both managers must clear their recovery entries on every teardown path, or a
+  timer fires against a session that is already gone.
 - `src/lib/screenshare/` – WebRTC screen sharing manager. A share may carry
   system audio, so the viewer offers **recvonly video *and* audio**
   transceivers: an answer can only fill m-lines the offer already contains, and
@@ -143,6 +168,20 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   URL like the other per-name state. A watched entry with no peer yet is still
   negotiating and stays up; one whose peer disappears has ended and is closed,
   which is what keeps a window from hanging on "Connecting…" forever.
+  That reconciliation is why a share **under repair keeps being reported** by
+  `getPeersList` even while it has no connection at all: dropping out of the
+  peer list is the store's signal that a share ended, so a repair that stopped
+  reporting would close the window it was trying to save. The retained entry in
+  `remoteStreams` is what says a share is still ours — every real teardown
+  deletes it, `discardIncoming` (rebuild only) deliberately does not, and the
+  window keeps its last frame under a "Reconnecting…" overlay meanwhile.
+  Unlike voice, which repairs indefinitely, a watched share gives up after
+  `MAX_REBUILDS` and closes: a row in a member list can wait forever, a window
+  on the user's screen cannot. Offers only ever travel viewer → sharer, so the
+  viewer is always the side that re-offers; the sharer drops its outgoing
+  connection and waits. Connections are repaired under a `role:peer` key for
+  the same reason they are stored per direction — a mutual pair of sharers has
+  two connections with the same person.
 - `src-tauri/` – Rust-side glue for native integrations
 
 ## Security expectations

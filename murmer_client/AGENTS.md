@@ -27,6 +27,9 @@ pinned to major 6.
   suppression (`denoise.ts`) and the settings-UI microphone tools (level meter,
   record-and-play-back test)
 - `src/lib/screenshare/` – WebRTC screen sharing manager
+- `src/lib/webrtc/` – what both WebRTC managers share: the repair policy for
+  broken connections (`recovery.ts`) and the DTLS fingerprint check that tells
+  an ICE restart from a rebuilt connection (`fingerprint.ts`)
 - `src-tauri/` – Rust-side glue for native integrations
 - `test/` – Vitest harness: the `localStorage` stub (`setup.ts`) and the
   `$app/environment` stand-in (`stubs/`), plus `server-mirror.test.ts`, which
