@@ -37,6 +37,7 @@ async fn make_state(admin_token: Option<&str>) -> Arc<AppState> {
         password: None,
         admin_token: admin_token.map(str::to_string),
         rate_limiter: RateLimiter::new(),
+        stats_enabled: std::sync::atomic::AtomicBool::new(false),
     })
 }
 

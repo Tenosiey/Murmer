@@ -93,7 +93,7 @@ fn broadcast_force_disconnect(state: &Arc<AppState>, target: &str, action: &str,
         "action": action,
         "by": by,
     });
-    let _ = state.tx.send(msg.to_string());
+    let _ = state.tx.send(msg.to_string().into());
 }
 
 /// Handle kick-user request: disconnect the target without persisting anything.
@@ -201,7 +201,7 @@ pub(super) async fn handle_unban_user(
                 "user": target,
                 "by": requester,
             });
-            let _ = state.tx.send(msg.to_string());
+            let _ = state.tx.send(msg.to_string().into());
             info!(requester, target, "User unbanned");
         }
         Ok(false) => {
@@ -265,7 +265,7 @@ pub(super) async fn handle_mute_user(
         "by": requester,
         "until": until.map(|value| value.to_rfc3339()),
     });
-    let _ = state.tx.send(msg.to_string());
+    let _ = state.tx.send(msg.to_string().into());
     info!(requester, target, ?until, "User muted");
 }
 
@@ -307,7 +307,7 @@ pub(super) async fn handle_unmute_user(
                 "user": target,
                 "by": requester,
             });
-            let _ = state.tx.send(msg.to_string());
+            let _ = state.tx.send(msg.to_string().into());
             info!(requester, target, "User unmuted");
         }
         Ok(_) => {

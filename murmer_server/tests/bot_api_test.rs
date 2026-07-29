@@ -42,6 +42,7 @@ async fn make_app() -> (Router, Arc<AppState>) {
         password: None,
         admin_token: Some(ADMIN_TOKEN.to_string()),
         rate_limiter: RateLimiter::new(),
+        stats_enabled: std::sync::atomic::AtomicBool::new(false),
     });
     (bot::routes::router().with_state(Arc::clone(&state)), state)
 }

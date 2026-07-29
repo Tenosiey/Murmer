@@ -42,7 +42,7 @@ pub async fn broadcast_users(state: &Arc<AppState>) {
         "users": online,
         "all": all,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -71,7 +71,7 @@ pub async fn broadcast_voice(state: &Arc<AppState>, channel_id: i32) {
         "channelId": channel_id,
         "users": list,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -131,7 +131,7 @@ fn role_definitions_frame(defs: &HashMap<i64, RoleDef>) -> Option<String> {
 pub async fn broadcast_role_definitions(state: &Arc<AppState>) {
     let defs = state.role_defs.lock().await;
     if let Some(msg) = role_definitions_frame(&defs) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -153,7 +153,7 @@ pub async fn broadcast_user_roles(state: &Arc<AppState>, user: &str, role_ids: &
         "user": user,
         "roleIds": role_ids,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -196,7 +196,7 @@ pub async fn broadcast_status(state: &Arc<AppState>, user: &str, status: &str) {
         "user": user,
         "status": status,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -210,7 +210,7 @@ pub async fn broadcast_new_channel(state: &Arc<AppState>, record: &crate::db::Ch
         "topic": record.description,
         "position": record.position,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -221,7 +221,7 @@ pub async fn broadcast_channel_topic(state: &Arc<AppState>, channel_id: i32, top
         "channelId": channel_id,
         "topic": topic,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -232,7 +232,7 @@ pub async fn broadcast_channel_rename(state: &Arc<AppState>, channel_id: i32, na
         "channelId": channel_id,
         "name": name,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -242,7 +242,7 @@ pub async fn broadcast_remove_channel(state: &Arc<AppState>, channel_id: i32) {
         "type": "channel-remove",
         "channelId": channel_id,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -257,7 +257,7 @@ pub async fn broadcast_new_voice_channel(state: &Arc<AppState>, id: i32, info: &
         "categoryId": info.category_id,
         "position": info.position,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -274,7 +274,7 @@ pub async fn broadcast_voice_channel_update(
         "quality": info.quality,
         "bitrate": info.bitrate,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -285,7 +285,7 @@ pub async fn broadcast_voice_channel_rename(state: &Arc<AppState>, channel_id: i
         "channelId": channel_id,
         "name": name,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -295,7 +295,7 @@ pub async fn broadcast_remove_voice_channel(state: &Arc<AppState>, channel_id: i
         "type": "voice-channel-remove",
         "channelId": channel_id,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -419,7 +419,7 @@ pub async fn broadcast_new_category(state: &Arc<AppState>, id: i32, name: &str, 
         "name": name,
         "position": position,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -430,7 +430,7 @@ pub async fn broadcast_rename_category(state: &Arc<AppState>, id: i32, name: &st
         "id": id,
         "name": name,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -440,7 +440,7 @@ pub async fn broadcast_remove_category(state: &Arc<AppState>, id: i32) {
         "type": "category-remove",
         "id": id,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -460,7 +460,7 @@ pub async fn broadcast_channel_move(
         "position": position,
         "voice": voice,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -478,7 +478,7 @@ pub async fn broadcast_channel_reorder(
         "order": order,
         "voice": voice,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -488,7 +488,7 @@ pub async fn broadcast_category_reorder(state: &Arc<AppState>, order: &[i32]) {
         "type": "category-reorder",
         "order": order,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -631,7 +631,10 @@ pub async fn has_channel_permission(
 /// channel and voice lists. Sent when a channel's permission overrides change,
 /// so private channels appear/disappear per viewer without leaking structure.
 pub async fn broadcast_channels_refresh(state: &Arc<AppState>) {
-    let _ = state.tx.send(r#"{"type":"channels-refresh"}"#.to_string());
+    // A fixed frame, so it needs no allocation at all.
+    let _ = state
+        .tx
+        .send(crate::Frame::from_static(r#"{"type":"channels-refresh"}"#));
 }
 
 /// Send the override list for one channel to a single (manager) client.
@@ -728,7 +731,7 @@ pub async fn send_emojis(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket
 /// Broadcast the current custom emoji list to all connected clients.
 pub async fn broadcast_emojis(state: &Arc<AppState>) {
     if let Some(msg) = emoji_list_frame(state).await {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -772,7 +775,7 @@ pub async fn send_sounds(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket
 /// Broadcast the current soundboard library to all connected clients.
 pub async fn broadcast_sounds(state: &Arc<AppState>) {
     if let Some(msg) = sound_list_frame(state).await {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -818,7 +821,7 @@ pub fn schedule_ephemeral_deletion(
                     "channelId": channel_id,
                 });
                 let chan_tx = get_or_create_channel(&state, channel_id).await;
-                let _ = chan_tx.send(payload.to_string());
+                let _ = chan_tx.send(payload.to_string().into());
             }
             // Already gone (deleted manually or by an earlier run).
             Ok(false) => {}
@@ -861,11 +864,11 @@ pub async fn resume_ephemeral_deletions(state: &Arc<AppState>) {
 pub async fn get_or_create_channel(
     state: &Arc<AppState>,
     channel_id: i32,
-) -> tokio::sync::broadcast::Sender<String> {
+) -> tokio::sync::broadcast::Sender<crate::Frame> {
     let mut channels = state.channels.lock().await;
     channels
         .entry(channel_id)
-        .or_insert_with(|| tokio::sync::broadcast::channel::<String>(100).0)
+        .or_insert_with(|| tokio::sync::broadcast::channel::<crate::Frame>(100).0)
         .clone()
 }
 

@@ -154,8 +154,8 @@ pub(super) async fn handle_delete_channel(
     v: &Value,
     user_name: &Option<String>,
     channel_id: &mut i32,
-    chan_tx: &mut tokio::sync::broadcast::Sender<String>,
-    chan_rx: &mut tokio::sync::broadcast::Receiver<String>,
+    chan_tx: &mut tokio::sync::broadcast::Sender<crate::Frame>,
+    chan_rx: &mut tokio::sync::broadcast::Receiver<crate::Frame>,
     default_channel_id: i32,
 ) -> Result<(), ()> {
     let Some(ch_id) = v

@@ -92,7 +92,7 @@ async fn broadcast_avatar(state: &Arc<AppState>, user: &str, avatar: Option<&str
         "user": user,
         "avatar": avatar,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 
@@ -270,7 +270,7 @@ pub(super) async fn handle_set_profile(
                 "type": "profile-update",
                 "profile": profile_json(profile),
             })) {
-                let _ = state.tx.send(msg);
+                let _ = state.tx.send(msg.into());
             }
         }
         Ok(None) => send_error(sender, errors::PROFILE_UPDATE_FAILED).await,

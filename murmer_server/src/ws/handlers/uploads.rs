@@ -111,6 +111,6 @@ pub(super) async fn handle_set_upload_config(
         "Upload policy updated"
     );
     if let Some(msg) = upload_config_frame(state).await {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }

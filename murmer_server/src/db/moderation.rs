@@ -42,18 +42,14 @@ pub async fn is_banned(db: &Db, key: Option<&str>, user_name: &str) -> Result<bo
     db.call_db(move |conn| {
         let found = match key {
             Some(key) => conn
-                .query_row(
+                .prepare_cached(
                     "SELECT 1 FROM bans WHERE public_key = ?1 OR user_name = ?2 LIMIT 1",
-                    params![key, user_name],
-                    |_| Ok(()),
-                )
+                )?
+                .query_row(params![key, user_name], |_| Ok(()))
                 .is_ok(),
             None => conn
-                .query_row(
-                    "SELECT 1 FROM bans WHERE user_name = ?1 LIMIT 1",
-                    params![user_name],
-                    |_| Ok(()),
-                )
+                .prepare_cached("SELECT 1 FROM bans WHERE user_name = ?1 LIMIT 1")?
+                .query_row(params![user_name], |_| Ok(()))
                 .is_ok(),
         };
         Ok(found)
@@ -90,7 +86,7 @@ pub async fn remove_mute_by_name(db: &Db, user_name: &str) -> Result<Vec<String>
     let user_name = user_name.to_owned();
     db.call_db(move |conn| {
         let mut stmt =
-            conn.prepare("DELETE FROM mutes WHERE user_name = ?1 RETURNING public_key")?;
+            conn.prepare_cached("DELETE FROM mutes WHERE user_name = ?1 RETURNING public_key")?;
         let keys = stmt
             .query_map(params![user_name], |row| row.get(0))?
             .collect::<Result<Vec<String>, _>>()?;
@@ -112,7 +108,7 @@ pub async fn remove_mute_by_key(db: &Db, key: &str) -> Result<bool, DbError> {
 /// Load all persisted mutes as `(public_key, muted_until)` pairs.
 pub async fn get_all_mutes(db: &Db) -> Result<Vec<(String, Option<DateTime<Utc>>)>, DbError> {
     db.call_db(|conn| {
-        let mut stmt = conn.prepare("SELECT public_key, muted_until FROM mutes")?;
+        let mut stmt = conn.prepare_cached("SELECT public_key, muted_until FROM mutes")?;
         let rows = stmt
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<Vec<_>, _>>()?;

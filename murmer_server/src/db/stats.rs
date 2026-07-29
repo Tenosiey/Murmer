@@ -159,11 +159,8 @@ CREATE TABLE IF NOT EXISTS user_sound_stats (
 /// server-wide toggle on AND the user opted in.
 fn tracking_enabled(conn: &rusqlite::Connection, user: &str) -> rusqlite::Result<bool> {
     let server_enabled: Option<String> = conn
-        .query_row(
-            "SELECT value FROM server_settings WHERE key = 'stats_enabled'",
-            [],
-            |row| row.get(0),
-        )
+        .prepare_cached("SELECT value FROM server_settings WHERE key = 'stats_enabled'")?
+        .query_row([], |row| row.get(0))
         .optional()?;
     // Privacy default: tracking is OFF until an Owner/Admin explicitly
     // enables it for the server.
@@ -171,11 +168,8 @@ fn tracking_enabled(conn: &rusqlite::Connection, user: &str) -> rusqlite::Result
         return Ok(false);
     }
     let opted_in: Option<i64> = conn
-        .query_row(
-            "SELECT opted_in FROM user_stats_opt_in WHERE user_name = ?1",
-            params![user],
-            |row| row.get(0),
-        )
+        .prepare_cached("SELECT opted_in FROM user_stats_opt_in WHERE user_name = ?1")?
+        .query_row(params![user], |row| row.get(0))
         .optional()?;
     Ok(opted_in == Some(1))
 }
@@ -280,10 +274,8 @@ pub async fn record_user_stats(
             return Ok(false);
         }
 
-        conn.execute(
-            "INSERT OR IGNORE INTO user_stats (user_name) VALUES (?1)",
-            params![user],
-        )?;
+        conn.prepare_cached("INSERT OR IGNORE INTO user_stats (user_name) VALUES (?1)")?
+            .execute(params![user])?;
         for (stat, amount) in &deltas {
             let column = stat.column();
             // LongestMessageChars keeps a running maximum instead of summing.
@@ -292,14 +284,16 @@ pub async fn record_user_stats(
             } else {
                 format!("UPDATE user_stats SET {column} = {column} + ?1 WHERE user_name = ?2")
             };
-            conn.execute(&sql, params![amount, user])?;
+            // `sql` is built from a fixed enum-to-column mapping, so the set
+            // of distinct statements here is small and bounded — safe to cache.
+            conn.prepare_cached(&sql)?.execute(params![amount, user])?;
         }
         if let Some(emoji) = &reaction_emoji {
-            conn.execute(
+            conn.prepare_cached(
                 "INSERT INTO user_reaction_stats (user_name, emoji, count) VALUES (?1, ?2, 1)
                  ON CONFLICT(user_name, emoji) DO UPDATE SET count = count + 1",
-                params![user, emoji],
-            )?;
+            )?
+            .execute(params![user, emoji])?;
         }
         Ok(true)
     })
@@ -338,7 +332,7 @@ pub async fn get_favorite_sounds(
 ) -> Result<Vec<(String, i64)>, DbError> {
     let user = user.to_owned();
     db.call_db(move |conn| {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "SELECT sound_name, count FROM user_sound_stats
              WHERE user_name = ?1 ORDER BY count DESC, sound_name ASC LIMIT ?2",
         )?;
@@ -405,7 +399,7 @@ pub async fn get_favorite_reactions(
 ) -> Result<Vec<(String, i64)>, DbError> {
     let user = user.to_owned();
     db.call_db(move |conn| {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "SELECT emoji, count FROM user_reaction_stats
              WHERE user_name = ?1 ORDER BY count DESC, emoji ASC LIMIT ?2",
         )?;

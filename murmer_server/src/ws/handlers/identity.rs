@@ -49,7 +49,7 @@ pub(super) async fn send_server_identity(
 /// Broadcast the current server identity to all connected clients.
 async fn broadcast_server_identity(state: &Arc<AppState>) {
     if let Some(msg) = server_identity_frame(state).await {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 

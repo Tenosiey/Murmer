@@ -69,7 +69,7 @@ pub async fn remove_pin(db: &Db, message_id: i64) -> Result<Option<i32>, DbError
 pub async fn get_pins_for_channel(db: &Db, channel_id: i32) -> Result<Vec<Value>, DbError> {
     let rows = db
         .call_db(move |conn| {
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare_cached(
                 "SELECT p.message_id, p.pinned_by, p.pinned_at, m.content \
                  FROM pins p JOIN messages m ON m.id = p.message_id \
                  WHERE p.channel_id = ?1 ORDER BY p.pinned_at DESC, p.message_id DESC",

@@ -63,7 +63,8 @@ fn row_to_sound(row: &rusqlite::Row) -> rusqlite::Result<SoundRecord> {
 /// List every sound ordered by name.
 pub async fn get_sounds(db: &Db) -> Result<Vec<SoundRecord>, DbError> {
     db.call_db(|conn| {
-        let mut stmt = conn.prepare(&format!("{SELECT_SOUND} ORDER BY name COLLATE NOCASE"))?;
+        let mut stmt =
+            conn.prepare_cached(&format!("{SELECT_SOUND} ORDER BY name COLLATE NOCASE"))?;
         let rows = stmt.query_map([], row_to_sound)?;
         rows.collect()
     })

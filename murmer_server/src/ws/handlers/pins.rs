@@ -46,7 +46,7 @@ pub(super) async fn send_pins(
 async fn broadcast_pins(state: &Arc<AppState>, channel_id: i32) {
     if let Some(payload) = pins_payload(state, channel_id).await {
         let chan_tx = get_or_create_channel(state, channel_id).await;
-        let _ = chan_tx.send(payload);
+        let _ = chan_tx.send(payload.into());
     }
 }
 

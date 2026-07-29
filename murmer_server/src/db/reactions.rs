@@ -14,18 +14,35 @@ pub async fn get_reactions_for_messages(
         return Ok(HashMap::new());
     }
 
-    let ids = ids.to_vec();
+    // SQLite has no array parameter, and expanding the ids into one
+    // placeholder each would make the SQL text depend on how many messages
+    // were requested — a different statement per batch size, so none of them
+    // could be reused from the prepared-statement cache. Passing the ids as a
+    // JSON array and unnesting them with `json_each` keeps the statement
+    // fixed, so this (which runs on every history load, thread and search)
+    // compiles once for the lifetime of the process.
+    let ids_json = {
+        use std::fmt::Write as _;
+        let mut out = String::with_capacity(ids.len() * 8 + 2);
+        out.push('[');
+        for (i, id) in ids.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            // Writing an i64 into a String cannot fail.
+            let _ = write!(out, "{id}");
+        }
+        out.push(']');
+        out
+    };
     let rows = db
         .call_db(move |conn| {
-            // SQLite has no array parameters, so expand the id list into
-            // one placeholder per value.
-            let placeholders = vec!["?"; ids.len()].join(",");
-            let sql = format!(
-                "SELECT message_id, emoji, user_name FROM reactions WHERE message_id IN ({placeholders})"
-            );
-            let mut stmt = conn.prepare(&sql)?;
+            let mut stmt = conn.prepare_cached(
+                "SELECT message_id, emoji, user_name FROM reactions \
+                 WHERE message_id IN (SELECT value FROM json_each(?1))",
+            )?;
             let rows = stmt
-                .query_map(rusqlite::params_from_iter(ids.iter()), |row| {
+                .query_map(params![ids_json], |row| {
                     Ok((
                         row.get::<_, i64>(0)?,
                         row.get::<_, String>(1)?,

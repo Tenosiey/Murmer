@@ -91,6 +91,6 @@ pub(super) async fn handle_set_screenshare_max_bitrate(
 
     info!(requester, ?max_bitrate, "Screen share bitrate cap updated");
     if let Some(msg) = screenshare_config_frame(state).await {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }

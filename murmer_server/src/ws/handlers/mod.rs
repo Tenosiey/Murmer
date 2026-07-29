@@ -256,7 +256,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             // client can only speak for itself before rebroadcasting.
                             "voice-offer" | "voice-answer" | "voice-candidate" => {
                                 if claims_own_user(&v, &user_name) {
-                                    let _ = state.tx.send(text.to_string());
+                                    let _ = state.tx.send(text.to_string().into());
                                 }
                             }
                             "screenshare-start" => {
@@ -265,7 +265,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                     if let Some(u) = user_name.as_deref() {
                                         stats::note_screenshare_start(&state, u).await;
                                     }
-                                    let _ = state.tx.send(text.to_string());
+                                    let _ = state.tx.send(text.to_string().into());
                                 }
                             }
                             "screenshare-stop" => {
@@ -274,12 +274,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                     if let Some(u) = user_name.as_deref() {
                                         stats::flush_screenshare_session(&state, u).await;
                                     }
-                                    let _ = state.tx.send(text.to_string());
+                                    let _ = state.tx.send(text.to_string().into());
                                 }
                             }
                             "screenshare-offer" | "screenshare-answer" | "screenshare-candidate" => {
                                 if claims_own_user(&v, &user_name) {
-                                    let _ = state.tx.send(text.to_string());
+                                    let _ = state.tx.send(text.to_string().into());
                                 }
                             }
                             "set-screenshare-max-bitrate" => {
@@ -291,7 +291,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "voice-mute" => {
                                 if claims_own_user(&v, &user_name) {
                                     handle_voice_mute(&state, &v).await;
-                                    let _ = state.tx.send(text.to_string());
+                                    let _ = state.tx.send(text.to_string().into());
                                 }
                             }
                             "kick-user" => {
@@ -366,7 +366,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
             result = chan_rx.recv() => {
                 match result {
                     Ok(msg) => {
-                        if sender.send(Message::Text(msg.into())).await.is_err() { break; }
+                        // The frame arrives ready to send: `recv` handed us a
+                        // refcounted clone, not a copy of the payload.
+                        if sender.send(Message::Text(msg)).await.is_err() { break; }
                     }
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(_) => break,
@@ -426,7 +428,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             v.get("type").and_then(|t| t.as_str()) == Some("force-disconnect")
                                 && v.get("user").and_then(|u| u.as_str()) == user_name.as_deref()
                         });
-                        if sender.send(Message::Text(msg.into())).await.is_err() { break; }
+                        if sender.send(Message::Text(msg)).await.is_err() { break; }
                         if targets_this_user {
                             info!("Closing connection after force-disconnect");
                             break;
@@ -676,7 +678,7 @@ async fn handle_voice_join(
             "user": u,
             "channelId": ch_id,
         });
-        let _ = state.tx.send(msg.to_string());
+        let _ = state.tx.send(msg.to_string().into());
 
         // Tell the joiner whether they may speak here (Talk = SEND in the
         // channel). Voice audio is peer-to-peer, so the client enforces this by
@@ -731,7 +733,7 @@ async fn handle_voice_leave(
             "user": u,
             "channelId": ch_id,
         });
-        let _ = state.tx.send(msg.to_string());
+        let _ = state.tx.send(msg.to_string().into());
     }
 }
 
@@ -780,7 +782,7 @@ async fn end_screen_shares_for_user(state: &Arc<AppState>, user: &str) {
             "user": user,
             "channelId": ch_id,
         })) {
-            let _ = state.tx.send(msg);
+            let _ = state.tx.send(msg.into());
         }
     }
 }

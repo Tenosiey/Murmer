@@ -76,7 +76,7 @@ pub(super) async fn send_wiki_index(
 async fn broadcast_wiki_index(state: &Arc<AppState>, channel_id: i32) {
     if let Some(payload) = wiki_index_payload(state, channel_id).await {
         let chan_tx = get_or_create_channel(state, channel_id).await;
-        let _ = chan_tx.send(payload);
+        let _ = chan_tx.send(payload.into());
     }
 }
 
