@@ -77,7 +77,7 @@ pub async fn get_bot_by_token_hash(
 pub async fn list_bots(db: &Db) -> Result<Vec<BotRecord>, DbError> {
     db.call_db(|conn| {
         let query = format!("SELECT {SELECT_COLS} FROM bots ORDER BY created_at");
-        let mut stmt = conn.prepare(&query)?;
+        let mut stmt = conn.prepare_cached(&query)?;
         let bots = stmt
             .query_map([], row_to_bot)?
             .collect::<Result<Vec<_>, _>>()?;
@@ -146,7 +146,7 @@ pub async fn fetch_messages_after(
     limit: i64,
 ) -> Result<Vec<(i64, String)>, DbError> {
     db.call_db(move |conn| {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "SELECT id, content FROM messages \
              WHERE channel_id = ?1 AND id > ?2 ORDER BY id ASC LIMIT ?3",
         )?;

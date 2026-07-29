@@ -44,7 +44,7 @@ pub async fn fetch_dm_history(
     db.call_db(move |conn| {
         let map = |row: &rusqlite::Row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?));
         let rows = if let Some(before) = before {
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare_cached(
                 "SELECT id, content FROM direct_messages \
                  WHERE ((sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1)) \
                  AND id < ?3 ORDER BY id DESC LIMIT ?4",
@@ -53,7 +53,7 @@ pub async fn fetch_dm_history(
             stmt.query_map(params![user_a, user_b, before, limit], map)?
                 .collect::<Result<Vec<_>, _>>()?
         } else {
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare_cached(
                 "SELECT id, content FROM direct_messages \
                  WHERE (sender = ?1 AND recipient = ?2) OR (sender = ?2 AND recipient = ?1) \
                  ORDER BY id DESC LIMIT ?3",

@@ -24,7 +24,7 @@ pub async fn fetch_history(
 ) -> Result<Vec<(i64, String)>, DbError> {
     db.call_db(move |conn| {
         let rows = if let Some(id) = before {
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare_cached(
                 "SELECT id, content FROM messages WHERE channel_id = ?1 AND id < ?2 \
                  ORDER BY id DESC LIMIT ?3",
             )?;
@@ -32,7 +32,7 @@ pub async fn fetch_history(
             stmt.query_map(params![channel_id, id, limit], row_to_id_content)?
                 .collect::<Result<Vec<_>, _>>()?
         } else {
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare_cached(
                 "SELECT id, content FROM messages WHERE channel_id = ?1 ORDER BY id DESC LIMIT ?2",
             )?;
 
@@ -48,11 +48,11 @@ pub async fn fetch_history(
 pub async fn insert_message(db: &Db, channel_id: i32, content: &str) -> Result<i64, DbError> {
     let content = content.to_owned();
     db.call_db(move |conn| {
-        let id = conn.query_row(
-            "INSERT INTO messages (channel_id, content) VALUES (?1, ?2) RETURNING id",
-            params![channel_id, content],
-            |row| row.get(0),
-        )?;
+        let id = conn
+            .prepare_cached(
+                "INSERT INTO messages (channel_id, content) VALUES (?1, ?2) RETURNING id",
+            )?
+            .query_row(params![channel_id, content], |row| row.get(0))?;
         Ok(id)
     })
     .await
@@ -133,7 +133,7 @@ pub async fn search_messages(
         return Ok(Vec::new());
     };
     db.call_db(move |conn| {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "SELECT id, content FROM messages WHERE channel_id = ?1 AND id IN \
              (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?2) \
              ORDER BY id DESC LIMIT ?3",
@@ -161,7 +161,7 @@ pub async fn fetch_thread(
     let pattern = format!("%\"threadId\":{root_id}%");
     let rows = db
         .call_db(move |conn| {
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare_cached(
                 "SELECT id, content FROM messages WHERE id = ?1 \
                  OR (channel_id = ?2 AND content LIKE ?3) ORDER BY id ASC LIMIT ?4",
             )?;
@@ -196,7 +196,7 @@ pub async fn fetch_thread(
 /// inside a message body).
 pub async fn get_ephemeral_messages(db: &Db) -> Result<Vec<(i64, i32, String)>, DbError> {
     db.call_db(|conn| {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "SELECT id, channel_id, content FROM messages \
              WHERE content LIKE '%\"ephemeral\":true%'",
         )?;
@@ -238,11 +238,10 @@ pub async fn get_message_record(
     let row = db
         .call_db(move |conn| {
             let row = conn
-                .query_row(
-                    "SELECT channel_id, content FROM messages WHERE id = ?1",
-                    params![message_id],
-                    |row| Ok((row.get::<_, i32>(0)?, row.get::<_, String>(1)?)),
-                )
+                .prepare_cached("SELECT channel_id, content FROM messages WHERE id = ?1")?
+                .query_row(params![message_id], |row| {
+                    Ok((row.get::<_, i32>(0)?, row.get::<_, String>(1)?))
+                })
                 .ok();
             Ok(row)
         })
@@ -273,10 +272,9 @@ pub async fn update_message_content(
 ) -> Result<bool, DbError> {
     let content = content.to_owned();
     db.call_db(move |conn| {
-        let affected = conn.execute(
-            "UPDATE messages SET content = ?2 WHERE id = ?1",
-            params![message_id, content],
-        )?;
+        let affected = conn
+            .prepare_cached("UPDATE messages SET content = ?2 WHERE id = ?1")?
+            .execute(params![message_id, content])?;
         Ok(affected > 0)
     })
     .await
@@ -286,11 +284,11 @@ pub async fn update_message_content(
 /// Returns `true` if a message row was removed.
 pub async fn delete_message(db: &Db, message_id: i64) -> Result<bool, DbError> {
     db.call_db(move |conn| {
-        conn.execute(
-            "DELETE FROM pins WHERE message_id = ?1",
-            params![message_id],
-        )?;
-        let affected = conn.execute("DELETE FROM messages WHERE id = ?1", params![message_id])?;
+        conn.prepare_cached("DELETE FROM pins WHERE message_id = ?1")?
+            .execute(params![message_id])?;
+        let affected = conn
+            .prepare_cached("DELETE FROM messages WHERE id = ?1")?
+            .execute(params![message_id])?;
         Ok(affected > 0)
     })
     .await

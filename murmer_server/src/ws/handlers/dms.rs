@@ -100,7 +100,7 @@ pub(super) async fn handle_dm(
             out["id"] = Value::from(id);
             // Delivered via the global broadcast; the socket loop filters the
             // frame so only the two participants receive it.
-            let _ = state.tx.send(out.to_string());
+            let _ = state.tx.send(out.to_string().into());
 
             // Only the count is recorded — DM content and recipients stay
             // out of the stats tables entirely.

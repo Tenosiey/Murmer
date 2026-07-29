@@ -122,7 +122,7 @@ const PAGE_COLUMNS: &str =
 /// List the page metadata of a channel, ordered by title.
 pub async fn list_wiki_pages(db: &Db, channel_id: i32) -> Result<Vec<WikiPageMeta>, DbError> {
     db.call_db(move |conn| {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "SELECT slug, title, revision, updated_by, updated_at FROM wiki_pages \
              WHERE channel_id = ?1 ORDER BY title COLLATE NOCASE, slug",
         )?;
@@ -337,7 +337,7 @@ pub async fn resolve_wiki_links(
     pairs: Vec<(String, String)>,
 ) -> Result<Vec<bool>, DbError> {
     db.call_db(move |conn| {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "SELECT 1 FROM wiki_pages w JOIN channels c ON c.id = w.channel_id \
              WHERE c.name = ?1 AND w.slug = ?2",
         )?;

@@ -59,6 +59,7 @@ pub use uploads::*;
 pub use users::*;
 pub use wiki::*;
 
+use rusqlite::OptionalExtension;
 use std::path::Path;
 use tracing::error;
 
@@ -113,6 +114,25 @@ pub async fn init(db_path: &str) -> Result<Db, DbError> {
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
+
+        // Every query in the process shares this one connection, so its page
+        // cache is the only one there is. SQLite's 2 MB default is small for a
+        // server that repeatedly reads the same channel/role/message pages;
+        // the negative value means "kibibytes" rather than "pages".
+        conn.pragma_update(None, "cache_size", -16_000)?;
+        // Read pages straight out of the page cache instead of copying them
+        // through a read() syscall. Capped at 256 MB, and it is only an upper
+        // bound — SQLite maps what the file actually needs.
+        conn.pragma_update(None, "mmap_size", 268_435_456i64)?;
+        // Sorting and the FTS merge use temporary b-trees; keeping them in
+        // memory avoids writing scratch files under the database directory.
+        conn.pragma_update(None, "temp_store", "MEMORY")?;
+
+        // Prepared statements are cached per connection (see the `prepare_cached`
+        // call sites in the db submodules). The default capacity of 16 is well
+        // below the number of distinct statements this schema uses, which would
+        // make the cache thrash and silently re-compile the hot queries.
+        conn.set_prepared_statement_cache_capacity(128);
         Ok(())
     })
     .await?;
@@ -229,6 +249,9 @@ CREATE TABLE IF NOT EXISTS bans (
     banned_by TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT ({NOW_UTC})
 );
+-- `is_banned` matches on the name as well as the key, and runs on every
+-- authentication; without this the name arm scans the whole table.
+CREATE INDEX IF NOT EXISTS idx_bans_user_name ON bans (user_name);
 CREATE TABLE IF NOT EXISTS mutes (
     public_key TEXT PRIMARY KEY,
     user_name TEXT NOT NULL,
@@ -320,10 +343,26 @@ INSERT OR IGNORE INTO server_settings (key, value) VALUES ('dm_e2ee', '1');"#,
         )?;
 
         // Full-text index over the `text` field of the message JSON, kept in
-        // sync by triggers. The backfill covers databases created before the
-        // index existed (and is a no-op afterwards). `json_valid` guards the
-        // triggers because a malformed row would otherwise abort the write.
-        conn.execute_batch(
+        // sync by triggers. `json_valid` guards the triggers because a
+        // malformed row would otherwise abort the write.
+        //
+        // Whether the index needs backfilling is decided by whether it exists
+        // *before* this run creates it: once the table is there the triggers
+        // keep it current, so a backfill is only ever owed by a database that
+        // predates the index. The creation and the backfill run in one
+        // transaction, which is what makes "the table exists" and "the
+        // backfill completed" the same fact even across a crash.
+        let fts_existed: bool = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'messages_fts'",
+                [],
+                |_| Ok(true),
+            )
+            .optional()?
+            .unwrap_or(false);
+
+        let tx = conn.transaction()?;
+        tx.execute_batch(
             r#"CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(text);
 CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
     INSERT INTO messages_fts (rowid, text)
@@ -338,12 +377,22 @@ END;
 CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
     DELETE FROM messages_fts WHERE rowid = old.id;
 END;
-INSERT INTO messages_fts (rowid, text)
-SELECT id, CASE WHEN json_valid(content)
-    THEN coalesce(json_extract(content, '$.text'), '') ELSE '' END
-FROM messages WHERE id NOT IN (SELECT rowid FROM messages_fts);
 "#,
         )?;
+
+        // Skipped on every normal startup. The anti-join it avoids scans every
+        // message row and every indexed row to find the (by then always zero)
+        // rows still missing, which was the dominant cost of starting a server
+        // with a long message history.
+        if !fts_existed {
+            tx.execute_batch(
+                r#"INSERT INTO messages_fts (rowid, text)
+SELECT id, CASE WHEN json_valid(content)
+    THEN coalesce(json_extract(content, '$.text'), '') ELSE '' END
+FROM messages WHERE id NOT IN (SELECT rowid FROM messages_fts);"#,
+            )?;
+        }
+        tx.commit()?;
         Ok(())
     })
     .await

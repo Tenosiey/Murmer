@@ -39,7 +39,8 @@ const SELECT_DEF: &str = "SELECT id, name, color, permissions, position, is_defa
 /// Load every role definition, ordered by ascending position.
 pub async fn list_role_defs(db: &Db) -> Result<Vec<RoleDef>, DbError> {
     db.call_db(move |conn| {
-        let mut stmt = conn.prepare(&format!("{SELECT_DEF} ORDER BY position ASC, id ASC"))?;
+        let mut stmt =
+            conn.prepare_cached(&format!("{SELECT_DEF} ORDER BY position ASC, id ASC"))?;
         let rows = stmt.query_map([], row_to_def)?;
         rows.collect()
     })
@@ -144,8 +145,9 @@ pub async fn delete_role_def(db: &Db, id: i64) -> Result<bool, DbError> {
 pub async fn get_user_role_ids(db: &Db, key: &str) -> Result<Vec<i64>, DbError> {
     let key = key.to_owned();
     db.call_db(move |conn| {
-        let mut stmt =
-            conn.prepare("SELECT role_id FROM user_roles WHERE public_key = ?1 ORDER BY role_id")?;
+        let mut stmt = conn.prepare_cached(
+            "SELECT role_id FROM user_roles WHERE public_key = ?1 ORDER BY role_id",
+        )?;
         let rows = stmt.query_map(params![key], |row| row.get::<_, i64>(0))?;
         rows.collect()
     })
@@ -301,7 +303,8 @@ pub fn migrate_roles(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
         // already a built-in. Legacy custom roles carried no special powers, so
         // they inherit only the baseline permissions.
         let legacy_names: Vec<(String, Option<String>)> = {
-            let mut stmt = conn.prepare("SELECT DISTINCT role, color FROM roles ORDER BY role")?;
+            let mut stmt =
+                conn.prepare_cached("SELECT DISTINCT role, color FROM roles ORDER BY role")?;
             let rows = stmt.query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
             })?;

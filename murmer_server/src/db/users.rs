@@ -19,11 +19,8 @@ pub async fn get_user_key(db: &Db, user_name: &str) -> Result<Option<String>, Db
     let user_name = user_name.to_owned();
     db.call_db(move |conn| {
         let key = conn
-            .query_row(
-                "SELECT public_key FROM user_keys WHERE user_name = ?1",
-                params![user_name],
-                |row| row.get(0),
-            )
+            .prepare_cached("SELECT public_key FROM user_keys WHERE user_name = ?1")?
+            .query_row(params![user_name], |row| row.get(0))
             .ok();
         Ok(key)
     })
@@ -83,7 +80,7 @@ pub async fn get_user_avatar(db: &Db, user_name: &str) -> Result<Option<String>,
 pub async fn get_all_avatars(db: &Db) -> Result<Vec<(String, String)>, DbError> {
     db.call_db(|conn| {
         let mut stmt =
-            conn.prepare("SELECT user_name, avatar FROM user_keys WHERE avatar <> ''")?;
+            conn.prepare_cached("SELECT user_name, avatar FROM user_keys WHERE avatar <> ''")?;
         let rows = stmt
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<Vec<_>, _>>()?;
@@ -149,8 +146,8 @@ pub async fn set_user_profile(
 /// Every known user's profile, for the snapshot sent to new clients.
 pub async fn get_all_profiles(db: &Db) -> Result<Vec<UserProfile>, DbError> {
     db.call_db(|conn| {
-        let mut stmt =
-            conn.prepare("SELECT user_name, display_name, about, created_at FROM user_keys")?;
+        let mut stmt = conn
+            .prepare_cached("SELECT user_name, display_name, about, created_at FROM user_keys")?;
         let rows = stmt
             .query_map([], |row| {
                 Ok(UserProfile {

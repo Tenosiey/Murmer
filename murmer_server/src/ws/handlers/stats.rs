@@ -20,10 +20,36 @@ use std::sync::Arc;
 use std::time::Instant;
 use tracing::{error, info};
 
+/// Whether the server-wide stat toggle is on, read from the in-memory mirror.
+///
+/// Every recording hook checks this first so that a server with tracking
+/// disabled — the default — pays nothing per message. Without it, each of
+/// these hooks dispatches to the single database thread and runs two queries
+/// just to discover it must not record anything.
+///
+/// This only ever *skips* work. The authoritative double opt-in gate lives in
+/// [`db::record_user_stats`] and is unchanged, so a stale `false` costs a
+/// missed counter for one message and a stale `true` costs one wasted query.
+fn tracking_may_be_on(state: &Arc<AppState>) -> bool {
+    state
+        .stats_enabled
+        .load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Update the cached server-wide toggle after it was persisted.
+pub(super) fn cache_stats_enabled(state: &Arc<AppState>, enabled: bool) {
+    state
+        .stats_enabled
+        .store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Apply counter increments for a user, ignoring the result when tracking is
 /// disabled. Failures are logged and never surface to the client: stats are
 /// best-effort bookkeeping and must not break the action they piggyback on.
 pub(super) async fn record(state: &Arc<AppState>, user: &str, deltas: Vec<(Stat, i64)>) {
+    if !tracking_may_be_on(state) {
+        return;
+    }
     if let Err(e) = db::record_user_stats(&state.db, user, deltas, None).await {
         error!("failed to record stats for {user}: {e}");
     }
@@ -32,6 +58,9 @@ pub(super) async fn record(state: &Arc<AppState>, user: &str, deltas: Vec<(Stat,
 /// Like [`record`], additionally bumping the per-emoji reaction counter used
 /// for the "favorite reaction" stat.
 async fn record_with_reaction(state: &Arc<AppState>, user: &str, emoji: &str) {
+    if !tracking_may_be_on(state) {
+        return;
+    }
     if let Err(e) = db::record_user_stats(
         &state.db,
         user,
@@ -147,6 +176,9 @@ pub(super) async fn record_reaction_added(
 /// listeners are never tallied, so the stat cannot reconstruct who was in a
 /// voice channel together.
 pub(super) async fn note_sound_played(state: &Arc<AppState>, user: &str, sound_name: &str) {
+    if !tracking_may_be_on(state) {
+        return;
+    }
     if let Err(e) = db::record_sound_played(&state.db, user, sound_name).await {
         error!("failed to record sound stats for {user}: {e}");
     }
@@ -332,13 +364,14 @@ pub(super) async fn handle_set_stats_enabled(
         return;
     }
 
+    cache_stats_enabled(state, enabled);
     info!(requester, enabled, "Server-wide stat tracking toggled");
     // Broadcast without `optedIn`: each client keeps its own opt-in value.
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "stats-config",
         "serverEnabled": enabled,
     })) {
-        let _ = state.tx.send(msg);
+        let _ = state.tx.send(msg.into());
     }
 }
 

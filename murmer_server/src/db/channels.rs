@@ -37,7 +37,7 @@ pub struct CategoryRecord {
 pub async fn get_categories(db: &Db) -> Vec<CategoryRecord> {
     db.call_db(|conn| {
         let mut stmt =
-            conn.prepare("SELECT id, name, position FROM categories ORDER BY position, id")?;
+            conn.prepare_cached("SELECT id, name, position FROM categories ORDER BY position, id")?;
         let rows = stmt
             .query_map([], |row| {
                 Ok(CategoryRecord {
@@ -144,7 +144,7 @@ fn row_to_channel(row: &rusqlite::Row) -> rusqlite::Result<ChannelRecord> {
 /// ordered by their custom position (per category) then name.
 pub async fn get_channels(db: &Db) -> Vec<ChannelRecord> {
     db.call_db(|conn| {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "SELECT id, name, category_id, description, position FROM channels \
              ORDER BY position, name",
         )?;
@@ -201,7 +201,7 @@ pub async fn add_channel(
 ) -> Result<Option<ChannelRecord>, DbError> {
     let name = name.to_owned();
     db.call_db(move |conn| {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "INSERT INTO channels (name, category_id, position) VALUES (?1, ?2, \
                 (SELECT COALESCE(MAX(position) + 1, 0) FROM channels WHERE category_id IS ?2)) \
              ON CONFLICT (name) DO NOTHING \
@@ -235,7 +235,7 @@ pub async fn rename_channel(
         if taken {
             return Ok(RenameResult::NameTaken);
         }
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "UPDATE channels SET name = ?2 WHERE id = ?1 \
              RETURNING id, name, category_id, description, position",
         )?;
@@ -357,7 +357,7 @@ fn row_to_voice_channel(row: &rusqlite::Row) -> rusqlite::Result<VoiceChannelRec
 /// Retrieve all voice channels ordered by their custom position then name.
 pub async fn get_voice_channels(db: &Db) -> Vec<VoiceChannelRecord> {
     db.call_db(|conn| {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "SELECT id, name, quality, bitrate, category_id, position FROM voice_channels \
              ORDER BY position, name",
         )?;
@@ -400,7 +400,7 @@ pub async fn add_voice_channel(
     let name = name.to_owned();
     let quality = quality.to_owned();
     db.call_db(move |conn| {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "INSERT INTO voice_channels (name, quality, bitrate, category_id, position) \
              VALUES (?1, ?2, ?3, ?4, \
                 (SELECT COALESCE(MAX(position) + 1, 0) FROM voice_channels WHERE category_id IS ?4)) \
@@ -456,7 +456,7 @@ pub async fn rename_voice_channel(
         if taken {
             return Ok(RenameResult::NameTaken);
         }
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "UPDATE voice_channels SET name = ?2 WHERE id = ?1 \
              RETURNING id, name, quality, bitrate, category_id, position",
         )?;

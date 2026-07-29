@@ -497,7 +497,7 @@ async fn send_message(
     msg["id"] = serde_json::json!(id);
 
     let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-    let _ = chan_tx.send(msg.to_string());
+    let _ = chan_tx.send(msg.to_string().into());
 
     // Announce the message globally so clients viewing other channels can
     // update unread counts, mirroring the WebSocket chat handler.
@@ -508,7 +508,7 @@ async fn send_message(
         "user": bot.name,
         "text": text,
     });
-    let _ = state.tx.send(notify.to_string());
+    let _ = state.tx.send(notify.to_string().into());
 
     if let Some(expiry) = ephemeral_expiry {
         ws::helpers::schedule_ephemeral_deletion(Arc::clone(&state), id, channel_id, expiry);
@@ -563,7 +563,7 @@ async fn delete_message_handler(
                 "channelId": channel_id,
             });
             let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-            let _ = chan_tx.send(payload.to_string());
+            let _ = chan_tx.send(payload.to_string().into());
             StatusCode::NO_CONTENT.into_response()
         }
         Ok(false) => json_error(StatusCode::NOT_FOUND, "message-not-found"),
@@ -647,7 +647,7 @@ async fn add_reaction_handler(
         "reactions": reactions,
     });
     let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-    let _ = chan_tx.send(payload.to_string());
+    let _ = chan_tx.send(payload.to_string().into());
 
     Json(serde_json::json!({"data": {"messageId": message_id, "reactions": reactions}}))
         .into_response()
@@ -700,7 +700,7 @@ async fn remove_reaction_handler(
         "reactions": reactions,
     });
     let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-    let _ = chan_tx.send(payload.to_string());
+    let _ = chan_tx.send(payload.to_string().into());
 
     Json(serde_json::json!({"data": {"messageId": message_id, "reactions": reactions}}))
         .into_response()
@@ -779,7 +779,7 @@ async fn edit_message_handler(
                 "editedAt": edited_at,
             });
             let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-            let _ = chan_tx.send(payload.to_string());
+            let _ = chan_tx.send(payload.to_string().into());
 
             content["id"] = Value::from(message_id);
             Json(serde_json::json!({"data": content})).into_response()
@@ -890,7 +890,7 @@ async fn broadcast_pins(state: &Arc<AppState>, channel_id: i32) {
                 "pins": pins,
             });
             let chan_tx = ws::helpers::get_or_create_channel(state, channel_id).await;
-            let _ = chan_tx.send(payload.to_string());
+            let _ = chan_tx.send(payload.to_string().into());
         }
         Err(e) => error!("Failed to load pins for channel {channel_id}: {e}"),
     }
@@ -1158,7 +1158,7 @@ async fn typing_handler(
         "channelId": channel_id,
     });
     let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-    let _ = chan_tx.send(payload.to_string());
+    let _ = chan_tx.send(payload.to_string().into());
 
     StatusCode::NO_CONTENT.into_response()
 }

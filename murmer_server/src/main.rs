@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
 
     let config = Config::from_env()?;
 
-    let (tx, _rx) = broadcast::channel::<String>(100);
+    let (tx, _rx) = broadcast::channel::<murmer_server::Frame>(100);
 
     let db_client = db::init(&config.database_path)
         .await
@@ -85,6 +85,10 @@ async fn main() -> Result<()> {
     let existing_role_defs = db::list_role_defs(&db_client).await.unwrap_or_default();
 
     let existing_overrides = db::load_all_overrides(&db_client).await.unwrap_or_default();
+
+    // Cached so the per-message recording hooks can skip the database while
+    // tracking is off; `db::record_user_stats` still enforces the real gate.
+    let stats_enabled = db::stats_server_enabled(&db_client).await.unwrap_or(false);
 
     tokio::fs::create_dir_all(&config.upload_dir)
         .await
@@ -139,6 +143,7 @@ async fn main() -> Result<()> {
         password: config.password.clone(),
         admin_token: config.admin_token.clone(),
         rate_limiter: RateLimiter::default(),
+        stats_enabled: std::sync::atomic::AtomicBool::new(stats_enabled),
     });
 
     // Ephemeral deletion timers only live in memory; re-arm any that were

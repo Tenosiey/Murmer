@@ -31,3 +31,13 @@ rusqlite = { version = "0.37", features = ["bundled", "chrono"] }
 [dev-dependencies]
 serial_test = "4"
 temp-env = "0.3"
+
+# Debug info dominates both link time and the size of `target/`: the crate
+# builds one test binary per file in `tests/`, and full DWARF made each of them
+# well over a hundred megabytes. Line tables still give panics and backtraces
+# their file:line, which is all these builds are used for, and `unpacked`
+# leaves the remaining debug data in separate files instead of copying it into
+# every binary at link time.
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"

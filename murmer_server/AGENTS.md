@@ -15,6 +15,15 @@ tokio-rusqlite, which pins the rusqlite version).
 The repository includes a `docker-compose.yml` that launches the server (the
 SQLite database lives on a named volume): `docker compose up --build`.
 
+`[profile.dev]` builds with `debug = "line-tables-only"` and
+`split-debuginfo = "unpacked"`. Every file in `tests/` becomes its own test
+binary, and full DWARF made each one well over a hundred megabytes — line
+tables keep the file:line in panics and backtraces at a fraction of the link
+time and disk. Do not merge the `tests/` files into a single binary to save
+those links: `security_limits.rs` mutates process-wide environment variables
+with `temp_env`, and separate binaries are what currently keep that isolated
+from the tests that build a `RateLimiter`.
+
 ## Key modules
 - `main.rs` – sets up the Axum router, middleware and shared state
 - `config.rs` – environment variable parsing and CORS setup
@@ -22,7 +31,13 @@ SQLite database lives on a named volume): `docker compose up --build`.
   messages, channels, DMs, emojis, identity, moderation, pins, profile,
   screenshare, soundboard, stats, uploads and wiki; the dispatch loop lives in
   `handlers/mod.rs`)
-- `db/` – database connection, schema and queries, split by the same domains
+- `db/` – database connection, schema and queries, split by the same domains.
+  All queries run on one connection thread, so per-query cost is shared by
+  everything: statements go through `prepare_cached` (the cache capacity is
+  raised in `db::init`, since the default of 16 is below the number of
+  distinct statements here), and the FTS backfill only runs when `db::init`
+  had to create `messages_fts` — its anti-join scans every message row, and it
+  used to run on every startup
 - `bot/` – REST API for bots (see `BOT_API.md`)
 - `upload.rs` – multipart file upload endpoint with extension/MIME validation
   and the categorised safe-list behind the configurable upload policy
@@ -116,7 +131,19 @@ and message authorship.
   binding; users without a binding (e.g. bots) cannot receive DMs.
 - Client IP addresses are used for authentication rate limiting – ensure the
   service runs behind a proxy that forwards the real IP if applicable.
+  The three limits (`MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
+  `NONCE_EXPIRY_SECONDS`) are read once when the `RateLimiter` is built rather
+  than on every check, so they take effect at startup. Each limiter map is
+  swept end to end on a timer; the window for the key being checked is always
+  pruned on access, so the limit itself stays exact.
 - Nonces combine the public key and timestamp; replayed signatures are rejected.
+  A nonce is treated as unused once it is older than `NONCE_EXPIRY_SECONDS`,
+  whether or not the periodic sweep has removed it yet.
+- Stat recording checks `AppState::stats_enabled` (an in-memory mirror of the
+  server-wide toggle) before touching the database, so a server with tracking
+  off — the default — runs no query per message. That is a shortcut, not a
+  gate: the authoritative double opt-in check stays inside
+  `db::record_user_stats`, in the same call that performs the increments.
 - Uploaded files are streamed to disk after validating type, size and filename.
 - Admin tokens are compared using constant-time equality.
 - Avoid adding new WebSocket message types without updating validation helpers.

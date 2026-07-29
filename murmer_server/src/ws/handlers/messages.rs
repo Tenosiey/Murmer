@@ -26,8 +26,8 @@ pub(super) async fn handle_join(
     sender: &mut SplitSink<WebSocket, Message>,
     v: &Value,
     channel_id: &mut i32,
-    chan_tx: &mut tokio::sync::broadcast::Sender<String>,
-    chan_rx: &mut tokio::sync::broadcast::Receiver<String>,
+    chan_tx: &mut tokio::sync::broadcast::Sender<crate::Frame>,
+    chan_rx: &mut tokio::sync::broadcast::Receiver<crate::Frame>,
     user_name: &Option<String>,
 ) {
     if let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) {
@@ -317,7 +317,7 @@ pub(super) async fn handle_chat(
             v["id"] = Value::from(id);
             let out_with_id = serde_json::to_string(&v).unwrap_or_else(|_| out.clone());
             let chan_tx = get_or_create_channel(state, channel_id).await;
-            let _ = chan_tx.send(out_with_id);
+            let _ = chan_tx.send(out_with_id.into());
 
             // Channel broadcasts only reach clients joined to this channel, so
             // additionally announce the message globally. Clients use this to
@@ -330,7 +330,7 @@ pub(super) async fn handle_chat(
                 "user": user,
                 "text": v.get("text").cloned().unwrap_or(Value::Null),
             });
-            let _ = state.tx.send(notify.to_string());
+            let _ = state.tx.send(notify.to_string().into());
 
             if let Some(expiry) = ephemeral_expiry {
                 schedule_ephemeral_deletion(Arc::clone(state), id, channel_id, expiry);
@@ -415,7 +415,7 @@ pub(super) async fn handle_delete_message(
                 "channelId": record.channel_id,
             });
             let chan_sender = get_or_create_channel(state, record.channel_id).await;
-            let _ = chan_sender.send(payload.to_string());
+            let _ = chan_sender.send(payload.to_string().into());
 
             // Only deleting one's own message counts towards the stat;
             // moderator deletions say nothing about the requester's habits.
@@ -520,7 +520,7 @@ pub(super) async fn handle_edit_message(
                 "editedAt": edited_at,
             });
             let chan_sender = get_or_create_channel(state, record.channel_id).await;
-            let _ = chan_sender.send(payload.to_string());
+            let _ = chan_sender.send(payload.to_string().into());
 
             super::stats::record(state, &requester, vec![(db::Stat::MessagesEdited, 1)]).await;
         }
@@ -620,7 +620,7 @@ pub(super) async fn handle_typing(
         "channelId": channel_id,
     });
     let chan_tx = get_or_create_channel(state, channel_id).await;
-    let _ = chan_tx.send(payload.to_string());
+    let _ = chan_tx.send(payload.to_string().into());
 }
 
 /// Handle reaction (add/remove emoji) request.
@@ -755,5 +755,5 @@ pub(super) async fn handle_react(
         "reactions": reactions,
     });
     let chan_sender = get_or_create_channel(state, target_channel_id).await;
-    let _ = chan_sender.send(payload.to_string());
+    let _ = chan_sender.send(payload.to_string().into());
 }

@@ -10,6 +10,9 @@ use tracing::warn;
 /// Get the maximum number of messages allowed per user per minute.
 ///
 /// Reads from the `MAX_MESSAGES_PER_MINUTE` environment variable, defaulting to 30.
+///
+/// Resolved once per [`RateLimiter`] at construction rather than per call —
+/// see [`RateLimiter::new`].
 pub fn get_max_messages_per_minute() -> usize {
     std::env::var("MAX_MESSAGES_PER_MINUTE")
         .ok()
@@ -37,17 +40,47 @@ pub fn get_nonce_expiry_seconds() -> u64 {
         .unwrap_or(300) // 5 minutes
 }
 
-/// Clean up timestamps older than the cutoff time from a VecDeque.
+/// How often the sliding-window maps are swept end to end to drop entries for
+/// users/IPs that went quiet. The per-key window is always pruned on access;
+/// this only bounds the memory held by keys nobody touches any more, so it can
+/// run far less often than once per request.
+const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
+
+/// The sliding window the message and authentication limits are measured over.
+const RATE_WINDOW: Duration = Duration::from_secs(60);
+
+/// Drop timestamps older than `max_age` from the front of a window.
 ///
-/// This is a helper function to reduce duplication between different rate limiters.
-fn cleanup_old_timestamps(timestamps: &mut VecDeque<Instant>, cutoff: Instant) {
+/// Ages are compared as durations rather than against a precomputed cutoff
+/// `Instant`: on Linux `Instant` counts from boot, so subtracting a window
+/// from "now" underflows on a server that started less than a window ago.
+/// `saturating_duration_since` has no such edge.
+fn cleanup_old_timestamps(timestamps: &mut VecDeque<Instant>, now: Instant, max_age: Duration) {
     while let Some(&front) = timestamps.front() {
-        if front < cutoff {
+        if now.saturating_duration_since(front) >= max_age {
             timestamps.pop_front();
         } else {
             break;
         }
     }
+}
+
+/// Borrow one key's window, creating it if this is the first time the key is
+/// seen.
+///
+/// `entry()` would be the obvious call, but it needs an owned `String` up
+/// front — allocating a key on every check even though the key almost always
+/// exists already. Hashing a short name twice is cheaper than that allocation.
+fn window_mut<'a>(
+    windows: &'a mut std::collections::HashMap<String, VecDeque<Instant>>,
+    key: &str,
+) -> &'a mut VecDeque<Instant> {
+    if !windows.contains_key(key) {
+        windows.insert(key.to_string(), VecDeque::new());
+    }
+    windows
+        .get_mut(key)
+        .expect("window was just inserted if missing")
 }
 
 /// Check if an IP address is rate limited for authentication attempts.
@@ -66,22 +99,29 @@ fn cleanup_old_timestamps(timestamps: &mut VecDeque<Instant>, cutoff: Instant) {
 pub async fn check_auth_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool {
     let now = Instant::now();
     let mut attempts = rate_limiter.auth_attempts.lock().await;
-    let cutoff = now - Duration::from_secs(60);
 
-    // Sweep the whole map (not just this IP) so entries for idle IPs don't
-    // accumulate forever on a long-running server.
-    attempts.retain(|_, timestamps| {
-        cleanup_old_timestamps(timestamps, cutoff);
-        !timestamps.is_empty()
-    });
+    // Sweeping the whole map keeps entries for idle IPs from accumulating
+    // forever, but it costs O(tracked IPs) and nothing about an untouched
+    // entry changes between calls — so it runs on a timer instead of on every
+    // attempt. The window for *this* IP is always pruned below, so the limit
+    // itself is still exact.
+    if now.duration_since(attempts.last_sweep) >= SWEEP_INTERVAL {
+        attempts.entries.retain(|_, timestamps| {
+            cleanup_old_timestamps(timestamps, now, RATE_WINDOW);
+            !timestamps.is_empty()
+        });
+        attempts.last_sweep = now;
+    }
 
-    let current_attempts = attempts.get(ip).map_or(0, |v| v.len());
-    if current_attempts >= get_max_auth_attempts_per_minute() {
+    let timestamps = window_mut(&mut attempts.entries, ip);
+    cleanup_old_timestamps(timestamps, now, RATE_WINDOW);
+
+    if timestamps.len() >= rate_limiter.max_auth_attempts_per_minute {
         warn!("Rate limit exceeded for auth attempts from IP: {}", ip);
         return false;
     }
 
-    attempts.entry(ip.to_string()).or_default().push_back(now);
+    timestamps.push_back(now);
     true
 }
 
@@ -100,25 +140,28 @@ pub async fn check_auth_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool
 pub async fn check_message_rate_limit(rate_limiter: &RateLimiter, user: &str) -> bool {
     let now = Instant::now();
     let mut message_times = rate_limiter.message_times.lock().await;
-    let cutoff = now - Duration::from_secs(60);
 
-    // Sweep the whole map (not just this user) so entries for users who went
-    // quiet don't accumulate forever on a long-running server.
-    message_times.retain(|_, timestamps| {
-        cleanup_old_timestamps(timestamps, cutoff);
-        !timestamps.is_empty()
-    });
+    // This runs on every chat frame, so the full-map sweep that keeps quiet
+    // users from accumulating forever is amortised onto a timer rather than
+    // paid per message. This user's own window is pruned below either way,
+    // which is what the limit is actually computed from.
+    if now.duration_since(message_times.last_sweep) >= SWEEP_INTERVAL {
+        message_times.entries.retain(|_, timestamps| {
+            cleanup_old_timestamps(timestamps, now, RATE_WINDOW);
+            !timestamps.is_empty()
+        });
+        message_times.last_sweep = now;
+    }
 
-    let current_messages = message_times.get(user).map_or(0, |v| v.len());
-    if current_messages >= get_max_messages_per_minute() {
+    let timestamps = window_mut(&mut message_times.entries, user);
+    cleanup_old_timestamps(timestamps, now, RATE_WINDOW);
+
+    if timestamps.len() >= rate_limiter.max_messages_per_minute {
         warn!("Rate limit exceeded for messages from user: {}", user);
         return false;
     }
 
-    message_times
-        .entry(user.to_string())
-        .or_default()
-        .push_back(now);
+    timestamps.push_back(now);
     true
 }
 
@@ -139,15 +182,29 @@ pub async fn check_and_store_nonce(rate_limiter: &RateLimiter, nonce: &str) -> b
     let now = Instant::now();
     let mut used_nonces = rate_limiter.used_nonces.lock().await;
 
-    let expiry_cutoff = now - Duration::from_secs(get_nonce_expiry_seconds());
-    used_nonces.retain(|_, &mut expiry_time| expiry_time > expiry_cutoff);
+    let expiry = rate_limiter.nonce_expiry;
 
-    if used_nonces.contains_key(nonce) {
+    // Expiry is checked per nonce below, so the sweep exists purely to release
+    // memory and can run on a timer instead of on every authentication.
+    if now.duration_since(used_nonces.last_sweep) >= SWEEP_INTERVAL {
+        used_nonces
+            .entries
+            .retain(|_, &mut seen_at| now.saturating_duration_since(seen_at) < expiry);
+        used_nonces.last_sweep = now;
+    }
+
+    // An entry that is still present but older than the expiry window has
+    // already lapsed: the nonce may be used again, so treat it as unseen.
+    if used_nonces
+        .entries
+        .get(nonce)
+        .is_some_and(|seen_at| now.saturating_duration_since(*seen_at) < expiry)
+    {
         warn!("Replay attack detected - nonce already used: {}", nonce);
         return false;
     }
 
-    used_nonces.insert(nonce.to_string(), now);
+    used_nonces.entries.insert(nonce.to_string(), now);
     true
 }
 

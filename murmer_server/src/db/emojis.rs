@@ -15,8 +15,9 @@ pub struct EmojiRecord {
 /// List all custom emojis ordered by name.
 pub async fn get_emojis(db: &Db) -> Result<Vec<EmojiRecord>, DbError> {
     db.call_db(|conn| {
-        let mut stmt =
-            conn.prepare("SELECT name, url, uploaded_by, created_at FROM emojis ORDER BY name")?;
+        let mut stmt = conn.prepare_cached(
+            "SELECT name, url, uploaded_by, created_at FROM emojis ORDER BY name",
+        )?;
         let rows = stmt.query_map([], |row| {
             Ok(EmojiRecord {
                 name: row.get(0)?,

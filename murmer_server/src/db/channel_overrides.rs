@@ -31,7 +31,7 @@ pub async fn load_all_overrides(
 ) -> Result<std::collections::HashMap<(ChannelKind, i32), OverrideSet>, DbError> {
     let rows = db
         .call_db(|conn| {
-            let mut stmt = conn.prepare(
+            let mut stmt = conn.prepare_cached(
                 "SELECT channel_kind, channel_id, target_type, target_id, target_label, allow, deny \
                  FROM channel_overrides",
             )?;
@@ -84,7 +84,7 @@ pub async fn get_channel_overrides(
 ) -> Result<Vec<ChannelOverrideRow>, DbError> {
     let kind_str = kind.as_str().to_owned();
     db.call_db(move |conn| {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare_cached(
             "SELECT target_type, target_id, target_label, allow, deny FROM channel_overrides \
              WHERE channel_kind = ?1 AND channel_id = ?2",
         )?;
