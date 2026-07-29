@@ -123,6 +123,10 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   `role`; one map keyed by name alone would hand a mutual pair of sharers a
   single connection for two sessions. Stopping your own share therefore only
   closes `outgoing` — the shares you are watching keep running.
+  Offers, answers and candidates must keep carrying `target`: the server routes
+  them to that peer alone instead of broadcasting, so a frame without one is
+  dropped and its session never connects. The client-side `target` checks stay
+  as they are — they are what makes the two ends agree on who a frame was for.
   The viewer side is a **layer of floating windows**
   (`ScreenShareLayer`/`ScreenShareWindow` over `watchedScreenShares` in
   `stores/screenShare.ts`): watching never blocks the app, so the layer is

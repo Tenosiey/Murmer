@@ -30,7 +30,20 @@ from the tests that build a `RateLimiter`.
 - `ws/` – WebSocket handshake and message handling (`handlers/` for auth,
   messages, channels, DMs, emojis, identity, moderation, pins, profile,
   screenshare, soundboard, stats, uploads and wiki; the dispatch loop lives in
-  `handlers/mod.rs`)
+  `handlers/mod.rs`).
+  Frames leave the server by one of three routes. Server-wide events go on
+  `AppState.tx`, channel-scoped ones on the per-channel sender, and anything
+  addressed to a single user goes through `AppState.direct` — a registry of
+  per-connection mailboxes keyed by user name, then by a unique connection id
+  so one account signed in twice keeps both. WebRTC signaling
+  (`voice-offer`/`-answer`/`-candidate` and the three `screenshare-*`
+  equivalents) takes the direct route: every one of those frames names its
+  recipient in `target` and clients have always discarded the rest, so
+  broadcasting them cost every connected client a socket write and a parse per
+  frame. `screenshare-start`/`-stop` stay on the broadcast — they announce to
+  a channel rather than to one peer. Mailboxes are bounded
+  (`DIRECT_MAILBOX_CAPACITY`) and drop rather than block, mirroring what the
+  broadcast channels already do to a receiver that falls behind.
 - `db/` – database connection, schema and queries, split by the same domains.
   All queries run on one connection thread, so per-query cost is shared by
   everything: statements go through `prepare_cached` (the cache capacity is
@@ -147,6 +160,10 @@ and message authorship.
 - Uploaded files are streamed to disk after validating type, size and filename.
 - Admin tokens are compared using constant-time equality.
 - Avoid adding new WebSocket message types without updating validation helpers.
+- Relayed frames still prove they speak for their sender (`claims_own_user`)
+  before being routed. Addressing signaling to its `target` narrows who sees a
+  frame; it is not itself an authorization check, and must not be treated as
+  one when adding new relayed types.
 
 ## QA checklist
 - Run `cargo fmt`, `cargo clippy --all-targets -- -D warnings` and `cargo test`.

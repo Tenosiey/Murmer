@@ -102,6 +102,7 @@ async fn main() -> Result<()> {
     let state = Arc::new(AppState {
         tx: tx.clone(),
         channels: Arc::new(Mutex::new(HashMap::new())),
+        direct: Arc::new(Mutex::new(HashMap::new())),
         db: db_client,
         users: Arc::new(Mutex::new(HashSet::new())),
         known_users: Arc::new(Mutex::new(HashSet::new())),
