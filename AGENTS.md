@@ -186,6 +186,22 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
 
 ## Security expectations
 - Authentication relies on Ed25519 signatures with replay protection.
+- **The key is the account, so it is backed up, not just stored.** The Ed25519
+  key in `keypair.ts` authenticates on every server *and* derives the X25519
+  keys DMs are encrypted to, and the server binds a name to the first key that
+  claims it — losing the key loses every account at once plus the ability to
+  read a single DM ever received. `identity.ts` exports it two ways from the
+  same 32-byte seed: a passphrase-encrypted recovery file (PBKDF2-SHA256 over
+  Web Crypto, then NaCl secretbox) that also carries the account name, and a
+  24-word BIP39 phrase whose checksum catches a mistyped word before it
+  restores a *valid but different* identity. An Ed25519 secret key is
+  `seed || publicKey`, which is why `seedOf` can export identities created
+  before any of this existed — the storage format never changed. Restoring
+  replaces the key every store and connection was built around, so it confirms
+  and then reloads. Nothing here may reach for `localStorage` or a store: the
+  formats are a promise to anyone holding an old backup, and `identity.test.ts`
+  rebuilds the file from its *documented* description rather than from the
+  exporter so a drift in either one fails.
 - **The account name is the identity; the display name is decoration.** A
   user's profile (`user_keys.display_name`/`about`, edited with `set-profile`,
   read from `profile-snapshot`/`profile-update`) only changes what the UI
