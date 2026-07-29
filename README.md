@@ -37,6 +37,10 @@ small team can deploy a private chat space quickly.
   microphone does — which adds up, since every client holds a connection to
   every other — and a single lost packet is reconstructed rather than concealed
 - Ed25519 signature authentication with nonce-based replay protection
+- Identity backup and restore (Settings → Identity): your key is your account
+  on every server and the only thing that can read the direct messages sent to
+  you, so it can be saved as a passphrase-encrypted recovery file or written
+  down as a 24-word recovery phrase, and restored on another machine
 - Rate limiting on authentication and chat events
 - Markdown rendering with DOMPurify sanitisation and syntax highlighting
 - Custom roles with granular per-permission control and colour accents, managed from the Server Dashboard

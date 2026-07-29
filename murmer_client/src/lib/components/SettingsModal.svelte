@@ -29,6 +29,7 @@
   import { theme, accent, DEFAULT_ACCENT, accentToHex, hexToAccent, type Accent } from '$lib/stores/theme';
   import ThemeWheel from '$lib/components/ThemeWheel.svelte';
   import MurmerLogo from '$lib/components/MurmerLogo.svelte';
+  import IdentityBackup from '$lib/components/IdentityBackup.svelte';
   import { loadKeyPair } from '$lib/keypair';
   import { onMount, onDestroy } from 'svelte';
   import { PushToTalkManager } from '$lib/voice/ptt';
@@ -954,6 +955,7 @@
               Your Ed25519 public key identifies you on the server. Share it with the server admin to receive a role.
             </div>
           </div>
+          <IdentityBackup />
         </div>
         {/if}
 
