@@ -121,6 +121,13 @@ surfacing two things the server already stores.
       `ws/handlers/wiki.rs` carry the revision compare-and-swap and have no
       `tests/` file at all, while the client's wiki store is now covered;
       `db/pins.rs` and `db/screenshare.rs` are untested too
+- [ ] TURN support — voice does not connect at all behind symmetric NAT or a
+      network that blocks UDP, and both managers hardcode one public STUN
+      server with no way for an operator to change it. Designed but not
+      scheduled: see [`docs/turn-support.md`](docs/turn-support.md) for the
+      work breakdown, the ephemeral-credential scheme, the interaction with
+      `webrtc/recovery.ts` and the open questions. The first step (making the
+      ICE configuration configurable at all) is small and independently useful
 
 ---
 
