@@ -9,7 +9,11 @@ edition = "2024"
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "murmer_client_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop only, so an rlib for `main.rs` to link against is all that is needed.
+# The Tauri template also asks for a `staticlib` (the iOS artifact) and a
+# `cdylib` (the Android one); nothing consumes either here, and building them
+# cost a 1.1 GB archive and a 299 MB shared object on every build.
+crate-type = ["lib"]
 
 [build-dependencies]
 tauri-build = { version = "2.5", features = [] }
@@ -32,4 +36,14 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 # Same glib that gtk/tao already pull in; used to filter tray-icon log spam.
 glib = "0.22"
+
+# Debug info dominates link time here the same way it does on the server: full
+# DWARF over the whole Tauri/wry/webkit dependency tree put 366 MB into every
+# relink, which made a one-line change in `src/lib.rs` cost 12.8 s. Line tables
+# still give panics and backtraces their file:line, which is all a dev build of
+# the shell is used for, and `unpacked` leaves the rest beside the binary
+# instead of copying it in at link time. Measured: 12.8 s -> 1.5 s, 366 -> 97 MB.
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
 
