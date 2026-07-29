@@ -17,6 +17,7 @@ async fn make_state(admin_token: Option<&str>) -> Arc<AppState> {
     Arc::new(AppState {
         tx,
         channels: Arc::new(Mutex::new(HashMap::new())),
+        direct: Arc::new(Mutex::new(HashMap::new())),
         db: database,
         users: Arc::new(Mutex::new(Default::default())),
         known_users: Arc::new(Mutex::new(Default::default())),

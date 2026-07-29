@@ -860,6 +860,65 @@ pub async fn resume_ephemeral_deletions(state: &Arc<AppState>) {
     }
 }
 
+/// Register this connection's mailbox so frames can be addressed to `user`.
+///
+/// Replaces any mailbox this same connection had registered under a previous
+/// name, which is what keeps a re-`presence` on one socket from leaving a
+/// stale entry behind.
+pub async fn register_direct(
+    state: &Arc<AppState>,
+    user: &str,
+    conn_id: u64,
+    tx: tokio::sync::mpsc::Sender<crate::Frame>,
+) {
+    let mut registry = state.direct.lock().await;
+    registry
+        .entry(user.to_string())
+        .or_default()
+        .insert(conn_id, tx);
+}
+
+/// Drop this connection's mailbox for `user`, and the user's entry with it
+/// once no connection of theirs remains.
+pub async fn unregister_direct(state: &Arc<AppState>, user: &str, conn_id: u64) {
+    let mut registry = state.direct.lock().await;
+    if let Some(connections) = registry.get_mut(user) {
+        connections.remove(&conn_id);
+        if connections.is_empty() {
+            registry.remove(user);
+        }
+    }
+}
+
+/// Deliver a frame to every open connection of one user.
+///
+/// Returns whether anyone received it. A user with no connection is not an
+/// error: the peer simply left, exactly as when a broadcast reached nobody
+/// who cared. A full mailbox drops the frame rather than stalling the sender,
+/// so one unresponsive client cannot hold up the connection sending to it.
+pub async fn send_to_user(state: &Arc<AppState>, user: &str, frame: crate::Frame) -> bool {
+    let senders: Vec<tokio::sync::mpsc::Sender<crate::Frame>> = {
+        let registry = state.direct.lock().await;
+        match registry.get(user) {
+            Some(connections) => connections.values().cloned().collect(),
+            None => return false,
+        }
+    };
+
+    let mut delivered = false;
+    for tx in senders {
+        match tx.try_send(frame.clone()) {
+            Ok(()) => delivered = true,
+            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                error!("dropping frame for {user}: mailbox full");
+            }
+            // The connection is closing and will unregister itself.
+            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {}
+        }
+    }
+    delivered
+}
+
 /// Retrieve the broadcast channel for the given channel ID, creating it if necessary.
 pub async fn get_or_create_channel(
     state: &Arc<AppState>,

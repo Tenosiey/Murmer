@@ -21,7 +21,7 @@ use std::{
     sync::Arc,
     time::Instant,
 };
-use tokio::sync::{Mutex, broadcast};
+use tokio::sync::{Mutex, broadcast, mpsc};
 
 pub use roles::RoleDef;
 
@@ -35,6 +35,24 @@ pub use roles::RoleDef;
 /// allocated and copied exactly once instead of N times. It derefs to `str`,
 /// so receivers can still inspect the JSON without converting back.
 pub type Frame = axum::extract::ws::Utf8Bytes;
+
+/// How many undelivered frames a single connection's direct mailbox holds
+/// before further ones are dropped.
+///
+/// Point-to-point delivery is bounded rather than unbounded so one stalled
+/// client cannot make the server hold frames for it without limit. Dropping
+/// mirrors what the broadcast channels already do to a receiver that falls
+/// behind, and the depth is far above the burst a call setup produces.
+pub const DIRECT_MAILBOX_CAPACITY: usize = 256;
+
+/// The mailboxes of every open connection, so a frame can be addressed to one
+/// user instead of broadcast to everyone.
+///
+/// One user may hold several entries — the same account can be signed in from
+/// more than one client — so connections are keyed by a unique id within the
+/// user's entry, which is also what lets a disconnect remove exactly its own
+/// mailbox and not a newer one belonging to the same name.
+pub type DirectRegistry = HashMap<String, HashMap<u64, mpsc::Sender<Frame>>>;
 
 /// A set of sliding windows keyed by user name, IP or nonce, plus the last
 /// time the whole map was swept for entries that fell out of their window.
@@ -130,6 +148,11 @@ pub struct AppState {
     pub tx: broadcast::Sender<Frame>,
     /// Per-text-channel broadcast senders, keyed by channel ID.
     pub channels: Arc<Mutex<HashMap<i32, broadcast::Sender<Frame>>>>,
+    /// Mailboxes for frames addressed to a single user (see [`DirectRegistry`]).
+    /// WebRTC signaling goes here: an offer, answer or ICE candidate concerns
+    /// exactly two peers, so broadcasting it made every client parse and
+    /// discard a frame that was never theirs.
+    pub direct: Arc<Mutex<DirectRegistry>>,
     pub db: db::Db,
     pub users: Arc<Mutex<HashSet<String>>>,
     pub known_users: Arc<Mutex<HashSet<String>>>,

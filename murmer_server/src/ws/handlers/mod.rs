@@ -50,6 +50,55 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, instrument};
 
+/// Hands out a process-unique id per connection, so a user's mailbox can be
+/// removed on disconnect without disturbing their other open connections.
+fn next_connection_id() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Keep the direct-mailbox registration in step with the connection's
+/// authenticated identity, which is only known once `presence` succeeds and
+/// can change if the socket authenticates again.
+async fn sync_direct_registration(
+    state: &Arc<AppState>,
+    conn_id: u64,
+    tx: &tokio::sync::mpsc::Sender<crate::Frame>,
+    user_name: &Option<String>,
+    registered_as: &mut Option<String>,
+) {
+    let Some(user) = user_name.as_deref() else {
+        return;
+    };
+    if registered_as.as_deref() == Some(user) {
+        return;
+    }
+    if let Some(previous) = registered_as.as_deref() {
+        unregister_direct(state, previous, conn_id).await;
+    }
+    register_direct(state, user, conn_id, tx.clone()).await;
+    *registered_as = Some(user.to_string());
+}
+
+/// Relay a WebRTC signaling frame to the single peer it names.
+///
+/// Offers, answers and ICE candidates concern exactly two peers and every one
+/// of them carries the recipient in `target`; clients have always discarded
+/// the ones addressed to someone else. Broadcasting them therefore cost every
+/// connected client a socket write and a parse per frame, which during the
+/// candidate exchange of a mesh call is the bulk of the server's work. The
+/// sender is still verified by the caller, so this only narrows who a frame
+/// reaches — it never widens it.
+async fn relay_to_target(state: &Arc<AppState>, v: &Value, frame: crate::Frame) {
+    let Some(target) = v.get("target").and_then(|t| t.as_str()) else {
+        debug!("dropping signaling frame without a target");
+        return;
+    };
+    if !send_to_user(state, target, frame).await {
+        debug!("signaling target {target} has no open connection");
+    }
+}
+
 /// Resolve the "general" channel ID from the database.
 async fn general_channel_id(state: &Arc<AppState>) -> i32 {
     db::get_channel_id_by_name(&state.db, "general")
@@ -65,6 +114,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
 
     let (mut sender, mut receiver) = socket.split();
     let mut global_rx = state.tx.subscribe();
+    // Mailbox for frames addressed to this connection's user specifically;
+    // registered once `presence` establishes who that is.
+    let conn_id = next_connection_id();
+    let (direct_tx, mut direct_rx) =
+        tokio::sync::mpsc::channel::<crate::Frame>(crate::DIRECT_MAILBOX_CAPACITY);
+    let mut registered_as: Option<String> = None;
     let default_channel_id = general_channel_id(&state).await;
     let mut channel_id: i32 = default_channel_id;
     let mut chan_tx = get_or_create_channel(&state, channel_id).await;
@@ -100,11 +155,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 if auth::handle_presence(&mut sender, &state, &mut v, &mut authenticated, &mut user_name, &client_ip, default_channel_id).await.is_err() {
                                     break;
                                 }
+                                sync_direct_registration(&state, conn_id, &direct_tx, &user_name, &mut registered_as).await;
                             }
                             "bot-presence" => {
                                 if auth::handle_bot_presence(&mut sender, &state, &v, &mut authenticated, &mut user_name, default_channel_id).await.is_err() {
                                     break;
                                 }
+                                sync_direct_registration(&state, conn_id, &direct_tx, &user_name, &mut registered_as).await;
                             }
                             "join" => {
                                 messages::handle_join(&state, &mut sender, &v, &mut channel_id, &mut chan_tx, &mut chan_rx, &user_name).await;
@@ -253,19 +310,24 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 handle_voice_leave(&state, &v, &mut voice_channel, &user_name).await;
                             }
                             // WebRTC signaling frames are relayed verbatim, so make sure a
-                            // client can only speak for itself before rebroadcasting.
-                            "voice-offer" | "voice-answer" | "voice-candidate" => {
+                            // client can only speak for itself before relaying. Each names
+                            // its recipient, so it goes to that peer alone.
+                            "voice-offer" | "voice-answer" | "voice-candidate"
+                            | "screenshare-offer" | "screenshare-answer"
+                            | "screenshare-candidate" => {
                                 if claims_own_user(&v, &user_name) {
-                                    let _ = state.tx.send(text.to_string().into());
+                                    relay_to_target(&state, &v, text).await;
                                 }
                             }
+                            // Start/stop are announcements to the whole channel rather
+                            // than one peer, so they stay on the broadcast.
                             "screenshare-start" => {
                                 if claims_own_user(&v, &user_name) {
                                     handle_screenshare_start(&state, &v).await;
                                     if let Some(u) = user_name.as_deref() {
                                         stats::note_screenshare_start(&state, u).await;
                                     }
-                                    let _ = state.tx.send(text.to_string().into());
+                                    let _ = state.tx.send(text);
                                 }
                             }
                             "screenshare-stop" => {
@@ -274,12 +336,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                     if let Some(u) = user_name.as_deref() {
                                         stats::flush_screenshare_session(&state, u).await;
                                     }
-                                    let _ = state.tx.send(text.to_string().into());
-                                }
-                            }
-                            "screenshare-offer" | "screenshare-answer" | "screenshare-candidate" => {
-                                if claims_own_user(&v, &user_name) {
-                                    let _ = state.tx.send(text.to_string().into());
+                                    let _ = state.tx.send(text);
                                 }
                             }
                             "set-screenshare-max-bitrate" => {
@@ -291,7 +348,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "voice-mute" => {
                                 if claims_own_user(&v, &user_name) {
                                     handle_voice_mute(&state, &v).await;
-                                    let _ = state.tx.send(text.to_string().into());
+                                    let _ = state.tx.send(text);
                                 }
                             }
                             "kick-user" => {
@@ -362,6 +419,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                 } else {
                     error!("invalid json message: {text}");
                 }
+            }
+            // Frames addressed to this connection's user alone. No filtering
+            // is needed here: the routing already decided the recipient.
+            Some(frame) = direct_rx.recv() => {
+                if sender.send(Message::Text(frame)).await.is_err() { break; }
             }
             result = chan_rx.recv() => {
                 match result {
@@ -441,6 +503,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
         }
     }
 
+    if let Some(user) = registered_as.as_deref() {
+        unregister_direct(&state, user, conn_id).await;
+    }
     handle_disconnect(&state, user_name).await;
     info!(%client_ip, "Client disconnected");
 }
