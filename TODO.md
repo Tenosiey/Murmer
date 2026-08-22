@@ -17,17 +17,6 @@ stays readable. Use the checkboxes to mark something you have picked up.
 - [ ] Text-to-speech
 - [ ] User nicknames per server
 
-### 📚 Channel Wiki
-
-The per-channel Markdown wiki is built: pages, `[[wikilinks]]` across channels,
-role-gated editing, FTS5 indexing (surfaced in the search overlay) and
-sanitised rendering. What is left is surfacing one thing the server already
-stores.
-
-- [ ] Revision history view with diff and restore — the server keeps previous
-      versions in `wiki_revisions`, but the client only uses the revision
-      counter for its save compare-and-swap
-
 ### 🎤 Voice Features
 
 - [x] Automatic input sensitivity — track the noise floor and derive the VAD
@@ -105,11 +94,10 @@ stores.
       limits both to first contact), but the failure mode should be honest.
       `dm-crypto.test.ts` has a test named for the current behaviour — delete
       it with the fix
-- [ ] Test the server's wiki, pins and screen-share modules — only
-      `db/wiki.rs`'s full-text search is covered (in `tests/search_test.rs`);
-      the revision compare-and-swap in `db/wiki.rs`/`ws/handlers/wiki.rs` has
-      no test at all, while the client's wiki store is now covered;
-      `db/pins.rs` and `db/screenshare.rs` are untested too
+- [ ] Test the server's pins and screen-share modules — `db/wiki.rs` is now
+      covered (full-text search in `tests/search_test.rs`, the revision
+      compare-and-swap, history and restore in `tests/wiki_test.rs`), but
+      `db/pins.rs` and `db/screenshare.rs` are untested
 - [ ] TURN support — voice does not connect at all behind symmetric NAT or a
       network that blocks UDP, and both managers hardcode one public STUN
       server with no way for an operator to change it. Designed but not

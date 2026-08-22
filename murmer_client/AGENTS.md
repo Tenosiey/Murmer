@@ -28,6 +28,8 @@ pinned to major 6.
 - `src/lib/voice/` – WebRTC helpers, push-to-talk tooling, RNNoise noise
   suppression (`denoise.ts`) and the settings-UI microphone tools (level meter,
   record-and-play-back test)
+- `src/lib/wiki/` – channel wiki helpers: slug rules, the `[[wikilink]]`
+  action and the pure line diff (`diff.ts`) the revision history view renders
 - `src/lib/screenshare/` – WebRTC screen sharing manager
 - `src/lib/webrtc/` – what both WebRTC managers share: the repair policy for
   broken connections (`recovery.ts`) and the DTLS fingerprint check that tells

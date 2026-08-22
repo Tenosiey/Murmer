@@ -1,12 +1,18 @@
 //! Channel wiki handlers: per-channel Markdown pages with revision history.
 //!
-//! Reads (`wiki-get`, `wiki-resolve`) are open to every authenticated user.
-//! Writes are role-gated like channel management. Every mutation broadcasts a
+//! Reads (`wiki-get`, `wiki-history`, `wiki-revision`) are open to every
+//! authenticated user who can see the channel — a private channel's pages
+//! are as much its content as its messages are. Writes additionally need the
+//! wiki role gate. (`wiki-resolve` only answers "does this page exist" for
+//! channels addressed by name and is deliberately left ungated.) Every mutation broadcasts a
 //! full `wiki-index` metadata snapshot (no bodies) to the channel; joining
 //! clients receive the same snapshot, so all clients converge on the
 //! persisted state. Page bodies travel only in `wiki-page`/`wiki-conflict`
-//! replies correlated by `requestId`.
+//! replies correlated by `requestId`. Revision bodies travel the same way,
+//! in `wiki-revision` replies; a restore is an ordinary compare-and-swap save
+//! and therefore answers with `wiki-saved`/`wiki-conflict` like `wiki-update`.
 
+use crate::channel_overrides::ChannelKind;
 use crate::ws::{constants::*, errors, helpers::*, validation::*};
 use crate::{AppState, db, security};
 use axum::extract::ws::{Message, WebSocket};
@@ -80,6 +86,16 @@ async fn broadcast_wiki_index(state: &Arc<AppState>, channel_id: i32) {
     }
 }
 
+/// Whether the requester may see a channel's wiki at all. Wiki reads carry
+/// their channel in the frame rather than using the joined one, so this
+/// repeats the channel gate instead of trusting the connection.
+async fn can_read_wiki(state: &Arc<AppState>, user_name: &Option<String>, channel_id: i32) -> bool {
+    match user_name.as_deref() {
+        Some(user) => can_view_channel(state, user, ChannelKind::Text, channel_id).await,
+        None => false,
+    }
+}
+
 /// Extract the target channel id from a wiki request.
 fn channel_id_of(v: &Value) -> Option<i32> {
     v.get("channelId")
@@ -93,6 +109,7 @@ async fn require_wiki_writer(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
     user_name: &Option<String>,
+    channel_id: i32,
 ) -> Option<String> {
     let requester = match user_name.as_deref() {
         Some(name) => name,
@@ -105,12 +122,191 @@ async fn require_wiki_writer(
         send_error(sender, errors::MESSAGE_RATE_LIMIT).await;
         return None;
     }
-    if !has_permission(state, requester, crate::permissions::MANAGE_WIKI).await {
+    if !has_permission(state, requester, crate::permissions::MANAGE_WIKI).await
+        || !can_view_channel(state, requester, ChannelKind::Text, channel_id).await
+    {
         error!("User {requester} attempted a wiki write without permission");
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return None;
     }
     Some(requester.to_owned())
+}
+
+/// Handle `wiki-history`: reply with the page's stored revisions, newest
+/// first and without bodies. An unknown page answers with an empty list.
+pub(super) async fn handle_wiki_history(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let request_id = v.get("requestId").cloned().unwrap_or(Value::Null);
+    let Some(channel_id) = channel_id_of(v) else {
+        return;
+    };
+    if !can_read_wiki(state, user_name, channel_id).await {
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
+        return;
+    }
+    let Some(slug) = v.get("slug").and_then(|s| s.as_str()) else {
+        return;
+    };
+
+    match db::list_wiki_revisions(&state.db, channel_id, slug, MAX_WIKI_REVISIONS_KEPT).await {
+        Ok(revisions) => {
+            let revisions: Vec<Value> = revisions
+                .iter()
+                .map(|r| {
+                    serde_json::json!({
+                        "revision": r.revision,
+                        "title": r.title,
+                        "author": r.author,
+                        "createdAt": r.created_at,
+                        "bytes": r.bytes,
+                    })
+                })
+                .collect();
+            let payload = serde_json::json!({
+                "type": "wiki-revisions",
+                "requestId": request_id,
+                "channelId": channel_id,
+                "slug": slug,
+                "revisions": revisions,
+            });
+            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+        }
+        Err(e) => {
+            error!("Failed to load wiki history for {slug} in channel {channel_id}: {e}");
+            send_error(sender, errors::WIKI_SAVE_FAILED).await;
+        }
+    }
+}
+
+/// Handle `wiki-revision`: reply with one stored revision's body, or `null`
+/// when it has been pruned. Reads are open like `wiki-get`.
+pub(super) async fn handle_wiki_revision(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let request_id = v.get("requestId").cloned().unwrap_or(Value::Null);
+    let Some(channel_id) = channel_id_of(v) else {
+        return;
+    };
+    if !can_read_wiki(state, user_name, channel_id).await {
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
+        return;
+    }
+    let Some(slug) = v.get("slug").and_then(|s| s.as_str()) else {
+        return;
+    };
+    let Some(revision) = v.get("revision").and_then(|r| r.as_i64()) else {
+        return;
+    };
+
+    match db::get_wiki_revision(&state.db, channel_id, slug, revision).await {
+        Ok(found) => {
+            let payload = serde_json::json!({
+                "type": "wiki-revision",
+                "requestId": request_id,
+                "channelId": channel_id,
+                "slug": slug,
+                "revision": found.as_ref().map(|r| {
+                    serde_json::json!({
+                        "revision": r.revision,
+                        "title": r.title,
+                        "body": r.body,
+                        "author": r.author,
+                        "createdAt": r.created_at,
+                    })
+                }),
+            });
+            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+        }
+        Err(e) => {
+            error!(
+                "Failed to load wiki revision {revision} of {slug} in channel {channel_id}: {e}"
+            );
+            send_error(sender, errors::WIKI_SAVE_FAILED).await;
+        }
+    }
+}
+
+/// Handle `wiki-restore`: re-apply an old revision as the newest version.
+/// Write-gated like `wiki-update` and answered with the same frames, since a
+/// restore is a save whose content happens to come out of the history.
+pub(super) async fn handle_wiki_restore(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let request_id = v.get("requestId").cloned().unwrap_or(Value::Null);
+    let Some(channel_id) = channel_id_of(v) else {
+        return;
+    };
+    let Some(slug) = v.get("slug").and_then(|s| s.as_str()) else {
+        return;
+    };
+    let Some(revision) = v.get("revision").and_then(|r| r.as_i64()) else {
+        return;
+    };
+    let Some(expected_revision) = v.get("expectedRevision").and_then(|r| r.as_i64()) else {
+        return;
+    };
+
+    let Some(user) = require_wiki_writer(state, sender, user_name, channel_id).await else {
+        return;
+    };
+
+    match db::restore_wiki_revision(
+        &state.db,
+        channel_id,
+        slug,
+        revision,
+        &user,
+        expected_revision,
+        MAX_WIKI_REVISIONS_KEPT,
+    )
+    .await
+    {
+        Ok(db::RestoreWikiResult::Saved(new_revision)) => {
+            let payload = serde_json::json!({
+                "type": "wiki-saved",
+                "requestId": request_id,
+                "channelId": channel_id,
+                "slug": slug,
+                "revision": new_revision,
+            });
+            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+            info!(
+                user,
+                channel_id, slug, revision, new_revision, "Wiki revision restored"
+            );
+            broadcast_wiki_index(state, channel_id).await;
+        }
+        Ok(db::RestoreWikiResult::Conflict(current)) => {
+            let payload = serde_json::json!({
+                "type": "wiki-conflict",
+                "requestId": request_id,
+                "channelId": channel_id,
+                "slug": slug,
+                "page": page_json(&current),
+            });
+            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+        }
+        Ok(db::RestoreWikiResult::RevisionNotFound) => {
+            send_error(sender, errors::WIKI_REVISION_NOT_FOUND).await;
+        }
+        Ok(db::RestoreWikiResult::NotFound) => {
+            send_error(sender, errors::WIKI_PAGE_NOT_FOUND).await;
+        }
+        Err(e) => {
+            error!("Failed to restore wiki page {slug} in channel {channel_id}: {e}");
+            send_error(sender, errors::WIKI_SAVE_FAILED).await;
+        }
+    }
 }
 
 /// Handle `wiki-get`: reply with the full page, or `null` when it does not
@@ -119,11 +315,16 @@ pub(super) async fn handle_wiki_get(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
     v: &Value,
+    user_name: &Option<String>,
 ) {
     let request_id = v.get("requestId").cloned().unwrap_or(Value::Null);
     let Some(channel_id) = channel_id_of(v) else {
         return;
     };
+    if !can_read_wiki(state, user_name, channel_id).await {
+        send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
+        return;
+    }
     let Some(slug) = v.get("slug").and_then(|s| s.as_str()) else {
         return;
     };
@@ -225,7 +426,7 @@ pub(super) async fn handle_wiki_create(
         return;
     }
 
-    let Some(user) = require_wiki_writer(state, sender, user_name).await else {
+    let Some(user) = require_wiki_writer(state, sender, user_name, channel_id).await else {
         return;
     };
 
@@ -293,7 +494,7 @@ pub(super) async fn handle_wiki_update(
         return;
     }
 
-    let Some(user) = require_wiki_writer(state, sender, user_name).await else {
+    let Some(user) = require_wiki_writer(state, sender, user_name, channel_id).await else {
         return;
     };
 
@@ -355,7 +556,7 @@ pub(super) async fn handle_wiki_delete(
         return;
     };
 
-    let Some(user) = require_wiki_writer(state, sender, user_name).await else {
+    let Some(user) = require_wiki_writer(state, sender, user_name, channel_id).await else {
         return;
     };
 
@@ -397,7 +598,7 @@ pub(super) async fn handle_wiki_rename(
         return;
     }
 
-    let Some(user) = require_wiki_writer(state, sender, user_name).await else {
+    let Some(user) = require_wiki_writer(state, sender, user_name, channel_id).await else {
         return;
     };
 

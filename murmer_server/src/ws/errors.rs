@@ -439,6 +439,9 @@ pub const WIKI_PAGE_NOT_FOUND: &str = r#"{"type":"error","message":"wiki-page-no
 /// The channel has reached its wiki page limit.
 pub const WIKI_PAGE_LIMIT_REACHED: &str = r#"{"type":"error","message":"wiki-page-limit-reached"}"#;
 
+/// The referenced wiki revision has been pruned or never existed.
+pub const WIKI_REVISION_NOT_FOUND: &str = r#"{"type":"error","message":"wiki-revision-not-found"}"#;
+
 /// Failed to persist or load wiki data.
 pub const WIKI_SAVE_FAILED: &str = r#"{"type":"error","message":"wiki-save-failed"}"#;
 

@@ -8,6 +8,7 @@
   import { wiki, type WikiPage } from '$lib/stores/wiki';
   import { wikilinks, slugify, type WikiNavigation } from '$lib/wiki/links';
   import WikiEditor from './WikiEditor.svelte';
+  import WikiHistory from './WikiHistory.svelte';
   import ContextMenu from '$lib/components/ContextMenu.svelte';
   import { dialogs } from '$lib/stores/dialogs';
   import { renderMarkdown } from '$lib/markdown';
@@ -41,7 +42,7 @@
      is driven by selectPage, not by the prop. */
   // svelte-ignore state_referenced_locally
   let selectedSlug: string | null = $state(initialSlug);
-  let mode: 'view' | 'edit' = $state('view');
+  let mode: 'view' | 'edit' | 'history' = $state('view');
   let currentPage: WikiPage | null = $state(null);
   let loading = $state(false);
   let editorDirty = $state(false);
@@ -206,6 +207,11 @@
     mode = 'edit';
   }
 
+  function showHistory() {
+    if (!currentPage) return;
+    mode = 'history';
+  }
+
 
   function formatTimestamp(value: string): string {
     const date = new Date(value);
@@ -299,6 +305,20 @@
           }}
         />
       {/key}
+    {:else if mode === 'history' && currentPage}
+      {#key `${channelId}:${selectedSlug}`}
+        <WikiHistory
+          {channelId}
+          page={currentPage}
+          {canEdit}
+          onClose={() => (mode = 'view')}
+          onRestored={() => {
+            // The restore lands as an index broadcast, which reloads the
+            // page body; drop back to it so the reader sees the result.
+            mode = 'view';
+          }}
+        />
+      {/key}
     {:else if currentPage}
       <div class="page-header">
         <div class="page-title">
@@ -308,9 +328,12 @@
             {currentPage.revision} · {formatTimestamp(currentPage.updatedAt)}
           </span>
         </div>
-        {#if canEdit}
-          <button class="btn btn-ghost" onclick={startEditing}>Edit</button>
-        {/if}
+        <div class="page-actions">
+          <button class="btn btn-ghost" onclick={showHistory}>History</button>
+          {#if canEdit}
+            <button class="btn btn-ghost" onclick={startEditing}>Edit</button>
+          {/if}
+        </div>
       </div>
       <div
         class="page-body wiki-body"
@@ -440,6 +463,12 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--space-3);
+  }
+
+  .page-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
   }
 
   .page-title h3 {

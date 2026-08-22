@@ -156,6 +156,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'wiki-body-too-large': 'That wiki page is too large to save.',
   'wiki-slug-taken': 'A wiki page with that name already exists in this channel.',
   'wiki-page-not-found': 'That wiki page no longer exists.',
+  'wiki-revision-not-found': 'That revision is no longer stored.',
   'wiki-page-limit-reached': 'This channel has reached its wiki page limit.',
   'wiki-save-failed': 'The server could not update the wiki. Please try again.'
 };

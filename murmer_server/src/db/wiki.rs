@@ -53,6 +53,42 @@ pub enum UpdateWikiResult {
     NotFound,
 }
 
+/// Metadata of one stored revision, as carried in `wiki-revisions` replies.
+/// The body is left out: a history list of 50 revisions of a 100 kB page
+/// would otherwise ship 5 MB to draw a sidebar.
+#[derive(Clone)]
+pub struct WikiRevisionMeta {
+    pub revision: i64,
+    pub title: String,
+    pub author: String,
+    pub created_at: String,
+    /// Size of the stored body in bytes, so the list can show what a
+    /// revision changed in bulk without fetching it.
+    pub bytes: i64,
+}
+
+/// One stored revision including its Markdown body.
+#[derive(Clone)]
+pub struct WikiRevision {
+    pub revision: i64,
+    pub title: String,
+    pub body: String,
+    pub author: String,
+    pub created_at: String,
+}
+
+/// Outcome of [`restore_wiki_revision`].
+pub enum RestoreWikiResult {
+    /// Restored; carries the new revision number.
+    Saved(i64),
+    /// The expected revision was stale; carries the current page.
+    Conflict(WikiPage),
+    /// The page itself is gone.
+    NotFound,
+    /// The page exists but that revision has been pruned or never existed.
+    RevisionNotFound,
+}
+
 /// A page matched by [`search_wiki_pages`], carrying an excerpt of the body
 /// around the match instead of the whole document.
 #[derive(Clone)]
@@ -226,6 +262,65 @@ pub async fn create_wiki_page(
     .await
 }
 
+/// Apply a new version of a page inside an open transaction: the
+/// compare-and-swap on `revision`, the mirror into `wiki_revisions` and the
+/// pruning of anything older than `max_revisions`. Shared by
+/// [`update_wiki_page`] and [`restore_wiki_revision`], so a restore is
+/// stored exactly like any other edit — history is only ever appended to,
+/// never rewound.
+#[allow(clippy::too_many_arguments)]
+fn apply_wiki_update(
+    tx: &rusqlite::Transaction<'_>,
+    channel_id: i32,
+    slug: &str,
+    title: &str,
+    body: &str,
+    editor: &str,
+    expected_revision: i64,
+    max_revisions: i64,
+) -> rusqlite::Result<UpdateWikiResult> {
+    let changed = tx.execute(
+        &format!(
+            "UPDATE wiki_pages SET title = ?1, body = ?2, updated_by = ?3, \
+             updated_at = {NOW_UTC}, revision = revision + 1 \
+             WHERE channel_id = ?4 AND slug = ?5 AND revision = ?6"
+        ),
+        params![title, body, editor, channel_id, slug, expected_revision],
+    )?;
+    if changed == 0 {
+        // Stale revision or missing page — report which.
+        let current = tx
+            .query_row(
+                &format!(
+                    "SELECT {PAGE_COLUMNS} FROM wiki_pages \
+                     WHERE channel_id = ?1 AND slug = ?2"
+                ),
+                params![channel_id, slug],
+                row_to_page,
+            )
+            .optional()?;
+        return Ok(match current {
+            Some(page) => UpdateWikiResult::Conflict(page),
+            None => UpdateWikiResult::NotFound,
+        });
+    }
+    let (page_id, new_revision): (i64, i64) = tx.query_row(
+        "SELECT id, revision FROM wiki_pages WHERE channel_id = ?1 AND slug = ?2",
+        params![channel_id, slug],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    tx.execute(
+        "INSERT INTO wiki_revisions (page_id, revision, title, body, author) \
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![page_id, new_revision, title, body, editor],
+    )?;
+    tx.execute(
+        "DELETE FROM wiki_revisions WHERE page_id = ?1 AND revision <= ?2",
+        params![page_id, new_revision - max_revisions],
+    )?;
+    Ok(UpdateWikiResult::Saved(new_revision))
+}
+
 /// Save a new version of a page. The `expected_revision` compare-and-swap
 /// detects concurrent edits: when it fails, the caller receives the current
 /// page so the losing editor can be warned instead of silently overwritten.
@@ -248,47 +343,149 @@ pub async fn update_wiki_page(
     );
     db.call_db(move |conn| {
         let tx = conn.transaction()?;
-        let changed = tx.execute(
-            &format!(
-                "UPDATE wiki_pages SET title = ?1, body = ?2, updated_by = ?3, \
-                 updated_at = {NOW_UTC}, revision = revision + 1 \
-                 WHERE channel_id = ?4 AND slug = ?5 AND revision = ?6"
-            ),
-            params![title, body, editor, channel_id, slug, expected_revision],
-        )?;
-        if changed == 0 {
-            // Stale revision or missing page — report which.
-            let current = tx
-                .query_row(
-                    &format!(
-                        "SELECT {PAGE_COLUMNS} FROM wiki_pages \
-                         WHERE channel_id = ?1 AND slug = ?2"
-                    ),
-                    params![channel_id, slug],
-                    row_to_page,
-                )
-                .optional()?;
-            return Ok(match current {
-                Some(page) => UpdateWikiResult::Conflict(page),
-                None => UpdateWikiResult::NotFound,
-            });
-        }
-        let (page_id, new_revision): (i64, i64) = tx.query_row(
-            "SELECT id, revision FROM wiki_pages WHERE channel_id = ?1 AND slug = ?2",
-            params![channel_id, slug],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        tx.execute(
-            "INSERT INTO wiki_revisions (page_id, revision, title, body, author) \
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![page_id, new_revision, title, body, editor],
-        )?;
-        tx.execute(
-            "DELETE FROM wiki_revisions WHERE page_id = ?1 AND revision <= ?2",
-            params![page_id, new_revision - max_revisions],
+        let result = apply_wiki_update(
+            &tx,
+            channel_id,
+            &slug,
+            &title,
+            &body,
+            &editor,
+            expected_revision,
+            max_revisions,
         )?;
         tx.commit()?;
-        Ok(UpdateWikiResult::Saved(new_revision))
+        Ok(result)
+    })
+    .await
+}
+
+/// List the stored revisions of a page, newest first. Bodies are left out;
+/// [`get_wiki_revision`] fetches the one the reader actually opens.
+/// An unknown page yields an empty list — the same answer as a page whose
+/// history has been pruned away.
+pub async fn list_wiki_revisions(
+    db: &Db,
+    channel_id: i32,
+    slug: &str,
+    limit: i64,
+) -> Result<Vec<WikiRevisionMeta>, DbError> {
+    let slug = slug.to_owned();
+    db.call_db(move |conn| {
+        let mut stmt = conn.prepare_cached(
+            // LENGTH() counts characters on TEXT, so the body is cast to a
+            // BLOB to report the byte size the editor's cap is measured in.
+            "SELECT r.revision, r.title, r.author, r.created_at, \
+             LENGTH(CAST(r.body AS BLOB)) \
+             FROM wiki_revisions r JOIN wiki_pages p ON p.id = r.page_id \
+             WHERE p.channel_id = ?1 AND p.slug = ?2 \
+             ORDER BY r.revision DESC LIMIT ?3",
+        )?;
+        let rows = stmt
+            .query_map(params![channel_id, slug, limit], |row| {
+                Ok(WikiRevisionMeta {
+                    revision: row.get(0)?,
+                    title: row.get(1)?,
+                    author: row.get(2)?,
+                    created_at: row.get::<_, DateTime<Utc>>(3)?.to_rfc3339(),
+                    bytes: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })
+    .await
+}
+
+/// Load one stored revision of a page, or `None` when it was pruned, never
+/// existed, or belongs to another channel.
+pub async fn get_wiki_revision(
+    db: &Db,
+    channel_id: i32,
+    slug: &str,
+    revision: i64,
+) -> Result<Option<WikiRevision>, DbError> {
+    let slug = slug.to_owned();
+    db.call_db(move |conn| {
+        conn.query_row(
+            "SELECT r.revision, r.title, r.body, r.author, r.created_at \
+             FROM wiki_revisions r JOIN wiki_pages p ON p.id = r.page_id \
+             WHERE p.channel_id = ?1 AND p.slug = ?2 AND r.revision = ?3",
+            params![channel_id, slug, revision],
+            |row| {
+                Ok(WikiRevision {
+                    revision: row.get(0)?,
+                    title: row.get(1)?,
+                    body: row.get(2)?,
+                    author: row.get(3)?,
+                    created_at: row.get::<_, DateTime<Utc>>(4)?.to_rfc3339(),
+                })
+            },
+        )
+        .optional()
+    })
+    .await
+}
+
+/// Restore an old revision as the page's newest version. The old title and
+/// body are read and re-applied inside one transaction, so a concurrent save
+/// either loses the compare-and-swap or is restored over — never half of
+/// both. Restoring never deletes history: the old version is re-saved as a
+/// *new* revision, which is what makes a restore itself undoable.
+#[allow(clippy::too_many_arguments)]
+pub async fn restore_wiki_revision(
+    db: &Db,
+    channel_id: i32,
+    slug: &str,
+    revision: i64,
+    editor: &str,
+    expected_revision: i64,
+    max_revisions: i64,
+) -> Result<RestoreWikiResult, DbError> {
+    let (slug, editor) = (slug.to_owned(), editor.to_owned());
+    db.call_db(move |conn| {
+        let tx = conn.transaction()?;
+        let source = tx
+            .query_row(
+                "SELECT r.title, r.body FROM wiki_revisions r \
+                 JOIN wiki_pages p ON p.id = r.page_id \
+                 WHERE p.channel_id = ?1 AND p.slug = ?2 AND r.revision = ?3",
+                params![channel_id, slug, revision],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )
+            .optional()?;
+        let Some((title, body)) = source else {
+            // Tell a pruned revision apart from a deleted page: only the
+            // latter should send the reader back to the page list.
+            let page_exists = tx
+                .query_row(
+                    "SELECT 1 FROM wiki_pages WHERE channel_id = ?1 AND slug = ?2",
+                    params![channel_id, slug],
+                    |_| Ok(()),
+                )
+                .optional()?
+                .is_some();
+            return Ok(if page_exists {
+                RestoreWikiResult::RevisionNotFound
+            } else {
+                RestoreWikiResult::NotFound
+            });
+        };
+        let result = apply_wiki_update(
+            &tx,
+            channel_id,
+            &slug,
+            &title,
+            &body,
+            &editor,
+            expected_revision,
+            max_revisions,
+        )?;
+        tx.commit()?;
+        Ok(match result {
+            UpdateWikiResult::Saved(new_revision) => RestoreWikiResult::Saved(new_revision),
+            UpdateWikiResult::Conflict(page) => RestoreWikiResult::Conflict(page),
+            UpdateWikiResult::NotFound => RestoreWikiResult::NotFound,
+        })
     })
     .await
 }

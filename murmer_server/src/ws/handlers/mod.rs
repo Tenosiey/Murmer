@@ -186,7 +186,16 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 pins::handle_unpin_message(&state, &mut sender, &v, &user_name).await;
                             }
                             "wiki-get" => {
-                                wiki::handle_wiki_get(&state, &mut sender, &v).await;
+                                wiki::handle_wiki_get(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "wiki-history" => {
+                                wiki::handle_wiki_history(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "wiki-revision" => {
+                                wiki::handle_wiki_revision(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "wiki-restore" => {
+                                wiki::handle_wiki_restore(&state, &mut sender, &v, &user_name).await;
                             }
                             "wiki-resolve" => {
                                 wiki::handle_wiki_resolve(&state, &mut sender, &v).await;
