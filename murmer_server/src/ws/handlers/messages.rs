@@ -34,7 +34,10 @@ const PLAINTEXT_MESSAGE_FIELDS: [&str; 3] = ["text", "image", "attachment"];
 ///
 /// Returns the rebuilt `enc` value, so the stored frame carries known fields
 /// only and a client cannot smuggle anything extra alongside the ciphertext.
-fn sealed_message(v: &Value) -> Result<Value, &'static str> {
+/// `max_plaintext` is the server's configured message length limit — the
+/// ciphertext is bounded by it just as plaintext is, which is the only length
+/// rule that survives encryption.
+fn sealed_message(v: &Value, max_plaintext: usize) -> Result<Value, &'static str> {
     let Some(enc) = v.get("enc") else {
         return Err(errors::CHANNEL_REQUIRES_ENCRYPTION);
     };
@@ -48,7 +51,7 @@ fn sealed_message(v: &Value) -> Result<Value, &'static str> {
     if !(1..=MAX_CHANNEL_KEY_EPOCH).contains(&epoch) {
         return Err(errors::INVALID_ENCRYPTED_MESSAGE);
     }
-    match validate_sealed_payload(nonce, ciphertext, MAX_MESSAGE_LENGTH) {
+    match validate_sealed_payload(nonce, ciphertext, max_plaintext) {
         Ok(()) => {}
         Err(SealedPayloadError::TooLong) => return Err(errors::MESSAGE_TOO_LONG),
         Err(SealedPayloadError::Malformed) => return Err(errors::INVALID_ENCRYPTED_MESSAGE),
@@ -114,7 +117,42 @@ pub(super) async fn handle_load_history(
     db::send_history(&state.db, sender, channel_id, before, limit).await;
 }
 
+/// Wiki page hits for a search, as client-facing JSON. Errors are logged and
+/// reported as "no pages" so a broken wiki index cannot swallow the message
+/// results the user actually asked for.
+async fn search_wiki_hits(
+    state: &Arc<AppState>,
+    channel_id: i32,
+    query: &str,
+    limit: i64,
+) -> Vec<Value> {
+    let limit = limit.min(MAX_WIKI_SEARCH_RESULTS);
+    match db::search_wiki_pages(&state.db, channel_id, query, limit).await {
+        Ok(hits) => hits
+            .iter()
+            .map(|hit| {
+                serde_json::json!({
+                    "slug": hit.slug,
+                    "title": hit.title,
+                    "snippet": hit.snippet,
+                    "updatedBy": hit.updated_by,
+                    "updatedAt": hit.updated_at,
+                })
+            })
+            .collect(),
+        Err(error) => {
+            error!("Wiki search failed for channel {channel_id}: {error}");
+            Vec::new()
+        }
+    }
+}
+
 /// Handle search history request.
+///
+/// Answers with both the matching messages and the channel's matching wiki
+/// pages: the two live in separate FTS indexes but are one search to the
+/// user. A wiki index failure degrades to no page hits rather than failing
+/// the whole search — the messages are the primary answer.
 pub(super) async fn handle_search_history(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -142,6 +180,7 @@ pub(super) async fn handle_search_history(
             "requestId": request_id,
             "channelId": channel_id,
             "messages": [],
+            "pages": [],
         });
         let _ = sender.send(Message::Text(payload.to_string().into())).await;
         return;
@@ -152,6 +191,21 @@ pub(super) async fn handle_search_history(
         .and_then(|c| c.as_i64())
         .map(|c| c as i32)
         .unwrap_or(channel_id);
+
+    // The frame names the channel, so a client could ask about one it may not
+    // see; a private channel's messages and wiki pages must not leak through
+    // search any more than through history.
+    if !can_view_text(state, user_name, channel_to_search).await {
+        let payload = serde_json::json!({
+            "type": "search-results",
+            "requestId": request_id,
+            "channelId": channel_to_search,
+            "messages": [],
+            "pages": [],
+        });
+        let _ = sender.send(Message::Text(payload.to_string().into())).await;
+        return;
+    }
 
     let mut limit = v
         .get("limit")
@@ -195,11 +249,14 @@ pub(super) async fn handle_search_history(
                 }
             }
 
+            let pages = search_wiki_hits(state, channel_to_search, trimmed_query, limit).await;
+
             let payload = serde_json::json!({
                 "type": "search-results",
                 "requestId": request_id,
                 "channelId": channel_to_search,
                 "messages": messages,
+                "pages": pages,
             });
             let _ = sender.send(Message::Text(payload.to_string().into())).await;
         }
@@ -259,10 +316,19 @@ pub(super) async fn handle_chat(
         return;
     }
 
+    // Slow mode is checked before anything is written, and only recorded once
+    // the message is actually on its way (see the end of this function), so a
+    // rejected message never costs the sender their turn.
+    if !super::chat_settings::slow_mode_allows(state, user).await {
+        send_error(sender, errors::SLOW_MODE).await;
+        return;
+    }
+
     // An encrypted channel takes sealed envelopes and nothing else; a
     // plaintext one takes plaintext and no `enc`. Deciding this from the
     // channel's stored flag rather than from the frame is what keeps a client
     // from opting a message out of the channel's encryption.
+    let max_length = super::chat_settings::max_message_length(state).await;
     let encrypted = channel_is_e2ee(state, channel_id).await;
     if encrypted {
         if PLAINTEXT_MESSAGE_FIELDS
@@ -272,7 +338,7 @@ pub(super) async fn handle_chat(
             send_error(sender, errors::CHANNEL_REQUIRES_ENCRYPTION).await;
             return;
         }
-        match sealed_message(v) {
+        match sealed_message(v, max_length) {
             Ok(enc) => v["enc"] = enc,
             Err(code) => {
                 send_error(sender, code).await;
@@ -281,7 +347,7 @@ pub(super) async fn handle_chat(
         }
     } else {
         if let Some(text) = v.get("text").and_then(|t| t.as_str())
-            && text.len() > MAX_MESSAGE_LENGTH
+            && text.len() > max_length
         {
             send_error(sender, errors::MESSAGE_TOO_LONG).await;
             return;
@@ -290,6 +356,12 @@ pub(super) async fn handle_chat(
             map.remove("enc");
         }
     }
+
+    // Masking happens before the message is stored or broadcast, so the
+    // filtered form is the only one any other client can ever see. It is a
+    // no-op in an encrypted channel: the server holds no text to mask there,
+    // which is a limit of the profanity filter rather than a way around it.
+    super::chat_settings::apply_profanity_filter(state, v).await;
 
     v["user"] = Value::String(user.clone());
     v["channelId"] = Value::from(channel_id);
@@ -421,6 +493,10 @@ pub(super) async fn handle_chat(
 
             // Lifetime stats (no-op unless server and user both opted in).
             super::stats::record(state, user, super::stats::chat_message_deltas(v)).await;
+
+            // Starts this sender's slow mode interval; a no-op while slow
+            // mode is off.
+            super::chat_settings::note_message_sent(state, user).await;
         }
         Err(e) => error!("db insert error: {e}"),
     }
@@ -541,14 +617,15 @@ pub(super) async fn handle_edit_message(
     // form the channel stores: a sealed envelope in an encrypted channel, text
     // in a plaintext one.
     let encrypted = channel_is_e2ee(state, channel_id).await;
-    let mut new_text = "";
+    let max_length = super::chat_settings::max_message_length(state).await;
+    let mut new_text = String::new();
     let mut new_enc = Value::Null;
     if encrypted {
         if v.get("text").is_some_and(|value| !value.is_null()) {
             send_error(sender, errors::CHANNEL_REQUIRES_ENCRYPTION).await;
             return;
         }
-        match sealed_message(v) {
+        match sealed_message(v, max_length) {
             Ok(enc) => new_enc = enc,
             Err(code) => {
                 send_error(sender, code).await;
@@ -556,17 +633,20 @@ pub(super) async fn handle_edit_message(
             }
         }
     } else {
-        let Some(text) = v.get("text").and_then(|t| t.as_str()) else {
+        let Some(raw_text) = v.get("text").and_then(|t| t.as_str()) else {
             send_error(sender, errors::INVALID_MESSAGE_TEXT).await;
             return;
         };
-        if text.trim().is_empty() || text.len() > MAX_MESSAGE_LENGTH {
+        if raw_text.trim().is_empty() || raw_text.len() > max_length {
             send_error(sender, errors::MESSAGE_TOO_LONG).await;
             return;
         }
-        new_text = text;
+        // An edit runs through the same filter as a new message: otherwise
+        // posting and immediately editing would walk straight past it. There
+        // is nothing to filter in an encrypted channel — the server never sees
+        // the text, before or after the edit.
+        new_text = super::chat_settings::mask_text(state, raw_text).await;
     }
-
     let record = match db::get_message_record(&state.db, message_id).await {
         Ok(Some(record)) => record,
         Ok(None) => {
@@ -603,7 +683,7 @@ pub(super) async fn handle_edit_message(
     if encrypted {
         content["enc"] = new_enc.clone();
     } else {
-        content["text"] = Value::String(new_text.to_string());
+        content["text"] = Value::String(new_text.clone());
     }
     content["edited"] = Value::Bool(true);
     content["editedAt"] = Value::String(edited_at.clone());
@@ -628,7 +708,7 @@ pub(super) async fn handle_edit_message(
             if encrypted {
                 payload["enc"] = new_enc;
             } else {
-                payload["text"] = Value::String(new_text.to_string());
+                payload["text"] = Value::String(new_text.clone());
             }
             let chan_sender = get_or_create_channel(state, record.channel_id).await;
             let _ = chan_sender.send(payload.to_string().into());

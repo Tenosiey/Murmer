@@ -94,6 +94,15 @@
     selectedSlug = slug;
   }
 
+  /**
+   * Open a page from outside the view — a search result. The view captures
+   * the page it was mounted with, so navigating an already-open wiki has to
+   * come through here; `selectPage` still guards unsaved editor changes.
+   */
+  export async function openPage(slug: string) {
+    await selectPage(slug);
+  }
+
   function titleFromSlug(slug: string): string {
     return slug
       .split('-')

@@ -10,6 +10,7 @@
 use chrono::{DateTime, Utc};
 use rusqlite::{OptionalExtension, params};
 
+use super::messages::fts_match_expression;
 use super::{Db, DbCall, DbError, NOW_UTC};
 
 /// Page metadata as carried in `wiki-index` snapshots (no body).
@@ -50,6 +51,17 @@ pub enum UpdateWikiResult {
     /// client can show what changed.
     Conflict(WikiPage),
     NotFound,
+}
+
+/// A page matched by [`search_wiki_pages`], carrying an excerpt of the body
+/// around the match instead of the whole document.
+#[derive(Clone)]
+pub struct WikiSearchHit {
+    pub slug: String,
+    pub title: String,
+    pub snippet: String,
+    pub updated_by: String,
+    pub updated_at: String,
 }
 
 /// Outcome of [`rename_wiki_page`].
@@ -350,6 +362,49 @@ pub async fn resolve_wiki_links(
             results.push(exists);
         }
         Ok(results)
+    })
+    .await
+}
+
+/// Search the wiki pages of one channel through the same FTS index the
+/// triggers above keep in sync, best match first.
+///
+/// The query is reduced to a safe MATCH expression by the shared
+/// [`fts_match_expression`], so raw FTS5 operators never reach the parser.
+/// Bodies may be 100 kB, so results carry an FTS `snippet()` excerpt around
+/// the hit rather than the document — a match deep in a long page still
+/// shows its context without shipping the page to every searcher.
+pub async fn search_wiki_pages(
+    db: &Db,
+    channel_id: i32,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<WikiSearchHit>, DbError> {
+    let Some(match_expr) = fts_match_expression(query) else {
+        return Ok(Vec::new());
+    };
+    db.call_db(move |conn| {
+        // The FTS table is not aliased: `snippet()` addresses it by name.
+        let mut stmt = conn.prepare_cached(
+            "SELECT wiki_pages.slug, wiki_pages.title, \
+             snippet(wiki_fts, 1, '', '', '…', 16), \
+             wiki_pages.updated_by, wiki_pages.updated_at \
+             FROM wiki_fts JOIN wiki_pages ON wiki_pages.id = wiki_fts.rowid \
+             WHERE wiki_fts MATCH ?1 AND wiki_pages.channel_id = ?2 \
+             ORDER BY rank LIMIT ?3",
+        )?;
+        let rows = stmt
+            .query_map(params![match_expr, channel_id, limit], |row| {
+                Ok(WikiSearchHit {
+                    slug: row.get(0)?,
+                    title: row.get(1)?,
+                    snippet: row.get(2)?,
+                    updated_by: row.get(3)?,
+                    updated_at: row.get::<_, DateTime<Utc>>(4)?.to_rfc3339(),
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     })
     .await
 }

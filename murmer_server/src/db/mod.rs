@@ -11,9 +11,11 @@
 //! Submodules group queries by domain:
 //! - [`channel_keys`] – wrapped per-channel keys of encrypted channels
 //! - [`channels`] – text channels, voice channels and categories
+//! - [`chat_settings`] – slow mode, message length cap and profanity filter
 //! - [`direct_messages`] – private messages between two users
 //! - [`emojis`] – custom server emoji registrations
 //! - [`identity`] – server name, description, welcome message and icon
+//! - [`maintenance`] – destructive purge/reset actions (Danger Zone)
 //! - [`messages`] – message CRUD and history retrieval
 //! - [`moderation`] – ban and mute persistence
 //! - [`pins`] – persisted message pins per channel
@@ -24,14 +26,17 @@
 //! - [`stats`] – lifetime user statistics (double opt-in gated)
 //! - [`uploads`] – server-wide upload size cap and file category safe-list
 //! - [`users`] – user name to public key bindings
+//! - [`voice_defaults`] – quality/bitrate new voice channels start with
 //! - [`wiki`] – per-channel Markdown wiki pages with revision history
 
 mod channel_keys;
 mod channel_overrides;
 mod channels;
+mod chat_settings;
 mod direct_messages;
 mod emojis;
 mod identity;
+mod maintenance;
 mod messages;
 mod moderation;
 mod pins;
@@ -42,14 +47,17 @@ mod soundboard;
 mod stats;
 mod uploads;
 mod users;
+mod voice_defaults;
 mod wiki;
 
 pub use channel_keys::*;
 pub use channel_overrides::*;
 pub use channels::*;
+pub use chat_settings::*;
 pub use direct_messages::*;
 pub use emojis::*;
 pub use identity::*;
+pub use maintenance::*;
 pub use messages::*;
 pub use moderation::*;
 pub use pins::*;
@@ -60,6 +68,7 @@ pub use soundboard::*;
 pub use stats::*;
 pub use uploads::*;
 pub use users::*;
+pub use voice_defaults::*;
 pub use wiki::*;
 
 use rusqlite::OptionalExtension;

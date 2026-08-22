@@ -1,10 +1,14 @@
 <!--
   Server management dashboard for moderators and above. Separate from the
-  user-facing SettingsModal: everything in here is server-wide state. Tabs are
-  tiered by moderation rank (Mod 1 < Admin 2 < Owner 3). The Overview tab
-  (server identity), custom emojis, the stats toggle, the upload policy, the
-  screen share cap and roles are fully functional; the remaining sections are
-  placeholders for future server-side settings and render disabled controls.
+  user-facing SettingsModal: everything in here is server-wide state, gated
+  per tab by the permission it controls.
+
+  Every control here is cosmetic twice over: the server re-checks the
+  permission behind each frame, and it enforces the settings themselves
+  (slow mode, the message cap, the profanity filter, the upload policy). What
+  a tab renders is the server's own answer — the identity, chat, upload,
+  voice and screen-share frames it broadcasts — never local state that could
+  drift from it.
 -->
 <script lang="ts">
   import { onMount, onDestroy, untrack } from 'svelte';
@@ -15,6 +19,8 @@
   import { describeServerError } from '$lib/errors';
   import { httpBaseFromWs } from '$lib/server-url';
   import { uploadForm, uploadErrorMessage } from '$lib/upload';
+  import { onlineUsers } from '$lib/stores/online';
+  import { displayNames } from '$lib/stores/profiles';
   import {
     EMOJI_NAME_RE,
     MAX_EMOJI_FILE_BYTES,
@@ -25,8 +31,23 @@
     MAX_ROLE_ICON_BYTES,
     MIN_UPLOAD_MAX_BYTES,
     MAX_UPLOAD_MAX_BYTES,
-    UPLOAD_CATEGORIES
+    UPLOAD_CATEGORIES,
+    MAX_MESSAGE_LENGTH,
+    MIN_CONFIGURABLE_MESSAGE_LENGTH,
+    MAX_SLOW_MODE_SECONDS,
+    MAX_PROFANITY_WORDS,
+    MAX_PROFANITY_WORD_LEN,
+    VOICE_QUALITY_PRESETS,
+    MAX_VOICE_BITRATE
   } from '$lib/chat/constants';
+  import {
+    chatSettings,
+    requestChatSettings,
+    setChatSettings
+  } from '$lib/stores/chatSettings';
+  import { bans } from '$lib/stores/bans';
+  import { voiceDefaults, setVoiceDefaults } from '$lib/stores/voiceDefaults';
+  import { storageUsage, formatBytes } from '$lib/stores/storageUsage';
   import { uploadConfig, setUploadConfig } from '$lib/stores/uploadConfig';
   import { stats, statsConfig } from '$lib/stores/stats';
   import { serverIdentity } from '$lib/stores/serverIdentity';
@@ -286,6 +307,285 @@
     setUploadConfig(uploadMaxBytesDraft, uploadCategories);
   }
 
+  // ── Chat policy (Moderation tab) ───────────────────────────────────────────
+  // Slow mode, the message length cap and the profanity filter. Editing needs
+  // MANAGE_SERVER, which the Moderation tab itself does not (it opens for
+  // BAN_MEMBERS so moderators can work the ban list), so the settings block
+  // is gated separately.
+  let canManageServer = $derived(hasPermission(permissions, PERMISSIONS.MANAGE_SERVER));
+
+  let slowModeSeconds = $state(0);
+  let maxMessageLength = $state(MAX_MESSAGE_LENGTH);
+  let profanityFilter = $state(false);
+  /** The word list as edited: one word per line. */
+  let profanityWords = $state('');
+  let chatFeedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
+  let chatSavePending = $state(false);
+
+  /** Split the editor's text into normalized words the way the server does. */
+  function parseWordList(raw: string): string[] {
+    const words: string[] = [];
+    for (const entry of raw.split(/[\n,]/)) {
+      const word = entry.trim().toLowerCase();
+      if (!word || word.length > MAX_PROFANITY_WORD_LEN || /\s/.test(word)) continue;
+      if (!words.includes(word)) words.push(word);
+      if (words.length === MAX_PROFANITY_WORDS) break;
+    }
+    return words;
+  }
+
+  let chatWordsDraft = $derived(parseWordList(profanityWords));
+
+  // (Re-)fill the form from the server's answer. `words === null` means the
+  // list has not been disclosed yet, so the editor stays empty and disabled
+  // rather than offering to save an empty list over a real one.
+  function loadChatSettings() {
+    const current = $chatSettings;
+    slowModeSeconds = current.slowModeSeconds;
+    maxMessageLength = current.maxMessageLength;
+    profanityFilter = current.profanityFilter;
+    profanityWords = (current.words ?? []).join('\n');
+    chatFeedback = null;
+    chatSavePending = false;
+  }
+
+  /** Whether the manager-only word list has been taken into the editor. */
+  let wordsLoaded = $state(false);
+
+  // Ask for the full policy (word list included) whenever the tab is opened,
+  // and fill the form with what is already known.
+  $effect(() => {
+    if (open && activeTab === 'moderation') {
+      untrack(() => {
+        if (canManageServer) requestChatSettings();
+        bans.refresh();
+        wordsLoaded = false;
+        loadChatSettings();
+      });
+    }
+  });
+
+  // The word list only travels in the answer to that request, which lands
+  // after the form was filled — take it once, then leave the editor alone so
+  // a later broadcast cannot clobber what the user is typing.
+  $effect(() => {
+    const words = $chatSettings.words;
+    if (!open || activeTab !== 'moderation' || words === null) return;
+    untrack(() => {
+      if (wordsLoaded) return;
+      wordsLoaded = true;
+      profanityWords = words.join('\n');
+    });
+  });
+
+  // A broadcast matching the submitted values confirms the save.
+  $effect(() => {
+    if (chatSavePending && !chatDirty) {
+      chatSavePending = false;
+      chatFeedback = { text: 'Changes saved.', kind: 'info' };
+    }
+  });
+
+  let chatDirty = $derived.by(() => {
+    const current = $chatSettings;
+    const words = current.words ?? [];
+    return (
+      slowModeSeconds !== current.slowModeSeconds ||
+      maxMessageLength !== current.maxMessageLength ||
+      profanityFilter !== current.profanityFilter ||
+      chatWordsDraft.length !== words.length ||
+      chatWordsDraft.some((word, index) => word !== words[index])
+    );
+  });
+
+  function saveChatSettings() {
+    const seconds = Number.isFinite(slowModeSeconds) ? Math.round(slowModeSeconds) : NaN;
+    if (Number.isNaN(seconds) || seconds < 0 || seconds > MAX_SLOW_MODE_SECONDS) {
+      chatFeedback = {
+        text: `Slow mode must be between 0 and ${MAX_SLOW_MODE_SECONDS} seconds.`,
+        kind: 'error'
+      };
+      return;
+    }
+    const length = Number.isFinite(maxMessageLength) ? Math.round(maxMessageLength) : NaN;
+    if (
+      Number.isNaN(length) ||
+      length < MIN_CONFIGURABLE_MESSAGE_LENGTH ||
+      length > MAX_MESSAGE_LENGTH
+    ) {
+      chatFeedback = {
+        text: `The message limit must be between ${MIN_CONFIGURABLE_MESSAGE_LENGTH} and ${MAX_MESSAGE_LENGTH} characters.`,
+        kind: 'error'
+      };
+      return;
+    }
+    chatFeedback = null;
+    chatSavePending = true;
+    setChatSettings({
+      slowModeSeconds: seconds,
+      maxMessageLength: length,
+      profanityFilter,
+      words: chatWordsDraft
+    });
+  }
+
+  /** Render a slow mode interval the way people talk about it. */
+  function describeInterval(seconds: number): string {
+    if (seconds <= 0) return 'off';
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) {
+      const minutes = Math.round(seconds / 60);
+      return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+    }
+    const hours = seconds / 3600;
+    return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hour${hours === 1 ? '' : 's'}`;
+  }
+
+  function formatBanDate(value: string | null): string {
+    if (!value) return 'unknown date';
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? 'unknown date' : parsed.toLocaleDateString();
+  }
+
+  async function liftBan(user: string) {
+    const ok = await dialogs.confirm({
+      title: `Unban ${user}?`,
+      message: 'They will be able to join this server again.',
+      confirmLabel: 'Unban'
+    });
+    if (!ok) return;
+    bans.unban(user);
+  }
+
+  // ── Voice defaults (Voice tab) ─────────────────────────────────────────────
+  let voiceQuality = $state('');
+  let voiceBitrateKbps = $state(0);
+  let voiceFeedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
+  let voiceSavePending = $state(false);
+
+  // (Re-)fill the form whenever the dashboard opens; while it is open,
+  // incoming broadcasts must not clobber what the user is editing.
+  $effect(() => {
+    if (open) {
+      untrack(() => {
+        voiceQuality = $voiceDefaults.quality;
+        voiceBitrateKbps = ($voiceDefaults.bitrate ?? 0) / 1000;
+        voiceFeedback = null;
+        voiceSavePending = false;
+      });
+    }
+  });
+
+  let voiceBitrateDraft = $derived(
+    Math.round((Number.isFinite(voiceBitrateKbps) ? voiceBitrateKbps : 0) * 1000)
+  );
+  let voiceDirty = $derived(
+    voiceQuality !== $voiceDefaults.quality ||
+      (voiceBitrateDraft > 0 ? voiceBitrateDraft : null) !== $voiceDefaults.bitrate
+  );
+
+  // A broadcast matching the submitted values confirms the save.
+  $effect(() => {
+    if (voiceSavePending && !voiceDirty) {
+      voiceSavePending = false;
+      voiceFeedback = { text: 'Changes saved.', kind: 'info' };
+    }
+  });
+
+  /** Picking a preset fills in its bitrate; 0 kbps means "lossless". */
+  function pickVoicePreset(event: Event) {
+    const quality = (event.currentTarget as HTMLSelectElement).value;
+    voiceQuality = quality;
+    const preset = VOICE_QUALITY_PRESETS.find((entry) => entry.quality === quality);
+    if (preset) voiceBitrateKbps = (preset.bitrate ?? 0) / 1000;
+  }
+
+  function saveVoiceDefaults() {
+    if (!voiceQuality.trim()) {
+      voiceFeedback = { text: 'Pick a quality preset.', kind: 'error' };
+      return;
+    }
+    if (voiceBitrateDraft < 0 || voiceBitrateDraft > MAX_VOICE_BITRATE) {
+      voiceFeedback = {
+        text: `Enter a bitrate up to ${MAX_VOICE_BITRATE / 1000} kbps, or 0 for uncompressed.`,
+        kind: 'error'
+      };
+      return;
+    }
+    voiceFeedback = null;
+    voiceSavePending = true;
+    // Role-checked server-side; the confirmation arrives as a broadcast
+    // voice-defaults frame which updates the store.
+    setVoiceDefaults(voiceQuality.trim(), voiceBitrateDraft > 0 ? voiceBitrateDraft : null);
+  }
+
+  // ── Storage usage (Files & Uploads tab) ───────────────────────────────────
+  // Measured on request rather than tracked, so it is asked for when the tab
+  // is opened and by the refresh button.
+  $effect(() => {
+    if (open && activeTab === 'uploads') {
+      untrack(() => storageUsage.refresh());
+    }
+  });
+
+  const CATEGORY_LABELS: Record<string, string> = {
+    ...Object.fromEntries(UPLOAD_CATEGORIES.map((category) => [category.id, category.label])),
+    // Files whose extension left the safe-list still occupy disk.
+    other: 'Other'
+  };
+
+  // ── Danger Zone ────────────────────────────────────────────────────────────
+  let dangerFeedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
+
+  /**
+   * Both Danger Zone actions are irreversible, so the phrase typed here is
+   * also what the server requires in the frame — a stray click cannot wipe a
+   * server, and neither can a frame replayed without it.
+   */
+  async function confirmDestructive(
+    title: string,
+    message: string,
+    phrase: string
+  ): Promise<boolean> {
+    const typed = await dialogs.prompt({
+      title,
+      message: `${message}\n\nType ${phrase} to confirm.`,
+      label: 'Confirmation',
+      placeholder: phrase,
+      confirmLabel: 'Continue'
+    });
+    if (typed === null) return false;
+    if (typed.trim() !== phrase) {
+      dangerFeedback = { text: 'That did not match — nothing was changed.', kind: 'error' };
+      return false;
+    }
+    return true;
+  }
+
+  async function purgeMessages() {
+    dangerFeedback = null;
+    const confirmed = await confirmDestructive(
+      'Purge all messages',
+      'Every message, pin and reaction on this server is deleted for everyone. This cannot be undone.',
+      'PURGE'
+    );
+    if (!confirmed) return;
+    chat.sendRaw({ type: 'purge-all-messages', confirm: 'PURGE' });
+    dangerFeedback = { text: 'Purge requested.', kind: 'info' };
+  }
+
+  async function resetServer() {
+    dangerFeedback = null;
+    const confirmed = await confirmDestructive(
+      'Reset server',
+      'Every channel except general, plus all categories, custom roles, wiki pages and messages are deleted. Members, bans and emojis are kept. This cannot be undone.',
+      'RESET'
+    );
+    if (!confirmed) return;
+    chat.sendRaw({ type: 'reset-server', confirm: 'RESET' });
+    dangerFeedback = { text: 'Reset requested.', kind: 'info' };
+  }
+
   // ── Custom emoji management ────────────────────────────────────────────────
   let emojiName = $state('');
   let emojiFile: File | null = $state(null);
@@ -331,6 +631,32 @@
     'upload-config-update-failed'
   ]);
 
+  const CHAT_SETTINGS_ERROR_CODES = new Set([
+    'chat-settings-permission-denied',
+    'invalid-chat-settings',
+    'chat-settings-update-failed'
+  ]);
+
+  const MODERATION_ERROR_CODES = new Set([
+    'moderation-permission-denied',
+    'moderation-target-not-found',
+    'moderation-target-protected',
+    'moderation-failed'
+  ]);
+
+  const VOICE_DEFAULTS_ERROR_CODES = new Set([
+    'voice-defaults-permission-denied',
+    'voice-defaults-update-failed',
+    'invalid-voice-quality',
+    'invalid-voice-bitrate'
+  ]);
+
+  const MAINTENANCE_ERROR_CODES = new Set([
+    'maintenance-permission-denied',
+    'maintenance-not-confirmed',
+    'maintenance-failed'
+  ]);
+
   const ROLE_ERROR_CODES = new Set([
     'role-permission-denied',
     'role-target-not-found',
@@ -359,6 +685,14 @@
     } else if (UPLOAD_ERROR_CODES.has(code)) {
       uploadSavePending = false;
       uploadFeedback = { text: describeServerError(code), kind: 'error' };
+    } else if (CHAT_SETTINGS_ERROR_CODES.has(code) || MODERATION_ERROR_CODES.has(code)) {
+      chatSavePending = false;
+      chatFeedback = { text: describeServerError(code), kind: 'error' };
+    } else if (VOICE_DEFAULTS_ERROR_CODES.has(code)) {
+      voiceSavePending = false;
+      voiceFeedback = { text: describeServerError(code), kind: 'error' };
+    } else if (MAINTENANCE_ERROR_CODES.has(code)) {
+      dangerFeedback = { text: describeServerError(code), kind: 'error' };
     } else if (ROLE_ERROR_CODES.has(code)) {
       roleErrorFeedback(code);
     }
@@ -742,6 +1076,31 @@
               </div>
             </div>
           </div>
+
+          <div class="settings-section">
+            <h3 class="section-title">Online now ({$onlineUsers.length})</h3>
+            <div class="setting-group">
+              <div class="setting-description">
+                Members connected to this server right now. Right-click a member in the sidebar
+                to moderate them or change their roles.
+              </div>
+              {#if $onlineUsers.length === 0}
+                <div class="setting-description">Nobody is connected.</div>
+              {:else}
+                <ul class="online-list">
+                  {#each [...$onlineUsers].sort((a, b) => a.localeCompare(b)) as user (user)}
+                    <li class="online-row">
+                      <span class="online-dot" aria-hidden="true"></span>
+                      <span class="online-name">{$displayNames(user)}</span>
+                      {#if $displayNames(user) !== user}
+                        <span class="online-account">{user}</span>
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
+          </div>
         {/if}
 
         {#if activeTab === 'emojis'}
@@ -826,30 +1185,117 @@
         {#if activeTab === 'moderation'}
           <div class="settings-section">
             <h3 class="section-title">Moderation</h3>
-            <div class="setting-group">
-              <span class="setting-label">Slow mode <span class="badge">Coming soon</span></span>
-              <input type="number" min="0" placeholder="0" disabled />
-              <div class="setting-description">Seconds each member must wait between messages.</div>
-            </div>
-            <div class="setting-group">
-              <span class="setting-label">Max message length <span class="badge">Coming soon</span></span>
-              <input type="number" value="4000" disabled />
-              <div class="setting-description">Maximum characters per message. Currently fixed at 4000.</div>
-            </div>
-            <div class="setting-group">
-              <label class="toggle-row">
-                <input type="checkbox" disabled />
-                <span class="toggle-text">
-                  <span class="toggle-label">Profanity filter <span class="badge">Coming soon</span></span>
-                  <span class="toggle-description">Automatically hide messages containing filtered words.</span>
-                </span>
-              </label>
-            </div>
-            <div class="setting-group">
-              <span class="setting-label">Ban list <span class="badge">Coming soon</span></span>
-              <div class="setting-description">
-                Review and lift bans from here. Until then, bans are managed via the user context menu.
+            {#if canManageServer}
+              <div class="setting-group">
+                <label class="setting-label" for="slow-mode">Slow mode</label>
+                <input
+                  id="slow-mode"
+                  type="number"
+                  bind:value={slowModeSeconds}
+                  min="0"
+                  max={MAX_SLOW_MODE_SECONDS}
+                  step="1"
+                />
+                <div class="setting-description">
+                  Seconds each member must wait between messages ({describeInterval(
+                    slowModeSeconds
+                  )}). 0 turns slow mode off. Members who can manage messages are exempt.
+                </div>
               </div>
+              <div class="setting-group">
+                <label class="setting-label" for="max-message-length">Max message length</label>
+                <input
+                  id="max-message-length"
+                  type="number"
+                  bind:value={maxMessageLength}
+                  min={MIN_CONFIGURABLE_MESSAGE_LENGTH}
+                  max={MAX_MESSAGE_LENGTH}
+                  step="1"
+                />
+                <div class="setting-description">
+                  Characters per message, between {MIN_CONFIGURABLE_MESSAGE_LENGTH} and
+                  {MAX_MESSAGE_LENGTH}. The server rejects anything longer, so this can only
+                  tighten the built-in limit.
+                </div>
+              </div>
+              <div class="setting-group">
+                <label class="toggle-row">
+                  <input type="checkbox" bind:checked={profanityFilter} />
+                  <span class="toggle-text">
+                    <span class="toggle-label">Profanity filter</span>
+                    <span class="toggle-description">
+                      Replace filtered words with asterisks in new messages. Masking happens on
+                      the server before a message is stored, so the original never reaches
+                      anyone — including whoever edits it afterwards.
+                    </span>
+                  </span>
+                </label>
+              </div>
+              <div class="setting-group">
+                <label class="setting-label" for="profanity-words">Filtered words</label>
+                <textarea
+                  id="profanity-words"
+                  rows="4"
+                  spellcheck="false"
+                  autocomplete="off"
+                  bind:value={profanityWords}
+                  placeholder="One word per line"
+                ></textarea>
+                <div class="setting-description">
+                  One word per line, up to {MAX_PROFANITY_WORDS} words of
+                  {MAX_PROFANITY_WORD_LEN} characters. Matching is per whole word and ignores
+                  case, so filtering “ass” leaves “class” alone.
+                  {chatWordsDraft.length}
+                  {chatWordsDraft.length === 1 ? 'word' : 'words'} will be saved.
+                </div>
+              </div>
+              <div class="setting-group">
+                <div>
+                  <button class="btn btn-primary" onclick={saveChatSettings} disabled={!chatDirty}>
+                    Save changes
+                  </button>
+                </div>
+                {#if chatFeedback}
+                  <div class="identity-feedback" class:error={chatFeedback.kind === 'error'}>
+                    {chatFeedback.text}
+                  </div>
+                {/if}
+              </div>
+            {/if}
+
+            <div class="setting-group">
+              <span class="setting-label">Ban list</span>
+              <div class="setting-description">
+                Everyone banned from this server. A ban follows the member's key, so it holds
+                even if they come back under a different name.
+              </div>
+              {#if $bans === null}
+                <div class="setting-description">Loading…</div>
+              {:else if $bans.length === 0}
+                <div class="setting-description">Nobody is banned.</div>
+              {:else}
+                <ul class="ban-list">
+                  <!-- Keyed by both fields: a ban is stored per key, but a
+                       row the server sent without one must not collide with
+                       another and break the list. -->
+                  {#each $bans as ban (`${ban.publicKey}:${ban.user}`)}
+                    <li class="ban-row">
+                      <span class="ban-name">{$displayNames(ban.user)}</span>
+                      <span class="ban-meta">
+                        {ban.bannedBy ? `by ${$displayNames(ban.bannedBy)} · ` : ''}{formatBanDate(
+                          ban.bannedAt
+                        )}
+                      </span>
+                      <button class="btn" onclick={() => liftBan(ban.user)}>Unban</button>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+              {#if !canManageServer && chatFeedback}
+                <div class="identity-feedback" class:error={chatFeedback.kind === 'error'}>
+                  {chatFeedback.text}
+                </div>
+              {/if}
             </div>
           </div>
         {/if}
@@ -951,24 +1397,106 @@
                 </div>
               {/if}
             </div>
+
+            <div class="setting-group">
+              <span class="setting-label">Storage used</span>
+              <div class="setting-description">
+                What the server's upload directory holds right now. Measured when asked rather
+                than counted as files arrive, so it also covers emojis, avatars and soundboard
+                clips. Deleting a message or an emoji does not delete its file.
+              </div>
+              {#if $storageUsage === null}
+                <div class="setting-description">Measuring…</div>
+              {:else}
+                <div class="storage-total">
+                  {formatBytes($storageUsage.totalBytes)}
+                  <span class="storage-files">
+                    across {$storageUsage.fileCount}
+                    {$storageUsage.fileCount === 1 ? 'file' : 'files'}
+                  </span>
+                </div>
+                {#if $storageUsage.categories.length > 0}
+                  <ul class="storage-list">
+                    {#each $storageUsage.categories as category (category.id)}
+                      <li class="storage-row">
+                        <span class="storage-label">
+                          {CATEGORY_LABELS[category.id] ?? category.id}
+                        </span>
+                        <span class="storage-bar" aria-hidden="true">
+                          <span
+                            class="storage-fill"
+                            style={`width: ${
+                              $storageUsage.totalBytes > 0
+                                ? Math.max(2, (category.bytes / $storageUsage.totalBytes) * 100)
+                                : 0
+                            }%`}
+                          ></span>
+                        </span>
+                        <span class="storage-value">
+                          {formatBytes(category.bytes)}
+                          <span class="storage-files">({category.files})</span>
+                        </span>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+              {/if}
+              <div>
+                <button class="btn" onclick={() => storageUsage.refresh()}>Refresh</button>
+              </div>
+            </div>
           </div>
         {/if}
 
         {#if activeTab === 'voice'}
           <div class="settings-section">
             <h3 class="section-title">Voice</h3>
-            <div class="setting-group">
-              <span class="setting-label">Default bitrate <span class="badge">Coming soon</span></span>
-              <input type="number" value="64000" disabled />
-              <div class="setting-description">Bitrate in bits per second assigned to new voice channels.</div>
+            <div class="setting-description">
+              What a newly created voice channel starts with. These are defaults, not a cap:
+              existing channels keep their own setting, and whoever creates a channel can pick
+              a different preset.
             </div>
             <div class="setting-group">
-              <span class="setting-label">Default quality <span class="badge">Coming soon</span></span>
-              <select disabled>
-                <option>Standard</option>
-                <option>High</option>
+              <label class="setting-label" for="voice-default-quality">Default quality</label>
+              <select id="voice-default-quality" value={voiceQuality} onchange={pickVoicePreset}>
+                {#each VOICE_QUALITY_PRESETS as preset (preset.quality)}
+                  <option value={preset.quality}>{preset.label}</option>
+                {/each}
+                {#if !VOICE_QUALITY_PRESETS.some((preset) => preset.quality === voiceQuality)}
+                  <!-- A server may be configured with a label this build does
+                       not know; keep it selectable instead of silently
+                       switching it to something else. -->
+                  <option value={voiceQuality}>{voiceQuality}</option>
+                {/if}
               </select>
-              <div class="setting-description">Quality preset assigned to new voice channels.</div>
+              <div class="setting-description">
+                Quality preset assigned to new voice channels. Picking one fills in its bitrate.
+              </div>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label" for="voice-default-bitrate">Default bitrate</label>
+              <input
+                id="voice-default-bitrate"
+                type="number"
+                bind:value={voiceBitrateKbps}
+                min="0"
+                max={MAX_VOICE_BITRATE / 1000}
+                step="1"
+              />
+              <div class="setting-description">
+                Bitrate in kbps for new voice channels, up to {MAX_VOICE_BITRATE / 1000} kbps.
+                0 means uncompressed audio.
+              </div>
+              <div>
+                <button class="btn btn-primary" onclick={saveVoiceDefaults} disabled={!voiceDirty}>
+                  Save changes
+                </button>
+              </div>
+              {#if voiceFeedback}
+                <div class="identity-feedback" class:error={voiceFeedback.kind === 'error'}>
+                  {voiceFeedback.text}
+                </div>
+              {/if}
             </div>
           </div>
         {/if}
@@ -1205,17 +1733,30 @@
           <div class="settings-section">
             <h3 class="section-title">Danger Zone</h3>
             <div class="setting-group">
-              <span class="setting-label">Purge all messages <span class="badge">Coming soon</span></span>
-              <div class="setting-description">Permanently delete every message on this server.</div>
-              <div><button class="btn btn-danger" disabled>Purge messages…</button></div>
+              <span class="setting-label">Purge all messages</span>
+              <div class="setting-description">
+                Permanently delete every message, pin and reaction on this server, in every
+                channel, for everyone. Channels, members and uploads are kept — the files
+                behind deleted attachments stay on disk. This cannot be undone.
+              </div>
+              <div><button class="btn btn-danger" onclick={purgeMessages}>Purge messages…</button></div>
             </div>
             <div class="setting-group">
-              <span class="setting-label">Reset server <span class="badge">Coming soon</span></span>
+              <span class="setting-label">Reset server</span>
               <div class="setting-description">
-                Remove all channels, categories, roles and messages and start over.
+                Delete every channel except <strong>general</strong>, plus all categories,
+                channel permission overrides, wiki pages, messages and every role other than
+                <strong>@everyone</strong> and <strong>Owner</strong> — those two stay so the
+                server still has an administrator. Members, bans, emojis, sounds and recorded
+                stats are kept. This cannot be undone.
               </div>
-              <div><button class="btn btn-danger" disabled>Reset server…</button></div>
+              <div><button class="btn btn-danger" onclick={resetServer}>Reset server…</button></div>
             </div>
+            {#if dangerFeedback}
+              <div class="identity-feedback" class:error={dangerFeedback.kind === 'error'}>
+                {dangerFeedback.text}
+              </div>
+            {/if}
           </div>
         {/if}
         </div>
@@ -1486,6 +2027,97 @@
   .emoji-row .icon-btn {
     flex-shrink: 0;
     margin-left: auto;
+  }
+
+  /* Ban list, online members and the storage breakdown share the plain
+     list-of-rows shape the emoji list already uses. */
+  .ban-list,
+  .online-list,
+  .storage-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .ban-row,
+  .online-row,
+  .storage-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+  }
+
+  .ban-row:hover,
+  .online-row:hover {
+    background: var(--color-surface-raised);
+  }
+
+  .ban-name,
+  .online-name {
+    color: var(--color-on-surface);
+    font-size: var(--text-sm);
+  }
+
+  .ban-meta,
+  .online-account {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+  }
+
+  .ban-row .btn {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  .online-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--color-success, #22c55e);
+    flex-shrink: 0;
+  }
+
+  .storage-total {
+    font-size: var(--text-lg);
+    color: var(--color-on-surface);
+  }
+
+  .storage-files {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+  }
+
+  .storage-label {
+    font-size: var(--text-sm);
+    color: var(--color-on-surface);
+    width: 7rem;
+    flex-shrink: 0;
+  }
+
+  .storage-bar {
+    flex: 1;
+    height: 0.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-raised);
+    overflow: hidden;
+  }
+
+  .storage-fill {
+    display: block;
+    height: 100%;
+    background: var(--color-primary);
+  }
+
+  .storage-value {
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+    width: 6.5rem;
+    text-align: right;
+    flex-shrink: 0;
   }
 
   @keyframes fadeIn {

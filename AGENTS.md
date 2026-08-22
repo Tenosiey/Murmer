@@ -270,7 +270,7 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   touch "see" (`VIEW_CHANNELS`) and "write/talk" (`SEND_MESSAGES`). The server
   hides invisible channels from listings, filters channel-scoped broadcasts per
   recipient (the `global_rx` loop in `ws/handlers/mod.rs`), and refuses
-  join/history/send/voice-join for channels a user cannot see. Voice **talk** is
+  join/history/search/send/voice-join for channels a user cannot see. Voice **talk** is
   the one client-enforced piece (mic disabled via the `voice-permissions` hint)
   because audio is peer-to-peer; view/join and all text gates are server-enforced.
   Managers (`MANAGE_CHANNELS`) edit overrides via the `set/remove-channel-override`
@@ -313,6 +313,39 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   everyone's machine. Playback carries a **server-side per-user cooldown**
   (`SOUNDBOARD_COOLDOWN_MS`); the client's is a cosmetic mirror. Server-muted
   members cannot play sounds either.
+- **Chat policy** (Server Dashboard → Moderation, `MANAGE_SERVER`) adds three
+  server-enforced limits on top of the rate limiter: a per-user **slow mode**
+  (members with `MANAGE_MESSAGES` are exempt; the timestamps live in
+  `AppState.slow_mode_sends` and are dropped on disconnect), a **message length
+  cap** that may only narrow the built-in `MAX_MESSAGE_LENGTH`, and a
+  **profanity filter**. The filter masks matched words in `handle_chat` *and*
+  `handle_edit_message`, before the message is stored or broadcast, so the
+  original never reaches another client; matching is per whole word and
+  case-insensitive (`profanity.rs`). All three are cached in
+  `AppState.chat_settings` because every message consults them, and clamped
+  both on write and on read (`db::clamp_chat_settings`) so no stored row can
+  widen them. The client copies (composer `maxlength`, slow mode hint) are
+  cosmetic and mirrored by `murmer_client/test/server-mirror.test.ts`.
+  Two of the three survive encryption and one cannot: slow mode and the length
+  cap still apply (the cap bounds the ciphertext's plaintext budget), but the
+  **profanity filter is a no-op in an end-to-end encrypted channel** — the
+  server holds no text to mask there. That is a limit of server-side filtering,
+  not a hole to plug: masking would mean giving the server the plaintext back.
+- **Danger Zone** actions (purge all messages, reset the server) require
+  `ADMINISTRATOR` *and* a confirmation phrase echoed in the frame, and run as
+  one transaction (`db/maintenance.rs`). A reset keeps `@everyone` and the
+  Owner role — deleting them would leave the server with nobody able to
+  administer it — plus identities, bans, emojis, sounds and stats; it must also
+  clear the in-memory mirrors of what it deleted, or a deleted channel stays
+  joinable and a deleted role keeps granting permissions. A reset also clears
+  every channel key and the surviving `general`'s `e2ee` flag: its overrides are
+  gone by then, so leaving the flag would strand a channel marked encrypted that
+  is no longer private.
+- The **ban list** and the **storage usage** report are answers to a request,
+  not broadcasts: ban rows carry public keys and the storage walk is manager
+  information, so both are gated (`BAN_MEMBERS`, `MANAGE_SERVER`) and reach one
+  client at a time. The profanity word list works the same way — the public
+  `chat-settings` broadcast deliberately omits it.
 - Lifetime user stats are double opt-in: recording requires the server-wide
   toggle (Owner/Admin) AND the user's own opt-in, enforced in
   `murmer_server/src/db/stats.rs`. Only aggregate counters are stored — never

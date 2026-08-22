@@ -77,6 +77,8 @@
     describeUploadRejection,
     formatUploadSize
   } from '$lib/stores/uploadConfig';
+  import { voiceDefaults } from '$lib/stores/voiceDefaults';
+  import { slowModeWait } from '$lib/stores/chatSettings';
   import { describeServerError, isFatalConnectionError } from '$lib/errors';
   import type { Message, UserStatus, WatchedScreenShare } from '$lib/types';
   import {
@@ -135,6 +137,7 @@
   let searchOverlay: SearchOverlay | undefined = $state();
 
   let wikiOpen = $state(false);
+  let wikiView: WikiView | undefined = $state();
   /** Page a wikilink asked to open; consumed by WikiView on mount. */
   let wikiInitialSlug: string | null = $state(null);
 
@@ -541,6 +544,23 @@
   };
   chat.on('user-unbanned', handleUserUnbanned);
 
+  // Danger Zone actions rearrange the app under everyone at once: without a
+  // word, the history and half the channels simply vanish mid-sentence.
+  const handleMessagesPurged = (msg: Message) => {
+    const by = typeof msg.by === 'string' && msg.by ? ` by ${msg.by}` : '';
+    setCommandFeedback(`Every message on this server was deleted${by}.`, 'error');
+  };
+  chat.on('messages-purged', handleMessagesPurged);
+
+  const handleServerReset = (msg: Message) => {
+    const by = typeof msg.by === 'string' && msg.by ? ` by ${msg.by}` : '';
+    // The channel this client was viewing may be gone. The server re-sends
+    // the channel lists, and the effect that watches them drops back to
+    // `general` and rejoins, so all that is left here is saying why.
+    setCommandFeedback(`This server was reset${by}.`, 'error');
+  };
+  chat.on('server-reset', handleServerReset);
+
   onMount(() => {
     if (!get(session).user) {
       goto('/login');
@@ -571,6 +591,8 @@
     chat.off('user-muted', handleUserMuted);
     chat.off('user-unmuted', handleUserUnmuted);
     chat.off('user-unbanned', handleUserUnbanned);
+    chat.off('messages-purged', handleMessagesPurged);
+    chat.off('server-reset', handleServerReset);
     chat.disconnect();
     if (currentVoiceChannelId !== null) {
       voice.leave(currentVoiceChannelId);
@@ -672,6 +694,17 @@
     if (!get(can)(PERMISSIONS.SEND_MESSAGES)) return;
     const hasMessage = message.trim() !== '';
     if (!pendingFile && !hasMessage) return;
+    // Slow mode is enforced server-side, which would bounce the message back
+    // as an error *after* clearing the composer. Naming the wait up front
+    // keeps what the user typed. Members who can manage messages are exempt
+    // there, so they are exempt here too.
+    if (!get(can)(PERMISSIONS.MANAGE_MESSAGES)) {
+      const wait = slowModeWait();
+      if (wait > 0) {
+        setCommandFeedback(`Slow mode is on — ${wait}s before your next message.`, 'error');
+        return;
+      }
+    }
     if (pendingFile) await sendFile();
     if (hasMessage) sendText();
   }
@@ -817,8 +850,21 @@
     focusMessage(msg.id);
   }
 
-  function doSearch(query: string): Promise<Message[]> {
+  function doSearch(query: string) {
     return chat.search(currentChatChannelId, query, 50);
+  }
+
+  /**
+   * Open a wiki page hit. Results always come from the current channel, so
+   * the only question is whether the wiki view is already mounted: it
+   * captures its page on mount, so an open one is navigated through itself.
+   */
+  function handleSearchPage(slug: string) {
+    if (wikiOpen) {
+      void wikiView?.openPage(slug);
+      return;
+    }
+    openWikiPage(null, slug);
   }
 
   function joinChannel(id: number) {
@@ -1026,7 +1072,9 @@
             ? `${Math.round(preset.bitrate / 1000)} kbps`
             : 'Uncompressed audio'
       })),
-      initial: DEFAULT_VOICE_PRESET.quality,
+      // The server's configured default, so a channel created without a
+      // thought still lands on what the operator wanted.
+      initial: $voiceDefaults.quality,
       confirmLabel: 'Apply'
     });
     if (quality === null) return null;
@@ -1934,6 +1982,7 @@
         onClose={closeSearch}
         onSearch={doSearch}
         onFocusResult={handleSearchResult}
+        onOpenPage={handleSearchPage}
         encrypted={currentChannelEncrypted}
         {now}
       />
@@ -1942,6 +1991,7 @@
              enforces the same gate on every wiki mutation. -->
         {#key currentChatChannelId}
           <WikiView
+            bind:this={wikiView}
             channelId={currentChatChannelId}
             channelName={currentChatChannelName}
             canEdit={$can(PERMISSIONS.MANAGE_WIKI)}

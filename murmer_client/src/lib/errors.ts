@@ -134,6 +134,19 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-upload-config': 'Those upload settings are not valid.',
   'upload-config-update-failed':
     'The server could not update the upload settings. Please try again.',
+  'slow-mode': 'Slow mode is on — wait a moment before sending another message.',
+  'chat-settings-permission-denied':
+    'You do not have permission to change the chat settings on this server.',
+  'invalid-chat-settings': 'Those chat settings are not valid.',
+  'chat-settings-update-failed':
+    'The server could not update the chat settings. Please try again.',
+  'voice-defaults-permission-denied':
+    'You do not have permission to change the voice defaults on this server.',
+  'voice-defaults-update-failed':
+    'The server could not update the voice defaults. Please try again.',
+  'maintenance-permission-denied': 'Only an Owner can purge or reset this server.',
+  'maintenance-not-confirmed': 'That action was not confirmed. Nothing was changed.',
+  'maintenance-failed': 'The server could not complete that action. Nothing was changed.',
   'stats-permission-denied': 'You do not have permission to change stat tracking on this server.',
   'stats-not-available': "That user's stats are not available.",
   'stats-update-failed': 'The server could not update stat tracking. Please try again.',

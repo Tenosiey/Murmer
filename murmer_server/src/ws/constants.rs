@@ -97,14 +97,10 @@ pub const MAX_MUTE_SECONDS: i64 = 30 * 24 * 60 * 60;
 /// Minimum duration in seconds for a timed mute.
 pub const MIN_MUTE_SECONDS: i64 = 10;
 
-/// Default quality label assigned to new voice channels.
-pub const DEFAULT_VOICE_QUALITY: &str = "standard";
-
-/// Default bitrate (in bits per second) assigned to new voice channels.
-pub const DEFAULT_VOICE_BITRATE: i32 = 64_000;
-
-/// Upper bound to reject unreasonable bitrate configuration values.
-pub const MAX_ALLOWED_VOICE_BITRATE: i32 = 320_000;
+/// Bound for a voice channel's bitrate. Defined next to the configurable
+/// defaults it limits (`db::voice_defaults`) so the two can never disagree;
+/// the defaults themselves are read from that setting, not from a constant.
+pub use crate::db::MAX_ALLOWED_VOICE_BITRATE;
 
 /// Maximum number of ids accepted in a single reorder request (channels of
 /// one category, or all categories).
@@ -119,8 +115,10 @@ pub const MIN_EPHEMERAL_SECONDS: i64 = 5;
 /// Maximum duration in seconds for ephemeral messages.
 pub const MAX_EPHEMERAL_SECONDS: i64 = 86_400;
 
-/// Maximum length in bytes for a chat message's text content.
-pub const MAX_MESSAGE_LENGTH: usize = 4000;
+/// Hard ceiling in bytes for a chat message's text content. A server may
+/// configure a *lower* cap (`db::chat_settings`), never a higher one, so this
+/// is defined alongside that setting.
+pub use crate::db::MAX_MESSAGE_LENGTH;
 
 /// Exact decoded length in bytes of a NaCl box/secretbox nonce, shared by
 /// direct messages and encrypted channel messages.
@@ -181,6 +179,11 @@ pub const MAX_WIKI_PAGES_PER_CHANNEL: i64 = 100;
 
 /// Number of revisions kept per wiki page; older ones are pruned on save.
 pub const MAX_WIKI_REVISIONS_KEPT: i64 = 50;
+
+/// Maximum number of wiki pages returned alongside the message hits of a
+/// search. Pages accompany the message results rather than replacing them,
+/// so this stays well below [`MAX_SEARCH_RESULTS`].
+pub const MAX_WIKI_SEARCH_RESULTS: i64 = 20;
 
 /// Maximum number of links accepted in a single wiki-resolve request.
 pub const MAX_WIKI_RESOLVE_LINKS: usize = 50;

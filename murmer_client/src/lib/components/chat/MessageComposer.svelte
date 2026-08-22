@@ -10,6 +10,7 @@
   import { formatFileSize, searchResultPreview } from '$lib/chat/helpers';
   import { MESSAGE_INPUT_MAX_HEIGHT } from '$lib/chat/constants';
   import { uploadAccept } from '$lib/stores/uploadConfig';
+  import { chatSettings } from '$lib/stores/chatSettings';
 
 
   interface Props {
@@ -131,6 +132,7 @@
     bind:value
     class:scrollable
     rows="1"
+    maxlength={$chatSettings.maxMessageLength}
     placeholder={!canSend
       ? 'You do not have permission to send messages'
       : keyPending
