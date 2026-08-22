@@ -7,7 +7,7 @@
       "dependencies": {
         "@fontsource-variable/inter": "^5.3.0",
         "@fontsource/jetbrains-mono": "^5.3.0",
-        "@sapphi-red/web-noise-suppressor": "^0.3.5",
+        "@sapphi-red/web-noise-suppressor": "^0.4.0",
         "@scure/bip39": "^2.2.0",
         "@tauri-apps/api": "^2.11.1",
         "@tauri-apps/plugin-global-shortcut": "^2.3.2",
@@ -99,7 +99,7 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
-    "@sapphi-red/web-noise-suppressor": ["@sapphi-red/web-noise-suppressor@0.3.5", "", {}, "sha512-jh3+V9yM+zxLriQexoGm0GatoPaJWjs6ypFIbFYwQp+AoUb55eUXrjKtKQyuC5zShzzeAQUl0M5JzqB7SSrsRA=="],
+    "@sapphi-red/web-noise-suppressor": ["@sapphi-red/web-noise-suppressor@0.4.0", "", {}, "sha512-vkBEL/VDkbeP3qqSRQFRtPLGa19a38JUzO6J0r5D/MQSumrlERy671DAMaETgY6etXjDCoJcD7JBIaXnuGVtVw=="],
 
     "@scure/base": ["@scure/base@2.2.0", "", {}, "sha512-b8XEupJibegiXV+tDUseI8oLQc8ei3d/4Jkb2RpbHh3MfE054ov3uIz2dhFkB3FI8iwYkEh0gGCApkrYggkPNg=="],
 
