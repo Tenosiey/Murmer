@@ -10,6 +10,7 @@ pub mod config;
 pub mod db;
 pub mod link_preview;
 pub mod permissions;
+pub mod profanity;
 pub mod roles;
 pub mod security;
 pub mod upload;
@@ -200,4 +201,13 @@ pub struct AppState {
     /// database call that performs the increments. A stale value here can only
     /// cost a wasted query, never record a counter the gate would refuse.
     pub stats_enabled: std::sync::atomic::AtomicBool,
+    /// Cached chat policy (`server_settings`: slow mode, message length cap,
+    /// profanity filter). Every chat message consults all three, so they are
+    /// held in memory rather than read back per message; the handler that
+    /// writes them refreshes this in the same step.
+    pub chat_settings: Arc<Mutex<db::ChatSettings>>,
+    /// When each user last had a message accepted, for the slow mode gate.
+    /// In-memory only and pruned on disconnect: slow mode is a pacing tool,
+    /// not a punishment to be remembered across sessions.
+    pub slow_mode_sends: Arc<Mutex<HashMap<String, Instant>>>,
 }

@@ -28,9 +28,9 @@ from the tests that build a `RateLimiter`.
 - `main.rs` – sets up the Axum router, middleware and shared state
 - `config.rs` – environment variable parsing and CORS setup
 - `ws/` – WebSocket handshake and message handling (`handlers/` for auth,
-  messages, channels, DMs, emojis, identity, moderation, pins, profile,
-  screenshare, soundboard, stats, uploads and wiki; the dispatch loop lives in
-  `handlers/mod.rs`).
+  messages, channels, chat settings, DMs, emojis, identity, maintenance,
+  moderation, pins, profile, screenshare, soundboard, stats, uploads, voice
+  defaults and wiki; the dispatch loop lives in `handlers/mod.rs`).
   Frames leave the server by one of three routes. Server-wide events go on
   `AppState.tx`, channel-scoped ones on the per-channel sender, and anything
   addressed to a single user goes through `AppState.direct` — a registry of
@@ -58,6 +58,7 @@ from the tests that build a `RateLimiter`.
 - `roles.rs` – role definitions and default role color helpers
 - `link_preview.rs` – `/link-preview` endpoint returning OpenGraph metadata
 - `security.rs` – rate limiting, replay protection and validation utilities
+- `profanity.rs` – the word-list filter applied to chat messages
 
 Each module starts with a short doc comment describing its responsibilities.
 Expand these comments when adding new behaviour.
@@ -134,6 +135,33 @@ clears one. Every client gets an `avatar-snapshot` plus a `profile-snapshot`
 server code resolves one back to a user, which is why it needs no uniqueness
 check; the account name stays the identity for auth, roles, moderation, DMs
 and message authorship.
+
+The Server Dashboard's remaining settings all live in the generic
+`server_settings` key-value table, next to the stats toggle, the upload policy
+and the screen share cap: the chat policy (`db/chat_settings.rs`: slow mode,
+message length cap, profanity filter and its word list) and the voice defaults
+(`db/voice_defaults.rs`). The chat policy is the one that is *cached* in
+`AppState.chat_settings`, because every chat message consults all three values;
+`ws/handlers/chat_settings.rs` refreshes that cache in the same step that
+writes the row. Slow mode timestamps live in `AppState.slow_mode_sends` and are
+dropped on disconnect — it paces a live conversation rather than punishing
+someone across sessions — and members with `MANAGE_MESSAGES` are exempt.
+The profanity filter masks words *before* a message is stored or broadcast,
+in `handle_chat` **and** `handle_edit_message`, so posting and immediately
+editing cannot walk past it; matching is per whole word so a filter for "ass"
+leaves "class" alone. A configured message cap may only narrow
+`MAX_MESSAGE_LENGTH`, never widen it: `db::clamp_chat_settings` enforces that
+on write and again on read, so a hand-edited row cannot raise it.
+
+The Danger Zone actions (`db/maintenance.rs`, `ws/handlers/maintenance.rs`)
+require `ADMINISTRATOR` *and* the confirmation phrase (`PURGE`/`RESET`) echoed
+in the frame, and run their deletions in one transaction. A reset deliberately
+keeps `@everyone` and the Owner role (deleting them would leave the server with
+nobody who can administer it) along with identities, bans, mutes, emojis,
+sounds and stats; it also has to clear the in-memory mirrors of what it
+deleted (`voice_channels`, `channel_overrides`, `role_defs`, `user_roles`) and
+broadcast `channels-refresh`, or a deleted channel stays joinable and a deleted
+role keeps granting permissions until the next restart.
 
 ## Security notes
 - Direct messages are end-to-end encrypted by the clients; the server only

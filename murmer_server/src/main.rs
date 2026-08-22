@@ -90,6 +90,9 @@ async fn main() -> Result<()> {
     // tracking is off; `db::record_user_stats` still enforces the real gate.
     let stats_enabled = db::stats_server_enabled(&db_client).await.unwrap_or(false);
 
+    // Consulted by every chat message; see `AppState::chat_settings`.
+    let chat_settings = db::chat_settings(&db_client).await.unwrap_or_default();
+
     tokio::fs::create_dir_all(&config.upload_dir)
         .await
         .with_context(|| {
@@ -145,6 +148,8 @@ async fn main() -> Result<()> {
         admin_token: config.admin_token.clone(),
         rate_limiter: RateLimiter::default(),
         stats_enabled: std::sync::atomic::AtomicBool::new(stats_enabled),
+        chat_settings: Arc::new(Mutex::new(chat_settings)),
+        slow_mode_sends: Arc::new(Mutex::new(HashMap::new())),
     });
 
     // Ephemeral deletion timers only live in memory; re-arm any that were

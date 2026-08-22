@@ -4,24 +4,29 @@
 //! submodules to keep each file focused:
 //! - [`auth`] – user and bot authentication
 //! - [`channels`] – text/voice channel and category management
+//! - [`chat_settings`] – slow mode, message length cap and profanity filter
 //! - [`dms`] – direct messages between two users
 //! - [`emojis`] – custom server emoji management
 //! - [`identity`] – server name, description, welcome message and icon
+//! - [`maintenance`] – Danger Zone purge/reset actions
 //! - [`messages`] – chat, history, threads, typing, search and reactions
-//! - [`moderation`] – kick, ban and mute actions
+//! - [`moderation`] – kick, ban, mute and the ban list
 //! - [`pins`] – shared, persisted message pins
 //! - [`screenshare`] – server-wide screen share configuration (bitrate cap)
 //! - [`soundboard`] – shared sound library and voice-channel playback
 //! - [`stats`] – lifetime user statistics (double opt-in gated)
-//! - [`uploads`] – server-wide upload policy (size cap, file categories)
+//! - [`uploads`] – server-wide upload policy (size cap, categories, usage)
+//! - [`voice_defaults`] – quality/bitrate new voice channels start with
 //! - [`wiki`] – per-channel Markdown wiki pages
 
 mod auth;
 mod channel_overrides;
 mod channels;
+mod chat_settings;
 mod dms;
 mod emojis;
 mod identity;
+mod maintenance;
 mod messages;
 mod moderation;
 mod pins;
@@ -31,6 +36,7 @@ mod screenshare;
 mod soundboard;
 mod stats;
 mod uploads;
+mod voice_defaults;
 mod wiki;
 
 use super::{errors, helpers::*, validation::*};
@@ -345,6 +351,24 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "set-upload-config" => {
                                 uploads::handle_set_upload_config(&state, &mut sender, &v, &user_name).await;
                             }
+                            "get-storage-usage" => {
+                                uploads::handle_get_storage_usage(&state, &mut sender, &user_name).await;
+                            }
+                            "get-chat-settings" => {
+                                chat_settings::handle_get_chat_settings(&state, &mut sender, &user_name).await;
+                            }
+                            "set-chat-settings" => {
+                                chat_settings::handle_set_chat_settings(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "set-voice-defaults" => {
+                                voice_defaults::handle_set_voice_defaults(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "purge-all-messages" => {
+                                maintenance::handle_purge_all_messages(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "reset-server" => {
+                                maintenance::handle_reset_server(&state, &mut sender, &v, &user_name).await;
+                            }
                             "voice-mute" => {
                                 if claims_own_user(&v, &user_name) {
                                     handle_voice_mute(&state, &v).await;
@@ -359,6 +383,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "unban-user" => {
                                 moderation::handle_unban_user(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "get-ban-list" => {
+                                moderation::handle_get_ban_list(&state, &mut sender, &user_name).await;
                             }
                             "mute-user" => {
                                 moderation::handle_mute_user(&state, &mut sender, &v, &user_name).await;
@@ -982,6 +1009,9 @@ async fn handle_disconnect(state: &Arc<AppState>, user_name: Option<String>) {
         state.voice_mutes.lock().await.remove(&name);
         state.connection_stats.lock().await.remove(&name);
         soundboard::clear_cooldown(state, &name).await;
+        // Slow mode paces a live conversation; a member who leaves and comes
+        // back is not made to wait out an interval they never spent typing.
+        state.slow_mode_sends.lock().await.remove(&name);
 
         // Clean up any active screen shares owned by the disconnecting user.
         end_screen_shares_for_user(state, &name).await;

@@ -184,6 +184,19 @@ function createChatStore() {
         break;
       }
 
+      case 'messages-purged': {
+        // An Owner wiped the server's history from the Danger Zone. Every
+        // message the client is holding is gone server-side, including the
+        // pins and threads that point at them, so the local copies have to go
+        // too — otherwise the channel keeps rendering messages nobody can
+        // load, react to or open again.
+        set([]);
+        threadData.set(null);
+        pinned.reset();
+        unread.reset();
+        break;
+      }
+
       case 'message-deleted': {
         const messageId = (msg.id as number | undefined) ?? (msg.messageId as number | undefined);
         if (typeof messageId === 'number') {

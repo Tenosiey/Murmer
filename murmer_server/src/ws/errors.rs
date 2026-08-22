@@ -404,3 +404,37 @@ pub const WIKI_PAGE_LIMIT_REACHED: &str = r#"{"type":"error","message":"wiki-pag
 
 /// Failed to persist or load wiki data.
 pub const WIKI_SAVE_FAILED: &str = r#"{"type":"error","message":"wiki-save-failed"}"#;
+
+/// Sender must wait out the server's slow mode before posting again.
+pub const SLOW_MODE: &str = r#"{"type":"error","message":"slow-mode"}"#;
+
+/// User lacks permission to change the chat policy (slow mode, message
+/// length cap, profanity filter).
+pub const CHAT_SETTINGS_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"chat-settings-permission-denied"}"#;
+
+/// Chat policy values failed validation.
+pub const INVALID_CHAT_SETTINGS: &str = r#"{"type":"error","message":"invalid-chat-settings"}"#;
+
+/// Failed to persist or load the chat policy.
+pub const CHAT_SETTINGS_UPDATE_FAILED: &str =
+    r#"{"type":"error","message":"chat-settings-update-failed"}"#;
+
+/// User lacks permission to change the voice defaults.
+pub const VOICE_DEFAULTS_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"voice-defaults-permission-denied"}"#;
+
+/// Failed to persist or load the voice defaults.
+pub const VOICE_DEFAULTS_UPDATE_FAILED: &str =
+    r#"{"type":"error","message":"voice-defaults-update-failed"}"#;
+
+/// User lacks permission for a Danger Zone action (purge/reset).
+pub const MAINTENANCE_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"maintenance-permission-denied"}"#;
+
+/// The purge or reset did not carry the required confirmation phrase.
+pub const MAINTENANCE_NOT_CONFIRMED: &str =
+    r#"{"type":"error","message":"maintenance-not-confirmed"}"#;
+
+/// A Danger Zone action failed part-way; the database was left unchanged.
+pub const MAINTENANCE_FAILED: &str = r#"{"type":"error","message":"maintenance-failed"}"#;

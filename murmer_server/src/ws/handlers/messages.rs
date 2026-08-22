@@ -219,12 +219,24 @@ pub(super) async fn handle_chat(
         return;
     }
 
+    // Slow mode is checked before anything is written, and only recorded once
+    // the message is actually on its way (see the end of this function), so a
+    // rejected message never costs the sender their turn.
+    if !super::chat_settings::slow_mode_allows(state, user).await {
+        send_error(sender, errors::SLOW_MODE).await;
+        return;
+    }
+
     if let Some(text) = v.get("text").and_then(|t| t.as_str())
-        && text.len() > MAX_MESSAGE_LENGTH
+        && text.len() > super::chat_settings::max_message_length(state).await
     {
         send_error(sender, errors::MESSAGE_TOO_LONG).await;
         return;
     }
+
+    // Masking happens before the message is stored or broadcast, so the
+    // filtered form is the only one any other client can ever see.
+    super::chat_settings::apply_profanity_filter(state, v).await;
 
     v["user"] = Value::String(user.clone());
     v["channelId"] = Value::from(channel_id);
@@ -338,6 +350,10 @@ pub(super) async fn handle_chat(
 
             // Lifetime stats (no-op unless server and user both opted in).
             super::stats::record(state, user, super::stats::chat_message_deltas(v)).await;
+
+            // Starts this sender's slow mode interval; a no-op while slow
+            // mode is off.
+            super::chat_settings::note_message_sent(state, user).await;
         }
         Err(e) => error!("db insert error: {e}"),
     }
@@ -454,15 +470,21 @@ pub(super) async fn handle_edit_message(
         return;
     };
 
-    let Some(new_text) = v.get("text").and_then(|t| t.as_str()) else {
+    let Some(raw_text) = v.get("text").and_then(|t| t.as_str()) else {
         send_error(sender, errors::INVALID_MESSAGE_TEXT).await;
         return;
     };
 
-    if new_text.trim().is_empty() || new_text.len() > MAX_MESSAGE_LENGTH {
+    if raw_text.trim().is_empty()
+        || raw_text.len() > super::chat_settings::max_message_length(state).await
+    {
         send_error(sender, errors::MESSAGE_TOO_LONG).await;
         return;
     }
+
+    // An edit runs through the same filter as a new message: otherwise
+    // posting and immediately editing would walk straight past it.
+    let new_text = super::chat_settings::mask_text(state, raw_text).await;
 
     let record = match db::get_message_record(&state.db, message_id).await {
         Ok(Some(record)) => record,
@@ -497,7 +519,7 @@ pub(super) async fn handle_edit_message(
 
     let mut content = record.content.clone();
     let edited_at = Utc::now().to_rfc3339();
-    content["text"] = Value::String(new_text.to_string());
+    content["text"] = Value::String(new_text.clone());
     content["edited"] = Value::Bool(true);
     content["editedAt"] = Value::String(edited_at.clone());
 
