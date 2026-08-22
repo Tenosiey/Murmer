@@ -13,6 +13,9 @@
     voiceMode,
     vadSensitivity,
     vadAutoSensitivity,
+    vadReleaseDelay,
+    VAD_RELEASE_MIN_MS,
+    VAD_RELEASE_MAX_MS,
     pttKey,
     echoCancellation,
     noiseSuppressionMode,
@@ -93,6 +96,12 @@
   // range — a marker off the end of the meter would be a lie.
   const VAD_MIN = VAD_THRESHOLD_MIN;
   const VAD_MAX = VAD_THRESHOLD_MAX;
+
+  // Where the release delay sits on its scale, for the filled part of the
+  // slider track. Derived rather than inlined so the markup stays readable.
+  const vadReleaseFill = $derived(
+    ($vadReleaseDelay - VAD_RELEASE_MIN_MS) / (VAD_RELEASE_MAX_MS - VAD_RELEASE_MIN_MS)
+  );
 
   const REPO_URL = 'https://github.com/Tenosiey/Murmer';
   const ABOUT_LINKS = [
@@ -805,6 +814,29 @@
                   Speak normally and drag the slider until the bar passes the marker only
                   when you talk.
                 {/if}
+              </div>
+
+              <label for="vad-release-slider" class="setting-label">
+                Release delay
+                <span class="setting-value">{$vadReleaseDelay} ms</span>
+              </label>
+              <div class="slider-container">
+                <input
+                  id="vad-release-slider"
+                  class="volume-slider"
+                  type="range"
+                  min={VAD_RELEASE_MIN_MS}
+                  max={VAD_RELEASE_MAX_MS}
+                  step="50"
+                  bind:value={$vadReleaseDelay}
+                />
+                <div class="slider-track-fill" style="width: {vadReleaseFill * 100}%"></div>
+              </div>
+              <div class="setting-description">
+                How long you keep transmitting after you stop talking. Longer keeps the
+                pauses between words intact; shorter cuts the room off sooner, at the risk
+                of clipping the ends of your sentences. Takes effect immediately, including
+                mid-call.
               </div>
             {:else}
               <span class="setting-label">Input level</span>

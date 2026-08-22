@@ -274,7 +274,40 @@ export type VoiceMode = 'continuous' | 'vad' | 'ptt';
 const VOICE_MODE_KEY = 'murmer_voice_mode';
 const VAD_SENSITIVITY_KEY = 'murmer_vad_sensitivity';
 const VAD_AUTO_KEY = 'murmer_vad_auto';
+const VAD_RELEASE_KEY = 'murmer_vad_release_ms';
 const PTT_KEY_KEY = 'murmer_ptt_key';
+
+/**
+ * How long voice-activity transmission stays open after the level drops below
+ * the threshold, in milliseconds.
+ *
+ * The detector used to add two fixed constants together (a hold plus a release
+ * delay) and only ever used their sum, so this is one user-facing number — the
+ * release delay, the same knob Discord exposes for push-to-talk — and the
+ * default is what those two constants summed to. It lives here rather than in
+ * `voice/vad.ts` for the same reason `clampMicGain` does: the store is the leaf
+ * everything else may import from without a cycle.
+ */
+export const VAD_RELEASE_DEFAULT_MS = 900;
+
+/**
+ * Ends of the release-delay scale, shared by the slider and by every clamp
+ * applied to a stored value.
+ *
+ * Zero is a real choice — it closes the gate on the first quiet tick, which is
+ * what a user who would rather clip a word than transmit a keystroke wants.
+ * The upper end stays below `voice/vad.ts`'s `QUIET_DWELL_MS`, so no setting
+ * can hold the gate open past the point where the noise-floor tracker decides
+ * the room went quiet; a longer release would keep the floor from settling.
+ */
+export const VAD_RELEASE_MIN_MS = 0;
+export const VAD_RELEASE_MAX_MS = 2000;
+
+/** Clamp a release delay to the supported range; non-numbers fall back. */
+export function clampVadRelease(value: number): number {
+  if (!isFinite(value)) return VAD_RELEASE_DEFAULT_MS;
+  return Math.max(VAD_RELEASE_MIN_MS, Math.min(VAD_RELEASE_MAX_MS, Math.round(value)));
+}
 
 let initialVoiceMode: VoiceMode = 'continuous';
 let initialVadSensitivity = 0.1; // 0-1 range, lower = more sensitive
@@ -282,6 +315,7 @@ let initialVadSensitivity = 0.1; // 0-1 range, lower = more sensitive
 // wrong in the next, so deriving it from the measured noise floor beats asking
 // for a number. `vadSensitivity` stays the manual override.
 let initialVadAutoSensitivity = true;
+let initialVadReleaseDelay = VAD_RELEASE_DEFAULT_MS;
 let initialPttKey = 'Space';
 
 if (browser) {
@@ -303,6 +337,14 @@ if (browser) {
     initialVadAutoSensitivity = storedVadAuto === 'true';
   }
 
+  const storedVadRelease = localStorage.getItem(VAD_RELEASE_KEY);
+  if (storedVadRelease !== null) {
+    const num = parseFloat(storedVadRelease);
+    // Clamped rather than rejected: a hand-edited or out-of-range entry still
+    // says what the user wanted, and every value in between is meaningful.
+    if (!isNaN(num)) initialVadReleaseDelay = clampVadRelease(num);
+  }
+
   const storedPttKey = localStorage.getItem(PTT_KEY_KEY);
   if (storedPttKey) {
     initialPttKey = storedPttKey;
@@ -312,6 +354,12 @@ if (browser) {
 export const voiceMode = writable<VoiceMode>(initialVoiceMode);
 export const vadSensitivity = writable<number>(initialVadSensitivity);
 export const vadAutoSensitivity = writable<boolean>(initialVadAutoSensitivity);
+/**
+ * How long the gate stays open after you stop talking, in milliseconds. The
+ * detector clamps it again, so no stored value can hold the microphone open
+ * longer than the scale allows.
+ */
+export const vadReleaseDelay = writable<number>(initialVadReleaseDelay);
 export const pttKey = writable<string>(initialPttKey);
 export const isPttActive = writable<boolean>(false);
 export const voiceActivity = writable<boolean>(false);
@@ -331,6 +379,12 @@ vadSensitivity.subscribe((value) => {
 vadAutoSensitivity.subscribe((value) => {
   if (browser) {
     localStorage.setItem(VAD_AUTO_KEY, String(value));
+  }
+});
+
+vadReleaseDelay.subscribe((value) => {
+  if (browser) {
+    localStorage.setItem(VAD_RELEASE_KEY, String(clampVadRelease(value)));
   }
 });
 

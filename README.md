@@ -66,7 +66,8 @@ small team can deploy a private chat space quickly.
   where they were
 - Voice activation with automatic sensitivity: the client tracks the background
   noise level and keeps the threshold just above it, with a manual slider for
-  the cases it gets wrong
+  the cases it gets wrong, plus a release delay controlling how long you keep
+  transmitting after you stop talking
 - Customizable hotkeys (mute, deafen, join/leave voice, search, settings, help)
   under Settings → Hotkeys; the voice hotkeys also work system-wide while the
   app is in the background (can be disabled)
