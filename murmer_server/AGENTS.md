@@ -52,8 +52,9 @@ from the tests that build a `RateLimiter`.
   had to create `messages_fts` — its anti-join scans every message row, and it
   used to run on every startup
 - `bot/` – REST API for bots (see `BOT_API.md`)
-- `upload.rs` – multipart file upload endpoint with extension/MIME validation
-  and the categorised safe-list behind the configurable upload policy
+- `upload.rs` – multipart file upload endpoint: the signed-proof gate on
+  `/upload`, extension/MIME validation and the categorised safe-list behind the
+  configurable upload policy
 - `admin.rs` – `/role` endpoint guarded by a bearer token
 - `roles.rs` – role definitions and default role color helpers
 - `link_preview.rs` – `/link-preview` endpoint returning OpenGraph metadata
@@ -77,7 +78,8 @@ Optional environment variables:
 - `CORS_ALLOW_ORIGINS` – comma-separated origins allowed to call HTTP
   endpoints; set only during development
 - `MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
-  `NONCE_EXPIRY_SECONDS` – override rate limiting defaults
+  `MAX_UPLOADS_PER_MINUTE`, `NONCE_EXPIRY_SECONDS` – override rate limiting
+  defaults
 
 Authorization uses a permission bitmask (`src/permissions.rs`), not fixed role
 names. Roles are custom `role_definitions` rows with a permission mask and a
@@ -119,8 +121,8 @@ server-muted. Audio never touches the server beyond `/upload`: playback is a
 filtered per recipient by `channel_scope`/`channel_frame_hint` like the other
 voice-scoped frames. `AppState.soundboard_cooldowns` enforces the per-user
 playback cooldown and is pruned on disconnect. Adding a sound re-validates the
-referenced upload (extension, `MAX_SOUND_FILE_BYTES`, magic bytes) because the
-upload endpoint is open and these files auto-play on every listener.
+referenced upload (extension, `MAX_SOUND_FILE_BYTES`, magic bytes) because any
+authenticated member may upload and these files auto-play on every listener.
 `db::migrate_soundboard_permissions` grants the two flags to pre-soundboard
 databases once, marker-guarded, so an existing server matches a fresh one.
 
@@ -142,11 +144,13 @@ and message authorship.
   code path that accepts or produces plaintext DM content. Clients fetch a
   peer's key via the `get-user-key` frame, answered from the `user_keys`
   binding; users without a binding (e.g. bots) cannot receive DMs.
-- Client IP addresses are used for authentication rate limiting – ensure the
-  service runs behind a proxy that forwards the real IP if applicable.
-  The three limits (`MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
-  `NONCE_EXPIRY_SECONDS`) are read once when the `RateLimiter` is built rather
-  than on every check, so they take effect at startup. Each limiter map is
+- Client IP addresses are used for authentication and upload rate limiting –
+  ensure the service runs behind a proxy that forwards the real IP if
+  applicable.
+  The limits (`MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
+  `MAX_UPLOADS_PER_MINUTE`, `NONCE_EXPIRY_SECONDS`) are read once when the
+  `RateLimiter` is built rather than on every check, so they take effect at
+  startup. Each limiter map is
   swept end to end on a timer; the window for the key being checked is always
   pruned on access, so the limit itself stays exact.
 - Nonces combine the public key and timestamp; replayed signatures are rejected.
@@ -157,6 +161,15 @@ and message authorship.
   off — the default — runs no query per message. That is a shortcut, not a
   gate: the authoritative double opt-in check stays inside
   `db::record_user_stats`, in the same call that performs the increments.
+- `/upload` is authenticated, not open: `upload::authorize` requires a fresh,
+  single-use Ed25519 proof (signed over `upload:<timestamp>`, so a presence
+  signature cannot be spent on it) from a key that `db::user_for_key` resolves
+  to an account, and rejects banned users. Credentials are multipart fields
+  ahead of the file — verified before any file bytes are buffered, and kept out
+  of headers so the request needs no CORS preflight. The per-IP
+  `check_upload_rate_limit` runs before the body is touched at all.
+  `security::verify_key_signature` is shared with the presence path, so both
+  transports verify a proof the same way.
 - Uploaded files are streamed to disk after validating type, size and filename.
 - Admin tokens are compared using constant-time equality.
 - Avoid adding new WebSocket message types without updating validation helpers.

@@ -1,7 +1,8 @@
 //! Murmer WebSocket server: provides text and voice chat over WebSocket with SQLite persistence.
 //!
 //! - `/ws`: WebSocket endpoint for chat and voice events.
-//! - `/upload`: HTTP endpoint for uploading files.
+//! - `/upload`: HTTP endpoint for uploading files (requires a signed proof
+//!   from a key with an account on this server; see `upload.rs`).
 //! - `/link-preview`: HTTP endpoint returning OpenGraph metadata for a URL.
 //! - `/role`: HTTP endpoint for managing user roles (requires `ADMIN_TOKEN`).
 //!
@@ -12,6 +13,8 @@
 //! - `ADMIN_TOKEN`: token for admin role management.
 //! - `BIND_ADDRESS`: optional socket address to bind to (defaults to `0.0.0.0:3001`).
 //! - `CORS_ALLOW_ORIGINS`: comma separated list of origins allowed to access HTTP endpoints.
+//! - `MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
+//!   `MAX_UPLOADS_PER_MINUTE`, `NONCE_EXPIRY_SECONDS`: rate limiting overrides.
 //!
 //! Run with `cargo run` or via Docker Compose (`docker compose up --build`).
 use anyhow::{Context, Result};

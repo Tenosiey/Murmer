@@ -3,8 +3,6 @@
 use crate::ws::{constants::*, errors, helpers::*};
 use crate::{AppState, bot, db, security};
 use axum::extract::ws::{Message, WebSocket};
-use base64::{Engine as _, engine::general_purpose};
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use futures::stream::SplitSink;
 use serde_json::Value;
 use std::sync::Arc;
@@ -50,48 +48,18 @@ async fn verify_key_proof(
         return Err(());
     }
 
-    let (Ok(pk_bytes), Ok(sig_bytes)) = (
-        general_purpose::STANDARD.decode(pk),
-        general_purpose::STANDARD.decode(sig),
-    ) else {
-        error!("Authentication failed - invalid base64 encoding");
-        send_error(sender, errors::INVALID_ENCODING).await;
-        return Err(());
-    };
-
-    let Ok(pk_array) = pk_bytes.as_slice().try_into() else {
-        error!(
-            "Authentication failed - public key wrong length: {}",
-            pk_bytes.len()
-        );
-        send_error(sender, errors::INVALID_KEY_LENGTH).await;
-        return Err(());
-    };
-
-    let key = match VerifyingKey::from_bytes(&pk_array) {
-        Ok(key) => key,
-        Err(e) => {
-            error!("Authentication failed - invalid public key: {}", e);
-            send_error(sender, errors::INVALID_PUBLIC_KEY).await;
-            return Err(());
-        }
-    };
-
-    let signature = match Signature::from_slice(&sig_bytes) {
-        Ok(signature) => signature,
-        Err(e) => {
-            error!("Authentication failed - invalid signature format: {}", e);
-            send_error(sender, errors::INVALID_SIGNATURE_FORMAT).await;
-            return Err(());
-        }
-    };
-
-    if key.verify(ts.as_bytes(), &signature).is_err() {
-        error!(
-            "Authentication failed - signature verification failed for key: {}",
-            pk
-        );
-        send_error(sender, errors::INVALID_SIGNATURE).await;
+    // The signature check itself is shared with the `/upload` endpoint, which
+    // authenticates the same way; only the error vocabulary is per-transport.
+    if let Err(err) = security::verify_key_signature(pk, sig, ts) {
+        error!("Authentication failed - {err:?} for key: {pk}");
+        let code = match err {
+            security::ProofError::Encoding => errors::INVALID_ENCODING,
+            security::ProofError::KeyLength => errors::INVALID_KEY_LENGTH,
+            security::ProofError::PublicKey => errors::INVALID_PUBLIC_KEY,
+            security::ProofError::SignatureFormat => errors::INVALID_SIGNATURE_FORMAT,
+            security::ProofError::Signature => errors::INVALID_SIGNATURE,
+        };
+        send_error(sender, code).await;
         return Err(());
     }
 

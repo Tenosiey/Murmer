@@ -81,6 +81,11 @@ sync, see the Brand section in `README.md`.
   `stores/peerKeys.ts` pins each peer's key per server URL, flags changes,
   and blocks sending until the user explicitly trusts the new key. Keep that
   flow intact when touching DM code; there is no forward secrecy.
+- Uploads are authenticated: `src/lib/upload.ts` signs `upload:<timestamp>`
+  with the identity key and puts the proof in the multipart body ahead of the
+  file. Build every `/upload` request with `uploadForm` — a hand-rolled
+  `FormData` is rejected by the server, and moving the credentials into a
+  header would add a CORS preflight servers do not answer.
 - Always validate server responses before mutating client state.
 - DOMPurify sanitises Markdown output – keep the dependency up to date.
   `src/lib/markdown.test.ts` guards that boundary and is the only suite that

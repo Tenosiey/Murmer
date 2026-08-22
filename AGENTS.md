@@ -222,6 +222,15 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   (`stores/peerKeys.ts`), block sending on key changes until the user trusts
   the new key, and expose a fingerprint for out-of-band verification.
 - Rate limiting exists for both authentication and chat traffic.
+- **`/upload` is authenticated like the WebSocket is.** The endpoint takes an
+  Ed25519 proof — `publicKey`, `timestamp` and a signature over
+  `upload:<timestamp>` — as multipart fields *ahead of* the file, verifies it
+  before buffering any file bytes, and only accepts keys that already own an
+  account on that server (which is how the server password carries over to it).
+  Uploads are also rate limited per IP (`MAX_UPLOADS_PER_MINUTE`). Clients must
+  build the body with `uploadForm` in `murmer_client/src/lib/upload.ts`; the
+  credentials deliberately stay out of headers, because a custom header makes
+  the request preflighted and production servers run with CORS disabled.
 - File uploads are validated by size and an extension safe-list; images are
   additionally checked by magic bytes. Active content (HTML, SVG, scripts) is
   never accepted. The safe-list is grouped into categories (images, documents,

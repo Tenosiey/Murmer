@@ -13,6 +13,7 @@
   import { can, myTopPosition, myPermissions } from '$lib/stores/permissions';
   import { PERMISSIONS, hasPermission, computeTopPosition } from '$lib/chat/permissions';
   import { session } from '$lib/stores/session';
+  import { uploadForm, uploadErrorMessage } from '$lib/upload';
   import { displayNames, profiles } from '$lib/stores/profiles';
   import { voice } from '$lib/stores/voice';
   import { selectedServer, servers } from '$lib/stores/servers';
@@ -616,21 +617,20 @@
     }
     const selected = get(selectedServer) ?? 'ws://localhost:3001/ws';
     const base = httpBaseFromWs(selected);
-    const form = new FormData();
-    form.append('file', file);
     if (import.meta.env.DEV) console.log('Uploading file to', base + '/upload', file);
     try {
-      const res = await fetch(base + '/upload', { method: 'POST', body: form });
+      const res = await fetch(base + '/upload', { method: 'POST', body: uploadForm(file) });
       if (import.meta.env.DEV) console.log('Upload response status:', res.status);
-      if (res.status === 415) {
-        setCommandFeedback('This file type is not allowed on the server.', 'error');
-        return;
-      }
       if (res.status === 413) {
         setCommandFeedback(
           `File is too large to upload (limit: ${formatUploadSize($uploadConfig.maxBytes)}).`,
           'error'
         );
+        return;
+      }
+      const uploadError = uploadErrorMessage(res.status);
+      if (uploadError) {
+        setCommandFeedback(uploadError, 'error');
         return;
       }
       if (!res.ok) {
