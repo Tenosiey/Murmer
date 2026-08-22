@@ -17,6 +17,7 @@
 //! - [`wiki`] – per-channel Markdown wiki pages
 
 mod auth;
+mod channel_keys;
 mod channel_overrides;
 mod channels;
 mod dms;
@@ -386,6 +387,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "remove-channel-override" => {
                                 channel_overrides::handle_remove_channel_override(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "get-channel-keys" => {
+                                channel_keys::handle_get_channel_keys(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "put-channel-keys" => {
+                                channel_keys::handle_put_channel_keys(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "set-channel-e2ee" => {
+                                channel_keys::handle_set_channel_e2ee(&state, &mut sender, &v, &user_name).await;
                             }
                             "get-channel-overrides" => {
                                 channel_overrides::handle_get_channel_overrides(&state, &mut sender, &v, &user_name).await;

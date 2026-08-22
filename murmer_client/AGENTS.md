@@ -23,6 +23,8 @@ pinned to major 6.
 - `src/lib/components/chat/` – sections of the chat page (sidebar, header, …)
 - `src/lib/stores/` – Svelte stores holding client state
 - `src/lib/chat/` – constants and helper functions for the chat page
+- `src/lib/channel-crypto.ts` – sealing and key wrapping for encrypted channels
+  (`dm-crypto.ts` holds the identity→X25519 conversion both share)
 - `src/lib/voice/` – WebRTC helpers, push-to-talk tooling, RNNoise noise
   suppression (`denoise.ts`) and the settings-UI microphone tools (level meter,
   record-and-play-back test)
@@ -81,6 +83,19 @@ sync, see the Brand section in `README.md`.
   `stores/peerKeys.ts` pins each peer's key per server URL, flags changes,
   and blocks sending until the user explicitly trusts the new key. Keep that
   flow intact when touching DM code; there is no forward secrecy.
+- Encrypted channels (`channel-crypto.ts`, `stores/channelKeys.ts`) seal
+  messages under a shared per-channel key and wrap that key per member with the
+  same identity keys — so they inherit the same pinning: `channelKeys` **must
+  not** wrap the channel key for a member whose key changed under the pin, and
+  the store surfaces those members instead. The key store is deliberately a leaf
+  module: the chat store injects its transport with `setTransport` rather than
+  being imported back, which is what keeps its policy (open epoch 1, hand out
+  the current key, rotate away from a departed holder) unit-testable without a
+  WebSocket. Keys live in memory only — the server holds the durable wraps —
+  and are dropped on `connect`/`disconnect` so they never cross servers.
+  Messages keep their sealed `enc` envelope after decryption so a key that
+  arrives late can re-open them; `decryptPending` is the "waiting for the key"
+  state, `decryptFailed` is the final one.
 - Uploads are authenticated: `src/lib/upload.ts` signs `upload:<timestamp>`
   with the identity key and puts the proof in the multipart body ahead of the
   file. Build every `/upload` request with `uploadForm` — a hand-rolled

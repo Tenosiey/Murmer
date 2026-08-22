@@ -162,6 +162,43 @@ pub const OVERRIDE_TARGET_NOT_FOUND: &str =
 /// Failed to persist a channel override change.
 pub const CHANNEL_OVERRIDE_FAILED: &str = r#"{"type":"error","message":"channel-override-failed"}"#;
 
+/// User may not read or write the key material of an encrypted channel:
+/// they cannot see the channel, have no key binding, or tried to extend an
+/// epoch they do not hold themselves.
+pub const CHANNEL_KEY_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"channel-key-permission-denied"}"#;
+
+/// A channel key frame was malformed: missing fields, an epoch out of range,
+/// or a wrap that is not the size of a sealed 32-byte key.
+pub const INVALID_CHANNEL_KEY: &str = r#"{"type":"error","message":"invalid-channel-key"}"#;
+
+/// A key wrap was addressed to somebody who is not a member of the channel.
+pub const CHANNEL_KEY_TARGET_NOT_MEMBER: &str =
+    r#"{"type":"error","message":"channel-key-target-not-member"}"#;
+
+/// Another member opened the same key epoch first; re-read and decide again.
+pub const CHANNEL_KEY_EPOCH_CONFLICT: &str =
+    r#"{"type":"error","message":"channel-key-epoch-conflict"}"#;
+
+/// Storing or loading channel key material failed.
+pub const CHANNEL_KEY_FAILED: &str = r#"{"type":"error","message":"channel-key-failed"}"#;
+
+/// Encryption can only be switched on for a private channel.
+pub const CHANNEL_NOT_PRIVATE: &str = r#"{"type":"error","message":"channel-not-private"}"#;
+
+/// The channel does not use end-to-end encryption, so it holds no keys and
+/// takes no encrypted messages.
+pub const CHANNEL_NOT_ENCRYPTED: &str = r#"{"type":"error","message":"channel-not-encrypted"}"#;
+
+/// The channel is end-to-end encrypted: it only accepts sealed payloads, never
+/// plaintext message text.
+pub const CHANNEL_REQUIRES_ENCRYPTION: &str =
+    r#"{"type":"error","message":"channel-requires-encryption"}"#;
+
+/// A message's sealed payload was malformed.
+pub const INVALID_ENCRYPTED_MESSAGE: &str =
+    r#"{"type":"error","message":"invalid-encrypted-message"}"#;
+
 /// Avatar reference is not a stored upload within the size cap.
 pub const INVALID_AVATAR: &str = r#"{"type":"error","message":"invalid-avatar"}"#;
 

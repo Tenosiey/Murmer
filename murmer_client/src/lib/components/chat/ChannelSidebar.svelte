@@ -395,6 +395,15 @@
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </span>
               {/if}
+              {#if ch.e2ee}
+                <span
+                  class="chan-lock"
+                  title="End-to-end encrypted"
+                  aria-label="End-to-end encrypted"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                </span>
+              {/if}
               {#if ch.id !== currentChatChannelId && ($unread[ch.id]?.count ?? 0) > 0}
                 <span
                   class="unread-badge"

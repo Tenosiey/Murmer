@@ -28,9 +28,9 @@ from the tests that build a `RateLimiter`.
 - `main.rs` – sets up the Axum router, middleware and shared state
 - `config.rs` – environment variable parsing and CORS setup
 - `ws/` – WebSocket handshake and message handling (`handlers/` for auth,
-  messages, channels, DMs, emojis, identity, moderation, pins, profile,
-  screenshare, soundboard, stats, uploads and wiki; the dispatch loop lives in
-  `handlers/mod.rs`).
+  messages, channels, channel overrides, channel keys, DMs, emojis, identity,
+  moderation, pins, profile, screenshare, soundboard, stats, uploads and wiki;
+  the dispatch loop lives in `handlers/mod.rs`).
   Frames leave the server by one of three routes. Server-wide events go on
   `AppState.tx`, channel-scoped ones on the per-channel sender, and anything
   addressed to a single user goes through `AppState.direct` — a registry of
@@ -100,6 +100,20 @@ directory and `MAX_ROLE_ICON_BYTES` like the server icon; replaced icon files
 are intentionally left on disk since emojis and other roles may share them.
 Legacy single-role databases are migrated once by `db::migrate_roles`.
 
+Encrypted channels (`ws/handlers/channel_keys.rs`, `db/channel_keys.rs`) add a
+`channels.e2ee` flag and a per-member wrapped-key store. The server is a dumb
+store plus a member directory: `get-channel-keys` returns the wraps addressed to
+the requester along with the roster (from `channel_members`, i.e. everyone
+`can_view_channel` admits) and the current epoch's holders; `put-channel-keys`
+files new wraps. Three rules in `db::insert_channel_keys` carry the security of
+the whole feature and are covered by `tests/channel_keys_test.rs`: a write may
+only open the *next* epoch or extend an existing one, extending requires the
+author to hold a wrap at that epoch, and an existing wrap is **never**
+overwritten (otherwise a member could swap another member's wrap for one sealed
+to a key they control). The handler additionally refuses any wrap addressed to
+somebody off the roster. Everything else — when to rotate, who to wrap for — is
+client policy; see `murmer_client/src/lib/stores/channelKeys.ts`.
+
 Private channels add per-channel allow/deny overrides (`channel_overrides`
 table + in-memory cache in `AppState.channel_overrides`), resolved by
 `channel_permissions`/`can_view_channel` in `ws/helpers.rs`. Overrides are
@@ -140,10 +154,20 @@ and message authorship.
 ## Security notes
 - Direct messages are end-to-end encrypted by the clients; the server only
   shape-checks `nonce`/`ciphertext` (base64, 24-byte nonce, bounded size —
-  see `validate_dm_payload`) and stores the frame verbatim. Do not add any
+  see `validate_sealed_payload`) and stores the frame verbatim. Do not add any
   code path that accepts or produces plaintext DM content. Clients fetch a
   peer's key via the `get-user-key` frame, answered from the `user_keys`
   binding; users without a binding (e.g. bots) cannot receive DMs.
+- End-to-end encrypted channels use the same shape check on their `enc`
+  envelope, and the same rule applies: no code path may accept or produce
+  plaintext for a channel whose `e2ee` flag is set. `handle_chat` and
+  `handle_edit_message` branch on `channel_is_e2ee` and reject a `text`,
+  `image` or `attachment` field there rather than stripping it silently; the
+  bot REST API refuses to post into such a channel at all, because a bot has
+  no identity key to encrypt with. Reply quotes are the one visible casualty:
+  the server rebuilds them from stored plaintext, so in an encrypted channel it
+  sends `replyTo` with an empty snippet and the client supplies the quote from
+  inside the ciphertext.
 - Client IP addresses are used for authentication and upload rate limiting –
   ensure the service runs behind a proxy that forwards the real IP if
   applicable.

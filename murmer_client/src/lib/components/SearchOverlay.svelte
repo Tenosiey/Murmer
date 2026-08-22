@@ -11,6 +11,9 @@
     onSearch: (query: string) => Promise<Message[]>;
     onFocusResult: (msg: Message) => void;
     now: number;
+    /** The channel being searched is end-to-end encrypted, so the server has
+     *  no message text to index and search cannot reach it. */
+    encrypted?: boolean;
   }
 
   let {
@@ -18,7 +21,8 @@
     onClose,
     onSearch,
     onFocusResult,
-    now
+    now,
+    encrypted = false
   }: Props = $props();
 
   let query = $state('');
@@ -120,6 +124,12 @@
         <button type="submit" class="btn btn-primary search-submit" disabled={loading}>Search</button>
         <button type="button" class="btn search-close" onclick={onClose}>Close</button>
       </form>
+      {#if encrypted}
+        <p class="search-status">
+          This channel is end-to-end encrypted, so the server has nothing to search — its
+          messages never reach it as text.
+        </p>
+      {/if}
       {#if error}
         <p class="search-error">{error}</p>
       {/if}

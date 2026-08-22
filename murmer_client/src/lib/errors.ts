@@ -52,6 +52,19 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-channel-override': 'That channel permission change was invalid.',
   'override-target-not-found': 'That role or user could not be found.',
   'channel-override-failed': 'The server could not update the channel permissions. Please try again.',
+  'channel-key-permission-denied':
+    'You are not a member of that encrypted channel, so you cannot read or share its key.',
+  'invalid-channel-key': 'That channel key was malformed and was not stored.',
+  'channel-key-target-not-member':
+    'That key was addressed to somebody who is not a member of the channel.',
+  'channel-key-epoch-conflict':
+    'Another member rotated this channel’s key first. Reloading the current one.',
+  'channel-key-failed': 'The server could not store this channel’s key material. Please try again.',
+  'channel-not-private': 'Only private channels can be end-to-end encrypted.',
+  'channel-not-encrypted': 'That channel is not end-to-end encrypted.',
+  'channel-requires-encryption':
+    'This channel is end-to-end encrypted and only accepts encrypted messages.',
+  'invalid-encrypted-message': 'That encrypted message was malformed and was not sent.',
   'invalid-category-name': 'That category name is not allowed.',
   'category-creation-failed': 'The server could not create the category. Please try again.',
   'category-rename-failed': 'The server could not rename the category. Please try again.',

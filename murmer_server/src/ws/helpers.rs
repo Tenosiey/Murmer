@@ -329,6 +329,7 @@ pub async fn channel_list_frame(
             "topic": ch.description,
             "position": ch.position,
             "private": channel_is_private(state, ChannelKind::Text, ch.id).await,
+            "e2ee": ch.e2ee,
         }));
     }
     serde_json::to_string(&serde_json::json!({
@@ -669,6 +670,41 @@ pub async fn send_channel_overrides(
     }
 }
 
+/// Whether a text channel stores its messages end-to-end encrypted. Read from
+/// the database on every call; the flag only changes through
+/// `set-channel-e2ee`, which is a manager action, not a hot path.
+pub async fn channel_is_e2ee(state: &Arc<AppState>, channel_id: i32) -> bool {
+    db::get_channel_by_id(&state.db, channel_id)
+        .await
+        .is_some_and(|record| record.e2ee)
+}
+
+/// Every account that may currently see a channel, paired with the identity
+/// key its messages must be encrypted to.
+///
+/// This is the membership roster clients wrap the channel key for. It is
+/// derived from the same permission check that gates reading the channel, so
+/// "who can see it" and "who can decrypt it" cannot drift apart — a member the
+/// server hides from the roster simply never receives a wrap. Users without a
+/// key binding (bots) are skipped: they have nothing to encrypt to.
+pub async fn channel_members(state: &Arc<AppState>, channel_id: i32) -> Vec<(String, String)> {
+    let known: Vec<String> = {
+        let users = state.known_users.lock().await;
+        users.iter().cloned().collect()
+    };
+    let mut members = Vec::new();
+    for user in known {
+        if !can_view_channel(state, &user, ChannelKind::Text, channel_id).await {
+            continue;
+        }
+        if let Some(key) = lookup_user_key(state, &user).await {
+            members.push((user, key));
+        }
+    }
+    members.sort();
+    members
+}
+
 /// Whether a channel is private (its `@everyone` override denies View), read
 /// from the in-memory cache. Used to mark channels with a lock and to hide
 /// them from anonymous viewers.
@@ -937,9 +973,9 @@ pub fn reply_preview(text: &str, max_chars: usize) -> String {
     text.chars().take(max_chars).collect()
 }
 
-/// Why a direct message's encryption fields were rejected.
+/// Why an end-to-end encrypted payload's fields were rejected.
 #[derive(Debug, PartialEq, Eq)]
-pub enum DmPayloadError {
+pub enum SealedPayloadError {
     /// Nonce or ciphertext is not valid base64, has the wrong nonce length,
     /// or the ciphertext is too short to contain the authenticator.
     Malformed,
@@ -947,32 +983,36 @@ pub enum DmPayloadError {
     TooLong,
 }
 
-/// Validate the encryption fields of a direct-message frame. Direct messages
-/// are end-to-end encrypted, so the server never sees their plaintext; this
-/// shape check (base64, exact nonce length, bounded ciphertext size) is the
-/// only content validation possible before storing the frame verbatim.
-pub fn validate_dm_payload(nonce_b64: &str, ciphertext_b64: &str) -> Result<(), DmPayloadError> {
+/// Validate the encryption fields of an end-to-end encrypted payload (a direct
+/// message, or a message in an encrypted channel). The server never sees the
+/// plaintext, so this shape check — base64, exact nonce length, bounded
+/// ciphertext size — is the only content validation possible before storing
+/// the frame verbatim. `max_plaintext` is the plaintext budget the ciphertext
+/// is allowed to cover, in bytes.
+pub fn validate_sealed_payload(
+    nonce_b64: &str,
+    ciphertext_b64: &str,
+    max_plaintext: usize,
+) -> Result<(), SealedPayloadError> {
     use base64::{Engine as _, engine::general_purpose};
 
     let nonce = general_purpose::STANDARD
         .decode(nonce_b64)
-        .map_err(|_| DmPayloadError::Malformed)?;
-    if nonce.len() != super::constants::DM_NONCE_BYTES {
-        return Err(DmPayloadError::Malformed);
+        .map_err(|_| SealedPayloadError::Malformed)?;
+    if nonce.len() != super::constants::BOX_NONCE_BYTES {
+        return Err(SealedPayloadError::Malformed);
     }
 
     let ciphertext = general_purpose::STANDARD
         .decode(ciphertext_b64)
-        .map_err(|_| DmPayloadError::Malformed)?;
+        .map_err(|_| SealedPayloadError::Malformed)?;
     // The authenticator alone (empty plaintext) is also rejected: clients
     // never send empty messages.
-    if ciphertext.len() <= super::constants::DM_CIPHERTEXT_OVERHEAD_BYTES {
-        return Err(DmPayloadError::Malformed);
+    if ciphertext.len() <= super::constants::BOX_OVERHEAD_BYTES {
+        return Err(SealedPayloadError::Malformed);
     }
-    if ciphertext.len()
-        > super::constants::MAX_MESSAGE_LENGTH + super::constants::DM_CIPHERTEXT_OVERHEAD_BYTES
-    {
-        return Err(DmPayloadError::TooLong);
+    if ciphertext.len() > max_plaintext + super::constants::BOX_OVERHEAD_BYTES {
+        return Err(SealedPayloadError::TooLong);
     }
     Ok(())
 }

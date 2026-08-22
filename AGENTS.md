@@ -276,6 +276,30 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   Managers (`MANAGE_CHANNELS`) edit overrides via the `set/remove-channel-override`
   frames (`ws/handlers/channel_overrides.rs`); override data is sent only to
   managers.
+- **A private text channel may additionally be end-to-end encrypted**
+  (`channels.e2ee`, toggled by a manager with `set-channel-e2ee`). The channel
+  then has one symmetric key per *epoch*, generated on a member's machine and
+  stored only as per-member `nacl.box` wraps in `channel_keys` — the server
+  keeps N opaque blobs and can open none of them. Messages carry an `enc`
+  envelope (`epoch`/`nonce`/`ciphertext`) instead of `text`, and `handle_chat`
+  rejects a plaintext field in an encrypted channel outright rather than
+  stripping it: a client that got this wrong has a bug its user must hear about.
+  The crypto is `murmer_client/src/lib/channel-crypto.ts`; the *policy* — open
+  epoch 1, hand the current key to a member who lacks it, rotate to a new epoch
+  when a holder is no longer a member — lives in `stores/channelKeys.ts` and is
+  what the tests there pin down, because a rotation that does not happen looks
+  exactly like a working channel.
+  Membership is still the server's: the roster comes from `channel_members`,
+  the same `can_view_channel` check that gates reading. That makes the server
+  the key directory, so clients reuse `stores/peerKeys.ts` and **refuse to wrap
+  the channel key for a member whose identity key changed** under the pin.
+  Encryption is private-channel-only on purpose — a channel `@everyone` can read
+  has every account on its roster, so sealing it would protect nothing.
+  What it does not cover, all of it deliberate and documented in `README.md`:
+  server-side search (there is no text to index), bots (no identity key, so
+  `POST /channels/:id/messages` refuses), uploaded file bytes (only the
+  attachment's name and URL travel sealed), link previews, and content-derived
+  stats. There is no forward secrecy within an epoch.
 - **Soundboard** sounds are a server-wide shared library gated by two
   permissions: `MANAGE_SOUNDS` (upload/rename/delete) and `USE_SOUNDBOARD`
   (play), the latter part of the `@everyone` baseline. Playback is *local on

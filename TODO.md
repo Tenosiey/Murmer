@@ -72,8 +72,6 @@ surfacing two things the server already stores.
 - [ ] Anonymous chat modes
 - [ ] Backup & export of chat history and uploads
 - [ ] Decentralized/mesh networking option
-- [ ] End-to-end encryption for private channels (DMs are already E2E; channels
-      are not)
 - [ ] Mini-games embedded in chat
 - [ ] Music streaming from local files
 - [ ] Pomodoro timer integration for study groups

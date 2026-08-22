@@ -157,6 +157,13 @@
     {/if}
 
     <span class="content">
+      {#if message.decryptPending || message.decryptFailed}
+        <span class="undecryptable">
+          {message.decryptPending
+            ? 'Encrypted — waiting for this channel\u2019s key.'
+            : 'This message could not be decrypted.'}
+        </span>
+      {/if}
       {#if message.text && !textIsOnlyGif}
         <span class="markdown" class:emoji-only={emojiOnly}>
           {@html emojifyHtml(renderMarkdown(message.text), $customEmojis, httpBase)}
@@ -479,6 +486,11 @@
     width: 2.75rem;
     height: 2.75rem;
     vertical-align: -0.3em;
+  }
+
+  .undecryptable {
+    font-style: italic;
+    color: var(--color-muted);
   }
 
   .edited-badge {
