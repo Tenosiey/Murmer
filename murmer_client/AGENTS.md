@@ -83,6 +83,10 @@ sync, see the Brand section in `README.md`.
   flow intact when touching DM code; there is no forward secrecy.
 - Always validate server responses before mutating client state.
 - DOMPurify sanitises Markdown output – keep the dependency up to date.
+  `src/lib/markdown.test.ts` guards that boundary and is the only suite that
+  leaves the Node default (`// @vitest-environment jsdom`, because DOMPurify
+  needs a DOM). Not happy-dom: it mis-drives DOMPurify's tree walk and lets
+  `<script>` through, so the tests would pass on broken output.
 - Avoid `{@html ...}` unless the content is sanitised explicitly.
 
 ## Rust (Tauri) side

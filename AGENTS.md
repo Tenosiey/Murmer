@@ -44,6 +44,11 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   `murmer_client/test/`. Cover store logic whose failure modes are invisible
   in the UI (per-server namespacing, request/response correlation, parsing of
   server frames); do not add component-rendering tests.
+- The one exception to the Node default is `src/lib/markdown.test.ts`, which
+  opts into jsdom with a `// @vitest-environment jsdom` docblock because
+  DOMPurify needs a DOM to parse into. Use **jsdom, not happy-dom**: happy-dom
+  20 mis-drives DOMPurify's tree walk, leaving `<script>` tags in the output,
+  so the suite would have asserted the opposite of the truth.
 - Document complex security-sensitive logic with inline comments.
 - Sanitize or validate all user-supplied data before acting on it.
 

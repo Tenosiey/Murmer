@@ -110,8 +110,10 @@ export function renderMarkdown(text: string): string {
     ? marked.parse(text) as string
     : marked.parseInline(text) as string;
 
-  // Keep the wikilink target attributes; DOMPurify strips unknown
-  // data-* attributes by default.
+  // Name the wikilink target attributes explicitly. DOMPurify's
+  // `ALLOW_DATA_ATTR` currently lets every `data-*` through anyway, but the
+  // `wikilinks` action reads these two back after render — an allow-list that
+  // ever tightens must not silently kill every [[link]] in the app.
   const sanitized = DOMPurify.sanitize(html, {
     ADD_ATTR: ['data-wiki-channel', 'data-wiki-slug']
   });
