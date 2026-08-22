@@ -2,14 +2,20 @@
 
   import { displayNames } from '$lib/stores/profiles';
   import { tick } from 'svelte';
-  import type { Message } from '$lib/types';
-  import { searchResultPreview, formatSearchTimestamp, ephemeralInfo } from '$lib/chat/helpers';
+  import type { Message, SearchResults, WikiSearchHit } from '$lib/types';
+  import {
+    searchResultPreview,
+    formatSearchTimestamp,
+    parseTimestampValue,
+    ephemeralInfo
+  } from '$lib/chat/helpers';
 
   interface Props {
     open: boolean;
     onClose: () => void;
-    onSearch: (query: string) => Promise<Message[]>;
+    onSearch: (query: string) => Promise<SearchResults>;
     onFocusResult: (msg: Message) => void;
+    onOpenPage: (slug: string) => void;
     now: number;
   }
 
@@ -18,19 +24,24 @@
     onClose,
     onSearch,
     onFocusResult,
+    onOpenPage,
     now
   }: Props = $props();
 
   let query = $state('');
   let results: Message[] = $state([]);
+  let pages: WikiSearchHit[] = $state([]);
   let loading = $state(false);
   let error: string | null = $state(null);
   let performed = $state(false);
   let inputEl: HTMLInputElement | null = $state(null);
 
+  let empty = $derived(results.length === 0 && pages.length === 0);
+
   export function openWith(initialQuery = '') {
     query = initialQuery;
     results = [];
+    pages = [];
     loading = false;
     error = null;
     performed = false;
@@ -47,17 +58,21 @@
     if (!trimmed) {
       error = 'Enter a search query.';
       results = [];
+      pages = [];
       performed = false;
       return;
     }
     loading = true;
     error = null;
     try {
-      results = await onSearch(trimmed);
+      const found = await onSearch(trimmed);
+      results = found.messages;
+      pages = found.pages;
       performed = true;
     } catch (e) {
       error = e instanceof Error ? e.message : 'Search failed.';
       results = [];
+      pages = [];
       performed = true;
     } finally {
       loading = false;
@@ -68,6 +83,15 @@
     if (typeof result.id !== 'number') return;
     onClose();
     onFocusResult(result);
+  }
+
+  function openPage(page: WikiSearchHit) {
+    onClose();
+    onOpenPage(page.slug);
+  }
+
+  function formatPageTimestamp(page: WikiSearchHit): string {
+    return parseTimestampValue(page.updatedAt)?.toLocaleString() ?? '';
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -112,8 +136,8 @@
       <form class="search-form" onsubmit={(event) => { event.preventDefault(); performSearch(); }}>
         <input
           type="search"
-          placeholder="Search messages"
-          aria-label="Search messages"
+          placeholder="Search messages and wiki pages"
+          aria-label="Search messages and wiki pages"
           bind:value={query}
           bind:this={inputEl}
         />
@@ -125,28 +149,58 @@
       {/if}
       {#if loading}
         <p class="search-status">Searching…</p>
-      {:else if results.length > 0}
-        <ul class="search-results">
-          {#each results as result (result.id ?? `${result.timestamp ?? ''}-${result.user ?? ''}`)}
-            <li>
-              <button type="button" class="search-result" onclick={() => focusResult(result)}>
-                <span class="search-result-text">{searchResultPreview(result)}</span>
-                <span class="search-result-meta">
-                  <span class="search-result-user">
-                    {result.user ? $displayNames(result.user) : 'Unknown'}
-                  </span>
-                  <span class="search-result-time">{formatSearchTimestamp(result)}</span>
-                </span>
-                {#if result.ephemeral}
-                  {@const info = ephemeralInfo(result, now)}
-                  {#if info}
-                    <span class="search-result-ephemeral">{info.label}</span>
-                  {/if}
-                {/if}
-              </button>
-            </li>
-          {/each}
-        </ul>
+      {:else if !empty}
+        <div class="search-scroll">
+          {#if pages.length > 0}
+            <!-- Wiki hits come first: there are only ever a handful of them,
+                 so a long message list can never bury them below the fold. -->
+            <h3 class="search-section">Wiki pages</h3>
+            <ul class="search-results">
+              {#each pages as page (page.slug)}
+                <li>
+                  <button type="button" class="search-result" onclick={() => openPage(page)}>
+                    <span class="search-result-text">{page.title}</span>
+                    {#if page.snippet}
+                      <span class="search-result-snippet">{page.snippet}</span>
+                    {/if}
+                    <span class="search-result-meta">
+                      <span class="search-result-user">
+                        {page.updatedBy ? $displayNames(page.updatedBy) : 'Unknown'}
+                      </span>
+                      <span class="search-result-time">{formatPageTimestamp(page)}</span>
+                    </span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          {#if results.length > 0}
+            {#if pages.length > 0}
+              <h3 class="search-section">Messages</h3>
+            {/if}
+            <ul class="search-results">
+              {#each results as result (result.id ?? `${result.timestamp ?? ''}-${result.user ?? ''}`)}
+                <li>
+                  <button type="button" class="search-result" onclick={() => focusResult(result)}>
+                    <span class="search-result-text">{searchResultPreview(result)}</span>
+                    <span class="search-result-meta">
+                      <span class="search-result-user">
+                        {result.user ? $displayNames(result.user) : 'Unknown'}
+                      </span>
+                      <span class="search-result-time">{formatSearchTimestamp(result)}</span>
+                    </span>
+                    {#if result.ephemeral}
+                      {@const info = ephemeralInfo(result, now)}
+                      {#if info}
+                        <span class="search-result-ephemeral">{info.label}</span>
+                      {/if}
+                    {/if}
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
       {:else if performed}
         <p class="search-status">No matches found.</p>
       {/if}
@@ -206,6 +260,15 @@
     padding: var(--space-4) 0;
   }
 
+  /* One scroll area for both sections, so the wiki hits scroll away with
+     the messages instead of each list scrolling on its own. */
+  .search-scroll {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    overflow-y: auto;
+  }
+
   .search-results {
     list-style: none;
     margin: 0;
@@ -213,7 +276,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
-    overflow-y: auto;
   }
 
   .search-result {
@@ -231,6 +293,21 @@
 
   .search-result:hover {
     background: var(--color-surface-raised);
+  }
+
+  .search-section {
+    margin: var(--space-1) 0 0;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-muted);
+  }
+
+  .search-result-snippet {
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+    overflow-wrap: anywhere;
   }
 
   .search-result-text {

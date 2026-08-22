@@ -166,5 +166,10 @@ pub const MAX_WIKI_PAGES_PER_CHANNEL: i64 = 100;
 /// Number of revisions kept per wiki page; older ones are pruned on save.
 pub const MAX_WIKI_REVISIONS_KEPT: i64 = 50;
 
+/// Maximum number of wiki pages returned alongside the message hits of a
+/// search. Pages accompany the message results rather than replacing them,
+/// so this stays well below [`MAX_SEARCH_RESULTS`].
+pub const MAX_WIKI_SEARCH_RESULTS: i64 = 20;
+
 /// Maximum number of links accepted in a single wiki-resolve request.
 pub const MAX_WIKI_RESOLVE_LINKS: usize = 50;

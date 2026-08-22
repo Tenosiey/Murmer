@@ -70,7 +70,8 @@ small team can deploy a private chat space quickly.
 - Customizable hotkeys (mute, deafen, join/leave voice, search, settings, help)
   under Settings → Hotkeys; the voice hotkeys also work system-wide while the
   app is in the background (can be disabled)
-- Ephemeral messaging, message search, server-synced pinned messages and message editing
+- Ephemeral messaging, search across messages and wiki pages, server-synced
+  pinned messages and message editing
 - Message replies with quoted previews and lightweight threads
 - Typing indicators and per-channel unread badges with new-message markers
 - Moderation tools: role-gated kick, ban and timed mutes
@@ -98,7 +99,8 @@ small team can deploy a private chat space quickly.
   per-person "mute their sounds" switch — sounds play locally on every client
   rather than through the speaker's microphone
 - Per-channel Markdown wiki with revisions and `[[wikilinks]]` (also across
-  channels via `[[channel/page]]`)
+  channels via `[[channel/page]]`); wiki pages are full-text indexed and show
+  up in the search overlay alongside the message hits
 - Lifetime stats and achievements (messages, voice minutes, GIFs, favorite
   reactions and more) with double opt-in privacy: nothing is recorded unless
   a server Owner/Admin enables tracking server-wide *and* the user opts in

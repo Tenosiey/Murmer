@@ -106,9 +106,12 @@ table + in-memory cache in `AppState.channel_overrides`), resolved by
 `channel_permissions`/`can_view_channel` in `ws/helpers.rs`. Overrides are
 clamped to `CHANNEL_OVERRIDABLE` (View + Write/Talk). Enforcement: viewer-aware
 channel-list senders, a per-recipient filter on channel-scoped broadcasts in the
-`global_rx` loop, and channel-aware gates on join/history/send/react/pin and
-`voice-join`. Voice talk is a client-enforced hint (`voice-permissions`) since
-audio is peer-to-peer. Managers edit overrides through the
+`global_rx` loop, and channel-aware gates on join/history/search/send/react/pin
+and `voice-join`. Search names its channel in the frame, so it repeats the
+history gate rather than trusting the joined channel — that gate covers the
+wiki page hits it answers with as well. Voice talk is a client-enforced hint
+(`voice-permissions`) since audio is peer-to-peer. Managers edit overrides
+through the
 `set-channel-override`/`remove-channel-override`/`get-channel-overrides` frames
 (`ws/handlers/channel_overrides.rs`), and creating a channel with `private: true`
 seeds an `@everyone` View-deny plus a creator allow.

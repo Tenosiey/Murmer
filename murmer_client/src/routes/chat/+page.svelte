@@ -136,6 +136,7 @@
   let searchOverlay: SearchOverlay | undefined = $state();
 
   let wikiOpen = $state(false);
+  let wikiView: WikiView | undefined = $state();
   /** Page a wikilink asked to open; consumed by WikiView on mount. */
   let wikiInitialSlug: string | null = $state(null);
 
@@ -843,8 +844,21 @@
     focusMessage(msg.id);
   }
 
-  function doSearch(query: string): Promise<Message[]> {
+  function doSearch(query: string) {
     return chat.search(currentChatChannelId, query, 50);
+  }
+
+  /**
+   * Open a wiki page hit. Results always come from the current channel, so
+   * the only question is whether the wiki view is already mounted: it
+   * captures its page on mount, so an open one is navigated through itself.
+   */
+  function handleSearchPage(slug: string) {
+    if (wikiOpen) {
+      void wikiView?.openPage(slug);
+      return;
+    }
+    openWikiPage(null, slug);
   }
 
   function joinChannel(id: number) {
@@ -1949,6 +1963,7 @@
         onClose={closeSearch}
         onSearch={doSearch}
         onFocusResult={handleSearchResult}
+        onOpenPage={handleSearchPage}
         {now}
       />
       {#if wikiOpen}
@@ -1956,6 +1971,7 @@
              enforces the same gate on every wiki mutation. -->
         {#key currentChatChannelId}
           <WikiView
+            bind:this={wikiView}
             channelId={currentChatChannelId}
             channelName={currentChatChannelName}
             canEdit={$can(PERMISSIONS.MANAGE_WIKI)}

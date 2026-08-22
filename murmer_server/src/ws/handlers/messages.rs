@@ -74,7 +74,42 @@ pub(super) async fn handle_load_history(
     db::send_history(&state.db, sender, channel_id, before, limit).await;
 }
 
+/// Wiki page hits for a search, as client-facing JSON. Errors are logged and
+/// reported as "no pages" so a broken wiki index cannot swallow the message
+/// results the user actually asked for.
+async fn search_wiki_hits(
+    state: &Arc<AppState>,
+    channel_id: i32,
+    query: &str,
+    limit: i64,
+) -> Vec<Value> {
+    let limit = limit.min(MAX_WIKI_SEARCH_RESULTS);
+    match db::search_wiki_pages(&state.db, channel_id, query, limit).await {
+        Ok(hits) => hits
+            .iter()
+            .map(|hit| {
+                serde_json::json!({
+                    "slug": hit.slug,
+                    "title": hit.title,
+                    "snippet": hit.snippet,
+                    "updatedBy": hit.updated_by,
+                    "updatedAt": hit.updated_at,
+                })
+            })
+            .collect(),
+        Err(error) => {
+            error!("Wiki search failed for channel {channel_id}: {error}");
+            Vec::new()
+        }
+    }
+}
+
 /// Handle search history request.
+///
+/// Answers with both the matching messages and the channel's matching wiki
+/// pages: the two live in separate FTS indexes but are one search to the
+/// user. A wiki index failure degrades to no page hits rather than failing
+/// the whole search — the messages are the primary answer.
 pub(super) async fn handle_search_history(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -102,6 +137,7 @@ pub(super) async fn handle_search_history(
             "requestId": request_id,
             "channelId": channel_id,
             "messages": [],
+            "pages": [],
         });
         let _ = sender.send(Message::Text(payload.to_string().into())).await;
         return;
@@ -112,6 +148,21 @@ pub(super) async fn handle_search_history(
         .and_then(|c| c.as_i64())
         .map(|c| c as i32)
         .unwrap_or(channel_id);
+
+    // The frame names the channel, so a client could ask about one it may not
+    // see; a private channel's messages and wiki pages must not leak through
+    // search any more than through history.
+    if !can_view_text(state, user_name, channel_to_search).await {
+        let payload = serde_json::json!({
+            "type": "search-results",
+            "requestId": request_id,
+            "channelId": channel_to_search,
+            "messages": [],
+            "pages": [],
+        });
+        let _ = sender.send(Message::Text(payload.to_string().into())).await;
+        return;
+    }
 
     let mut limit = v
         .get("limit")
@@ -155,11 +206,14 @@ pub(super) async fn handle_search_history(
                 }
             }
 
+            let pages = search_wiki_hits(state, channel_to_search, trimmed_query, limit).await;
+
             let payload = serde_json::json!({
                 "type": "search-results",
                 "requestId": request_id,
                 "channelId": channel_to_search,
                 "messages": messages,
+                "pages": pages,
             });
             let _ = sender.send(Message::Text(payload.to_string().into())).await;
         }

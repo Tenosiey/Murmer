@@ -38,6 +38,25 @@ export interface Message {
   [key: string]: unknown;
 }
 
+/**
+ * A wiki page matched by a search. The server sends an excerpt of the body
+ * around the match (`snippet`) rather than the page itself, so a result list
+ * never carries whole documents.
+ */
+export interface WikiSearchHit {
+  slug: string;
+  title: string;
+  snippet: string;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+/** Everything one search turns up: chat messages and wiki pages alike. */
+export interface SearchResults {
+  messages: Message[];
+  pages: WikiSearchHit[];
+}
+
 export interface RemotePeer {
   id: string;
   stream: MediaStream;

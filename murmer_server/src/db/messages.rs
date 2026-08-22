@@ -108,7 +108,10 @@ pub async fn send_history(
 /// a single quoted phrase with a prefix match on the last token, mirroring
 /// the substring feel of the old LIKE search for word-aligned input.
 /// Returns `None` when no searchable tokens remain.
-fn fts_match_expression(query: &str) -> Option<String> {
+///
+/// Shared with the wiki search so both indexes answer the same query text
+/// the same way.
+pub(super) fn fts_match_expression(query: &str) -> Option<String> {
     let cleaned: String = query
         .chars()
         .map(|c| if c.is_alphanumeric() { c } else { ' ' })
