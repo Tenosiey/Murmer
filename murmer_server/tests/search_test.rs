@@ -150,3 +150,129 @@ async fn hostile_queries_neither_error_nor_match_everything() {
         1
     );
 }
+
+async fn add_page(db: &db::Db, channel: i32, slug: &str, title: &str, body: &str) {
+    match db::create_wiki_page(db, channel, slug, title, body, "alice", 100)
+        .await
+        .expect("create wiki page")
+    {
+        db::CreateWikiResult::Created => {}
+        _ => panic!("page {slug} should be new"),
+    }
+}
+
+#[tokio::test]
+async fn finds_wiki_pages_by_title_and_body() {
+    let (db, channel) = setup().await;
+    add_page(
+        &db,
+        channel,
+        "onboarding",
+        "Onboarding guide",
+        "Ask in the lobby for a server invite.",
+    )
+    .await;
+    add_page(&db, channel, "unrelated", "Something else", "nothing here").await;
+
+    for query in ["onboarding", "ONBOARD", "invite", "server invite"] {
+        let hits = db::search_wiki_pages(&db, channel, query, 20)
+            .await
+            .expect("wiki search");
+        assert_eq!(hits.len(), 1, "query {query:?} should match once");
+        assert_eq!(hits[0].slug, "onboarding");
+        assert_eq!(hits[0].title, "Onboarding guide");
+    }
+
+    // The body excerpt is what the search UI shows instead of the page.
+    let hits = db::search_wiki_pages(&db, channel, "invite", 20)
+        .await
+        .expect("wiki search");
+    assert!(
+        hits[0].snippet.contains("invite"),
+        "snippet {:?} should carry the match",
+        hits[0].snippet
+    );
+}
+
+#[tokio::test]
+async fn wiki_search_respects_channel_boundaries() {
+    let (db, general) = setup().await;
+    let other = db::add_channel(&db, "other", None)
+        .await
+        .expect("create channel")
+        .expect("channel is new")
+        .id;
+    add_page(&db, general, "rules", "House rules", "be excellent").await;
+
+    assert!(
+        db::search_wiki_pages(&db, other, "rules", 20)
+            .await
+            .expect("wiki search")
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn wiki_index_follows_edits_and_deletions() {
+    let (db, channel) = setup().await;
+    add_page(&db, channel, "notes", "Original notes", "first draft").await;
+
+    let saved = db::update_wiki_page(
+        &db,
+        channel,
+        "notes",
+        "Revised notes",
+        "second draft",
+        "bob",
+        1,
+        50,
+    )
+    .await
+    .expect("update wiki page");
+    assert!(matches!(saved, db::UpdateWikiResult::Saved(2)));
+
+    assert!(
+        db::search_wiki_pages(&db, channel, "original", 20)
+            .await
+            .expect("wiki search")
+            .is_empty()
+    );
+    assert_eq!(
+        db::search_wiki_pages(&db, channel, "second", 20)
+            .await
+            .expect("wiki search")
+            .len(),
+        1
+    );
+
+    assert!(
+        db::delete_wiki_page(&db, channel, "notes")
+            .await
+            .expect("delete page")
+    );
+    assert!(
+        db::search_wiki_pages(&db, channel, "second", 20)
+            .await
+            .expect("wiki search")
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn hostile_wiki_queries_neither_error_nor_match_everything() {
+    let (db, channel) = setup().await;
+    add_page(&db, channel, "plain", "Plain page", "plain body").await;
+
+    for query in ["\"", "*", "AND", "!!!", "( OR )", "title: plain"] {
+        assert!(
+            db::search_wiki_pages(&db, channel, query, 20).await.is_ok(),
+            "query {query:?} must not error"
+        );
+    }
+    assert!(
+        db::search_wiki_pages(&db, channel, "!!!", 20)
+            .await
+            .expect("wiki search")
+            .is_empty()
+    );
+}

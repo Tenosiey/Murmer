@@ -1,11 +1,12 @@
 import { writable, get } from 'svelte/store';
-import type { Message } from '../types';
+import type { Message, SearchResults } from '../types';
 import { session } from './session';
 import { notify } from '../notify';
 import { channelNotifications } from './channelNotifications';
 import { soundboardPrefs } from './soundboardSettings';
 import { screenShareWindows } from './screenShareWindows';
 import { prepareMessage, containsMention, normalizeReactions } from '../message-utils';
+import { parseWikiSearchHits } from '../chat/search';
 import { WebSocketManager } from '../websocket-manager';
 import { connection } from './connection';
 import { typing } from './typing';
@@ -28,7 +29,7 @@ const TYPING_SEND_INTERVAL_MS = 2000;
 
 /** Pending search request tracking */
 type PendingSearch = {
-  resolve: (messages: Message[]) => void;
+  resolve: (results: SearchResults) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
 };
@@ -217,7 +218,8 @@ function createChatStore() {
               ? (payload.messages as Message[])
               : [];
             const prepared = list.map((item) => prepareMessage(item));
-            pending.resolve(prepared);
+            // Wiki pages ride the same frame: one query, two indexes.
+            pending.resolve({ messages: prepared, pages: parseWikiSearchHits(payload.pages) });
           }
         }
         break;
@@ -551,26 +553,27 @@ function createChatStore() {
   }
 
   /**
-   * Search chat history.
+   * Search a channel: its message history and its wiki pages, which the
+   * server answers on one frame from two full-text indexes.
    * @param channelId - Channel ID to search
    * @param query - Search query
    * @param limit - Maximum results (default: 50, max: 200)
-   * @returns Promise resolving to matching messages
+   * @returns Promise resolving to the matching messages and wiki pages
    */
-  function search(channelId: number, query: string, limit = 50): Promise<Message[]> {
+  function search(channelId: number, query: string, limit = 50): Promise<SearchResults> {
     if (!wsManager.isConnected()) {
       return Promise.reject(new Error('Not connected to server'));
     }
 
     const trimmedQuery = query.trim();
     if (!trimmedQuery) {
-      return Promise.resolve([]);
+      return Promise.resolve({ messages: [], pages: [] });
     }
 
     const boundedLimit = Math.min(Math.max(Math.floor(limit), 1), MAX_SEARCH_RESULTS);
     const requestId = requestIdCounter++;
 
-    return new Promise<Message[]>((resolve, reject) => {
+    return new Promise<SearchResults>((resolve, reject) => {
       const timeout = setTimeout(() => {
         if (pendingSearches.delete(requestId)) {
           reject(new Error('Search timed out'));

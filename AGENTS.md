@@ -270,7 +270,7 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   touch "see" (`VIEW_CHANNELS`) and "write/talk" (`SEND_MESSAGES`). The server
   hides invisible channels from listings, filters channel-scoped broadcasts per
   recipient (the `global_rx` loop in `ws/handlers/mod.rs`), and refuses
-  join/history/send/voice-join for channels a user cannot see. Voice **talk** is
+  join/history/search/send/voice-join for channels a user cannot see. Voice **talk** is
   the one client-enforced piece (mic disabled via the `voice-permissions` hint)
   because audio is peer-to-peer; view/join and all text gates are server-enforced.
   Managers (`MANAGE_CHANNELS`) edit overrides via the `set/remove-channel-override`
