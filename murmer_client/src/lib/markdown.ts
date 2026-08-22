@@ -110,11 +110,14 @@ export function renderMarkdown(text: string): string {
     ? marked.parse(text) as string
     : marked.parseInline(text) as string;
 
-  // Name the wikilink target attributes explicitly. DOMPurify's
-  // `ALLOW_DATA_ATTR` currently lets every `data-*` through anyway, but the
-  // `wikilinks` action reads these two back after render — an allow-list that
-  // ever tightens must not silently kill every [[link]] in the app.
+  /* `ALLOW_DATA_ATTR` defaults to true, which would let a message author put
+     any `data-*` on any element. Nothing in this pipeline emits data
+     attributes except the wikilink extension, and `wiki/links.ts` reads those
+     two back off the rendered DOM — so allow exactly them and deny the rest.
+     That keeps a message from ever forging state that app code reads out of
+     rendered content. */
   const sanitized = DOMPurify.sanitize(html, {
+    ALLOW_DATA_ATTR: false,
     ADD_ATTR: ['data-wiki-channel', 'data-wiki-slug']
   });
 

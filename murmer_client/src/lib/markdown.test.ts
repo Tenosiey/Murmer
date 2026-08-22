@@ -125,6 +125,13 @@ describe('renderMarkdown / sanitisation', () => {
     );
   });
 
+  it('allows only the two wikilink data attributes', () => {
+    // ALLOW_DATA_ATTR is off, so a message cannot forge state that app code
+    // reads back off rendered content.
+    const host = render('<a href="#" data-wiki-slug="ok" data-evil="y">x</a>');
+    expect(attributeNames(host).sort()).toEqual(['data-wiki-slug', 'href']);
+  });
+
   it('neutralises the noscript namespace-confusion mXSS vector', () => {
     // `<p title="</noscript>…">` re-parses as markup in browsers that render
     // noscript content; DOMPurify's mXSS pass must kill it before {@html} does.
