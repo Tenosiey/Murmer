@@ -182,7 +182,12 @@ const FATAL_CONNECTION_ERRORS = new Set([
 
 /** Convert a server error code into a message suitable for display. */
 export function describeServerError(code: string): string {
-  return SERVER_ERROR_MESSAGES[code] ?? `The server reported an error: ${code}`;
+  // The code arrives off the wire, so it may name an inherited property
+  // (`toString`, `constructor`, ...). Own-property lookup keeps those on the
+  // fallback path instead of handing the UI a function to render.
+  return Object.hasOwn(SERVER_ERROR_MESSAGES, code)
+    ? SERVER_ERROR_MESSAGES[code]
+    : `The server reported an error: ${code}`;
 }
 
 /** Whether the error ends the connection (auth rejection, ban, ...). */
