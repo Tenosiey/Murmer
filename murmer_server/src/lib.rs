@@ -75,9 +75,10 @@ impl<T> SlidingWindows<T> {
     }
 }
 
-/// Tracks rate limiting state for authentication, messaging and nonce usage.
+/// Tracks rate limiting state for authentication, messaging, uploads and
+/// nonce usage.
 ///
-/// The three limits are resolved from the environment once, when the limiter
+/// The limits are resolved from the environment once, when the limiter
 /// is built, instead of on every check: `check_message_rate_limit` runs on
 /// every chat frame and `std::env::var` allocates and walks the environment
 /// each time it is called.
@@ -86,12 +87,16 @@ pub struct RateLimiter {
     pub message_times: Arc<Mutex<SlidingWindows<VecDeque<Instant>>>>,
     /// Authentication attempt timestamps per IP (ip -> timestamps).
     pub auth_attempts: Arc<Mutex<SlidingWindows<VecDeque<Instant>>>>,
+    /// Upload attempt timestamps per IP (ip -> timestamps).
+    pub upload_attempts: Arc<Mutex<SlidingWindows<VecDeque<Instant>>>>,
     /// Used nonces to prevent replay attacks (nonce -> first seen time).
     pub used_nonces: Arc<Mutex<SlidingWindows<Instant>>>,
     /// Messages one user may send per minute.
     pub max_messages_per_minute: usize,
     /// Authentication attempts one IP may make per minute.
     pub max_auth_attempts_per_minute: usize,
+    /// Uploads one IP may make per minute.
+    pub max_uploads_per_minute: usize,
     /// How long a used nonce stays remembered.
     pub nonce_expiry: std::time::Duration,
 }
@@ -101,9 +106,11 @@ impl RateLimiter {
         Self {
             message_times: Arc::new(Mutex::new(SlidingWindows::new())),
             auth_attempts: Arc::new(Mutex::new(SlidingWindows::new())),
+            upload_attempts: Arc::new(Mutex::new(SlidingWindows::new())),
             used_nonces: Arc::new(Mutex::new(SlidingWindows::new())),
             max_messages_per_minute: security::get_max_messages_per_minute(),
             max_auth_attempts_per_minute: security::get_max_auth_attempts_per_minute(),
+            max_uploads_per_minute: security::get_max_uploads_per_minute(),
             nonce_expiry: std::time::Duration::from_secs(security::get_nonce_expiry_seconds()),
         }
     }

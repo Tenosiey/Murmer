@@ -20,6 +20,7 @@
     soundboardPrefs
   } from '$lib/stores/soundboardSettings';
   import { httpBaseFromWs } from '$lib/server-url';
+  import { uploadForm, uploadErrorMessage } from '$lib/upload';
   import { describeServerError } from '$lib/errors';
   import { dialogs } from '$lib/stores/dialogs';
   import {
@@ -168,10 +169,8 @@
 
     uploading = true;
     feedback = null;
-    const form = new FormData();
-    form.append('file', file);
     try {
-      const res = await fetch(httpBase + '/upload', { method: 'POST', body: form });
+      const res = await fetch(httpBase + '/upload', { method: 'POST', body: uploadForm(file) });
       if (res.status === 415) {
         feedback = {
           text: 'Audio uploads are disabled on this server. Enable the Audio category in Files & Uploads.',
@@ -179,8 +178,9 @@
         };
         return;
       }
-      if (res.status === 413) {
-        feedback = { text: 'That sound is too large to upload.', kind: 'error' };
+      const uploadError = uploadErrorMessage(res.status, 'sound');
+      if (uploadError) {
+        feedback = { text: uploadError, kind: 'error' };
         return;
       }
       if (!res.ok) throw new Error(`upload failed with status ${res.status}`);

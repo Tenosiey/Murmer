@@ -1,10 +1,13 @@
 //! Security utilities for rate limiting and replay attack prevention.
 
-use crate::RateLimiter;
+use crate::{RateLimiter, SlidingWindows};
+use base64::{Engine as _, engine::general_purpose};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use std::{
     collections::VecDeque,
     time::{Duration, Instant},
 };
+use tokio::sync::Mutex;
 use tracing::warn;
 
 /// Get the maximum number of messages allowed per user per minute.
@@ -28,6 +31,18 @@ pub fn get_max_auth_attempts_per_minute() -> usize {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(5)
+}
+
+/// Get the maximum number of upload attempts allowed per IP per minute.
+///
+/// Reads from the `MAX_UPLOADS_PER_MINUTE` environment variable, defaulting to
+/// 20. Every accepted upload writes a file to disk, so this is the limit that
+/// bounds how fast one client can consume the operator's storage.
+pub fn get_max_uploads_per_minute() -> usize {
+    std::env::var("MAX_UPLOADS_PER_MINUTE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(20)
 }
 
 /// Get the nonce expiry time in seconds for replay attack prevention.
@@ -83,6 +98,44 @@ fn window_mut<'a>(
         .expect("window was just inserted if missing")
 }
 
+/// Record one attempt in a sliding window and report whether it fits inside
+/// `max` attempts per [`RATE_WINDOW`].
+///
+/// Shared by the authentication, message and upload limits: all three are the
+/// same sliding window over different keys, and one implementation is one
+/// place where the pruning can be got wrong.
+async fn check_window(
+    windows: &Mutex<SlidingWindows<VecDeque<Instant>>>,
+    key: &str,
+    max: usize,
+) -> bool {
+    let now = Instant::now();
+    let mut windows = windows.lock().await;
+
+    // Sweeping the whole map keeps entries for keys that went quiet from
+    // accumulating forever, but it costs O(tracked keys) and nothing about an
+    // untouched entry changes between calls — so it runs on a timer instead of
+    // on every check. The window for *this* key is always pruned below, so the
+    // limit itself is still exact.
+    if now.duration_since(windows.last_sweep) >= SWEEP_INTERVAL {
+        windows.entries.retain(|_, timestamps| {
+            cleanup_old_timestamps(timestamps, now, RATE_WINDOW);
+            !timestamps.is_empty()
+        });
+        windows.last_sweep = now;
+    }
+
+    let timestamps = window_mut(&mut windows.entries, key);
+    cleanup_old_timestamps(timestamps, now, RATE_WINDOW);
+
+    if timestamps.len() >= max {
+        return false;
+    }
+
+    timestamps.push_back(now);
+    true
+}
+
 /// Check if an IP address is rate limited for authentication attempts.
 ///
 /// This function implements a sliding window rate limiter that allows up to
@@ -97,32 +150,42 @@ fn window_mut<'a>(
 /// * `true` if the request should be allowed
 /// * `false` if the rate limit has been exceeded
 pub async fn check_auth_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool {
-    let now = Instant::now();
-    let mut attempts = rate_limiter.auth_attempts.lock().await;
-
-    // Sweeping the whole map keeps entries for idle IPs from accumulating
-    // forever, but it costs O(tracked IPs) and nothing about an untouched
-    // entry changes between calls — so it runs on a timer instead of on every
-    // attempt. The window for *this* IP is always pruned below, so the limit
-    // itself is still exact.
-    if now.duration_since(attempts.last_sweep) >= SWEEP_INTERVAL {
-        attempts.entries.retain(|_, timestamps| {
-            cleanup_old_timestamps(timestamps, now, RATE_WINDOW);
-            !timestamps.is_empty()
-        });
-        attempts.last_sweep = now;
-    }
-
-    let timestamps = window_mut(&mut attempts.entries, ip);
-    cleanup_old_timestamps(timestamps, now, RATE_WINDOW);
-
-    if timestamps.len() >= rate_limiter.max_auth_attempts_per_minute {
+    let allowed = check_window(
+        &rate_limiter.auth_attempts,
+        ip,
+        rate_limiter.max_auth_attempts_per_minute,
+    )
+    .await;
+    if !allowed {
         warn!("Rate limit exceeded for auth attempts from IP: {}", ip);
-        return false;
     }
+    allowed
+}
 
-    timestamps.push_back(now);
-    true
+/// Check if an IP address is rate limited for file uploads.
+///
+/// Uploads are limited per IP rather than per account because the limit exists
+/// to bound how fast disk can be filled, and one machine may hold any number
+/// of self-generated identities.
+///
+/// # Arguments
+/// * `rate_limiter` - The shared rate limiter state
+/// * `ip` - The IP address to check (should be the real client IP)
+///
+/// # Returns
+/// * `true` if the upload should be allowed
+/// * `false` if the rate limit has been exceeded
+pub async fn check_upload_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool {
+    let allowed = check_window(
+        &rate_limiter.upload_attempts,
+        ip,
+        rate_limiter.max_uploads_per_minute,
+    )
+    .await;
+    if !allowed {
+        warn!("Rate limit exceeded for uploads from IP: {}", ip);
+    }
+    allowed
 }
 
 /// Check if a user is rate limited for messages.
@@ -138,31 +201,16 @@ pub async fn check_auth_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool
 /// * `true` if the message should be allowed
 /// * `false` if the rate limit has been exceeded
 pub async fn check_message_rate_limit(rate_limiter: &RateLimiter, user: &str) -> bool {
-    let now = Instant::now();
-    let mut message_times = rate_limiter.message_times.lock().await;
-
-    // This runs on every chat frame, so the full-map sweep that keeps quiet
-    // users from accumulating forever is amortised onto a timer rather than
-    // paid per message. This user's own window is pruned below either way,
-    // which is what the limit is actually computed from.
-    if now.duration_since(message_times.last_sweep) >= SWEEP_INTERVAL {
-        message_times.entries.retain(|_, timestamps| {
-            cleanup_old_timestamps(timestamps, now, RATE_WINDOW);
-            !timestamps.is_empty()
-        });
-        message_times.last_sweep = now;
-    }
-
-    let timestamps = window_mut(&mut message_times.entries, user);
-    cleanup_old_timestamps(timestamps, now, RATE_WINDOW);
-
-    if timestamps.len() >= rate_limiter.max_messages_per_minute {
+    let allowed = check_window(
+        &rate_limiter.message_times,
+        user,
+        rate_limiter.max_messages_per_minute,
+    )
+    .await;
+    if !allowed {
         warn!("Rate limit exceeded for messages from user: {}", user);
-        return false;
     }
-
-    timestamps.push_back(now);
-    true
+    allowed
 }
 
 /// Check if a nonce has been used and store it for replay attack prevention.
@@ -232,6 +280,54 @@ pub fn validate_timestamp(timestamp_str: &str) -> Result<i64, &'static str> {
     }
 
     Ok(timestamp)
+}
+
+/// Why a signed key proof was rejected.
+///
+/// The WebSocket presence frame and the `/upload` endpoint prove ownership of
+/// a public key the same way, so the verification lives in one place and each
+/// caller maps the reason onto its own error vocabulary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProofError {
+    /// The public key or the signature was not valid base64.
+    Encoding,
+    /// The decoded public key was not the length of an Ed25519 key.
+    KeyLength,
+    /// The decoded bytes are not a valid Ed25519 public key.
+    PublicKey,
+    /// The decoded signature is not a well-formed Ed25519 signature.
+    SignatureFormat,
+    /// The signature does not verify against the key and message.
+    Signature,
+}
+
+/// Verify that `signature` is `public_key`'s signature over `message`, with
+/// both the key and the signature given as base64.
+///
+/// This only proves possession of the private key. Freshness (a recent
+/// timestamp) and single use (the nonce store) are the caller's job — a
+/// signature alone can be replayed forever.
+pub fn verify_key_signature(
+    public_key: &str,
+    signature: &str,
+    message: &str,
+) -> Result<(), ProofError> {
+    let (Ok(pk_bytes), Ok(sig_bytes)) = (
+        general_purpose::STANDARD.decode(public_key),
+        general_purpose::STANDARD.decode(signature),
+    ) else {
+        return Err(ProofError::Encoding);
+    };
+
+    let Ok(pk_array) = pk_bytes.as_slice().try_into() else {
+        return Err(ProofError::KeyLength);
+    };
+
+    let key = VerifyingKey::from_bytes(&pk_array).map_err(|_| ProofError::PublicKey)?;
+    let signature = Signature::from_slice(&sig_bytes).map_err(|_| ProofError::SignatureFormat)?;
+
+    key.verify(message.as_bytes(), &signature)
+        .map_err(|_| ProofError::Signature)
 }
 
 /// Generic name validator for security.

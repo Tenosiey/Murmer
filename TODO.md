@@ -95,10 +95,6 @@ surfacing two things the server already stores.
       grouping and expiry formatting, `emoji.ts` (`emojifyHtml` escapes),
       `errors.ts`, `invite.ts` and `utils.ts::normalizeServerUrl`. Individually
       small, collectively most of the untested logic in `src/lib/`
-- [ ] Gate the `/upload` endpoint behind authentication (or at least IP rate
-      limiting like auth) — currently anyone who can reach the server can
-      write 10 MB files to disk; needs a small client change to send
-      credentials with the upload
 - [ ] Make the rate limiter's clock injectable so the map-sweep behaviour in
       `security.rs` can be covered by a regression test in
       `tests/security_limits.rs` (the 60 s window uses `std::time::Instant`

@@ -257,6 +257,7 @@ Environment variables recognised by the server:
 | `CORS_ALLOW_ORIGINS` | No | Comma-separated allowed origins (omit in production) |
 | `MAX_MESSAGES_PER_MINUTE` | No | Per-user message rate limit (default: 30) |
 | `MAX_AUTH_ATTEMPTS_PER_MINUTE` | No | Per-IP auth rate limit (default: 5) |
+| `MAX_UPLOADS_PER_MINUTE` | No | Per-IP file upload rate limit (default: 20) |
 | `NONCE_EXPIRY_SECONDS` | No | Replay protection window (default: 300) |
 
 Without `ADMIN_TOKEN` configured, channel and wiki management stay open to
@@ -465,7 +466,13 @@ must not be marked as pre-release — the updater endpoint
   verification. Note the trade-offs: there is no forward secrecy (a stolen
   keypair decrypts past DMs), a lost keypair makes old conversations
   unreadable, and users without a key binding (e.g. bots) cannot receive DMs.
-- IP-based rate limiting protects authentication and chat message throughput.
+- IP-based rate limiting protects authentication, chat message throughput and
+  file uploads.
+- Uploading requires the same Ed25519 proof as connecting: the `/upload`
+  endpoint accepts only a freshly signed, single-use timestamp from a key that
+  already has an account on that server, so a stranger who can merely reach the
+  port cannot write files to the operator's disk (and on a password-protected
+  server has no account to upload under at all).
 - Filenames are sanitised, uploads are limited to a safe-list of extensions and image contents are inspected before saving. Owners narrow that further in **Server Dashboard → Files & Uploads** (per-file size cap, plus which of the image/document/archive/audio/video categories are accepted); active content such as HTML, SVG or scripts is never on the safe-list and cannot be enabled.
 - Admin token and server password checks use constant-time comparisons to
   mitigate timing attacks.

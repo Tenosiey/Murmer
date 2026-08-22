@@ -14,6 +14,7 @@
   import { dialogs } from '$lib/stores/dialogs';
   import { describeServerError } from '$lib/errors';
   import { httpBaseFromWs } from '$lib/server-url';
+  import { uploadForm, uploadErrorMessage } from '$lib/upload';
   import {
     EMOJI_NAME_RE,
     MAX_EMOJI_FILE_BYTES,
@@ -147,16 +148,11 @@
       return;
     }
     iconUploading = true;
-    const form = new FormData();
-    form.append('file', file);
     try {
-      const res = await fetch(httpBase + '/upload', { method: 'POST', body: form });
-      if (res.status === 415) {
-        identityFeedback = { text: 'This image type is not allowed on the server.', kind: 'error' };
-        return;
-      }
-      if (res.status === 413) {
-        identityFeedback = { text: 'That image is too large to upload.', kind: 'error' };
+      const res = await fetch(httpBase + '/upload', { method: 'POST', body: uploadForm(file) });
+      const uploadError = uploadErrorMessage(res.status, 'image');
+      if (uploadError) {
+        identityFeedback = { text: uploadError, kind: 'error' };
         return;
       }
       if (!res.ok) throw new Error(`upload failed with status ${res.status}`);
@@ -382,16 +378,14 @@
     uploading = true;
     emojiFeedback = null;
     const name = normalizedEmojiName;
-    const form = new FormData();
-    form.append('file', emojiFile);
     try {
-      const res = await fetch(httpBase + '/upload', { method: 'POST', body: form });
-      if (res.status === 415) {
-        emojiFeedback = { text: 'This image type is not allowed on the server.', kind: 'error' };
-        return;
-      }
-      if (res.status === 413) {
-        emojiFeedback = { text: 'That image is too large to upload.', kind: 'error' };
+      const res = await fetch(httpBase + '/upload', {
+        method: 'POST',
+        body: uploadForm(emojiFile)
+      });
+      const uploadError = uploadErrorMessage(res.status, 'image');
+      if (uploadError) {
+        emojiFeedback = { text: uploadError, kind: 'error' };
         return;
       }
       if (!res.ok) throw new Error(`upload failed with status ${res.status}`);
@@ -545,16 +539,11 @@
       return;
     }
     roleIconUploading = true;
-    const form = new FormData();
-    form.append('file', file);
     try {
-      const res = await fetch(httpBase + '/upload', { method: 'POST', body: form });
-      if (res.status === 415) {
-        roleFeedback = { text: 'This image type is not allowed on the server.', kind: 'error' };
-        return;
-      }
-      if (res.status === 413) {
-        roleFeedback = { text: 'That image is too large to upload.', kind: 'error' };
+      const res = await fetch(httpBase + '/upload', { method: 'POST', body: uploadForm(file) });
+      const uploadError = uploadErrorMessage(res.status, 'image');
+      if (uploadError) {
+        roleFeedback = { text: uploadError, kind: 'error' };
         return;
       }
       if (!res.ok) throw new Error(`upload failed with status ${res.status}`);
