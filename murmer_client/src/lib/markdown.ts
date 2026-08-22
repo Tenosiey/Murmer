@@ -87,6 +87,21 @@ const wikilinkExtension = {
 
 marked.use({ renderer, extensions: [wikilinkExtension as any] });
 
+/** Characters that can only appear as markdown syntax often enough to be worth
+ *  a full parse: emphasis, code, strikethrough, links, headings, quotes,
+ *  tables, escapes. */
+const INLINE_MARKERS = /[*_`~\[\]#>|\\]/;
+
+/** List items, whose markers are absent from `INLINE_MARKERS` — `- x`, `+ x`,
+ *  `1. x`, `1) x`. A marker must start its line and be followed by a space, so
+ *  "well-known", "-5 Grad" and "12.5 Prozent" stay plain text.
+ *
+ *  Setext underlines (`===`, `---`) are deliberately *not* detected: they turn
+ *  the line above them into a heading, so a message using a row of dashes as a
+ *  separator would silently swallow its own first line. `#` headings cover the
+ *  intentional case. */
+const LIST_MARKER = /^[ \t]*(?:[-+][ \t]|\d{1,9}[.)][ \t])/m;
+
 /* Rendering is memoised because the chat view re-evaluates message bodies
    whenever the message list updates; parsing + sanitising + highlighting the
    same text repeatedly is by far the most expensive part of a chat update. */
@@ -102,9 +117,11 @@ export function renderMarkdown(text: string): string {
     return cached;
   }
 
-  // Use parseInline for simple text to avoid wrapping in <p> tags
-  // Only use full parse if the text contains markdown syntax
-  const hasMarkdown = /[*_`~\[\]#>|\\]/.test(text) || text.includes('\n\n');
+  // Use parseInline for simple text to avoid wrapping in <p> tags; only use
+  // the full parse when the text actually contains markdown syntax. The
+  // detector may over-report (a needless full parse just costs time) but must
+  // never under-report — a missed construct renders as literal text.
+  const hasMarkdown = INLINE_MARKERS.test(text) || LIST_MARKER.test(text) || text.includes('\n\n');
 
   const html = hasMarkdown
     ? marked.parse(text) as string

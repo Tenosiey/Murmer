@@ -55,6 +55,30 @@ describe('renderMarkdown / rendering', () => {
     expect(host.querySelector('a')?.getAttribute('href')).toBe('https://example.com');
   });
 
+  it('renders lists, whose markers the inline heuristic does not carry', () => {
+    for (const [text, expected] of [
+      ['- a\n- b', '<ul>\n<li>a</li>\n<li>b</li>\n</ul>\n'],
+      ['+ a\n+ b', '<ul>\n<li>a</li>\n<li>b</li>\n</ul>\n'],
+      ['1. a\n2. b', '<ol>\n<li>a</li>\n<li>b</li>\n</ol>\n'],
+      ['1) a\n2) b', '<ol>\n<li>a</li>\n<li>b</li>\n</ol>\n']
+    ] as const) {
+      expect(renderMarkdown(text), text).toBe(expected);
+    }
+  });
+
+  it('does not mistake ordinary punctuation for a list marker', () => {
+    // A false positive here would wrap everyday one-liners in <p>.
+    for (const text of ['well-known', '-5 Grad', '12.5 Prozent', 'a - b', '2026-08-22']) {
+      expect(renderMarkdown(text), text).toBe(text);
+    }
+  });
+
+  it('leaves a row of dashes alone rather than turning the line above into a heading', () => {
+    // Setext underlines are intentionally outside the heuristic; `#` covers
+    // the case where a heading is actually meant.
+    expect(renderMarkdown('summary\n---')).toBe('summary\n---');
+  });
+
   it('renders nothing for empty input', () => {
     expect(renderMarkdown('')).toBe('');
   });
