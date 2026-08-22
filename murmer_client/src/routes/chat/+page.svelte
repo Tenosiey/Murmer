@@ -54,6 +54,7 @@
   import { threadData } from '$lib/stores/thread';
   import { dm } from '$lib/stores/dm';
   import { peerKeys } from '$lib/stores/peerKeys';
+  import { channelKeys } from '$lib/stores/channelKeys';
   import { dmFingerprint } from '$lib/dm-crypto';
   import {
     screenSharePeers,
@@ -476,7 +477,7 @@
       if (currentChatChannelId > 0) {
         // Reconnecting: the server placed us back in the default channel,
         // so rejoin the channel the user was viewing.
-        chat.sendRaw({ type: 'join', channelId: currentChatChannelId });
+        chat.join(currentChatChannelId);
       }
       ping.start();
       await scrollBottom();
@@ -626,7 +627,13 @@
       }
     }
     const replyTarget = typeof replyingTo?.id === 'number' ? replyingTo.id : undefined;
-    chat.send($session.user ?? 'anon', message, replyTarget);
+    // The quoted snippet is passed along because an encrypted channel gives
+    // the server no plaintext to build one from; it travels sealed instead.
+    const error = chat.send($session.user ?? 'anon', message, replyTarget, replyingTo?.text);
+    if (error) {
+      setCommandFeedback(error, 'error');
+      return;
+    }
     replyingTo = null;
     message = '';
   }
@@ -662,28 +669,17 @@
       if (import.meta.env.DEV) console.log('Upload response data:', data);
       const url = data.url as string;
       const absolute = url.startsWith('http') ? url : base + url;
-      const now = new Date();
-      if (data.kind === 'image' || file.type.startsWith('image/')) {
-        chat.sendRaw({
-          type: 'chat',
-          user: $session.user ?? 'anon',
-          image: absolute,
-          time: now.toLocaleTimeString(),
-          timestamp: now.toISOString()
-        });
-      } else {
-        chat.sendRaw({
-          type: 'chat',
-          user: $session.user ?? 'anon',
-          attachment: {
-            url: absolute,
-            name: typeof data.name === 'string' ? data.name : file.name,
-            size: typeof data.size === 'number' ? data.size : file.size
-          },
-          time: now.toLocaleTimeString(),
-          timestamp: now.toISOString()
-        });
-      }
+      const sendError =
+        data.kind === 'image' || file.type.startsWith('image/')
+          ? chat.sendUpload($session.user ?? 'anon', { image: absolute })
+          : chat.sendUpload($session.user ?? 'anon', {
+              attachment: {
+                url: absolute,
+                name: typeof data.name === 'string' ? data.name : file.name,
+                size: typeof data.size === 'number' ? data.size : file.size
+              }
+            });
+      if (sendError) setCommandFeedback(sendError, 'error');
     } catch (e) {
       console.error('upload failed', e);
       setCommandFeedback('File upload failed.', 'error');
@@ -734,14 +730,16 @@
           setCommandFeedback('Usage: /me <action>', 'error');
           return true;
         }
-        chat.send(currentUser ?? 'anon', `_${rest}_`);
+        const meError = chat.send(currentUser ?? 'anon', `_${rest}_`);
+        if (meError) setCommandFeedback(meError, 'error');
         return true;
       }
       case 'shrug': {
         // Backslash-escaped so markdown doesn't italicize the face.
         const shrug = '¯\\\\\\_(ツ)\\_/¯';
         const text = rest ? `${rest} ${shrug}` : shrug;
-        chat.send(currentUser ?? 'anon', text);
+        const shrugError = chat.send(currentUser ?? 'anon', text);
+        if (shrugError) setCommandFeedback(shrugError, 'error');
         return true;
       }
       case 'topic': {
@@ -805,7 +803,15 @@
           return true;
         }
         const expires = new Date(Date.now() + durationSeconds * 1000);
-        chat.sendEphemeral(currentUser, contentText, expires.toISOString());
+        const ephemeralError = chat.sendEphemeral(
+          currentUser,
+          contentText,
+          expires.toISOString()
+        );
+        if (ephemeralError) {
+          setCommandFeedback(ephemeralError, 'error');
+          return true;
+        }
         let feedback = `Ephemeral message will expire in ${describeDuration(durationSeconds)}.`;
         if (belowMinimum) {
           feedback += ` Minimum duration is ${describeDuration(MIN_EPHEMERAL_SECONDS)}.`;
@@ -871,7 +877,7 @@
     closeThread();
     loadingHistory = false;
     chat.clear();
-    chat.sendRaw({ type: 'join', channelId: id });
+    chat.join(id);
     scrollBottom();
   }
 
@@ -926,7 +932,9 @@
 
   function sendThreadReply(text: string) {
     if (threadRootId === null) return;
-    chat.send($session.user ?? 'anon', text, threadRootId);
+    const root = $chat.find((m) => m.id === threadRootId);
+    const error = chat.send($session.user ?? 'anon', text, threadRootId, root?.text);
+    if (error) setCommandFeedback(error, 'error');
   }
 
   function openDm(user: string) {
@@ -1331,7 +1339,8 @@
     if (input === null) return;
     const trimmed = input.trim();
     if (trimmed === '' || input === msg.text) return;
-    chat.edit(msg.id, input);
+    const error = chat.edit(msg.id, input);
+    if (error) setCommandFeedback(error, 'error');
   }
 
   function canPinMessage(msg: Message): boolean {
@@ -1688,14 +1697,23 @@
       unreadMarkerAfterId = unread.getLastRead(currentChatChannelId);
       unread.setActive(currentChatChannelId);
       loadingHistory = false;
-      if (initialChannelSet) {
-        chat.sendRaw({ type: 'join', channelId: currentChatChannelId });
-      } else {
-        initialChannelSet = true;
-      }
+      // On the first pass the server already placed us in the default
+      // channel, so only record it; a join here would double the history.
+      chat.join(currentChatChannelId, initialChannelSet);
+      initialChannelSet = true;
     }
   });
   let currentChatChannelName = $derived($channels.find(c => c.id === currentChatChannelId)?.name ?? '');
+  let currentChannelEncrypted = $derived(
+    $channels.find((c) => c.id === currentChatChannelId)?.e2ee === true
+  );
+  // The channel is encrypted but no key of ours has arrived: either nobody has
+  // opened one yet, or no member has been online to wrap it for us. Composing
+  // is blocked rather than silently failing at send time.
+  let currentChannelKeyPending = $derived(
+    currentChannelEncrypted &&
+      !($channelKeys[currentChatChannelId]?.keys?.[$channelKeys[currentChatChannelId]?.epoch ?? -1])
+  );
   // One window per share being watched, plus our own capture while the
   // self-preview is on. The peer is looked up on every change rather than
   // captured once: it is absent while the connection comes up, and the manager
@@ -1923,6 +1941,7 @@
         channelId={currentChatChannelId}
         channelName={currentChatChannelName}
         topic={currentTopic}
+        encrypted={currentChannelEncrypted}
         {serverStrength}
         {statusMap}
         onEditTopic={editTopic}
@@ -1964,6 +1983,7 @@
         onSearch={doSearch}
         onFocusResult={handleSearchResult}
         onOpenPage={handleSearchPage}
+        encrypted={currentChannelEncrypted}
         {now}
       />
       {#if wikiOpen}
@@ -2047,6 +2067,8 @@
         {pendingFile}
         {previewUrl}
         canSend={$can(PERMISSIONS.SEND_MESSAGES)}
+        encrypted={currentChannelEncrypted}
+        keyPending={currentChannelEncrypted && currentChannelKeyPending}
         onSend={send}
         onInput={handleComposerInput}
         onCancelReply={cancelReply}

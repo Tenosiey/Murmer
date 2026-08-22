@@ -9,6 +9,9 @@
   import { chat } from '$lib/stores/chat';
   import { roleDefinitions } from '$lib/stores/roleDefinitions';
   import { channelOverrides, overridesKey } from '$lib/stores/channelOverrides';
+  import { channels } from '$lib/stores/channels';
+  import { channelKeys } from '$lib/stores/channelKeys';
+  import { channelKeyFingerprint } from '$lib/channel-crypto';
   import { dialogs } from '$lib/stores/dialogs';
   import { describeServerError } from '$lib/errors';
   import {
@@ -88,6 +91,39 @@
     setState({ type: 'everyone' }, VIEW_FLAG, isPrivate ? 'inherit' : 'deny');
   }
 
+  // Encryption is text-only and private-only: a channel @everyone can read has
+  // every account on its key roster, so encrypting it would protect nothing.
+  let channelInfo = $derived(voice ? undefined : $channels.find((c) => c.id === channelId));
+  let isEncrypted = $derived(channelInfo?.e2ee === true);
+  let keyState = $derived(channelId !== null ? $channelKeys[channelId] : undefined);
+  let keyFingerprint = $derived(
+    keyState?.epoch != null ? (keyState.keys[keyState.epoch] ?? '') : ''
+  );
+
+  async function toggleEncryption(event: Event) {
+    if (channelId === null) return;
+    if (isEncrypted) {
+      // Switching encryption off drops the channel's key material. What is
+      // already stored stays encrypted and becomes unreadable for good, so
+      // this is a destructive act and is confirmed as one.
+      const confirmed = await dialogs.confirm({
+        title: 'Turn off encryption?',
+        message:
+          'Messages already sent in this channel stay encrypted and will no longer be readable ' +
+          'by anyone — this channel’s keys are deleted. New messages will be stored in plain ' +
+          'text on the server.',
+        confirmLabel: 'Turn off',
+        danger: true
+      });
+      if (!confirmed) {
+        // The checkbox already flipped optimistically; put it back.
+        (event.currentTarget as HTMLInputElement).checked = true;
+        return;
+      }
+    }
+    channels.setEncryption(channelId, !isEncrypted);
+  }
+
   // Roles that can carry overrides: everything except the implicit @everyone
   // (shown as its own row) and the Owner (bypasses overrides).
   let editableRoles = $derived($roleDefinitions.filter((r) => !r.isDefault && !r.isOwner));
@@ -120,8 +156,12 @@
     if (
       typeof code === 'string' &&
       (code.startsWith('channel-override') ||
+        code.startsWith('channel-key') ||
         code === 'invalid-channel-override' ||
-        code === 'override-target-not-found')
+        code === 'override-target-not-found' ||
+        code === 'invalid-channel-key' ||
+        code === 'channel-not-private' ||
+        code === 'channel-not-encrypted')
     ) {
       feedback = describeServerError(code);
     }
@@ -186,6 +226,49 @@
             </span>
           </span>
         </label>
+
+        {#if !voice}
+          <label class="private-toggle" class:disabled={!isPrivate}>
+            <input
+              type="checkbox"
+              checked={isEncrypted}
+              disabled={!isPrivate}
+              onchange={toggleEncryption}
+            />
+            <span>
+              <span class="private-label">End-to-end encrypted</span>
+              <span class="private-desc">
+                {#if !isPrivate}
+                  Make the channel private first — encrypting a channel everyone can read
+                  protects nothing.
+                {:else}
+                  Messages are sealed on each member's machine. The server stores ciphertext
+                  only: it keeps who posted and when, never what was said. Search, bots and
+                  server-side link previews stop working here, and uploaded files themselves
+                  stay unencrypted — only their names travel sealed.
+                {/if}
+              </span>
+              {#if isEncrypted}
+                <span class="key-status">
+                  {#if keyState?.locked}
+                    Waiting for a member who holds the key to share it with you.
+                  {:else if keyFingerprint}
+                    Key #{keyState?.epoch} · <code>{channelKeyFingerprint(keyFingerprint)}</code>
+                    — members reading the same groups aloud hold the same key.
+                  {:else}
+                    Setting up this channel's key…
+                  {/if}
+                </span>
+              {/if}
+              {#if isEncrypted && keyState?.untrusted.length}
+                <span class="key-warning">
+                  Not sharing the key with {keyState.untrusted.join(', ')}: their security key
+                  changed. Verify it on their profile before trusting it.
+                </span>
+              {/if}
+            </span>
+          </label>
+        {/if}
 
         {#if feedback}
           <div class="feedback">{feedback}</div>
@@ -320,6 +403,27 @@
   .private-desc {
     font-size: var(--text-sm);
     color: var(--color-muted);
+  }
+
+  .private-toggle.disabled .private-label {
+    color: var(--color-muted);
+  }
+
+  .key-status {
+    margin-top: var(--space-1);
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+  }
+
+  .key-status code {
+    font-family: var(--font-mono);
+    color: var(--color-text);
+  }
+
+  .key-warning {
+    margin-top: var(--space-1);
+    font-size: var(--text-sm);
+    color: var(--color-error);
   }
 
   .feedback {

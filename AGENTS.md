@@ -276,6 +276,30 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   Managers (`MANAGE_CHANNELS`) edit overrides via the `set/remove-channel-override`
   frames (`ws/handlers/channel_overrides.rs`); override data is sent only to
   managers.
+- **A private text channel may additionally be end-to-end encrypted**
+  (`channels.e2ee`, toggled by a manager with `set-channel-e2ee`). The channel
+  then has one symmetric key per *epoch*, generated on a member's machine and
+  stored only as per-member `nacl.box` wraps in `channel_keys` — the server
+  keeps N opaque blobs and can open none of them. Messages carry an `enc`
+  envelope (`epoch`/`nonce`/`ciphertext`) instead of `text`, and `handle_chat`
+  rejects a plaintext field in an encrypted channel outright rather than
+  stripping it: a client that got this wrong has a bug its user must hear about.
+  The crypto is `murmer_client/src/lib/channel-crypto.ts`; the *policy* — open
+  epoch 1, hand the current key to a member who lacks it, rotate to a new epoch
+  when a holder is no longer a member — lives in `stores/channelKeys.ts` and is
+  what the tests there pin down, because a rotation that does not happen looks
+  exactly like a working channel.
+  Membership is still the server's: the roster comes from `channel_members`,
+  the same `can_view_channel` check that gates reading. That makes the server
+  the key directory, so clients reuse `stores/peerKeys.ts` and **refuse to wrap
+  the channel key for a member whose identity key changed** under the pin.
+  Encryption is private-channel-only on purpose — a channel `@everyone` can read
+  has every account on its roster, so sealing it would protect nothing.
+  What it does not cover, all of it deliberate and documented in `README.md`:
+  server-side search (there is no text to index), bots (no identity key, so
+  `POST /channels/:id/messages` refuses), uploaded file bytes (only the
+  attachment's name and URL travel sealed), link previews, and content-derived
+  stats. There is no forward secrecy within an epoch.
 - **Soundboard** sounds are a server-wide shared library gated by two
   permissions: `MANAGE_SOUNDS` (upload/rename/delete) and `USE_SOUNDBOARD`
   (play), the latter part of the `@everyone` baseline. Playback is *local on
@@ -302,13 +326,21 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   both on write and on read (`db::clamp_chat_settings`) so no stored row can
   widen them. The client copies (composer `maxlength`, slow mode hint) are
   cosmetic and mirrored by `murmer_client/test/server-mirror.test.ts`.
+  Two of the three survive encryption and one cannot: slow mode and the length
+  cap still apply (the cap bounds the ciphertext's plaintext budget), but the
+  **profanity filter is a no-op in an end-to-end encrypted channel** — the
+  server holds no text to mask there. That is a limit of server-side filtering,
+  not a hole to plug: masking would mean giving the server the plaintext back.
 - **Danger Zone** actions (purge all messages, reset the server) require
   `ADMINISTRATOR` *and* a confirmation phrase echoed in the frame, and run as
   one transaction (`db/maintenance.rs`). A reset keeps `@everyone` and the
   Owner role — deleting them would leave the server with nobody able to
   administer it — plus identities, bans, emojis, sounds and stats; it must also
   clear the in-memory mirrors of what it deleted, or a deleted channel stays
-  joinable and a deleted role keeps granting permissions.
+  joinable and a deleted role keeps granting permissions. A reset also clears
+  every channel key and the surviving `general`'s `e2ee` flag: its overrides are
+  gone by then, so leaving the flag would strand a channel marked encrypted that
+  is no longer private.
 - The **ban list** and the **storage usage** report are answers to a request,
   not broadcasts: ban rows carry public keys and the storage walk is manager
   information, so both are gated (`BAN_MEMBERS`, `MANAGE_SERVER`) and reach one

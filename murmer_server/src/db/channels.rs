@@ -128,7 +128,13 @@ pub struct ChannelRecord {
     pub category_id: Option<i32>,
     pub description: String,
     pub position: i32,
+    /// Messages in this channel are end-to-end encrypted (see
+    /// [`crate::db::channel_keys`]); the server stores ciphertext only.
+    pub e2ee: bool,
 }
+
+/// Columns of `channels` in the order [`row_to_channel`] expects them.
+const CHANNEL_COLUMNS: &str = "id, name, category_id, description, position, e2ee";
 
 fn row_to_channel(row: &rusqlite::Row) -> rusqlite::Result<ChannelRecord> {
     Ok(ChannelRecord {
@@ -137,6 +143,7 @@ fn row_to_channel(row: &rusqlite::Row) -> rusqlite::Result<ChannelRecord> {
         category_id: row.get(2)?,
         description: row.get(3)?,
         position: row.get(4)?,
+        e2ee: row.get::<_, i64>(5)? != 0,
     })
 }
 
@@ -144,10 +151,9 @@ fn row_to_channel(row: &rusqlite::Row) -> rusqlite::Result<ChannelRecord> {
 /// ordered by their custom position (per category) then name.
 pub async fn get_channels(db: &Db) -> Vec<ChannelRecord> {
     db.call_db(|conn| {
-        let mut stmt = conn.prepare_cached(
-            "SELECT id, name, category_id, description, position FROM channels \
-             ORDER BY position, name",
-        )?;
+        let mut stmt = conn.prepare_cached(&format!(
+            "SELECT {CHANNEL_COLUMNS} FROM channels ORDER BY position, name"
+        ))?;
         let rows = stmt
             .query_map([], row_to_channel)?
             .collect::<Result<Vec<_>, _>>()?;
@@ -180,7 +186,7 @@ pub async fn get_channel_by_id(db: &Db, id: i32) -> Option<ChannelRecord> {
     db.call_db(move |conn| {
         let record = conn
             .query_row(
-                "SELECT id, name, category_id, description, position FROM channels WHERE id = ?1",
+                &format!("SELECT {CHANNEL_COLUMNS} FROM channels WHERE id = ?1"),
                 params![id],
                 row_to_channel,
             )
@@ -201,12 +207,12 @@ pub async fn add_channel(
 ) -> Result<Option<ChannelRecord>, DbError> {
     let name = name.to_owned();
     db.call_db(move |conn| {
-        let mut stmt = conn.prepare_cached(
+        let mut stmt = conn.prepare_cached(&format!(
             "INSERT INTO channels (name, category_id, position) VALUES (?1, ?2, \
                 (SELECT COALESCE(MAX(position) + 1, 0) FROM channels WHERE category_id IS ?2)) \
              ON CONFLICT (name) DO NOTHING \
-             RETURNING id, name, category_id, description, position",
-        )?;
+             RETURNING {CHANNEL_COLUMNS}"
+        ))?;
         let mut rows = stmt.query(params![name, category_id])?;
         match rows.next()? {
             Some(row) => Ok(Some(row_to_channel(row)?)),
@@ -235,10 +241,9 @@ pub async fn rename_channel(
         if taken {
             return Ok(RenameResult::NameTaken);
         }
-        let mut stmt = conn.prepare_cached(
-            "UPDATE channels SET name = ?2 WHERE id = ?1 \
-             RETURNING id, name, category_id, description, position",
-        )?;
+        let mut stmt = conn.prepare_cached(&format!(
+            "UPDATE channels SET name = ?2 WHERE id = ?1 RETURNING {CHANNEL_COLUMNS}"
+        ))?;
         let mut rows = stmt.query(params![id, name])?;
         match rows.next()? {
             Some(row) => Ok(RenameResult::Renamed(row_to_channel(row)?)),
@@ -255,6 +260,21 @@ pub async fn set_channel_description(db: &Db, id: i32, description: &str) -> Res
         let count = conn.execute(
             "UPDATE channels SET description = ?2 WHERE id = ?1",
             params![id, description],
+        )?;
+        Ok(count > 0)
+    })
+    .await
+}
+
+/// Turn end-to-end encryption on or off for a text channel. Returns true if a
+/// row was updated. Callers drop the channel's key material when disabling —
+/// the stored ciphertext stays unreadable either way, and keeping wraps around
+/// for a channel that no longer uses them only invites confusion.
+pub async fn set_channel_e2ee(db: &Db, id: i32, enabled: bool) -> Result<bool, DbError> {
+    db.call_db(move |conn| {
+        let count = conn.execute(
+            "UPDATE channels SET e2ee = ?2 WHERE id = ?1",
+            params![id, i64::from(enabled)],
         )?;
         Ok(count > 0)
     })
@@ -321,6 +341,10 @@ pub async fn remove_channel(db: &Db, id: i32) -> Result<(), DbError> {
         // Wiki revisions cascade from wiki_pages; FTS rows go via triggers.
         tx.execute("DELETE FROM wiki_pages WHERE channel_id = ?1", params![id])?;
         tx.execute("DELETE FROM messages WHERE channel_id = ?1", params![id])?;
+        tx.execute(
+            "DELETE FROM channel_keys WHERE channel_id = ?1",
+            params![id],
+        )?;
         tx.execute("DELETE FROM channels WHERE id = ?1", params![id])?;
         tx.commit()?;
         Ok(())

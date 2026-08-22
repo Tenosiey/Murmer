@@ -1,6 +1,6 @@
 use base64::{Engine as _, engine::general_purpose};
 use murmer_server::db::{self, DbCall};
-use murmer_server::ws::helpers::{DmPayloadError, dm_involves, validate_dm_payload};
+use murmer_server::ws::helpers::{SealedPayloadError, dm_involves, validate_sealed_payload};
 use serde_json::json;
 
 /// Base64 of `len` arbitrary bytes, mimicking client-encoded crypto fields.
@@ -10,32 +10,32 @@ fn b64(len: usize) -> String {
 
 #[test]
 fn accepts_well_formed_payload() {
-    assert_eq!(validate_dm_payload(&b64(24), &b64(17)), Ok(()));
+    assert_eq!(validate_sealed_payload(&b64(24), &b64(17), 4000), Ok(()));
     // Longest allowed message: 4000 plaintext bytes + 16 authenticator bytes.
-    assert_eq!(validate_dm_payload(&b64(24), &b64(4016)), Ok(()));
+    assert_eq!(validate_sealed_payload(&b64(24), &b64(4016), 4000), Ok(()));
 }
 
 #[test]
 fn rejects_invalid_base64() {
     assert_eq!(
-        validate_dm_payload("not base64!", &b64(32)),
-        Err(DmPayloadError::Malformed)
+        validate_sealed_payload("not base64!", &b64(32), 4000),
+        Err(SealedPayloadError::Malformed)
     );
     assert_eq!(
-        validate_dm_payload(&b64(24), "not base64!"),
-        Err(DmPayloadError::Malformed)
+        validate_sealed_payload(&b64(24), "not base64!", 4000),
+        Err(SealedPayloadError::Malformed)
     );
 }
 
 #[test]
 fn rejects_wrong_nonce_length() {
     assert_eq!(
-        validate_dm_payload(&b64(23), &b64(32)),
-        Err(DmPayloadError::Malformed)
+        validate_sealed_payload(&b64(23), &b64(32), 4000),
+        Err(SealedPayloadError::Malformed)
     );
     assert_eq!(
-        validate_dm_payload(&b64(25), &b64(32)),
-        Err(DmPayloadError::Malformed)
+        validate_sealed_payload(&b64(25), &b64(32), 4000),
+        Err(SealedPayloadError::Malformed)
     );
 }
 
@@ -43,20 +43,20 @@ fn rejects_wrong_nonce_length() {
 fn rejects_ciphertext_without_content() {
     // 16 bytes is the bare Poly1305 authenticator (empty plaintext).
     assert_eq!(
-        validate_dm_payload(&b64(24), &b64(16)),
-        Err(DmPayloadError::Malformed)
+        validate_sealed_payload(&b64(24), &b64(16), 4000),
+        Err(SealedPayloadError::Malformed)
     );
     assert_eq!(
-        validate_dm_payload(&b64(24), &b64(0)),
-        Err(DmPayloadError::Malformed)
+        validate_sealed_payload(&b64(24), &b64(0), 4000),
+        Err(SealedPayloadError::Malformed)
     );
 }
 
 #[test]
 fn rejects_oversized_ciphertext() {
     assert_eq!(
-        validate_dm_payload(&b64(24), &b64(4017)),
-        Err(DmPayloadError::TooLong)
+        validate_sealed_payload(&b64(24), &b64(4017), 4000),
+        Err(SealedPayloadError::TooLong)
     );
 }
 

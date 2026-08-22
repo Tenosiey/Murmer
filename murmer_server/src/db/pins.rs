@@ -96,6 +96,9 @@ pub async fn get_pins_for_channel(db: &Db, channel_id: i32) -> Result<Vec<Value>
                 "user": msg.get("user").cloned().unwrap_or(Value::Null),
                 "text": msg.get("text").cloned().unwrap_or(Value::Null),
                 "image": msg.get("image").cloned().unwrap_or(Value::Null),
+                // Encrypted channels store no text; the sealed envelope goes
+                // out instead and the client renders the pin from it.
+                "enc": msg.get("enc").cloned().unwrap_or(Value::Null),
                 "timestamp": msg.get("timestamp").cloned().unwrap_or(Value::Null),
                 "pinnedAt": pinned_at.to_rfc3339(),
                 "pinnedBy": pinned_by,

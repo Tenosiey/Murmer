@@ -120,12 +120,26 @@ pub const MAX_EPHEMERAL_SECONDS: i64 = 86_400;
 /// is defined alongside that setting.
 pub use crate::db::MAX_MESSAGE_LENGTH;
 
-/// Exact decoded length in bytes of a direct message's NaCl box nonce.
-pub const DM_NONCE_BYTES: usize = 24;
+/// Exact decoded length in bytes of a NaCl box/secretbox nonce, shared by
+/// direct messages and encrypted channel messages.
+pub const BOX_NONCE_BYTES: usize = 24;
 
 /// Poly1305 authenticator bytes appended to every NaCl box ciphertext; a
-/// direct message ciphertext may exceed [`MAX_MESSAGE_LENGTH`] by this much.
-pub const DM_CIPHERTEXT_OVERHEAD_BYTES: usize = 16;
+/// ciphertext may exceed its plaintext limit by this much.
+pub const BOX_OVERHEAD_BYTES: usize = 16;
+
+/// Exact decoded length in bytes of a wrapped channel key: the 32-byte
+/// symmetric channel secret plus the box authenticator. A wrap of any other
+/// size is not a channel key, so the server refuses to store it.
+pub const WRAPPED_CHANNEL_KEY_BYTES: usize = 32 + BOX_OVERHEAD_BYTES;
+
+/// Maximum number of wrapped keys accepted in a single `put-channel-keys`
+/// frame. One frame carries at most a full member roster.
+pub const MAX_CHANNEL_KEY_ENTRIES: usize = 500;
+
+/// Highest key epoch a channel may reach. Epochs only ever count up, one per
+/// membership removal; a client that tries to run past this is malfunctioning.
+pub const MAX_CHANNEL_KEY_EPOCH: i64 = 1_000_000;
 
 /// Maximum length in bytes for a channel topic/description.
 pub const MAX_TOPIC_LENGTH: usize = 256;

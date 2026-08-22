@@ -60,12 +60,17 @@ pub async fn reset_server(db: &Db) -> Result<ResetSummary, DbError> {
         tx.execute("DELETE FROM channel_overrides", [])?;
 
         let channels = tx.execute("DELETE FROM channels WHERE name <> 'general'", [])?;
-        // The surviving channel goes back to how a fresh server seeds it.
+        // The surviving channel goes back to how a fresh server seeds it —
+        // including unencrypted. Its overrides are gone by now, so leaving the
+        // flag set would strand an encrypted channel that is no longer private
+        // and whose messages were just deleted anyway.
         tx.execute(
-            "UPDATE channels SET category_id = NULL, description = '', position = 0 \
+            "UPDATE channels SET category_id = NULL, description = '', position = 0, e2ee = 0 \
              WHERE name = 'general'",
             [],
         )?;
+        // Keys of the deleted channels cascade; general's are dropped here.
+        tx.execute("DELETE FROM channel_keys", [])?;
         let voice_channels = tx.execute("DELETE FROM voice_channels", [])?;
         let categories = tx.execute("DELETE FROM categories", [])?;
 

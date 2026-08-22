@@ -23,6 +23,8 @@
     channelId: number;
     channelName: string;
     topic: string;
+    /** The channel is end-to-end encrypted; the server stores ciphertext only. */
+    encrypted?: boolean;
     serverStrength: number;
     statusMap: Record<string, UserStatus>;
     onEditTopic: () => void;
@@ -42,6 +44,7 @@
     channelId,
     channelName,
     topic,
+    encrypted = false,
     serverStrength,
     statusMap,
     onEditTopic,
@@ -187,7 +190,18 @@
         {/if}
       </div>
     {/if}
-    <h1>{channelName}</h1>
+    <h1>
+      {channelName}
+      {#if encrypted}
+        <span
+          class="encrypted-badge"
+          title="End-to-end encrypted — the server stores ciphertext only"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          <span class="sr-only">End-to-end encrypted</span>
+        </span>
+      {/if}
+    </h1>
     {#if topic}
       <p class="topic" title={topic}>{topic}</p>
     {:else}
@@ -569,6 +583,13 @@
     margin-right: var(--space-1);
     color: var(--color-muted);
     font-weight: 500;
+  }
+
+  .encrypted-badge {
+    display: inline-flex;
+    align-items: center;
+    color: var(--color-muted);
+    vertical-align: baseline;
   }
 
   .topic {

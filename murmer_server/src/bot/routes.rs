@@ -413,8 +413,16 @@ async fn send_message(
         return json_error(StatusCode::TOO_MANY_REQUESTS, "rate-limit-exceeded");
     }
 
-    if db::get_channel_by_id(&state.db, channel_id).await.is_none() {
-        return json_error(StatusCode::NOT_FOUND, "channel-not-found");
+    match db::get_channel_by_id(&state.db, channel_id).await {
+        None => return json_error(StatusCode::NOT_FOUND, "channel-not-found"),
+        // Bots have no identity key, so they are not on an encrypted channel's
+        // key roster and have nothing to encrypt with. Posting plaintext there
+        // would put on the server exactly what the channel exists to keep off
+        // it, so the endpoint refuses instead.
+        Some(record) if record.e2ee => {
+            return json_error(StatusCode::FORBIDDEN, "channel-requires-encryption");
+        }
+        Some(_) => {}
     }
 
     let text = body.text.trim();

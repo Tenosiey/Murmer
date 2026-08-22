@@ -64,13 +64,13 @@ pub(super) async fn handle_dm(
         send_error(sender, errors::INVALID_DM_PAYLOAD).await;
         return;
     };
-    match validate_dm_payload(nonce, ciphertext) {
+    match validate_sealed_payload(nonce, ciphertext, MAX_MESSAGE_LENGTH) {
         Ok(()) => {}
-        Err(DmPayloadError::TooLong) => {
+        Err(SealedPayloadError::TooLong) => {
             send_error(sender, errors::MESSAGE_TOO_LONG).await;
             return;
         }
-        Err(DmPayloadError::Malformed) => {
+        Err(SealedPayloadError::Malformed) => {
             send_error(sender, errors::INVALID_DM_PAYLOAD).await;
             return;
         }

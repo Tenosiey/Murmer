@@ -359,6 +359,11 @@ Authorization: Bearer <bot_token>
 
 **Permission required:** `send_messages`
 
+Bots cannot post into an end-to-end encrypted channel. A bot has no identity
+key, so it is not on the channel's key roster and has nothing to encrypt with;
+posting plaintext there would put on the server exactly what the channel exists
+to keep off it. Such a request is refused with `channel-requires-encryption`.
+
 **Body:**
 
 | Field | Type | Required | Description |
@@ -760,6 +765,7 @@ All errors follow a consistent format:
 | 403 | `missing-permission:*` | The bot lacks the required permission |
 | 403 | `not-message-author` | Only the bot's own messages can be edited |
 | 403 | `cannot-delete-general` | The default channel is protected |
+| 403 | `channel-requires-encryption` | The channel is end-to-end encrypted; bots have no identity key and cannot post there |
 | 404 | `bot-not-found` | No bot with the given ID exists |
 | 404 | `channel-not-found` | No channel with the given ID exists |
 | 404 | `message-not-found` | No message with the given ID exists in that channel |

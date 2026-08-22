@@ -27,8 +27,12 @@ export interface EncryptedDm {
 }
 
 /** Convert both parties' Ed25519 keys to the X25519 pair nacl.box needs.
- *  Returns null if either key is malformed (e.g. a corrupted binding). */
-function dhKeys(
+ *  Returns null if either key is malformed (e.g. a corrupted binding).
+ *
+ *  Shared with channel-crypto.ts, which wraps a channel key for a member with
+ *  the same primitive and the same trust model: a box between two identity
+ *  keys, with the server as the directory that hands them out. */
+export function dhKeys(
   peerEdPublicKey: string,
   myEdSecretKey: string
 ): { peerPublic: Uint8Array; mySecret: Uint8Array } | null {

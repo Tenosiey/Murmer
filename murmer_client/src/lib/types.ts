@@ -33,8 +33,14 @@ export interface Message {
   /** Direct messages: end-to-end encryption fields (base64). */
   nonce?: string;
   ciphertext?: string;
-  /** Set when a DM ciphertext failed to decrypt; render a placeholder. */
+  /** Encrypted channels: the sealed envelope, kept so a later key can open it. */
+  enc?: unknown;
+  /** Set when a ciphertext failed to decrypt for good; render a placeholder. */
   decryptFailed?: boolean;
+  /** Set when the channel key for this message's epoch has not arrived yet.
+   *  Unlike `decryptFailed` this resolves on its own once a member wraps the
+   *  key for us, so the placeholder says "waiting", not "lost". */
+  decryptPending?: boolean;
   [key: string]: unknown;
 }
 
@@ -166,6 +172,9 @@ export interface ChannelInfo {
   position: number;
   /** True when the channel restricts View for @everyone (shows a lock). */
   private?: boolean;
+  /** True when the channel's messages are end-to-end encrypted; the server
+   *  stores ciphertext only (see `src/lib/channel-crypto.ts`). */
+  e2ee?: boolean;
 }
 
 /** One sound in the server's shared soundboard library. */

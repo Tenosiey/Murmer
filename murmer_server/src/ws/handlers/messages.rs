@@ -20,6 +20,49 @@ async fn can_view_text(state: &Arc<AppState>, user_name: &Option<String>, channe
     }
 }
 
+/// Fields a client may only send in a *plaintext* channel. In an encrypted one
+/// they are the plaintext the channel exists to keep off the server, so a
+/// frame carrying any of them is rejected rather than quietly stripped: a
+/// client that got this wrong has a bug its user needs to hear about, not a
+/// message that silently loses its attachment.
+const PLAINTEXT_MESSAGE_FIELDS: [&str; 3] = ["text", "image", "attachment"];
+
+/// Read and shape-check a message's `enc` object — the sealed envelope of an
+/// encrypted channel. The plaintext inside is a JSON object holding the
+/// message's text, attachment and reply preview, so the server can say nothing
+/// about it beyond "this is base64 of a plausible size".
+///
+/// Returns the rebuilt `enc` value, so the stored frame carries known fields
+/// only and a client cannot smuggle anything extra alongside the ciphertext.
+/// `max_plaintext` is the server's configured message length limit — the
+/// ciphertext is bounded by it just as plaintext is, which is the only length
+/// rule that survives encryption.
+fn sealed_message(v: &Value, max_plaintext: usize) -> Result<Value, &'static str> {
+    let Some(enc) = v.get("enc") else {
+        return Err(errors::CHANNEL_REQUIRES_ENCRYPTION);
+    };
+    let (Some(epoch), Some(nonce), Some(ciphertext)) = (
+        enc.get("epoch").and_then(|e| e.as_i64()),
+        enc.get("nonce").and_then(|n| n.as_str()),
+        enc.get("ciphertext").and_then(|c| c.as_str()),
+    ) else {
+        return Err(errors::INVALID_ENCRYPTED_MESSAGE);
+    };
+    if !(1..=MAX_CHANNEL_KEY_EPOCH).contains(&epoch) {
+        return Err(errors::INVALID_ENCRYPTED_MESSAGE);
+    }
+    match validate_sealed_payload(nonce, ciphertext, max_plaintext) {
+        Ok(()) => {}
+        Err(SealedPayloadError::TooLong) => return Err(errors::MESSAGE_TOO_LONG),
+        Err(SealedPayloadError::Malformed) => return Err(errors::INVALID_ENCRYPTED_MESSAGE),
+    }
+    Ok(serde_json::json!({
+        "epoch": epoch,
+        "nonce": nonce,
+        "ciphertext": ciphertext,
+    }))
+}
+
 /// Handle channel join and load initial history.
 pub(super) async fn handle_join(
     state: &Arc<AppState>,
@@ -281,15 +324,43 @@ pub(super) async fn handle_chat(
         return;
     }
 
-    if let Some(text) = v.get("text").and_then(|t| t.as_str())
-        && text.len() > super::chat_settings::max_message_length(state).await
-    {
-        send_error(sender, errors::MESSAGE_TOO_LONG).await;
-        return;
+    // An encrypted channel takes sealed envelopes and nothing else; a
+    // plaintext one takes plaintext and no `enc`. Deciding this from the
+    // channel's stored flag rather than from the frame is what keeps a client
+    // from opting a message out of the channel's encryption.
+    let max_length = super::chat_settings::max_message_length(state).await;
+    let encrypted = channel_is_e2ee(state, channel_id).await;
+    if encrypted {
+        if PLAINTEXT_MESSAGE_FIELDS
+            .iter()
+            .any(|field| v.get(field).is_some_and(|value| !value.is_null()))
+        {
+            send_error(sender, errors::CHANNEL_REQUIRES_ENCRYPTION).await;
+            return;
+        }
+        match sealed_message(v, max_length) {
+            Ok(enc) => v["enc"] = enc,
+            Err(code) => {
+                send_error(sender, code).await;
+                return;
+            }
+        }
+    } else {
+        if let Some(text) = v.get("text").and_then(|t| t.as_str())
+            && text.len() > max_length
+        {
+            send_error(sender, errors::MESSAGE_TOO_LONG).await;
+            return;
+        }
+        if let Some(map) = v.as_object_mut() {
+            map.remove("enc");
+        }
     }
 
     // Masking happens before the message is stored or broadcast, so the
-    // filtered form is the only one any other client can ever see.
+    // filtered form is the only one any other client can ever see. It is a
+    // no-op in an encrypted channel: the server holds no text to mask there,
+    // which is a limit of the profanity filter rather than a way around it.
     super::chat_settings::apply_profanity_filter(state, v).await;
 
     v["user"] = Value::String(user.clone());
@@ -319,14 +390,24 @@ pub(super) async fn handle_chat(
                     .get("user")
                     .and_then(|u| u.as_str())
                     .unwrap_or("");
-                let quoted_text = reply_preview(
-                    record
-                        .content
-                        .get("text")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or(""),
-                    MAX_REPLY_PREVIEW_CHARS,
-                );
+                // The quoted snippet is rebuilt from the stored message so a
+                // client cannot forge it. In an encrypted channel there is no
+                // stored text to quote, so the snippet stays empty and the
+                // sender's own copy of it travels inside the ciphertext
+                // instead — forgeable only to the members who already hold the
+                // key, which is the same set that can read both messages.
+                let quoted_text = if encrypted {
+                    String::new()
+                } else {
+                    reply_preview(
+                        record
+                            .content
+                            .get("text")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or(""),
+                        MAX_REPLY_PREVIEW_CHARS,
+                    )
+                };
                 v["replyTo"] = serde_json::json!({
                     "id": target_id,
                     "user": quoted_user,
@@ -389,13 +470,21 @@ pub(super) async fn handle_chat(
             // additionally announce the message globally. Clients use this to
             // track unread counts and mentions for channels they are not
             // currently viewing.
-            let notify = serde_json::json!({
+            // Carries the sealed envelope rather than the text for an
+            // encrypted channel: the frame is already filtered to members (see
+            // `channel_scope` in the socket loop), and they hold the key, so
+            // mention highlighting keeps working without the server ever
+            // handling the plaintext.
+            let mut notify = serde_json::json!({
                 "type": "message-notify",
                 "channelId": channel_id,
                 "id": id,
                 "user": user,
                 "text": v.get("text").cloned().unwrap_or(Value::Null),
             });
+            if let Some(enc) = v.get("enc") {
+                notify["enc"] = enc.clone();
+            }
             let _ = state.tx.send(notify.to_string().into());
 
             if let Some(expiry) = ephemeral_expiry {
@@ -524,22 +613,40 @@ pub(super) async fn handle_edit_message(
         return;
     };
 
-    let Some(raw_text) = v.get("text").and_then(|t| t.as_str()) else {
-        send_error(sender, errors::INVALID_MESSAGE_TEXT).await;
-        return;
-    };
-
-    if raw_text.trim().is_empty()
-        || raw_text.len() > super::chat_settings::max_message_length(state).await
-    {
-        send_error(sender, errors::MESSAGE_TOO_LONG).await;
-        return;
+    // An edit replaces the message's payload, so it has to arrive in whatever
+    // form the channel stores: a sealed envelope in an encrypted channel, text
+    // in a plaintext one.
+    let encrypted = channel_is_e2ee(state, channel_id).await;
+    let max_length = super::chat_settings::max_message_length(state).await;
+    let mut new_text = String::new();
+    let mut new_enc = Value::Null;
+    if encrypted {
+        if v.get("text").is_some_and(|value| !value.is_null()) {
+            send_error(sender, errors::CHANNEL_REQUIRES_ENCRYPTION).await;
+            return;
+        }
+        match sealed_message(v, max_length) {
+            Ok(enc) => new_enc = enc,
+            Err(code) => {
+                send_error(sender, code).await;
+                return;
+            }
+        }
+    } else {
+        let Some(raw_text) = v.get("text").and_then(|t| t.as_str()) else {
+            send_error(sender, errors::INVALID_MESSAGE_TEXT).await;
+            return;
+        };
+        if raw_text.trim().is_empty() || raw_text.len() > max_length {
+            send_error(sender, errors::MESSAGE_TOO_LONG).await;
+            return;
+        }
+        // An edit runs through the same filter as a new message: otherwise
+        // posting and immediately editing would walk straight past it. There
+        // is nothing to filter in an encrypted channel — the server never sees
+        // the text, before or after the edit.
+        new_text = super::chat_settings::mask_text(state, raw_text).await;
     }
-
-    // An edit runs through the same filter as a new message: otherwise
-    // posting and immediately editing would walk straight past it.
-    let new_text = super::chat_settings::mask_text(state, raw_text).await;
-
     let record = match db::get_message_record(&state.db, message_id).await {
         Ok(Some(record)) => record,
         Ok(None) => {
@@ -573,7 +680,11 @@ pub(super) async fn handle_edit_message(
 
     let mut content = record.content.clone();
     let edited_at = Utc::now().to_rfc3339();
-    content["text"] = Value::String(new_text.clone());
+    if encrypted {
+        content["enc"] = new_enc.clone();
+    } else {
+        content["text"] = Value::String(new_text.clone());
+    }
     content["edited"] = Value::Bool(true);
     content["editedAt"] = Value::String(edited_at.clone());
 
@@ -588,13 +699,17 @@ pub(super) async fn handle_edit_message(
 
     match db::update_message_content(&state.db, message_id, &serialized).await {
         Ok(true) => {
-            let payload = serde_json::json!({
+            let mut payload = serde_json::json!({
                 "type": "message-edited",
                 "id": message_id,
                 "channelId": record.channel_id,
-                "text": new_text,
                 "editedAt": edited_at,
             });
+            if encrypted {
+                payload["enc"] = new_enc;
+            } else {
+                payload["text"] = Value::String(new_text.clone());
+            }
             let chan_sender = get_or_create_channel(state, record.channel_id).await;
             let _ = chan_sender.send(payload.to_string().into());
 

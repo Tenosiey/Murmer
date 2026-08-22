@@ -15,7 +15,14 @@ import { threadData } from './thread';
 import { dm } from './dm';
 import { pinned } from './pins';
 import { peerKeys } from './peerKeys';
+import { channelKeys } from './channelKeys';
 import { decryptDm, encryptDm } from '../dm-crypto';
+import {
+  decryptChannelMessage,
+  encryptChannelMessage,
+  parseSealedMessage,
+  type ChannelMessagePayload
+} from '../channel-crypto';
 import { loadKeyPair } from '../keypair';
 
 /** Maximum number of search results to request from server */
@@ -40,6 +47,13 @@ function createChatStore() {
   let requestIdCounter = 1;
   const pendingSearches = new Map<number, PendingSearch>();
   let lastTypingSentAt = 0;
+  /** Channels whose messages are end-to-end encrypted, per the channel list. */
+  let encryptedChannels = new Set<number>();
+  /** The channel this connection is joined to; what `send` seals for. */
+  let joinedChannelId = 0;
+  /** Last pin snapshot per channel, kept so sealed previews can be re-opened
+   *  once the channel key arrives. */
+  const rawPins = new Map<number, unknown[]>();
 
   /** In-flight and resolved peer key lookups, cached per connection. */
   const peerKeyRequests = new Map<string, Promise<string | null>>();
@@ -111,13 +125,119 @@ function createChatStore() {
     return prepareMessage({ ...msg, text });
   }
 
+  /**
+   * Open a message from an encrypted channel and fold its payload back into
+   * the shape the rest of the app renders (text, image, attachment, reply
+   * quote). The sealed envelope is kept on the message so a later key can
+   * re-open it; `decryptPending` marks exactly that case, and is what
+   * separates "the key has not reached us yet" from `decryptFailed`, which is
+   * final.
+   *
+   * A frame with no `enc` passes through untouched: plaintext channels, and
+   * messages a channel carried before encryption was switched on, still
+   * render normally.
+   */
+  function decryptChannelFrame(msg: Message): Message {
+    const sealed = parseSealedMessage(msg.enc);
+    if (!sealed) return prepareMessage(msg);
+    const channelId = typeof msg.channelId === 'number' ? msg.channelId : joinedChannelId;
+    const key = channelKeys.keyFor(channelId, sealed.epoch);
+    const payload = key ? decryptChannelMessage(sealed, key) : null;
+    if (!payload) {
+      const failed: Message = { ...msg };
+      delete failed.text;
+      delete failed.image;
+      delete failed.attachment;
+      if (key) {
+        failed.decryptFailed = true;
+      } else {
+        failed.decryptPending = true;
+      }
+      return prepareMessage(failed);
+    }
+    const opened: Message = { ...msg };
+    delete opened.decryptFailed;
+    delete opened.decryptPending;
+    if (typeof payload.text === 'string') opened.text = payload.text;
+    if (typeof payload.image === 'string') opened.image = payload.image;
+    if (payload.attachment) opened.attachment = payload.attachment;
+    // The server cannot quote an encrypted message, so it sends the reply's id
+    // and author with an empty snippet; the snippet travels sealed instead.
+    if (opened.replyTo && typeof payload.replyText === 'string') {
+      opened.replyTo = { ...opened.replyTo, text: payload.replyText };
+    }
+    return prepareMessage(opened);
+  }
+
+  /**
+   * Publish a channel's pins, opening any sealed previews on the way.
+   *
+   * Pins arrive with the channel join, which on a reconnect is before the
+   * channel keys do, so the raw snapshot is kept and re-applied when a key
+   * turns up — otherwise the pinned bar would sit empty until the next pin.
+   */
+  function applyPins(channelId: number, raw: unknown[]): void {
+    rawPins.set(channelId, raw);
+    pinned.setChannelPins(
+      channelId,
+      raw.map((item) => {
+        if (!item || typeof item !== 'object') return item;
+        const sealed = parseSealedMessage((item as Record<string, unknown>).enc);
+        if (!sealed) return item;
+        const key = channelKeys.keyFor(channelId, sealed.epoch);
+        const payload = key ? decryptChannelMessage(sealed, key) : null;
+        return { ...(item as Record<string, unknown>), text: payload?.text ?? null };
+      })
+    );
+  }
+
+  /**
+   * Re-open every message that was waiting on a key. Runs whenever the key
+   * store changes, which is how a message that arrived before its epoch did
+   * stops being a placeholder without the user reloading anything.
+   */
+  function retryPendingDecrypts(): void {
+    update((messages) => {
+      let changed = false;
+      const next = messages.map((item) => {
+        if (item.decryptPending !== true) return item;
+        const opened = decryptChannelFrame(item);
+        if (opened.decryptPending === true) return item;
+        changed = true;
+        return opened;
+      });
+      return changed ? next : messages;
+    });
+    for (const [channelId, raw] of rawPins) applyPins(channelId, raw);
+    const thread = get(threadData);
+    if (thread && thread.messages.some((item) => item.decryptPending === true)) {
+      threadData.set({
+        ...thread,
+        messages: thread.messages.map((item) =>
+          item.decryptPending === true ? decryptChannelFrame(item) : item
+        )
+      });
+    }
+  }
+
+  /** Build the sealed envelope for a message in the joined channel, if it is
+   *  encrypted. Returns `null` when the channel is plaintext (send as-is) and
+   *  `'locked'` when it is encrypted but we hold no key to send under. */
+  function sealForJoinedChannel(payload: ChannelMessagePayload): Record<string, unknown> | null | 'locked' {
+    if (!encryptedChannels.has(joinedChannelId)) return null;
+    const current = channelKeys.currentKey(joinedChannelId);
+    if (!current) return 'locked';
+    const sealed = encryptChannelMessage(payload, current.epoch, current.key);
+    return sealed ? { epoch: sealed.epoch, nonce: sealed.nonce, ciphertext: sealed.ciphertext } : 'locked';
+  }
+
   /** Handle incoming messages from WebSocket */
   function handleMessage(msg: Message): void {
     const current = get(session).user;
 
     switch (msg.type) {
       case 'chat': {
-        const prepared = prepareMessage(msg);
+        const prepared = decryptChannelFrame(msg);
         update((m) => [...m, prepared]);
 
         // The author's message arriving supersedes their typing signal.
@@ -151,7 +271,7 @@ function createChatStore() {
       }
 
       case 'history': {
-        const msgs = ((msg.messages as Message[]) || []).map((item) => prepareMessage(item));
+        const msgs = ((msg.messages as Message[]) || []).map((item) => decryptChannelFrame(item));
         update((m) => {
           // Drop messages already in the store so overlapping history
           // responses (e.g. after a reconnect) don't duplicate entries.
@@ -175,9 +295,22 @@ function createChatStore() {
 
       case 'message-edited': {
         const messageId = msg.id as number | undefined;
-        if (typeof messageId === 'number' && typeof msg.text === 'string') {
+        if (typeof messageId !== 'number') break;
+        const editedAt = typeof msg.editedAt === 'string' ? msg.editedAt : undefined;
+        const sealed = parseSealedMessage(msg.enc);
+        if (sealed) {
+          // The edit replaces the sealed payload; re-open it through the same
+          // path a fresh message takes, so a missing key leaves a placeholder
+          // rather than the pre-edit text.
+          update((messages) =>
+            messages.map((m) =>
+              m.id === messageId
+                ? decryptChannelFrame({ ...m, enc: msg.enc, edited: true, editedAt })
+                : m
+            )
+          );
+        } else if (typeof msg.text === 'string') {
           const text = msg.text;
-          const editedAt = typeof msg.editedAt === 'string' ? msg.editedAt : undefined;
           update((messages) =>
             messages.map((m) => (m.id === messageId ? { ...m, text, edited: true, editedAt } : m))
           );
@@ -217,7 +350,7 @@ function createChatStore() {
             const list: Message[] = Array.isArray(payload.messages)
               ? (payload.messages as Message[])
               : [];
-            const prepared = list.map((item) => prepareMessage(item));
+            const prepared = list.map((item) => decryptChannelFrame(item));
             // Wiki pages ride the same frame: one query, two indexes.
             pending.resolve({ messages: prepared, pages: parseWikiSearchHits(payload.pages) });
           }
@@ -237,9 +370,40 @@ function createChatStore() {
       case 'pins': {
         const channelId = msg.channelId as number | undefined;
         if (typeof channelId === 'number') {
-          const list = Array.isArray(msg.pins) ? (msg.pins as unknown[]) : [];
-          pinned.setChannelPins(channelId, list);
+          applyPins(channelId, Array.isArray(msg.pins) ? (msg.pins as unknown[]) : []);
         }
+        break;
+      }
+
+      // The channel list is where encryption status arrives, so it is also
+      // where key fetching starts and stops.
+      case 'channel-list': {
+        const list = Array.isArray(msg.channels) ? (msg.channels as unknown[]) : [];
+        encryptedChannels = new Set(
+          list
+            .filter(
+              (item): item is Record<string, unknown> =>
+                !!item && typeof item === 'object' && (item as Record<string, unknown>).e2ee === true
+            )
+            .map((item) => item.id)
+            .filter((id): id is number => typeof id === 'number')
+        );
+        channelKeys.syncChannels([...encryptedChannels]);
+        break;
+      }
+
+      case 'channel-keys': {
+        channelKeys.receive(msg as Record<string, unknown>);
+        retryPendingDecrypts();
+        break;
+      }
+
+      // A member handed out or rotated a key. Re-read rather than trusting the
+      // notification's contents: wraps are per-recipient and only ours are
+      // ours to fetch.
+      case 'channel-keys-changed': {
+        const channelId = msg.channelId as number | undefined;
+        if (typeof channelId === 'number') channelKeys.request(channelId);
         break;
       }
 
@@ -296,7 +460,7 @@ function createChatStore() {
           threadData.set({
             rootId,
             channelId,
-            messages: list.map((item) => prepareMessage(item))
+            messages: list.map((item) => decryptChannelFrame(item))
           });
         }
         break;
@@ -315,7 +479,16 @@ function createChatStore() {
         // which already handle notifications there.
         if (channelId === unread.getActive()) break;
 
-        const text = typeof msg.text === 'string' ? msg.text : '';
+        // In an encrypted channel the announcement carries the sealed
+        // envelope instead of the text; members hold the key, so mention
+        // detection and notification previews keep working locally.
+        let text = typeof msg.text === 'string' ? msg.text : '';
+        const sealed = parseSealedMessage(msg.enc);
+        if (sealed) {
+          const key = channelKeys.keyFor(channelId, sealed.epoch);
+          const payload = key ? decryptChannelMessage(sealed, key) : null;
+          text = typeof payload?.text === 'string' ? payload.text : '';
+        }
         const mention = current ? containsMention(text, current) : false;
         unread.recordIncoming(channelId, messageId, mention);
 
@@ -372,6 +545,12 @@ function createChatStore() {
     // Key pins persist per server; in-flight lookups belong to the old one.
     peerKeys.setServer(url);
     clearPeerKeyRequests();
+    // Channel keys are held in memory only — the server keeps the wraps, and
+    // they are re-fetched from the channel list this connection sends us.
+    channelKeys.reset();
+    encryptedChannels = new Set();
+    joinedChannelId = 0;
+    rawPins.clear();
     unread.reset();
     threadData.set(null);
     dm.reset();
@@ -414,26 +593,83 @@ function createChatStore() {
   }
 
   /**
-   * Send a chat message.
-   * @param user - Username
-   * @param text - Message text
-   * @param replyTo - Optional ID of the message being replied to
+   * Send a chat message, sealing it first when the joined channel is
+   * end-to-end encrypted.
+   *
+   * `content` is everything that must stay off the server in an encrypted
+   * channel (text, an image URL, an attachment); `extra` is the metadata that
+   * has to stay readable for the server to route and thread the message.
+   * Returns an error string for the caller to surface, or null on success.
    */
-  function send(user: string, text: string, replyTo?: number): void {
-    if (!wsManager.isConnected()) return;
+  function sendMessage(
+    user: string,
+    content: ChannelMessagePayload,
+    extra: Record<string, unknown> = {}
+  ): string | null {
+    if (!wsManager.isConnected()) return 'Not connected to the server.';
 
     const now = new Date();
     const payload: Record<string, unknown> = {
       type: 'chat',
       user,
-      text,
       time: now.toLocaleTimeString(),
-      timestamp: now.toISOString()
+      timestamp: now.toISOString(),
+      ...extra
     };
-    if (typeof replyTo === 'number' && Number.isFinite(replyTo)) {
-      payload.replyTo = replyTo;
+
+    const sealed = sealForJoinedChannel(content);
+    if (sealed === 'locked') {
+      return 'This channel is encrypted and your copy of its key has not arrived yet.';
+    }
+    if (sealed) {
+      payload.enc = sealed;
+    } else {
+      Object.assign(payload, content);
+      delete payload.replyText;
     }
     wsManager.send(payload);
+    return null;
+  }
+
+  /**
+   * Send a chat message.
+   * @param user - Username
+   * @param text - Message text
+   * @param replyTo - Optional ID of the message being replied to
+   * @param replyText - Quoted snippet, needed only in encrypted channels where
+   *   the server has no plaintext to quote from
+   * @returns null on success, or an error message for the caller to surface
+   */
+  function send(user: string, text: string, replyTo?: number, replyText?: string): string | null {
+    const extra: Record<string, unknown> = {};
+    if (typeof replyTo === 'number' && Number.isFinite(replyTo)) {
+      extra.replyTo = replyTo;
+    }
+    return sendMessage(user, { text, replyText }, extra);
+  }
+
+  /**
+   * Send an uploaded image or file. The bytes live on the server either way;
+   * in an encrypted channel the reference to them travels sealed, so who
+   * shared what is not readable from the message store.
+   * @returns null on success, or an error message for the caller to surface
+   */
+  function sendUpload(
+    user: string,
+    content: { image?: string; attachment?: { url: string; name: string; size: number } }
+  ): string | null {
+    return sendMessage(user, content);
+  }
+
+  /**
+   * Switch the connection to a channel.
+   * @param channelId - Channel to join
+   * @param announce - False records the channel the server already placed us
+   *   in (the default channel right after presence) without a redundant join.
+   */
+  function join(channelId: number, announce = true): void {
+    joinedChannelId = channelId;
+    if (announce) sendRaw({ type: 'join', channelId });
   }
 
   /**
@@ -501,20 +737,8 @@ function createChatStore() {
    * @param text - Message text
    * @param expiresAt - ISO 8601 expiry timestamp
    */
-  function sendEphemeral(user: string, text: string, expiresAt: string): void {
-    if (!wsManager.isConnected()) return;
-
-    const now = new Date();
-    const payload = {
-      type: 'chat',
-      user,
-      text,
-      time: now.toLocaleTimeString(),
-      timestamp: now.toISOString(),
-      ephemeral: true,
-      expiresAt
-    };
-    wsManager.send(payload);
+  function sendEphemeral(user: string, text: string, expiresAt: string): string | null {
+    return sendMessage(user, { text }, { ephemeral: true, expiresAt });
   }
 
   /**
@@ -598,15 +822,21 @@ function createChatStore() {
    * @param messageId - Message ID to edit
    * @param text - Replacement message text
    */
-  function edit(messageId: number, text: string): void {
-    if (!wsManager.isConnected()) return;
-    if (typeof messageId !== 'number' || Number.isNaN(messageId)) return;
+  function edit(messageId: number, text: string): string | null {
+    if (!wsManager.isConnected()) return 'Not connected to the server.';
+    if (typeof messageId !== 'number' || Number.isNaN(messageId)) return null;
 
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed) return null;
 
-    const payload = { type: 'edit-message', messageId, text };
-    wsManager.send(payload);
+    const sealed = sealForJoinedChannel({ text });
+    if (sealed === 'locked') {
+      return 'This channel is encrypted and your copy of its key has not arrived yet.';
+    }
+    wsManager.send(
+      sealed ? { type: 'edit-message', messageId, enc: sealed } : { type: 'edit-message', messageId, text }
+    );
+    return null;
   }
 
   /**
@@ -632,6 +862,10 @@ function createChatStore() {
     threadData.set(null);
     dm.reset();
     pinned.reset();
+    channelKeys.reset();
+    encryptedChannels = new Set();
+    joinedChannelId = 0;
+    rawPins.clear();
     clearPendingSearches('Disconnected');
     clearPeerKeyRequests();
     connection.set('idle');
@@ -655,11 +889,17 @@ function createChatStore() {
     wsManager.off(type, callback);
   }
 
+  // The key store talks to the server through this connection; it deliberately
+  // does not import the chat store back, so the dependency runs one way.
+  channelKeys.setTransport(sendRaw);
+
   return {
     subscribe,
     connect,
     connectionLost,
+    join,
     send,
+    sendUpload,
     sendDm,
     sendEphemeral,
     sendTyping,

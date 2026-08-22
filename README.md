@@ -78,6 +78,9 @@ small team can deploy a private chat space quickly.
 - End-to-end encrypted direct messages with persistent history and unread
   badges: message text is encrypted on-device (NaCl box over the users'
   identity keys), so the server only ever stores and relays ciphertext
+- End-to-end encrypted private channels: a private text channel can be switched
+  to E2EE, after which every message is sealed under a shared channel key that
+  only members hold, and the server keeps ciphertext alone
 - Screen sharing in voice channels with adjustable resolution, frame rate and
   bitrate; Owners/Admins can set a server-wide bitrate cap from the dashboard.
   The sharer gets a floating self-preview to check what is actually being sent,
@@ -327,6 +330,48 @@ View and text Write server-side. Voice **talk** is enforced by the client
 peer-to-peer, a modified client could bypass the mute, so treat View/join as the
 real boundary.
 
+#### End-to-end encryption
+
+A private **text** channel can additionally be switched to **end-to-end
+encrypted** in the same Edit Permissions dialog. From then on the server stores
+and relays ciphertext only: it keeps who posted, when, and how long the message
+was — never what it said.
+
+How it works: the channel has one symmetric key, generated on a member's
+machine. Each member gets their own copy of it, sealed to the X25519 key derived
+from their Ed25519 identity — the same key pair that encrypts DMs — so the
+server stores one opaque blob per member and can open none of them. Keys are
+versioned by an **epoch**: adding a member hands them the current key, removing
+one starts a fresh epoch that is never wrapped for them. Old epochs stay
+available to the members who had them, so history keeps opening. Clients do all
+of this themselves whenever they see the channel's membership change, so no
+operator action is needed — but the key can only reach a new member while a
+current member is online, which is why a fresh member sometimes sees "waiting
+for this channel's key" for a while.
+
+The trade-offs are real and worth knowing before switching it on:
+
+- **Server-side search does not cover the channel**, because there is no text to
+  index. The search overlay says so.
+- **Bots cannot post there.** A bot has no identity key, so it is not on the key
+  roster and has nothing to encrypt with.
+- **Uploaded files are not encrypted.** Their bytes go through `/upload` as
+  usual; only the attachment's name and URL travel sealed, so who shared what is
+  hidden but the file itself is not.
+- **Link previews, the profanity filter and content-derived stats stop.** All
+  three are server-side and see nothing. Slow mode and the message length cap
+  still apply.
+- **The server is still the directory.** It decides who is on the member roster
+  and hands out the identity keys the key is wrapped for, so a malicious server
+  could put a key it controls on the roster. Clients pin every member's identity
+  key on first sight and refuse to share the channel key with a key that changed
+  — the same bound DMs have. The dialog shows the current key's fingerprint;
+  two members reading the same groups aloud hold the same key.
+- **No forward secrecy within an epoch.** Whoever holds an epoch's key reads
+  everything sent under it, permanently.
+- Turning encryption back off does not decrypt what is already stored — those
+  messages stay unreadable, and their key material is dropped.
+
 ### Bootstrapping the Owner from Docker
 
 The first Owner must be assigned from the server terminal because no one has
@@ -516,6 +561,13 @@ must not be marked as pre-release — the updater endpoint
   verification. Note the trade-offs: there is no forward secrecy (a stolen
   keypair decrypts past DMs), a lost keypair makes old conversations
   unreadable, and users without a key binding (e.g. bots) cannot receive DMs.
+- Private text channels can be end-to-end encrypted: a symmetric channel key,
+  generated client-side and wrapped per member with the same identity keys DMs
+  use, seals every message before it reaches the server. Removing a member
+  rotates the key to a new epoch they are never given, so the removal is
+  cryptographic rather than cosmetic. See [Private channels](#private-channels)
+  for the trade-offs — no server-side search, unencrypted upload payloads, no
+  bot posting and no forward secrecy within an epoch.
 - IP-based rate limiting protects authentication, chat message throughput and
   file uploads. On top of it, **Server Dashboard → Moderation** adds a per-user
   slow mode, a message length cap and a profanity filter. All three are

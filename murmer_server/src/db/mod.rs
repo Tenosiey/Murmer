@@ -9,6 +9,7 @@
 //! `channel_id`.
 //!
 //! Submodules group queries by domain:
+//! - [`channel_keys`] – wrapped per-channel keys of encrypted channels
 //! - [`channels`] – text channels, voice channels and categories
 //! - [`chat_settings`] – slow mode, message length cap and profanity filter
 //! - [`direct_messages`] – private messages between two users
@@ -28,6 +29,7 @@
 //! - [`voice_defaults`] – quality/bitrate new voice channels start with
 //! - [`wiki`] – per-channel Markdown wiki pages with revision history
 
+mod channel_keys;
 mod channel_overrides;
 mod channels;
 mod chat_settings;
@@ -48,6 +50,7 @@ mod users;
 mod voice_defaults;
 mod wiki;
 
+pub use channel_keys::*;
 pub use channel_overrides::*;
 pub use channels::*;
 pub use chat_settings::*;
@@ -191,7 +194,8 @@ CREATE TABLE IF NOT EXISTS channels (
     name TEXT NOT NULL UNIQUE,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     description TEXT NOT NULL DEFAULT '',
-    position INTEGER NOT NULL DEFAULT 0
+    position INTEGER NOT NULL DEFAULT 0,
+    e2ee INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS voice_channels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -244,6 +248,20 @@ CREATE TABLE IF NOT EXISTS channel_overrides (
     deny INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (channel_kind, channel_id, target_type, target_id)
 );
+-- Wrapped keys of end-to-end encrypted channels. Every row is one channel
+-- key sealed for one member; the server can open none of them. `epoch`
+-- versions the key, so removing a member is a matter of opening a new epoch
+-- and not wrapping it for them.
+CREATE TABLE IF NOT EXISTS channel_keys (
+    channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    epoch INTEGER NOT NULL,
+    recipient_key TEXT NOT NULL,
+    sender_key TEXT NOT NULL,
+    nonce TEXT NOT NULL,
+    wrapped_key TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT ({NOW_UTC}),
+    PRIMARY KEY (channel_id, epoch, recipient_key)
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS user_keys (
     user_name TEXT PRIMARY KEY,
     public_key TEXT NOT NULL,
@@ -329,6 +347,7 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
             "INTEGER NOT NULL DEFAULT 0",
         )?;
         ensure_column(conn, "user_keys", "avatar", "TEXT NOT NULL DEFAULT ''")?;
+        ensure_column(conn, "channels", "e2ee", "INTEGER NOT NULL DEFAULT 0")?;
         ensure_column(conn, "role_definitions", "icon", "TEXT")?;
         ensure_column(
             conn,

@@ -15,7 +15,8 @@ function createChannelStore() {
           name: typeof item.name === 'string' ? item.name : '',
           categoryId: typeof item.categoryId === 'number' ? item.categoryId : null,
           position: typeof item.position === 'number' ? item.position : 0,
-          private: item.private === true
+          private: item.private === true,
+          e2ee: item.e2ee === true
         }));
       set(items);
     }
@@ -87,6 +88,11 @@ function createChannelStore() {
     );
   });
 
+  /** Turn end-to-end encryption on or off for a private channel (manager only). */
+  function setEncryption(channelId: number, enabled: boolean) {
+    chat.sendRaw({ type: 'set-channel-e2ee', channelId, enabled });
+  }
+
   function create(name: string, categoryId?: number | null, isPrivate = false) {
     const payload: Record<string, unknown> = { type: 'create-channel', name };
     if (categoryId != null) payload.categoryId = categoryId;
@@ -112,7 +118,7 @@ function createChannelStore() {
     chat.sendRaw({ type: 'reorder-channels', categoryId, order, voice });
   }
 
-  return { subscribe, set, create, rename, remove, move, reorder };
+  return { subscribe, set, create, rename, remove, move, reorder, setEncryption };
 }
 
 export const channels = createChannelStore();
