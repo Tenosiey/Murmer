@@ -64,11 +64,6 @@ surfacing two things the server already stores.
 
 ### 🛠️ Other Features
 
-- [ ] Admin dashboard — the shell and most tabs are built (overview, emojis,
-      moderation, stats, files & uploads, voice, screen share, roles, danger
-      zone). Still marked "Coming soon" inside them: slow mode, max message
-      length, profanity filter, ban list, default bitrate/quality, purge all
-      messages and reset server. There is no online-users or storage-usage view
 - [ ] Anonymous chat modes
 - [ ] Backup & export of chat history and uploads
 - [ ] Decentralized/mesh networking option

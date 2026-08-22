@@ -479,13 +479,17 @@ pub(super) async fn handle_create_voice_channel(
         return;
     }
 
+    // What a channel starts with when the client names nothing: the
+    // server-wide voice defaults, falling back to the built-in preset.
+    let defaults = db::voice_defaults(&state.db).await.unwrap_or_default();
+
     let quality_value = v
         .get("quality")
         .and_then(|q| q.as_str())
         .map(str::trim)
         .filter(|q| !q.is_empty())
         .map(str::to_string)
-        .unwrap_or_else(|| DEFAULT_VOICE_QUALITY.to_string());
+        .unwrap_or_else(|| defaults.quality.clone());
     if !validate_voice_quality(&quality_value) {
         send_error(sender, errors::INVALID_VOICE_QUALITY).await;
         return;
@@ -500,7 +504,7 @@ pub(super) async fn handle_create_voice_channel(
                 return;
             }
         },
-        None => Some(DEFAULT_VOICE_BITRATE),
+        None => defaults.bitrate,
     };
 
     let category_id = v

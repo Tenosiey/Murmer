@@ -111,6 +111,11 @@ small team can deploy a private chat space quickly.
 - Server identity configurable from the dashboard (Admin/Owner): server name,
   description and icon shown to every member, plus a welcome message delivered
   to first-time members
+- Server Dashboard beyond identity: a chat policy (slow mode, message length
+  cap, profanity filter), the ban list, the upload policy with a storage-usage
+  breakdown, voice defaults for new channels, the screen-share bitrate cap,
+  who is online right now, and a Danger Zone that purges all messages or
+  resets the server's structure
 - REST API for bots (see [`murmer_server/BOT_API.md`](murmer_server/BOT_API.md))
 
 ## Repository layout
@@ -349,6 +354,49 @@ connected clients.
 The `POST /role` endpoint (guarded by `ADMIN_TOKEN`) still works for scripted or
 external integrations. See the configuration table above for details.
 
+## Server Dashboard
+
+Everything server-wide lives in the Server Dashboard (the server name in the
+sidebar header). Each tab is gated by the permission it controls, and every
+setting is re-checked and enforced server-side — the UI only decides what to
+show.
+
+| Tab | Permission | What it holds |
+| --- | --- | --- |
+| Overview | Manage server | Server name, description, welcome message and icon, plus who is online right now |
+| Emojis | Manage emojis | The server's custom emoji library |
+| Moderation | Ban members | The ban list (lift a ban from here); with Manage server also slow mode, the message length cap and the profanity filter |
+| Stats | Manage server | The server-wide half of the double opt-in stat tracking |
+| Files & Uploads | Manage server | Per-file size cap, which file categories are accepted, and how much disk the uploads directory is using per category |
+| Voice | Manage server | Quality preset and bitrate new voice channels start with |
+| Screen Share | Manage server | The server-wide outgoing bitrate cap |
+| Roles | Manage roles | Role definitions, permissions, colours, icons and hierarchy |
+| Danger Zone | Administrator | Purge all messages, or reset the server's structure |
+
+A few details worth knowing before you use them:
+
+- **Slow mode** makes each member wait between messages. Members who can
+  manage messages are exempt, so moderators can still answer a busy room.
+- **Max message length** can only lower the built-in 4000-character limit.
+- **The profanity filter** replaces listed words with asterisks on the server,
+  before a message is stored or broadcast, and applies to edits too. Matching
+  is per whole word and case-insensitive, so filtering `ass` leaves `class`
+  alone.
+- **Voice defaults** apply to newly created voice channels; existing channels
+  keep whatever they were created with.
+- **Storage used** is measured when the tab is opened rather than counted as
+  files arrive, so it covers uploads, emojis, avatars and soundboard clips
+  alike. Deleting a message or an emoji does not delete its file.
+- **Purge all messages** deletes every message, pin and reaction on the server
+  for everyone; the uploaded files behind attachments stay on disk.
+- **Reset server** additionally deletes every channel except `general`, all
+  categories, channel permission overrides, wiki pages and every role other
+  than `@everyone` and `Owner` — those two stay so the server still has an
+  administrator. Members, bans, emojis, sounds and recorded stats are kept.
+
+Both Danger Zone actions are irreversible and ask you to type a confirmation
+phrase, which the server requires in the request as well.
+
 ### Releasing a claimed user name
 
 A user name is permanently bound to the first Ed25519 key that authenticates
@@ -467,7 +515,11 @@ must not be marked as pre-release — the updater endpoint
   keypair decrypts past DMs), a lost keypair makes old conversations
   unreadable, and users without a key binding (e.g. bots) cannot receive DMs.
 - IP-based rate limiting protects authentication, chat message throughput and
-  file uploads.
+  file uploads. On top of it, **Server Dashboard → Moderation** adds a per-user
+  slow mode, a message length cap and a profanity filter. All three are
+  enforced server-side: the filter masks matched words before a message is
+  stored or broadcast (edits included), so the original never reaches another
+  client, and the length cap can only narrow the built-in 4000-character limit.
 - Uploading requires the same Ed25519 proof as connecting: the `/upload`
   endpoint accepts only a freshly signed, single-use timestamp from a key that
   already has an account on that server, so a stranger who can merely reach the

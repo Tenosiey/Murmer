@@ -116,3 +116,36 @@ pub async fn get_all_mutes(db: &Db) -> Result<Vec<(String, Option<DateTime<Utc>>
     })
     .await
 }
+
+/// One row of the ban list shown in the Server Dashboard.
+#[derive(Debug, Clone)]
+pub struct BanRecord {
+    pub user_name: String,
+    pub public_key: String,
+    pub banned_by: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// List every persisted ban, newest first. Moderator-facing (`BAN_MEMBERS`),
+/// checked by the caller: the public key is an identity, so this must never
+/// be handed to an unprivileged client.
+pub async fn list_bans(db: &Db) -> Result<Vec<BanRecord>, DbError> {
+    db.call_db(|conn| {
+        let mut stmt = conn.prepare_cached(
+            "SELECT user_name, public_key, banned_by, created_at FROM bans \
+             ORDER BY created_at DESC, user_name ASC",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(BanRecord {
+                    user_name: row.get(0)?,
+                    public_key: row.get(1)?,
+                    banned_by: row.get(2)?,
+                    created_at: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })
+    .await
+}

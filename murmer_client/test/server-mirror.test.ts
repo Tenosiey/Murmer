@@ -20,7 +20,13 @@ import {
   UPLOAD_CATEGORIES,
   DEFAULT_UPLOAD_MAX_BYTES,
   MIN_UPLOAD_MAX_BYTES,
-  MAX_UPLOAD_MAX_BYTES
+  MAX_UPLOAD_MAX_BYTES,
+  MAX_MESSAGE_LENGTH,
+  MIN_CONFIGURABLE_MESSAGE_LENGTH,
+  MAX_SLOW_MODE_SECONDS,
+  MAX_PROFANITY_WORDS,
+  MAX_PROFANITY_WORD_LEN,
+  MAX_VOICE_BITRATE
 } from '../src/lib/chat/constants';
 
 function readServerSource(relative: string): string {
@@ -29,6 +35,8 @@ function readServerSource(relative: string): string {
 
 const permissionsRs = readServerSource('permissions.rs');
 const uploadRs = readServerSource('upload.rs');
+const chatSettingsRs = readServerSource('db/chat_settings.rs');
+const voiceDefaultsRs = readServerSource('db/voice_defaults.rs');
 
 /** `pub const NAME: Permissions = 1 << N;` — one line per flag. */
 function serverPermissionFlags(): Record<string, number> {
@@ -48,6 +56,16 @@ function serverByteConstant(name: string): number {
   return match![1]
     .split('*')
     .map((part) => Number(part.trim()))
+    .reduce((product, value) => product * value, 1);
+}
+
+/** Evaluate a `6 * 60 * 60`-style numeric literal from any server source. */
+function serverNumberConstant(source: string, name: string, type: string): number {
+  const match = source.match(new RegExp(`^pub const ${name}: ${type} = ([0-9_ *]+);$`, 'm'));
+  expect(match, `${name} not found`).not.toBeNull();
+  return match![1]
+    .split('*')
+    .map((part) => Number(part.trim().replace(/_/g, '')))
     .reduce((product, value) => product * value, 1);
 }
 
@@ -171,5 +189,40 @@ describe('upload safe-list mirror', () => {
     expect(serverByteConstant('DEFAULT_MAX_FILE_SIZE')).toBe(DEFAULT_UPLOAD_MAX_BYTES);
     expect(serverByteConstant('MIN_CONFIGURABLE_FILE_SIZE')).toBe(MIN_UPLOAD_MAX_BYTES);
     expect(serverByteConstant('MAX_CONFIGURABLE_FILE_SIZE')).toBe(MAX_UPLOAD_MAX_BYTES);
+  });
+});
+
+describe('chat policy mirror', () => {
+  // The server clamps everything it is sent, so a drift here does not let a
+  // client widen a limit — it makes the dashboard offer a value the server
+  // will silently change, which is worse to debug than a rejection.
+  it('agrees on the message length bounds', () => {
+    expect(serverNumberConstant(chatSettingsRs, 'MAX_MESSAGE_LENGTH', 'usize')).toBe(
+      MAX_MESSAGE_LENGTH
+    );
+    expect(
+      serverNumberConstant(chatSettingsRs, 'MIN_CONFIGURABLE_MESSAGE_LENGTH', 'usize')
+    ).toBe(MIN_CONFIGURABLE_MESSAGE_LENGTH);
+  });
+
+  it('agrees on the slow mode ceiling', () => {
+    expect(serverNumberConstant(chatSettingsRs, 'MAX_SLOW_MODE_SECONDS', 'u64')).toBe(
+      MAX_SLOW_MODE_SECONDS
+    );
+  });
+
+  it('agrees on the profanity list bounds', () => {
+    expect(serverNumberConstant(chatSettingsRs, 'MAX_PROFANITY_WORDS', 'usize')).toBe(
+      MAX_PROFANITY_WORDS
+    );
+    expect(serverNumberConstant(chatSettingsRs, 'MAX_PROFANITY_WORD_LEN', 'usize')).toBe(
+      MAX_PROFANITY_WORD_LEN
+    );
+  });
+
+  it('agrees on the voice bitrate ceiling', () => {
+    expect(serverNumberConstant(voiceDefaultsRs, 'MAX_ALLOWED_VOICE_BITRATE', 'i32')).toBe(
+      MAX_VOICE_BITRATE
+    );
   });
 });

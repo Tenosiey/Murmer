@@ -40,6 +40,8 @@ async fn make_state() -> Arc<AppState> {
         admin_token: Some("token".to_string()),
         rate_limiter: RateLimiter::new(),
         stats_enabled: std::sync::atomic::AtomicBool::new(false),
+        chat_settings: Arc::new(Mutex::new(murmer_server::db::ChatSettings::default())),
+        slow_mode_sends: Arc::new(Mutex::new(HashMap::new())),
     })
 }
 

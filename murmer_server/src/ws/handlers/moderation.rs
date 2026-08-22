@@ -10,7 +10,7 @@ use crate::ws::{constants::*, errors, helpers::*};
 use crate::{AppState, db};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{Duration as ChronoDuration, Utc};
-use futures::stream::SplitSink;
+use futures::{SinkExt, stream::SplitSink};
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -350,5 +350,52 @@ pub(super) async fn is_muted(state: &Arc<AppState>, user: &str) -> bool {
             }
             false
         }
+    }
+}
+
+/// Handle `get-ban-list`: answer a moderator with every persisted ban.
+///
+/// Gated on `BAN_MEMBERS` — the rows carry the target's public key, which is
+/// their identity on this server, so this is never sent to a client that
+/// could not lift the ban anyway.
+pub(super) async fn handle_get_ban_list(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    user_name: &Option<String>,
+) {
+    let Some(requester) = require_requester(sender, user_name).await else {
+        return;
+    };
+
+    if !has_permission(state, &requester, crate::permissions::BAN_MEMBERS).await {
+        send_error(sender, errors::MODERATION_PERMISSION_DENIED).await;
+        return;
+    }
+
+    let bans = match db::list_bans(&state.db).await {
+        Ok(bans) => bans,
+        Err(e) => {
+            error!("Failed to load the ban list: {e}");
+            send_error(sender, errors::MODERATION_FAILED).await;
+            return;
+        }
+    };
+
+    let entries: Vec<Value> = bans
+        .iter()
+        .map(|ban| {
+            serde_json::json!({
+                "user": ban.user_name,
+                "publicKey": ban.public_key,
+                "bannedBy": ban.banned_by,
+                "bannedAt": ban.created_at.to_rfc3339(),
+            })
+        })
+        .collect();
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "ban-list",
+        "bans": entries,
+    })) {
+        let _ = sender.send(Message::Text(msg.into())).await;
     }
 }

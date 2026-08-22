@@ -76,6 +76,8 @@
     describeUploadRejection,
     formatUploadSize
   } from '$lib/stores/uploadConfig';
+  import { voiceDefaults } from '$lib/stores/voiceDefaults';
+  import { slowModeWait } from '$lib/stores/chatSettings';
   import { describeServerError, isFatalConnectionError } from '$lib/errors';
   import type { Message, UserStatus, WatchedScreenShare } from '$lib/types';
   import {
@@ -540,6 +542,23 @@
   };
   chat.on('user-unbanned', handleUserUnbanned);
 
+  // Danger Zone actions rearrange the app under everyone at once: without a
+  // word, the history and half the channels simply vanish mid-sentence.
+  const handleMessagesPurged = (msg: Message) => {
+    const by = typeof msg.by === 'string' && msg.by ? ` by ${msg.by}` : '';
+    setCommandFeedback(`Every message on this server was deleted${by}.`, 'error');
+  };
+  chat.on('messages-purged', handleMessagesPurged);
+
+  const handleServerReset = (msg: Message) => {
+    const by = typeof msg.by === 'string' && msg.by ? ` by ${msg.by}` : '';
+    // The channel this client was viewing may be gone. The server re-sends
+    // the channel lists, and the effect that watches them drops back to
+    // `general` and rejoins, so all that is left here is saying why.
+    setCommandFeedback(`This server was reset${by}.`, 'error');
+  };
+  chat.on('server-reset', handleServerReset);
+
   onMount(() => {
     if (!get(session).user) {
       goto('/login');
@@ -570,6 +589,8 @@
     chat.off('user-muted', handleUserMuted);
     chat.off('user-unmuted', handleUserUnmuted);
     chat.off('user-unbanned', handleUserUnbanned);
+    chat.off('messages-purged', handleMessagesPurged);
+    chat.off('server-reset', handleServerReset);
     chat.disconnect();
     if (currentVoiceChannelId !== null) {
       voice.leave(currentVoiceChannelId);
@@ -676,6 +697,17 @@
     if (!get(can)(PERMISSIONS.SEND_MESSAGES)) return;
     const hasMessage = message.trim() !== '';
     if (!pendingFile && !hasMessage) return;
+    // Slow mode is enforced server-side, which would bounce the message back
+    // as an error *after* clearing the composer. Naming the wait up front
+    // keeps what the user typed. Members who can manage messages are exempt
+    // there, so they are exempt here too.
+    if (!get(can)(PERMISSIONS.MANAGE_MESSAGES)) {
+      const wait = slowModeWait();
+      if (wait > 0) {
+        setCommandFeedback(`Slow mode is on — ${wait}s before your next message.`, 'error');
+        return;
+      }
+    }
     if (pendingFile) await sendFile();
     if (hasMessage) sendText();
   }
@@ -1018,7 +1050,9 @@
             ? `${Math.round(preset.bitrate / 1000)} kbps`
             : 'Uncompressed audio'
       })),
-      initial: DEFAULT_VOICE_PRESET.quality,
+      // The server's configured default, so a channel created without a
+      // thought still lands on what the operator wanted.
+      initial: $voiceDefaults.quality,
       confirmLabel: 'Apply'
     });
     if (quality === null) return null;

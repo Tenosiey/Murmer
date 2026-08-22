@@ -63,6 +63,16 @@ export const UPLOAD_CATEGORIES: Array<{
    into it and refuses to delete it, so the client can rely on it existing. */
 export const DEFAULT_CHANNEL_NAME = 'general';
 
+/* Chat policy mirror of `murmer_server/src/db/chat_settings.rs`. The server
+   enforces slow mode, the length cap and the profanity filter itself; these
+   only bound what the dashboard offers and what the composer accepts. A
+   server may configure a *lower* message cap, never a higher one. */
+export const MAX_MESSAGE_LENGTH = 4000;
+export const MIN_CONFIGURABLE_MESSAGE_LENGTH = 10;
+export const MAX_SLOW_MODE_SECONDS = 6 * 60 * 60;
+export const MAX_PROFANITY_WORDS = 200;
+export const MAX_PROFANITY_WORD_LEN = 32;
+
 export const MESSAGE_INPUT_MAX_HEIGHT = 360;
 export const MAX_TOPIC_LENGTH = 256;
 export const PIN_PREVIEW_LIMIT = 120;
@@ -82,6 +92,9 @@ export const VOICE_QUALITY_PRESETS: Array<{
 ];
 
 export const DEFAULT_VOICE_PRESET = VOICE_QUALITY_PRESETS[1];
+
+/** Upper bound the server accepts for a voice bitrate (`MAX_ALLOWED_VOICE_BITRATE`). */
+export const MAX_VOICE_BITRATE = 320_000;
 
 export const NOTIFICATION_OPTIONS: Array<{
   value: ChannelNotificationPreference;

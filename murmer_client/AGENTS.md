@@ -33,9 +33,9 @@ pinned to major 6.
 - `src-tauri/` – Rust-side glue for native integrations
 - `test/` – Vitest harness: the `localStorage` stub (`setup.ts`) and the
   `$app/environment` stand-in (`stubs/`), plus `server-mirror.test.ts`, which
-  parses `murmer_server/src/{permissions,upload}.rs` and asserts the client's
-  copies of those tables still match. Everything else lives next to the module
-  it covers as `*.test.ts`.
+  parses `murmer_server/src/{permissions,upload,db/chat_settings,db/voice_defaults}.rs`
+  and asserts the client's copies of those tables and bounds still match.
+  Everything else lives next to the module it covers as `*.test.ts`.
 
 Prefer small, composable Svelte components. Styling rules: components use
 the design tokens defined in `src/routes/+layout.svelte` —
@@ -66,6 +66,18 @@ sync, see the Brand section in `README.md`.
 - Per-channel client state that persists (last-read markers, notification
   preferences) is namespaced by server URL — channel ids are only unique per
   server. Follow that pattern for any new per-channel persistence.
+- Server-wide settings are **the server's answer, cached** — never local
+  state. `stores/{chatSettings,uploadConfig,voiceDefaults,screenShare,
+  serverIdentity}.ts` each parse the frame the server sends after
+  authentication and broadcasts on change, validate it before mutating
+  anything, and reset on disconnect so one server's policy never leaks into
+  the next. The Server Dashboard edits them by sending a `set-*` frame and
+  waiting for the broadcast to confirm; it never writes the store itself.
+  Two of these are answers to a request rather than broadcasts, because they
+  are manager-only: the profanity word list (`chat-settings` in reply to
+  `get-chat-settings`) and `stores/bans.ts`/`stores/storageUsage.ts`. Their
+  "not disclosed yet" state is `null`, which is deliberately not the same as
+  "empty" — an editor must not offer to save an empty list over a real one.
 - Names: render `$displayNames(user)` from `stores/profiles.ts`, never the raw
   user name — that is the account name and stays the key for every lookup
   (`$roles[user]`, `$avatars[user]`, DM peers, mentions). `UserProfileModal`
