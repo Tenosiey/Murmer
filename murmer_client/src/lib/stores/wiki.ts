@@ -19,6 +19,19 @@ export type WikiPage = WikiPageMeta & {
   createdAt: string;
 };
 
+/** Metadata of one stored revision, as listed in the history view. */
+export type WikiRevisionMeta = {
+  revision: number;
+  title: string;
+  author: string;
+  createdAt: string;
+  /** Size of that revision's body in bytes. */
+  bytes: number;
+};
+
+/** One stored revision including its Markdown body. */
+export type WikiRevision = WikiRevisionMeta & { body: string };
+
 /** Result of a save attempt: saved, or conflicted with the current page. */
 export type WikiSaveResult =
   | { ok: true; revision: number }
@@ -60,6 +73,24 @@ function parsePage(raw: any): WikiPage | null {
   };
 }
 
+function parseRevisionMeta(raw: any): WikiRevisionMeta | null {
+  if (!raw || typeof raw !== 'object') return null;
+  if (typeof raw.revision !== 'number') return null;
+  return {
+    revision: raw.revision,
+    title: typeof raw.title === 'string' ? raw.title : '',
+    author: typeof raw.author === 'string' ? raw.author : '',
+    createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : '',
+    bytes: typeof raw.bytes === 'number' ? raw.bytes : 0
+  };
+}
+
+function parseRevision(raw: any): WikiRevision | null {
+  const meta = parseRevisionMeta(raw);
+  if (!meta) return null;
+  return { ...meta, body: typeof raw.body === 'string' ? raw.body : '' };
+}
+
 function linkKey(target: WikiLinkTarget): string {
   return `${target.channel}/${target.slug}`;
 }
@@ -72,6 +103,8 @@ function createWikiStore() {
   const pendingPages = new Map<number, Pending<WikiPage | null>>();
   const pendingResolves = new Map<number, Pending<Map<string, boolean>>>();
   const pendingSaves = new Map<number, Pending<WikiSaveResult>>();
+  const pendingHistories = new Map<number, Pending<WikiRevisionMeta[]>>();
+  const pendingRevisions = new Map<number, Pending<WikiRevision | null>>();
   /** Session cache of link existence, dropped whenever any index changes. */
   const resolveCache = new Map<string, boolean>();
 
@@ -99,10 +132,13 @@ function createWikiStore() {
   }
 
   function rejectAll(reason: string) {
-    for (const map of [pendingPages, pendingResolves, pendingSaves] as Map<
-      number,
-      Pending<any>
-    >[]) {
+    for (const map of [
+      pendingPages,
+      pendingResolves,
+      pendingSaves,
+      pendingHistories,
+      pendingRevisions
+    ] as Map<number, Pending<any>>[]) {
       for (const pending of map.values()) {
         clearTimeout(pending.timeout);
         pending.reject(new Error(reason));
@@ -134,6 +170,25 @@ function createWikiStore() {
     const pending = takePending(pendingPages, raw);
     if (!pending) return;
     pending.resolve(parsePage(raw.page));
+  });
+
+  chat.on('wiki-revisions', (msg: Message) => {
+    const raw = msg as any;
+    const pending = takePending(pendingHistories, raw);
+    if (!pending) return;
+    const revisions = Array.isArray(raw.revisions)
+      ? raw.revisions
+          .map(parseRevisionMeta)
+          .filter((r: WikiRevisionMeta | null): r is WikiRevisionMeta => r !== null)
+      : [];
+    pending.resolve(revisions);
+  });
+
+  chat.on('wiki-revision', (msg: Message) => {
+    const raw = msg as any;
+    const pending = takePending(pendingRevisions, raw);
+    if (!pending) return;
+    pending.resolve(parseRevision(raw.revision));
   });
 
   chat.on('wiki-resolved', (msg: Message) => {
@@ -199,6 +254,24 @@ function createWikiStore() {
   }
 
   /**
+   * List a page's stored revisions, newest first and without bodies.
+   * Deliberately uncached: the point of opening the history is to see what
+   * has happened to the page since.
+   */
+  function history(channelId: number, slug: string): Promise<WikiRevisionMeta[]> {
+    return request(pendingHistories, { type: 'wiki-history', channelId, slug });
+  }
+
+  /** Fetch one revision's body; resolves `null` when it has been pruned. */
+  function getRevision(
+    channelId: number,
+    slug: string,
+    revision: number
+  ): Promise<WikiRevision | null> {
+    return request(pendingRevisions, { type: 'wiki-revision', channelId, slug, revision });
+  }
+
+  /**
    * Batched existence check for wiki links. Deduplicates, serves cached
    * results and chunks the rest to the server limit.
    */
@@ -250,6 +323,26 @@ function createWikiStore() {
     });
   }
 
+  /**
+   * Re-apply an old revision as the page's newest version. The server stores
+   * it as a *new* revision under the same compare-and-swap as a save, so a
+   * restore is answered — and can conflict — exactly like one.
+   */
+  function restore(
+    channelId: number,
+    slug: string,
+    revision: number,
+    expectedRevision: number
+  ): Promise<WikiSaveResult> {
+    return request(pendingSaves, {
+      type: 'wiki-restore',
+      channelId,
+      slug,
+      revision,
+      expectedRevision
+    });
+  }
+
   /** Create a page; the store updates when the index broadcasts back. */
   function createPage(channelId: number, slug: string, title: string, body = '') {
     chat.sendRaw({ type: 'wiki-create', channelId, slug, title, body });
@@ -268,8 +361,11 @@ function createWikiStore() {
   return {
     subscribe,
     getPage,
+    history,
+    getRevision,
     resolveLinks,
     save,
+    restore,
     createPage,
     deletePage,
     renamePage,

@@ -106,15 +106,31 @@ table + in-memory cache in `AppState.channel_overrides`), resolved by
 `channel_permissions`/`can_view_channel` in `ws/helpers.rs`. Overrides are
 clamped to `CHANNEL_OVERRIDABLE` (View + Write/Talk). Enforcement: viewer-aware
 channel-list senders, a per-recipient filter on channel-scoped broadcasts in the
-`global_rx` loop, and channel-aware gates on join/history/search/send/react/pin
-and `voice-join`. Search names its channel in the frame, so it repeats the
-history gate rather than trusting the joined channel — that gate covers the
-wiki page hits it answers with as well. Voice talk is a client-enforced hint
-(`voice-permissions`) since audio is peer-to-peer. Managers edit overrides
-through the
+`global_rx` loop, and channel-aware gates on join/history/search/send/react/pin,
+the wiki reads and writes, and `voice-join`. Search names its channel in the
+frame, so it repeats the history gate rather than trusting the joined channel —
+that gate covers the wiki page hits it answers with as well. Voice talk is a
+client-enforced hint (`voice-permissions`) since audio is peer-to-peer. Managers
+edit overrides through the
 `set-channel-override`/`remove-channel-override`/`get-channel-overrides` frames
 (`ws/handlers/channel_overrides.rs`), and creating a channel with `private: true`
 seeds an `@everyone` View-deny plus a creator allow.
+
+The channel wiki (`ws/handlers/wiki.rs`, `db/wiki.rs`) keeps every saved
+version of a page in `wiki_revisions`, pruned to `MAX_WIKI_REVISIONS_KEPT` on
+each save. `wiki-history` lists them (newest first, bodies omitted — 50
+revisions of a 100 kB page would otherwise be a 5 MB sidebar), `wiki-revision`
+fetches one body, and `wiki-restore` re-applies an old version through the same
+compare-and-swap as `wiki-update`, which is why it answers with the same
+`wiki-saved`/`wiki-conflict` frames. A restore is stored as a *new* revision
+rather than rewinding the counter: history is only ever appended to, so a
+restore is itself undoable and a concurrent editor still loses the CAS instead
+of being silently overwritten. Reads name their channel in the frame, so
+`wiki-get`/`wiki-history`/`wiki-revision` repeat the `can_view_channel` gate
+rather than trusting the joined channel, and `require_wiki_writer` checks it
+alongside `MANAGE_WIKI` — a private channel's pages are as much its content as
+its messages are. `wiki-resolve` stays ungated: it answers "does this page
+exist" for channels addressed by name.
 
 The soundboard (`ws/handlers/soundboard.rs`, `db/soundboard.rs`) stores a
 server-wide sound library. `add/rename/remove-sound` require `MANAGE_SOUNDS`;

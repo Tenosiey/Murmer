@@ -217,6 +217,103 @@ describe('wiki — saving', () => {
   });
 });
 
+describe('wiki — revision history', () => {
+  const REVISION = {
+    revision: 2,
+    title: 'Home',
+    author: 'bob',
+    createdAt: '2026-06-02T00:00:00Z',
+    bytes: 12
+  };
+
+  it('resolves the revision list of a wiki-history request', async () => {
+    const { wiki } = await loadWiki();
+
+    const pending = wiki.history(1, 'home');
+    const frame = sentOf('wiki-history')[0];
+    expect(frame).toMatchObject({ channelId: 1, slug: 'home' });
+
+    bus.emit('wiki-revisions', {
+      requestId: frame.requestId,
+      revisions: [REVISION, { ...REVISION, revision: 1 }]
+    });
+    await expect(pending).resolves.toEqual([REVISION, { ...REVISION, revision: 1 }]);
+  });
+
+  it('drops revision entries the server sent malformed', async () => {
+    const { wiki } = await loadWiki();
+
+    const pending = wiki.history(1, 'home');
+    const { requestId } = sentOf('wiki-history')[0];
+
+    bus.emit('wiki-revisions', {
+      requestId,
+      revisions: [REVISION, { title: 'no revision number' }, null, 'nonsense']
+    });
+    await expect(pending).resolves.toEqual([REVISION]);
+  });
+
+  it('answers a history request with no revisions array as an empty list', async () => {
+    const { wiki } = await loadWiki();
+
+    const pending = wiki.history(1, 'home');
+    const { requestId } = sentOf('wiki-history')[0];
+
+    bus.emit('wiki-revisions', { requestId });
+    await expect(pending).resolves.toEqual([]);
+  });
+
+  it('resolves a revision body, and null for one that was pruned', async () => {
+    const { wiki } = await loadWiki();
+
+    const found = wiki.getRevision(1, 'home', 2);
+    const pruned = wiki.getRevision(1, 'home', 1);
+    const frames = sentOf('wiki-revision');
+    expect(frames[0]).toMatchObject({ channelId: 1, slug: 'home', revision: 2 });
+
+    bus.emit('wiki-revision', {
+      requestId: frames[0].requestId,
+      revision: { ...REVISION, body: 'hello world' }
+    });
+    bus.emit('wiki-revision', { requestId: frames[1].requestId, revision: null });
+
+    await expect(found).resolves.toEqual({ ...REVISION, body: 'hello world' });
+    await expect(pruned).resolves.toBeNull();
+  });
+
+  it('carries the restore base revision and shares the save reply frames', async () => {
+    const { wiki } = await loadWiki();
+
+    const pending = wiki.restore(1, 'home', 1, 3);
+    const frame = sentOf('wiki-restore')[0];
+    expect(frame).toMatchObject({ channelId: 1, slug: 'home', revision: 1, expectedRevision: 3 });
+
+    bus.emit('wiki-saved', { requestId: frame.requestId, revision: 4 });
+    await expect(pending).resolves.toEqual({ ok: true, revision: 4 });
+  });
+
+  it('reports a restore that lost the compare-and-swap as a conflict', async () => {
+    const { wiki } = await loadWiki();
+
+    const pending = wiki.restore(1, 'home', 1, 3);
+    const { requestId } = sentOf('wiki-restore')[0];
+
+    bus.emit('wiki-conflict', { requestId, page: PAGE });
+    await expect(pending).resolves.toEqual({ ok: false, current: PAGE });
+  });
+
+  it('rejects in-flight history and revision requests on reconnect', async () => {
+    const { wiki, connection } = await loadWiki();
+
+    const history = wiki.history(1, 'home');
+    const revision = wiki.getRevision(1, 'home', 2);
+    connection.set('connecting');
+
+    await expect(history).rejects.toThrow('Connection reset');
+    await expect(revision).rejects.toThrow('Connection reset');
+  });
+});
+
 describe('wiki — link resolution', () => {
   function respondToLastResolve(exists = true) {
     const frames = sentOf('wiki-resolve');

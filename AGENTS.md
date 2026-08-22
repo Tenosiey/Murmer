@@ -125,6 +125,13 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   once per poll — dividing by the two or three packets a DTX'd stream carries
   per second turned a single loss into "50 % loss" and emptied the connection
   bars of everyone who was not talking.
+- `src/lib/wiki/` – helpers for the channel wiki: slug rules mirroring the
+  server's `validate_wiki_slug`, the `[[wikilink]]` action, and `diff.ts`, the
+  line diff behind the revision history view. The diff is pure — no stores, no
+  DOM — because its edge cases (line numbering per side, the prefix/suffix trim
+  that keeps a typo fix in a long page cheap, the matrix guard that degrades to
+  a wholesale replacement instead of hanging the UI) are invisible in a smoke
+  test and are unit-tested instead.
 - `src/lib/webrtc/` – the parts both WebRTC managers share. `recovery.ts` is
   the repair policy for a connection that breaks mid-session: `disconnected` is
   a Wi-Fi roam or a lid closed for a second and usually heals itself, so it is
@@ -270,7 +277,8 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   touch "see" (`VIEW_CHANNELS`) and "write/talk" (`SEND_MESSAGES`). The server
   hides invisible channels from listings, filters channel-scoped broadcasts per
   recipient (the `global_rx` loop in `ws/handlers/mod.rs`), and refuses
-  join/history/search/send/voice-join for channels a user cannot see. Voice **talk** is
+  join/history/search/send/voice-join and every wiki read or write for channels
+  a user cannot see. Voice **talk** is
   the one client-enforced piece (mic disabled via the `voice-permissions` hint)
   because audio is peer-to-peer; view/join and all text gates are server-enforced.
   Managers (`MANAGE_CHANNELS`) edit overrides via the `set/remove-channel-override`

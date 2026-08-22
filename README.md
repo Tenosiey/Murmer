@@ -100,7 +100,10 @@ small team can deploy a private chat space quickly.
   rather than through the speaker's microphone
 - Per-channel Markdown wiki with revisions and `[[wikilinks]]` (also across
   channels via `[[channel/page]]`); wiki pages are full-text indexed and show
-  up in the search overlay alongside the message hits
+  up in the search overlay alongside the message hits. Every page keeps a
+  revision history: compare any two versions line by line and restore an
+  older one — restoring appends a new revision rather than rewinding, so it
+  is itself undoable
 - Lifetime stats and achievements (messages, voice minutes, GIFs, favorite
   reactions and more) with double opt-in privacy: nothing is recorded unless
   a server Owner/Admin enables tracking server-wide *and* the user opts in
@@ -246,7 +249,7 @@ Client unit tests use [Vitest](https://vitest.dev) and live next to the module
 they cover (`src/lib/**/*.test.ts`); shared harness code is in `test/`. They
 target logic that is easy to get subtly wrong and hard to spot by clicking
 around — the per-server namespacing of unread state, the wiki store's
-request/response correlation — not UI rendering. `vitest.config.ts` runs them
+request/response correlation, the wiki line diff — not UI rendering. `vitest.config.ts` runs them
 in a plain Node environment and stubs the two framework pieces the stores
 touch: the `$app/environment` browser flag and `localStorage`.
 
