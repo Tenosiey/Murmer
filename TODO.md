@@ -71,11 +71,6 @@ stays readable. Use the checkboxes to mark something you have picked up.
       one file worth a `// @vitest-environment happy-dom` docblock rather than
       moving the whole suite off the Node default. It is a security boundary
       (`{@html}` renders its output) and currently has no tests
-- [ ] Cover the client's remaining pure helpers with Vitest — `wiki/slug.ts`
-      (mirrors the server's `validate_wiki_slug`), `chat/helpers.ts` message
-      grouping and expiry formatting, `emoji.ts` (`emojifyHtml` escapes),
-      `errors.ts`, `invite.ts` and `utils.ts::normalizeServerUrl`. Individually
-      small, collectively most of the untested logic in `src/lib/`
 - [ ] Make the rate limiter's clock injectable so the map-sweep behaviour in
       `security.rs` can be covered by a regression test in
       `tests/security_limits.rs` (the 60 s window uses `std::time::Instant`
