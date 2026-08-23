@@ -1,9 +1,18 @@
 # Murmer Client Guide
 
-The desktop client is built with **SvelteKit 2** (static adapter, SSR off) and
-ships inside a **Tauri 2** shell. Svelte 5 is used with the **runes syntax**
-throughout — `$props()` props, `$state`/`$derived` reactivity and `$effect`
-side effects; `runes: true` in `svelte.config.js` rejects legacy syntax at
+The client is built with **SvelteKit 2** (static adapter, SSR off) and ships
+inside a **Tauri 2** shell. The *same* build is also the **web client**: it is
+served as a plain web page by any static host, most simply by the Murmer server
+itself (`WEB_CLIENT_DIR`). There is no second bundle and no build flag —
+`src/lib/platform.ts` answers `isTauri` at runtime, and every native
+integration (the updater, OS-level global hotkeys, the tray icon, native
+notifications) asks it first and imports its Tauri plugin dynamically so the
+plugin never reaches the web bundle. The adapter also writes a `200.html` SPA
+fallback, which is what lets a static host resolve a deep link such as
+`/invite#…`.
+
+Svelte 5 is used with the **runes syntax** throughout — `$props()` props,
+`$state`/`$derived` reactivity and `$effect` side effects; `runes: true` in `svelte.config.js` rejects legacy syntax at
 build time. Cross-component state stays in `svelte/store` modules under
 `src/lib/stores/`, consumed via `$store` auto-subscription. TypeScript is
 pinned to major 6.
@@ -12,13 +21,23 @@ pinned to major 6.
 - `bun install` – install/update dependencies and refresh `bun.lock`
 - `bun run dev` – run the Svelte dev server with hot module reloading
 - `bun run tauri dev` – launch the desktop shell backed by the dev server
-- `bun run build` – produce static assets consumed by Tauri
+- `bun run build` – produce the static assets, consumed both by Tauri and by
+  anything serving `build/` as the web client
 - `bun run tauri build` – package installers/bundles for distribution
 - `bun run check` – TypeScript + Svelte diagnostics (run before committing)
 - `bun run test` – Vitest unit tests (`bun run test:watch` while iterating)
 
 ## Code organisation
-- `src/routes/` – SvelteKit pages (login, server selection, chat)
+- `src/routes/` – SvelteKit pages (login, server selection, invite, chat)
+- `src/lib/platform.ts` – `isTauri`/`isWebClient`, the single answer to which
+  shell we are in. Check `__TAURI_INTERNALS__`, never `__TAURI__`: the latter
+  only exists with `withGlobalTauri`, which this app does not set, so it
+  reports "browser" inside the desktop app
+- `src/lib/invite.ts` – invite links. One `https://…/invite#…` URL serves both
+  clients: clicking it opens the web client's `/invite` route, pasting it into
+  the server hub's address field is parsed there. The server details ride in
+  the **fragment** because an invite may carry the server password, and a
+  fragment never reaches a web server (no access logs, no `Referer`)
 - `src/lib/components/` – reusable UI components (overlays, menus, indicators)
 - `src/lib/components/chat/` – sections of the chat page (sidebar, header, …)
 - `src/lib/stores/` – Svelte stores holding client state
@@ -126,6 +145,19 @@ sync, see the Brand section in `README.md`.
   needs a DOM). Not happy-dom: it mis-drives DOMPurify's tree walk and lets
   `<script>` through, so the tests would pass on broken output.
 - Avoid `{@html ...}` unless the content is sanitised explicitly.
+
+## Web client
+The browser cannot do everything the shell can, and the difference is enforced
+by the platform rather than by us:
+- Global hotkeys stay in-app (a web page cannot grab a key from the OS) and the
+  updater is hidden — both gated on `isTauri` in `SettingsModal.svelte`.
+- Microphone and screen capture need a **secure context**, so voice only works
+  over HTTPS (or on `localhost`).
+- An HTTPS page may not open a `ws://` socket or load `http://` attachments.
+  The server hub warns when an added address would hit that, because otherwise
+  the failure is a console message nobody sees.
+Anything that reaches for a Tauri plugin has to keep both paths working — the
+browser path is a shipped target, not a development convenience.
 
 ## Rust (Tauri) side
 The native shell lives in `src-tauri/`. After making changes there, run

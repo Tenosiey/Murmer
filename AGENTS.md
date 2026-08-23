@@ -1,11 +1,13 @@
 # Contributor Guide
 
-This monorepo hosts **Murmer**, a desktop chat prototype split into a
-Tauri/SvelteKit client (`murmer_client/`) and an Axum-based Rust server
-(`murmer_server/`). Each directory contains its own `AGENTS.md` with tooling
-specifics. Client and server communicate over one WebSocket (`/ws`, JSON
-frames with a `type` field) plus a few HTTP endpoints (`/upload`,
-`/link-preview`, `/role`, `/files`, bot REST API).
+This monorepo hosts **Murmer**, a chat prototype split into a Tauri/SvelteKit
+client (`murmer_client/`) and an Axum-based Rust server (`murmer_server/`).
+The client's single build runs both as the desktop shell and, unchanged, as a
+**web client** in a plain browser — see the Web client sections in
+`murmer_client/AGENTS.md` and `README.md`. Each directory contains its own
+`AGENTS.md` with tooling specifics. Client and server communicate over one
+WebSocket (`/ws`, JSON frames with a `type` field) plus a few HTTP endpoints
+(`/upload`, `/link-preview`, `/role`, `/files`, bot REST API).
 
 ## Hard constraints
 - **TypeScript stays on major 6.** Do not upgrade to 7 or merge dependabot
@@ -56,7 +58,12 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
 - Sanitize or validate all user-supplied data before acting on it.
 
 ## Client code organisation
-- `src/routes/` – SvelteKit pages (login, server selection, chat)
+- `src/routes/` – SvelteKit pages (login, server selection, invite, chat)
+- `src/lib/platform.ts` – whether we are inside the Tauri shell or on the web.
+  Every native integration branches here and imports its plugin dynamically, so
+  one build serves both; `src/lib/invite.ts` builds the one `https://…/invite#…`
+  link that works for both, carrying its payload (which may include the server
+  password) in the fragment so it never reaches a web server's logs
 - `src/lib/components/` – reusable UI primitives and overlays
 - `src/lib/stores/` – Svelte stores holding client state
 - `src/lib/chat/` – constants and helpers shared by the chat page

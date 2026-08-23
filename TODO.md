@@ -60,7 +60,6 @@ stays readable. Use the checkboxes to mark something you have picked up.
 - [ ] Real-time collaborative code editing
 - [ ] Scheduled voice events / calendar integration
 - [ ] Translation services for international teams
-- [ ] Web client (browser build without Tauri, join via invite link)
 
 ---
 

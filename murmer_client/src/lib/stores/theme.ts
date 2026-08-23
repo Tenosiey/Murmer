@@ -1,12 +1,11 @@
 import { writable, get } from 'svelte/store';
 import { assets } from '$app/paths';
+import { isTauri } from '$lib/platform';
 
 export type Theme = 'dark' | 'light';
 
 const STORAGE_KEY = 'murmer-theme';
 const ACCENT_KEY = 'murmer-accent';
-
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 /**
  * Points the favicon at the matching logo variant. The in-app logo

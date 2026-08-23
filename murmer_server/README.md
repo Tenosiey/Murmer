@@ -11,7 +11,7 @@ src/
   main.rs          entry point: router, middleware, CLI subcommands
                    (`set-role`, `unbind-name`)
   lib.rs           shared state (AppState, RateLimiter) and module re-exports
-  config.rs        environment variable parsing and CORS setup
+  config.rs        environment variable parsing, CORS and web client setup
   ws/              WebSocket endpoint
     handlers/      auth, messages, channels, DMs, emojis, moderation, pins,
                    stats, wiki

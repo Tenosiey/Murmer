@@ -17,7 +17,9 @@
   import { httpBaseFromWs } from '$lib/server-url';
   import { connectionError } from '$lib/stores/connection';
   import StatusDot from '$lib/components/StatusDot.svelte';
-  import { createInviteLink, parseInviteLink } from '$lib/invite';
+  import { createInviteLink, looksLikeInviteLink, parseInviteLink } from '$lib/invite';
+  import { pendingInvite } from '$lib/stores/pendingInvite';
+  import { isWebClient } from '$lib/platform';
 
   onMount(() => {
     if (!get(session).user) goto('/login');
@@ -43,6 +45,46 @@
   let copiedServer: string | null = $state(null);
   let copyTimeout: ReturnType<typeof setTimeout> | null = null;
 
+  /**
+   * An invite the user opened but has not accepted. Nothing is written to the
+   * server list until they say yes: an invite carries a password and arrives
+   * from whoever sent the link, so adding it unasked would let a link change
+   * a saved server's credentials behind the user's back.
+   */
+  const invite = $derived($pendingInvite);
+  const inviteKnown = $derived(
+    invite ? $servers.find((s) => s.url === invite.url) : undefined
+  );
+
+  function acceptInvite() {
+    if (!invite) return;
+    const entry: ServerEntry = {
+      url: invite.url,
+      name: invite.name || inviteKnown?.name || invite.url
+    };
+    const password = invite.password ?? inviteKnown?.password;
+    if (password) entry.password = password;
+    servers.upsert(entry);
+    pendingInvite.set(null);
+    join(entry);
+  }
+
+  function dismissInvite() {
+    pendingInvite.set(null);
+  }
+
+  /**
+   * A page served over HTTPS may not open a plaintext WebSocket or load
+   * `http://` attachments, so a `ws://` server is unreachable from the hosted
+   * web client no matter what the server itself allows. Say so instead of
+   * letting the connection fail with a blocked-by-the-browser console error.
+   */
+  function mixedContentWarning(url: string): string | null {
+    if (!isWebClient || typeof location === 'undefined') return null;
+    if (location.protocol !== 'https:' || !url.startsWith('ws://')) return null;
+    return `${url} is unencrypted, and this page is served over HTTPS — your browser will block the connection. Use a wss:// address.`;
+  }
+
   function clearCopyTimeout() {
     if (copyTimeout) {
       clearTimeout(copyTimeout);
@@ -62,12 +104,14 @@
     const trimmedPassword = newPassword.trim();
     let entry: ServerEntry;
 
-    if (rawServer.startsWith('murmer://')) {
-      const parsed = parseInviteLink(rawServer);
-      if (!parsed) {
-        error = 'That invite link could not be parsed.';
-        return;
-      }
+    // An invite link is a full URL, so it has to be recognised before the
+    // address path treats it as a hostname to normalize.
+    const parsed = parseInviteLink(rawServer);
+    if (!parsed && looksLikeInviteLink(rawServer)) {
+      error = 'That invite link could not be parsed.';
+      return;
+    }
+    if (parsed) {
       entry = {
         url: parsed.url,
         name: trimmedName || parsed.name || parsed.url
@@ -86,6 +130,7 @@
       }
     }
 
+    error = mixedContentWarning(entry.url);
     servers.add(entry);
     newServer = '';
     newName = '';
@@ -125,9 +170,9 @@
 
   async function copyInvite(server: ServerEntry) {
     error = null;
-    const invite = createInviteLink(server);
+    const link = createInviteLink(server, isWebClient ? location.origin : undefined);
     try {
-      await navigator.clipboard.writeText(invite);
+      await navigator.clipboard.writeText(link);
       copiedServer = server.url;
       clearCopyTimeout();
       copyTimeout = setTimeout(() => {
@@ -203,6 +248,33 @@
 
   {#if error}
     <div class="error-banner" role="alert">{error}</div>
+  {/if}
+
+  {#if invite}
+    {@const warning = mixedContentWarning(invite.url)}
+    <section class="invite-banner surface-card" aria-labelledby="invite-title">
+      <div class="invite-copy">
+        <div class="eyebrow">You have been invited</div>
+        <h2 id="invite-title">{invite.name || invite.url}</h2>
+        <p class="meta">{invite.url}</p>
+        {#if inviteKnown}
+          <p class="body-muted">
+            This server is already saved as “{inviteKnown.name}”. Joining updates it with the
+            details from the invite.
+          </p>
+        {/if}
+        {#if invite.password}
+          <p class="body-muted">The invite carries a server password, which stays on this device.</p>
+        {/if}
+        {#if warning}
+          <p class="invite-warning" role="alert">{warning}</p>
+        {/if}
+      </div>
+      <div class="invite-actions">
+        <button type="button" class="btn btn-primary" onclick={acceptInvite}>Join server</button>
+        <button type="button" class="btn btn-ghost" onclick={dismissInvite}>Dismiss</button>
+      </div>
+    </section>
   {/if}
 
   <section class="create-card surface-card" aria-labelledby="create-title">
@@ -523,6 +595,50 @@
 
   .card-actions .join {
     flex: 1;
+  }
+
+  .invite-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--color-primary);
+  }
+
+  .invite-copy {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .invite-copy h2 {
+    margin: 0;
+    font-size: var(--text-lg);
+  }
+
+  .invite-copy .meta {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .invite-copy p {
+    margin: 0;
+    font-size: var(--text-sm);
+  }
+
+  .invite-warning {
+    color: var(--color-error);
+  }
+
+  .invite-actions {
+    display: flex;
+    gap: var(--space-2);
   }
 
   .error-banner {

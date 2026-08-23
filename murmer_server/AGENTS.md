@@ -79,6 +79,12 @@ Optional environment variables:
 - `ADMIN_TOKEN` – enables the `/role` endpoint and channel management controls
 - `CORS_ALLOW_ORIGINS` – comma-separated origins allowed to call HTTP
   endpoints; set only during development
+- `WEB_CLIENT_DIR` – directory with the built web client
+  (`murmer_client/build`). When set, `main.rs` serves it as the router's
+  fallback instead of answering `/` with a bare 200, with unmatched paths
+  falling back to `200.html` so the prerendered SPA routes its own deep links.
+  Serving it here puts the client on the same origin as `/ws` and `/upload`,
+  which is what lets a browser use it with CORS off
 - `MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
   `MAX_UPLOADS_PER_MINUTE`, `NONCE_EXPIRY_SECONDS` – override rate limiting
   defaults

@@ -22,6 +22,9 @@ pub struct Config {
     pub admin_token: Option<String>,
     /// CORS allowlist (None means CORS is disabled).
     cors_allowlist: Option<Vec<HeaderValue>>,
+    /// Directory holding the built web client, served at the site root
+    /// (None means the server serves no web client).
+    pub web_client_dir: Option<PathBuf>,
 }
 
 impl Config {
@@ -35,6 +38,7 @@ impl Config {
     /// - `SERVER_PASSWORD` (optional): Password required for client authentication
     /// - `ADMIN_TOKEN` (optional): Token for administrative operations
     /// - `CORS_ALLOW_ORIGINS` (optional): Comma-separated list of allowed origins
+    /// - `WEB_CLIENT_DIR` (optional): Directory with the built web client to serve
     pub fn from_env() -> Result<Self> {
         let database_path = env::var("DATABASE_PATH").unwrap_or_else(|_| "murmer.db".to_string());
 
@@ -52,6 +56,14 @@ impl Config {
 
         let cors_allowlist = Self::parse_cors_origins()?;
 
+        // Serving the web client from the same origin as `/ws` and `/upload`
+        // is what lets it work with CORS off, which is the production default.
+        let web_client_dir = env::var("WEB_CLIENT_DIR")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
+
         Ok(Self {
             bind_addr,
             database_path,
@@ -59,6 +71,7 @@ impl Config {
             password,
             admin_token,
             cors_allowlist,
+            web_client_dir,
         })
     }
 

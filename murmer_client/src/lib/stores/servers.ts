@@ -49,6 +49,21 @@ export const servers = {
       return list;
     });
   },
+  /**
+   * Add an entry, or replace the one already saved for that URL in place.
+   *
+   * Used by the invite flow, where the point is to refresh the name and
+   * password of a server the user may already have. `add` deliberately keeps
+   * an existing entry untouched instead.
+   */
+  upsert(entry: ServerEntry) {
+    update((list) => {
+      const index = list.findIndex((s) => s.url === entry.url);
+      const newList = index === -1 ? [...list, entry] : list.with(index, entry);
+      persist(newList);
+      return newList;
+    });
+  },
   remove(url: string) {
     update((list) => {
       const newList = list.filter((s) => s.url !== url);
