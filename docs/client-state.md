@@ -80,6 +80,24 @@ render the name the server was overriding.
 name, nickname, about text and avatar. The user context menu is where a
 moderator changes somebody else's nickname.
 
+## Composer drafts
+
+`stores/drafts.ts` parks unsent composer text per conversation —
+`channel:<id>`, `thread:<rootId>`, `dm:<account>` — so switching away
+mid-sentence and back keeps the sentence. One composer serves every channel
+and one panel every thread and DM, so the text has to be moved deliberately:
+the leaving side calls `park`, the arriving side `take`. `take` removes the
+entry, which is what keeps the store describing only the conversations the
+user is *not* looking at, and means a send has nothing to clean up.
+
+It is namespaced per server URL like the other per-channel state, but is
+**session-local and never persisted**, which is the one thing to preserve if
+this is ever extended. Channel keys are held in memory precisely so an
+encrypted channel leaves nothing on disk; writing its draft to
+`localStorage` would put that message's plaintext exactly where its
+ciphertext never goes. Namespacing per server is still what makes a
+reconnect restore drafts instead of dropping them.
+
 ## Encrypted-channel keys
 
 `stores/channelKeys.ts` holds channel keys **in memory only** — the server
