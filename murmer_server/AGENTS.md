@@ -237,6 +237,12 @@ role keeps granting permissions until the next restart.
   startup. Each limiter map is
   swept end to end on a timer; the window for the key being checked is always
   pruned on access, so the limit itself stays exact.
+  All of that time comes from `RateLimiter::clock` rather than from
+  `Instant::now()`: the window and the sweep interval are both a minute long,
+  so `RateLimiter::with_clock(Clock::manual())` plus `Clock::advance` is what
+  lets `tests/security_limits.rs` reach behaviour a real sleep never could. A
+  sweep that silently stopped running would look exactly like a working rate
+  limiter, which is why it is worth a test at all.
 - Nonces combine the public key and timestamp; replayed signatures are rejected.
   A nonce is treated as unused once it is older than `NONCE_EXPIRY_SECONDS`,
   whether or not the periodic sweep has removed it yet.

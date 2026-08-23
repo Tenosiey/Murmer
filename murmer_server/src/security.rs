@@ -1,6 +1,6 @@
 //! Security utilities for rate limiting and replay attack prevention.
 
-use crate::{RateLimiter, SlidingWindows};
+use crate::{Clock, RateLimiter, SlidingWindows};
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use std::{
@@ -59,10 +59,10 @@ pub fn get_nonce_expiry_seconds() -> u64 {
 /// users/IPs that went quiet. The per-key window is always pruned on access;
 /// this only bounds the memory held by keys nobody touches any more, so it can
 /// run far less often than once per request.
-const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
+pub const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 
 /// The sliding window the message and authentication limits are measured over.
-const RATE_WINDOW: Duration = Duration::from_secs(60);
+pub const RATE_WINDOW: Duration = Duration::from_secs(60);
 
 /// Drop timestamps older than `max_age` from the front of a window.
 ///
@@ -106,10 +106,11 @@ fn window_mut<'a>(
 /// place where the pruning can be got wrong.
 async fn check_window(
     windows: &Mutex<SlidingWindows<VecDeque<Instant>>>,
+    clock: &Clock,
     key: &str,
     max: usize,
 ) -> bool {
-    let now = Instant::now();
+    let now = clock.now();
     let mut windows = windows.lock().await;
 
     // Sweeping the whole map keeps entries for keys that went quiet from
@@ -152,6 +153,7 @@ async fn check_window(
 pub async fn check_auth_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool {
     let allowed = check_window(
         &rate_limiter.auth_attempts,
+        &rate_limiter.clock,
         ip,
         rate_limiter.max_auth_attempts_per_minute,
     )
@@ -178,6 +180,7 @@ pub async fn check_auth_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool
 pub async fn check_upload_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool {
     let allowed = check_window(
         &rate_limiter.upload_attempts,
+        &rate_limiter.clock,
         ip,
         rate_limiter.max_uploads_per_minute,
     )
@@ -203,6 +206,7 @@ pub async fn check_upload_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bo
 pub async fn check_message_rate_limit(rate_limiter: &RateLimiter, user: &str) -> bool {
     let allowed = check_window(
         &rate_limiter.message_times,
+        &rate_limiter.clock,
         user,
         rate_limiter.max_messages_per_minute,
     )
@@ -227,7 +231,7 @@ pub async fn check_message_rate_limit(rate_limiter: &RateLimiter, user: &str) ->
 /// * `true` if the nonce is valid and has been stored
 /// * `false` if the nonce has already been used (potential replay attack)
 pub async fn check_and_store_nonce(rate_limiter: &RateLimiter, nonce: &str) -> bool {
-    let now = Instant::now();
+    let now = rate_limiter.clock.now();
     let mut used_nonces = rate_limiter.used_nonces.lock().await;
 
     let expiry = rate_limiter.nonce_expiry;
