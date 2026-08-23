@@ -70,22 +70,24 @@ describe('encryptDm / decryptDm', () => {
     expect(encryptDm('hi', bob.publicKey, 'not base64!!')).toBeNull();
   });
 
-  it('does not currently reject a well-formed but wrong-length peer key', () => {
-    // `ed2curve.convertPublicKey` does not check its input length: it returns
-    // a 32-byte X25519 key for a 0- or 5-byte Ed25519 "key" just as happily as
-    // for a real one, so `dhKeys` never sees the null it looks for.
-    //
-    // This documents today's behaviour rather than endorsing it. The result is
-    // a ciphertext nobody can open — the sender believes the DM went out while
-    // the peer sees a permanent decrypt-failure placeholder. A length check in
-    // `dhKeys` would turn it into an honest null. If that check is added, this
-    // test is the one to delete.
-    for (const key of ['', toBase64(new Uint8Array(5))]) {
-      expect(encryptDm('hi', key, alice.secretKey)).not.toBeNull();
+  it('rejects a well-formed but wrong-length key', () => {
+    // `ed2curve.convertPublicKey` does not check its input length: it derives a
+    // 32-byte X25519 key from a 0-, 5- or 33-byte Ed25519 "key" just as happily
+    // as from a real one. Encrypting to one produces a ciphertext nobody can
+    // open, so `dhKeys` has to catch the length itself — otherwise the sender
+    // believes the DM went out while the peer sees a permanent
+    // decrypt-failure placeholder.
+    for (const len of [0, 5, nacl.sign.publicKeyLength - 1, nacl.sign.publicKeyLength + 1]) {
+      const key = toBase64(new Uint8Array(len));
+      expect(encryptDm('hi', key, alice.secretKey)).toBeNull();
+      expect(decryptDm('', '', key, alice.secretKey)).toBeNull();
     }
 
-    const box = encryptDm('hi', toBase64(new Uint8Array(5)), alice.secretKey)!;
-    expect(decryptDm(box.nonce, box.ciphertext, bob.publicKey, alice.secretKey)).toBeNull();
+    for (const len of [0, 32, nacl.sign.secretKeyLength + 1]) {
+      const secret = toBase64(new Uint8Array(len));
+      expect(encryptDm('hi', bob.publicKey, secret)).toBeNull();
+      expect(decryptDm('', '', bob.publicKey, secret)).toBeNull();
+    }
   });
 
   it('returns null rather than throwing on a malformed payload', () => {

@@ -65,15 +65,6 @@ stays readable. Use the checkboxes to mark something you have picked up.
 
 ## 🔧 Tech debt / hardening
 
-- [ ] Reject wrong-length peer keys in `dm-crypto.ts::dhKeys` —
-      `ed2curve.convertPublicKey` does not check its input length, so
-      `encryptDm` accepts a truncated key and produces a ciphertext nobody can
-      open: the sender believes the DM went out while the peer sees a permanent
-      decrypt-failure placeholder. Low severity (a malicious server
-      substituting a *valid* key already reads those DMs, and TOFU pinning
-      limits both to first contact), but the failure mode should be honest.
-      `dm-crypto.test.ts` has a test named for the current behaviour — delete
-      it with the fix
 - [ ] TURN support — voice does not connect at all behind symmetric NAT or a
       network that blocks UDP, and both managers hardcode one public STUN
       server with no way for an operator to change it. Designed but not
