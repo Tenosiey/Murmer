@@ -79,6 +79,9 @@ small team can deploy a private chat space quickly.
   pinned messages and message editing
 - Message replies with quoted previews and lightweight threads
 - Typing indicators and per-channel unread badges with new-message markers
+- Per-conversation drafts: unsent text stays with the channel, thread or DM
+  it was typed in, so switching away mid-sentence and coming back keeps it.
+  Drafts are held for the session only and never written to disk
 - Moderation tools: role-gated kick, ban and timed mutes
 - End-to-end encrypted direct messages with persistent history and unread
   badges: message text is encrypted on-device (NaCl box over the users'

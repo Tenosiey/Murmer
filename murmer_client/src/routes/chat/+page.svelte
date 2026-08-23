@@ -53,6 +53,7 @@
   import { unread } from '$lib/stores/unread';
   import { threadData } from '$lib/stores/thread';
   import { dm } from '$lib/stores/dm';
+  import { channelDraft, dmDraft, drafts, threadDraft } from '$lib/stores/drafts';
   import { peerKeys } from '$lib/stores/peerKeys';
   import { channelKeys } from '$lib/stores/channelKeys';
   import { dmFingerprint } from '$lib/dm-crypto';
@@ -591,6 +592,9 @@
   });
 
   onDestroy(() => {
+    // Leaving the server: park what is in the composer alongside the drafts
+    // of the other channels, which the store already holds per server URL.
+    drafts.park(channelDraft(currentChatChannelId), message);
     chat.off('history', handleHistory);
     chat.off('message-deleted', handleMessageDeleted);
     chat.off('error', handleServerError);
@@ -876,8 +880,13 @@
 
   function joinChannel(id: number) {
     if (id === currentChatChannelId) return;
+    // Park the half-typed sentence under the channel being left and restore
+    // whatever was parked for the one being entered. One composer serves
+    // every channel, so without this the text follows the user across.
+    drafts.park(channelDraft(currentChatChannelId), message);
     wikiInitialSlug = null;
     currentChatChannelId = id;
+    message = drafts.take(channelDraft(id));
     unreadMarkerAfterId = unread.getLastRead(id);
     unread.setActive(id);
     replyingTo = null;
@@ -1719,7 +1728,11 @@
   );
   $effect(() => {
     if ($channels.length && !$channels.some((c) => c.id === currentChatChannelId)) {
+      // Same swap as joinChannel: this fires on the first channel list and
+      // whenever the channel being viewed is deleted underneath the user.
+      drafts.park(channelDraft(currentChatChannelId), message);
       currentChatChannelId = defaultChannel($channels).id;
+      message = drafts.take(channelDraft(currentChatChannelId));
       unreadMarkerAfterId = unread.getLastRead(currentChatChannelId);
       unread.setActive(currentChatChannelId);
       loadingHistory = false;
@@ -2138,6 +2151,7 @@
           placeholder="Reply in thread…"
           onSend={sendThreadReply}
           onClose={closeThread}
+          draftKey={threadDraft(threadRootId)}
           emphasize={(msg) => msg.id === threadRootId}
         />
       {/if}
@@ -2151,6 +2165,7 @@
           placeholder={`Message ${$displayNames($dmActivePeer)}…`}
           onSend={sendDmMessage}
           onClose={closeDm}
+          draftKey={dmDraft($dmActivePeer)}
           emphasize={(msg) => msg.from === $session.user}
           keyWarning={$dmActivePeer in $peerKeyConflicts}
           onTrustKey={trustDmKey}

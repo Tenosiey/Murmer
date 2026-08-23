@@ -13,6 +13,7 @@ import { typing } from './typing';
 import { unread } from './unread';
 import { threadData } from './thread';
 import { dm } from './dm';
+import { drafts } from './drafts';
 import { pinned } from './pins';
 import { peerKeys } from './peerKeys';
 import { channelKeys } from './channelKeys';
@@ -544,6 +545,9 @@ function createChatStore() {
     screenShareWindows.setServer(url);
     // Key pins persist per server; in-flight lookups belong to the old one.
     peerKeys.setServer(url);
+    // Unsent composer text is parked per server too, so a reconnect gives
+    // back what was half-typed instead of discarding it.
+    drafts.setServer(url);
     clearPeerKeyRequests();
     // Channel keys are held in memory only — the server keeps the wraps, and
     // they are re-fetched from the channel list this connection sends us.

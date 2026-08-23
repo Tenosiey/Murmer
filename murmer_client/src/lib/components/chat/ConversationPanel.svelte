@@ -7,6 +7,7 @@
 <script lang="ts">
 
   import type { Message } from '$lib/types';
+  import { onDestroy, untrack } from 'svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { renderMarkdown } from '$lib/markdown';
@@ -16,6 +17,7 @@
   import { selectedServer } from '$lib/stores/servers';
   import { httpBaseFromWs } from '$lib/server-url';
   import { formatFullTimestamp, formatShortTime } from '$lib/chat/helpers';
+  import { drafts } from '$lib/stores/drafts';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
 
   interface Props {
@@ -26,6 +28,9 @@
     placeholder?: string;
     onSend: (text: string) => void;
     onClose: () => void;
+    /** Where unsent text is parked while another conversation is open —
+     *  `dmDraft(peer)` or `threadDraft(rootId)` from `stores/drafts.ts`. */
+    draftKey: string;
     emphasize?: (msg: Message) => boolean;
     /** DMs: the peer's identity key changed and is not yet trusted. */
     keyWarning?: boolean;
@@ -43,6 +48,7 @@
     placeholder = 'Reply…',
     onSend,
     onClose,
+    draftKey,
     emphasize = () => false,
     keyWarning = false,
     onTrustKey,
@@ -50,6 +56,26 @@
   }: Props = $props();
 
   let draft = $state('');
+  /* The conversation this panel's `draft` belongs to. One instance serves
+     every thread and DM — the `{#if}` around it stays true when the peer
+     changes — so the text has to move with the key, or a sentence meant for
+     one peer quietly becomes a sentence addressed to the next. */
+  let openKey = '';
+
+  $effect(() => {
+    const key = draftKey;
+    // untrack: `draft` is written here, and must not become a dependency
+    // that re-runs this on every keystroke.
+    untrack(() => {
+      if (key === openKey) return;
+      drafts.park(openKey, draft);
+      openKey = key;
+      draft = drafts.take(key);
+    });
+  });
+
+  /* Closing the panel is leaving the conversation, not abandoning the text. */
+  onDestroy(() => drafts.park(openKey, draft));
 
   let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
 
