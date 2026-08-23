@@ -47,6 +47,10 @@ small team can deploy a private chat space quickly.
 - Private text and voice channels with per-channel View / Write-Talk overrides for roles and members
 - Secure file and image sharing (extension safe-list, content-type checks, size limits and path sanitisation)
 - Desktop client with auto-reconnect and connection quality indicators
+- The same build also runs as a **web client** in the browser, which the
+  server can host itself; invite links are ordinary URLs that open it, and
+  paste straight into the desktop client's address field (see
+  [Web client](#web-client))
 - Connection stats panel (server ping, voice RTT, jitter, packet loss); Owners
   and Admins can additionally view every user's self-reported stats (quality
   numbers only — no IPs or device details, kept in memory and dropped on
@@ -130,7 +134,7 @@ small team can deploy a private chat space quickly.
 ## Repository layout
 
 ```
-murmer_client/   Tauri + SvelteKit desktop client (TypeScript)
+murmer_client/   SvelteKit client (TypeScript): Tauri desktop shell and web client
 murmer_server/   Axum-based WebSocket server (Rust)
 docker-compose.yml   boots the server (database is embedded)
 ```
@@ -269,6 +273,7 @@ Environment variables recognised by the server:
 | `ADMIN_TOKEN` | No | Enables the administrative `/role` endpoint |
 | `BIND_ADDRESS` | No | Override the socket address (defaults to `0.0.0.0:3001`) |
 | `CORS_ALLOW_ORIGINS` | No | Comma-separated allowed origins (omit in production) |
+| `WEB_CLIENT_DIR` | No | Directory with the built web client to serve at `/` (see [Web client](#web-client)) |
 | `MAX_MESSAGES_PER_MINUTE` | No | Per-user message rate limit (default: 30) |
 | `MAX_AUTH_ATTEMPTS_PER_MINUTE` | No | Per-IP auth rate limit (default: 5) |
 | `MAX_UPLOADS_PER_MINUTE` | No | Per-IP file upload rate limit (default: 20) |
@@ -277,6 +282,77 @@ Environment variables recognised by the server:
 Without `ADMIN_TOKEN` configured, channel and wiki management stay open to
 everyone so a small unadministered server remains usable; every other
 capability is still gated by roles.
+
+## Web client
+
+The same SvelteKit build that ships inside the Tauri shell also runs as an
+ordinary web page — there is no separate web bundle. Everything works except
+the parts that need the desktop shell: OS-level global hotkeys (in-app hotkeys
+still work) and the built-in updater, both of which the settings UI hides when
+it is not running inside Tauri.
+
+```bash
+cd murmer_client
+bun install
+bun run build        # writes murmer_client/build/
+```
+
+Point a server at that directory and it is a web client. The simplest
+deployment is the Murmer server itself:
+
+```bash
+WEB_CLIENT_DIR=/path/to/murmer_client/build murmer_server
+```
+
+The client is then served on the same origin as `/ws`, `/upload` and `/files`,
+which is why it needs no `CORS_ALLOW_ORIGINS` entry — CORS stays off, the
+production default. Hosting it anywhere else works too (it is static files),
+but then every Murmer server it talks to has to name that origin in
+`CORS_ALLOW_ORIGINS`.
+
+Two things the browser enforces that the desktop shell does not:
+
+- **Serve it over HTTPS.** Microphone and screen capture need a secure context,
+  so voice is unavailable over plain `http://` (except on `localhost`).
+- **HTTPS pages may only talk to `wss://` servers.** A page served over HTTPS
+  cannot open a `ws://` socket or load `http://` attachments; the server hub
+  says so when you add such an address instead of letting the connection fail
+  silently. Put the Murmer server behind TLS as well.
+
+Serve the build with a **single-page-app fallback**: the routes are prerendered
+(`servers.html`, `invite.html`, …), but a host that has no file for a path
+should answer with `build/200.html` rather than a 404, which is what makes a
+deep link like `/invite#…` resolve. `WEB_CLIENT_DIR` does this; for nginx it
+is `try_files $uri $uri.html /200.html;`.
+
+Unlike the desktop shell, a hosted page carries no Content-Security-Policy of
+its own (the one in `tauri.conf.json` applies to the packaged app only). Add
+one at your reverse proxy if you want it.
+
+### Invite links
+
+An invite link is an ordinary URL pointing at the invite route of a web client:
+
+```
+https://chat.example.com/invite#url=wss%3A%2F%2Fchat.example.com%2Fws&name=Example
+```
+
+The **Copy invite link** button on the server hub builds one for a saved
+server. It uses the origin of the web client you are on, or — in the desktop
+app, which has no origin of its own — the server's own, which is where a
+server started with `WEB_CLIENT_DIR` serves its client from.
+
+Clicking such a link opens the web client, which shows the invite on the server
+hub for confirmation before anything is saved; signed-out visitors go through
+the login screen first and the invite is still waiting afterwards. The same
+link pasted into the hub's **Address** field is recognised there, so one link
+serves web and desktop users alike.
+
+The server details live in the URL **fragment** rather than the query string
+because an invite may carry the server password: a fragment is never sent to
+the web server, so it stays out of access logs, proxy logs and `Referer`
+headers. It is still a secret in a shared link — treat an invite with a
+password like the password itself.
 
 ## Profiles and display names
 

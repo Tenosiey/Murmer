@@ -1,22 +1,36 @@
 /**
  * An invite link carries a server password, so both halves matter: the
- * encoding has to survive characters a password may contain, and the parser
- * has to refuse anything that is not one of our own links — it is handed
- * whatever the OS passes to the `murmer://` handler, or whatever the user
- * pasted.
+ * encoding has to survive characters a password may contain and keep the
+ * password out of the query string (a fragment never reaches a web server),
+ * and the parser has to refuse anything that is not one of our own links —
+ * it is handed whatever URL the browser was opened with, or whatever the user
+ * pasted into the add-server field.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { createInviteLink, parseInviteLink } from './invite';
+import { createInviteLink, looksLikeInviteLink, parseInviteLink } from './invite';
 
 describe('createInviteLink', () => {
-  it('encodes url, name and password', () => {
+  it('points at the server itself when no web client origin is given', () => {
+    const link = createInviteLink({ url: 'wss://example.com/ws', name: 'Example' });
+    const url = new URL(link);
+    expect(url.origin).toBe('https://example.com');
+    expect(url.pathname).toBe('/invite');
+  });
+
+  it('points at the hosted web client when we are one', () => {
+    const link = createInviteLink({ url: 'wss://example.com/ws', name: 'Example' }, 'https://chat.example.org');
+    expect(link.startsWith('https://chat.example.org/invite#')).toBe(true);
+  });
+
+  it('encodes url, name and password in the fragment, never the query', () => {
     const link = createInviteLink({
       url: 'wss://example.com/ws',
       name: 'Example',
       password: 'hunter2'
     });
-    const params = new URL(link).searchParams;
-    expect(link.startsWith('murmer://invite?')).toBe(true);
+    const url = new URL(link);
+    expect(url.search).toBe('');
+    const params = new URLSearchParams(url.hash.slice(1));
     expect(params.get('url')).toBe('wss://example.com/ws');
     expect(params.get('name')).toBe('Example');
     expect(params.get('password')).toBe('hunter2');
@@ -24,18 +38,15 @@ describe('createInviteLink', () => {
 
   it('omits a name that is just the URL again', () => {
     const link = createInviteLink({ url: 'wss://example.com/ws', name: 'wss://example.com/ws' });
-    expect(new URL(link).searchParams.has('name')).toBe(false);
+    expect(new URLSearchParams(new URL(link).hash.slice(1)).has('name')).toBe(false);
   });
 
   it('omits an absent or empty password', () => {
-    expect(new URL(createInviteLink({ url: 'ws://a/ws', name: 'A' })).searchParams.has('password')).toBe(
+    const params = (link: string) => new URLSearchParams(new URL(link).hash.slice(1));
+    expect(params(createInviteLink({ url: 'ws://a/ws', name: 'A' })).has('password')).toBe(false);
+    expect(params(createInviteLink({ url: 'ws://a/ws', name: 'A', password: '' })).has('password')).toBe(
       false
     );
-    expect(
-      new URL(createInviteLink({ url: 'ws://a/ws', name: 'A', password: '' })).searchParams.has(
-        'password'
-      )
-    ).toBe(false);
   });
 
   it('round-trips values that would otherwise break the query string', () => {
@@ -44,14 +55,19 @@ describe('createInviteLink', () => {
       name: 'Ünicode & friends #1',
       password: 'p@ss word&name=evil#frag'
     };
-    const parsed = parseInviteLink(createInviteLink(server));
-    expect(parsed).toEqual(server);
+    expect(parseInviteLink(createInviteLink(server))).toEqual(server);
+  });
+
+  it('does not double the slash when the origin carries a trailing one', () => {
+    expect(createInviteLink({ url: 'ws://a/ws', name: 'A' }, 'https://chat.example.org/')).toContain(
+      'https://chat.example.org/invite#'
+    );
   });
 });
 
 describe('parseInviteLink', () => {
   it('parses a full invite', () => {
-    expect(parseInviteLink('murmer://invite?url=wss%3A%2F%2Fexample.com%2Fws&name=Example')).toEqual(
+    expect(parseInviteLink('https://chat.example.org/invite#url=wss%3A%2F%2Fexample.com%2Fws&name=Example')).toEqual(
       { url: 'wss://example.com/ws', name: 'Example' }
     );
   });
@@ -59,22 +75,30 @@ describe('parseInviteLink', () => {
   it('normalizes the server URL it was given', () => {
     // Invites are hand-edited and shared as text; a bare host has to end up on
     // the same URL the server list would have stored.
-    expect(parseInviteLink('murmer://invite?url=example.com')?.url).toBe('ws://example.com/ws');
-    expect(parseInviteLink('murmer://invite?url=https%3A%2F%2Fexample.com')?.url).toBe(
+    expect(parseInviteLink('https://a/invite#url=example.com')?.url).toBe('ws://example.com/ws');
+    expect(parseInviteLink('https://a/invite#url=https%3A%2F%2Fexample.com')?.url).toBe(
       'wss://example.com/ws'
     );
   });
 
-  it('accepts the schemeless-authority spelling some launchers hand over', () => {
-    expect(parseInviteLink('murmer:invite?url=example.com')?.url).toBe('ws://example.com/ws');
-    expect(parseInviteLink('murmer://invite/?url=example.com')?.url).toBe('ws://example.com/ws');
+  it('accepts a hand-written query string and a trailing slash', () => {
+    expect(parseInviteLink('http://a:3001/invite?url=example.com')?.url).toBe('ws://example.com/ws');
+    expect(parseInviteLink('http://a:3001/invite/#url=example.com')?.url).toBe('ws://example.com/ws');
+  });
+
+  it('prefers the fragment over the query when both carry a url', () => {
+    // Only the fragment is ours; a query pair could have been appended by a
+    // link shortener or a chat client rewriting the URL.
+    expect(parseInviteLink('https://a/invite?url=evil.example#url=good.example')?.url).toBe(
+      'ws://good.example/ws'
+    );
   });
 
   it('trims surrounding whitespace and a blank name', () => {
-    expect(parseInviteLink('  murmer://invite?url=example.com&name=%20%20  ')).toEqual({
+    expect(parseInviteLink('  https://a/invite#url=example.com&name=%20%20  ')).toEqual({
       url: 'ws://example.com/ws'
     });
-    expect(parseInviteLink('murmer://invite?url=example.com&name=%20Example%20')?.name).toBe(
+    expect(parseInviteLink('https://a/invite#url=example.com&name=%20Example%20')?.name).toBe(
       'Example'
     );
   });
@@ -86,11 +110,15 @@ describe('parseInviteLink', () => {
         '',
         '   ',
         'not a link',
-        'https://example.com/invite?url=example.com',
-        'murmer://join?url=example.com',
-        'murmer://invite',
-        'murmer://invite?name=Example',
-        'murmer://invite?url=',
+        'https://example.com/ws',
+        'https://example.com/invited#url=example.com',
+        'https://example.com/some/invite#url=example.com',
+        'https://example.com/invite',
+        'https://example.com/invite#name=Example',
+        'https://example.com/invite#url=',
+        'https://example.com/invite#url=%20',
+        'murmer://invite?url=example.com',
+        'file:///invite#url=example.com',
         'javascript:alert(1)'
       ];
       for (const link of rejected) {
@@ -102,8 +130,21 @@ describe('parseInviteLink', () => {
   });
 
   it('keeps a password out of the parsed entry when the link carries none', () => {
-    const parsed = parseInviteLink('murmer://invite?url=example.com&password=');
+    const parsed = parseInviteLink('https://a/invite#url=example.com&password=');
     expect(parsed).toEqual({ url: 'ws://example.com/ws' });
     expect(parsed && 'password' in parsed).toBe(false);
+  });
+});
+
+describe('looksLikeInviteLink', () => {
+  it('separates a broken invite from a server address', () => {
+    // The add-server field normalizes anything that is not an invite into a
+    // hostname, so a malformed invite has to be caught before it is stored as
+    // `wss://host/invite/ws`.
+    expect(looksLikeInviteLink('https://example.com/invite')).toBe(true);
+    expect(looksLikeInviteLink('https://example.com/invite#name=Example')).toBe(true);
+    expect(looksLikeInviteLink('https://example.com')).toBe(false);
+    expect(looksLikeInviteLink('example.com:3001')).toBe(false);
+    expect(looksLikeInviteLink('wss://example.com/ws')).toBe(false);
   });
 });

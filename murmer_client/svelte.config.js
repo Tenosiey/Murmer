@@ -12,7 +12,14 @@ const config = {
     runes: true,
   },
   kit: {
-    adapter: adapter(),
+    adapter: adapter({
+      // Every route is prerendered for the Tauri shell, but the same output is
+      // also served as a web client from a plain static host (see "Web client"
+      // in README.md). `200.html` is the SPA fallback such a host serves for a
+      // path it has no file for, which is what makes a deep link like
+      // `/invite#...` resolve instead of 404ing.
+      fallback: "200.html",
+    }),
   },
 };
 
