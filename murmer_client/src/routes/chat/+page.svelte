@@ -15,7 +15,7 @@
   import { session } from '$lib/stores/session';
   import { uploadForm, uploadErrorMessage } from '$lib/upload';
   import { displayNames, profiles } from '$lib/stores/profiles';
-  import { voice } from '$lib/stores/voice';
+  import { voice, voiceVideo } from '$lib/stores/voice';
   import { selectedServer, servers } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
   import { offlineUsers } from '$lib/stores/users';
@@ -69,6 +69,12 @@
     toggleScreenSharePreview
   } from '$lib/stores/screenShare';
   import ScreenShareLayer from '$lib/components/ScreenShareLayer.svelte';
+  import {
+    activeWebcams,
+    localCameraStream,
+    stopCamera
+  } from '$lib/stores/webcam';
+  import WebcamStage from '$lib/components/WebcamStage.svelte';
   import { loadKeyPair, sign } from '$lib/keypair';
   import { httpBaseFromWs } from '$lib/server-url';
   import { connection, connectionError } from '$lib/stores/connection';
@@ -80,7 +86,7 @@
   import { voiceDefaults } from '$lib/stores/voiceDefaults';
   import { slowModeWait } from '$lib/stores/chatSettings';
   import { describeServerError, isFatalConnectionError } from '$lib/errors';
-  import type { Message, UserStatus, WatchedScreenShare } from '$lib/types';
+  import type { Message, UserStatus, WatchedScreenShare, WebcamTile } from '$lib/types';
   import {
     pingToStrength,
     buildMessageBlocks,
@@ -1000,10 +1006,11 @@
     }
     inVoice = false;
     resetVoicePermissions();
-    // A screen share cannot outlive the voice session — stop our own
-    // capture and close every share we were watching.
+    // Neither a screen share nor a camera can outlive the voice session —
+    // stop our own captures and close every share we were watching.
     stopScreenShare();
     leaveScreenShareAsViewer();
+    void stopCamera();
   }
 
   /**
@@ -1100,8 +1107,9 @@
     if (!$session.user) return;
     if (inVoice && currentVoiceChannelId !== null) {
       // Switching channels ends the old voice session and with it any
-      // running screen share (it is bound to the old channel).
+      // running screen share or camera (both are bound to the old channel).
       stopScreenShare();
+      void stopCamera();
       voice.leave(currentVoiceChannelId);
     }
     const info = $voiceChannels.find((vc) => vc.id === id);
@@ -1759,6 +1767,27 @@
     }
     return tiles;
   });
+  // Every camera on in the voice channel we are in: our own preview first,
+  // then each peer whose camera the server announced. A peer with no stream
+  // yet is still listed — the tile says "Connecting…" rather than appearing a
+  // second later, which is the same reason a watched share gets a placeholder.
+  let webcamTiles = $derived.by<WebcamTile[]>(() => {
+    if (!inVoice || currentVoiceChannelId === null) return [];
+    const tiles: WebcamTile[] = [];
+    if ($localCameraStream) {
+      tiles.push({
+        key: 'self',
+        userId: $session.user ?? '',
+        stream: $localCameraStream,
+        isSelf: true
+      });
+    }
+    for (const user of $activeWebcams[currentVoiceChannelId] ?? []) {
+      if (user === $session.user) continue;
+      tiles.push({ key: `peer:${user}`, userId: user, stream: $voiceVideo[user] ?? null, isSelf: false });
+    }
+    return tiles;
+  });
   let channelMessages = $derived($chat.filter((m) => m.channelId === currentChatChannelId));
   let messageBlocks = $derived(buildMessageBlocks(channelMessages, {
     unreadAfterId: unreadMarkerAfterId,
@@ -2021,6 +2050,9 @@
           />
         {/key}
       {:else}
+      {#if webcamTiles.length > 0}
+        <WebcamStage tiles={webcamTiles} />
+      {/if}
       <PinnedBar
         entries={pinnedEntries}
         messages={channelMessages}

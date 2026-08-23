@@ -1,11 +1,133 @@
 # 📝 TODO List
 
-An overview of planned work for the project. Entries are sorted alphabetically
+An overview of planned work for the project.
+
+Sections are ordered by what usually gets picked up first — bugs, then
+hardening, then performance, then new work. Entries are sorted alphabetically
 within each section.
 
 Finished work is **removed** from this list rather than ticked off — git
 history is the record of what shipped, and a list that only holds open items
 stays readable. Use the checkboxes to mark something you have picked up.
+
+Where an entry names a file or a symbol, that is the place to start reading,
+not a description of the fix.
+
+---
+
+## 🐛 Bugs
+
+- [ ] Crackling/popping artefacts in transmitted voice audio while speaking —
+      the transmission gate now ramps instead of stepping, which removed the
+      clicks at the start and end of each burst; needs a re-test to see
+      whether anything remains mid-speech
+- [ ] Screen share: after the streamer stops sharing, the overlay controls
+      stop responding — the viewer-side state is never reset
+- [ ] Soundboard: uploading a new sound fails. Not reproduced from reading the
+      code; two leads to rule out first. `validate_sound_name` bounds the name
+      in **bytes** while `SoundboardPanel.svelte` bounds it in UTF-16 units,
+      so a long name carrying non-ASCII characters passes the client and is
+      rejected by the server. Separately, an extension on the `/upload` audio
+      list but not on `UPLOAD_SOUND_EXTENSIONS` — `.flac` is the only one —
+      uploads fine and is then refused by `add-sound`, leaving the file
+      orphaned on disk; the picker's `accept` hides that, "All files" does not
+
+---
+
+## 🔧 Tech debt / hardening
+
+- [ ] Audit log for moderation and dashboard actions. Kicks, bans, mutes,
+      permission changes and Danger Zone resets go to `tracing` and nowhere
+      else, so the only record lives in the operator's terminal — the people
+      who can see the Server Dashboard cannot see who did what from it
+- [ ] Cap voice channel occupancy. The mesh is one connection per pair, so
+      cost grows with the square of the room, and nothing stops the twentieth
+      person joining; the first symptom is everyone's CPU rather than an
+      error. A server-configurable per-channel limit is the small fix, an SFU
+      the real one — see Future Ideas
+- [ ] Content-Security-Policy for the web client. The desktop shell ships a
+      full policy in `tauri.conf.json`; the same bundle served over HTTP gets
+      `nosniff`, `referrer-policy` and `x-frame-options` and nothing else. Two
+      shipped targets, the same `{@html}` markdown boundary, two different
+      security postures — and the browser one is the weaker
+- [ ] Dependency advisories in CI. `cargo audit` and `bun audit` are
+      documented as "run locally", which in practice means never. A weekly
+      scheduled workflow that fails only on advisories costs one job
+- [ ] Expiring, revocable invite links. An invite is a plain URL carrying the
+      server address and password in its fragment, valid forever with no use
+      limit; the only way to withdraw one is to change `SERVER_PASSWORD` for
+      everybody. Server-issued invite tokens with an expiry and a use count
+      would make a leaked link recoverable
+- [ ] Lagged broadcast receivers are dropped silently. Both
+      `RecvError::Lagged` arms in `ws/handlers/mod.rs` are empty, so a client
+      that falls behind the 100-frame channel loses frames with no log, no
+      warning and no resync — the message simply never appears for that one
+      person. Log the skipped count at minimum; better, tell the client to
+      re-request the affected state
+- [ ] Metrics for operators. Connection count, frames per second, database
+      latency and rate-limit rejections exist only as log lines, so there is
+      no way to see a server degrading before users report it
+- [ ] Mirror-test the soundboard constants. `SOUND_EXTENSIONS`,
+      `MAX_SOUND_FILE_BYTES`, `MAX_SOUNDBOARD_SOUNDS`, the name-length bounds
+      and the cooldown are all defined on both sides, and
+      `test/server-mirror.test.ts` covers permissions, the upload safe-list
+      and the chat policy but not these. Drift shows up as an upload that
+      fails after the file has already been stored
+- [ ] Reclaim orphaned uploads. Deleting an emoji, avatar, server icon or
+      sound removes its file; deleting a *message* does not, and neither does
+      the Danger Zone purge or reset. The dashboard's storage breakdown can
+      only ever grow. Needs a sweep reconciling `uploads/` against the rows
+      that reference it
+- [ ] Retention policy for message history. The database grows without bound
+      and an operator has only the all-or-nothing purge. A server-wide or
+      per-channel "delete messages older than N days", cascading through
+      reactions, pins and the FTS index, is the counterpart to the upload
+      sweep above
+- [ ] Serve `/files` as inert content. Uploads come back from the app's own
+      origin with no `Content-Disposition` and no sandbox policy, which leaves
+      the extension safe-list as the only thing between an upload and script
+      execution in that origin. `Content-Disposition: attachment` plus a
+      `sandbox` CSP on the route makes the safe-list defence in depth rather
+      than the whole defence
+- [ ] Split the three files that have outgrown being read end to end:
+      `routes/chat/+page.svelte` (2.4k lines), `ServerDashboardModal.svelte`
+      (2.3k) and `SettingsModal.svelte` (1.6k). "Keep it simple" cuts both
+      ways — past a point the flat file is the complicated option
+- [ ] Test the per-recipient frame filter over a real WebSocket. Nothing in
+      `murmer_server/tests/` opens `/ws`, so the auth handshake and the
+      filtering in the `global_rx` arm — the code deciding whether a private
+      channel's messages reach a given connection — are only ever exercised by
+      hand. `direct_routing_test.rs` calls the helpers directly and stops
+      short of the dispatch loop
+- [ ] TURN support — voice does not connect at all behind symmetric NAT or a
+      network that blocks UDP, and both managers hardcode one public STUN
+      server with no way for an operator to change it. Designed but not
+      scheduled: see [`plans/turn-support.md`](plans/turn-support.md) for the
+      work breakdown, the ephemeral-credential scheme, the interaction with
+      `webrtc/recovery.ts` and the open questions. The first step (making the
+      ICE configuration configurable at all) is small and independently useful
+
+---
+
+## ⚡ Performance
+
+- [ ] Cache each connection's channel visibility instead of resolving it per
+      frame. Every frame scoped to a restricted channel locks
+      `channel_overrides` and re-resolves the recipient's permissions, once
+      per recipient. The answer only changes on `channels-refresh`, which is
+      already broadcast — so it can be computed once per connection and
+      invalidated there
+- [ ] One array holds every message from every channel. `$chat` is flat and
+      unbounded: each update re-filters it for the open channel and rebuilds
+      every block, and every message ever scrolled into view stays in the DOM.
+      A long session with deep scrollback pays for all of it on every incoming
+      message. Key it by channel, cap it, or window the list
+- [ ] Parse each broadcast frame once, not once per connection. Each
+      connection task runs its own substring scan and `serde_json::from_str`
+      over the same global frame, so one DM or channel-scoped frame is parsed
+      as many times as there are clients. Deciding the routing at the send
+      site and shipping it alongside the frame makes fan-out constant in parse
+      cost
 
 ---
 
@@ -13,14 +135,21 @@ stays readable. Use the checkboxes to mark something you have picked up.
 
 ### 🗨️ Chat Features
 
-- [ ] Bot integration/webhooks (a basic REST bot API exists; webhooks do not)
+- [ ] Auto-moderation rules — pattern rules with actions (delete, warn, mute)
+      beyond the flat profanity word list
+- [ ] Drafts kept per channel, so switching channels mid-sentence does not
+      throw the sentence away
+- [ ] Forward a message to another channel or a DM, keeping its attribution
+- [ ] Outbound webhooks. The bot REST API covers "something else drives
+      Murmer"; there is no way round for Murmer to notify something else when
+      a message arrives
+- [ ] Reminders and scheduled messages
+- [ ] Saved messages — a personal bookmark list, separate from the
+      server-wide pins
 - [ ] Text-to-speech
 
 ### 🎤 Voice Features
 
-- [x] Automatic input sensitivity — track the noise floor and derive the VAD
-      threshold from it instead of asking the user to dial in a number, with a
-      manual override for the cases it gets wrong
 - [ ] Breakout rooms
 - [ ] Collaborative whiteboard during voice chats
 - [ ] Ducking — drop the soundboard (and other app sounds) while somebody is
@@ -32,64 +161,51 @@ stays readable. Use the checkboxes to mark something you have picked up.
 - [ ] Output limiter / loudness normalisation — a `DynamicsCompressorNode` on
       the remote graph to tame the one person who is always clipping, without
       having to ride their per-user volume by hand
+- [ ] Raise hand and a speaking queue, for the calls with more listeners than
+      talkers
 - [ ] Real-time transcription of voice to text
 - [ ] Record and play back voice messages
 - [ ] Screen-share annotations
-- [x] Separate volume for the app sounds (join, leave, mute) independent of the
-      voice volume slider, which currently drives both
 - [ ] Temporary voice channels
-- [x] VAD hold / release-delay slider — the detector already holds the gate
-      open after speech stops, but the timings are the fixed `HOLD_TIME_MS` and
-      `RELEASE_DELAY_MS` constants in `voice/vad.ts`; this exposes them the way
-      Discord's "PTT release delay" does
+- [ ] Text chat scoped to a voice channel — somewhere to drop a link mid-call
+      that does not interrupt the channel everyone else is reading
 - [ ] Virtual backgrounds
 - [ ] Voice activity heatmaps
 - [ ] Voice-controlled commands
 - [ ] Voice effects and filters
 - [ ] Voice sentiment analysis
-- [ ] Webcam/video in voice channels
 
 ### 🛠️ Other Features
 
+- [ ] Accessibility pass — keyboard navigation and screen-reader labels. The
+      main chat page carries five `aria-` attributes across 2.4k lines, so
+      most of the app is currently hard to reach without a mouse
 - [ ] Anonymous chat modes
 - [ ] Backup & export of chat history and uploads
 - [ ] Decentralized/mesh networking option
 - [ ] Mini-games embedded in chat
 - [ ] Music streaming from local files
+- [ ] Narrow-window and touch layout. The web client is a shipped target, and
+      six `max-width` media queries in the whole client is what it has to meet
+      a phone with
 - [ ] Pomodoro timer integration for study groups
 - [ ] Real-time collaborative code editing
 - [ ] Scheduled voice events / calendar integration
+- [ ] Shareable themes — the accent wheel re-tints, but a theme cannot be
+      saved, exported or handed to somebody else
+- [ ] Translatable UI. Every string is hardcoded English, so this is a
+      structural change (extraction plus a lookup) rather than a translation
+      job, and it only gets more expensive with every screen added
 - [ ] Translation services for international teams
-
----
-
-## 🔧 Tech debt / hardening
-
-- [ ] TURN support — voice does not connect at all behind symmetric NAT or a
-      network that blocks UDP, and both managers hardcode one public STUN
-      server with no way for an operator to change it. Designed but not
-      scheduled: see [`plans/turn-support.md`](plans/turn-support.md) for the
-      work breakdown, the ephemeral-credential scheme, the interaction with
-      `webrtc/recovery.ts` and the open questions. The first step (making the
-      ICE configuration configurable at all) is small and independently useful
-
----
-
-## 🐛 Bugs
-
-- [ ] Crackling/popping artefacts in transmitted voice audio while speaking —
-      the transmission gate now ramps instead of stepping, which removed the
-      clicks at the start and end of each burst; needs a re-test to see whether
-      anything remains mid-speech
-- [ ] Screen share: after the streamer stops sharing, the overlay controls stop
-      responding (state is not reset)
-- [ ] Soundboard: uploading a new sound fails
 
 ---
 
 ## 💡 Future Ideas
 
 - [ ] AI-powered chat summarization
+- [ ] An SFU for large voice channels — the real answer to the mesh's square
+      growth, and a much bigger commitment than TURN: it puts media through
+      the server, which today never sees any
 - [ ] Federation between Murmer servers (cross-server DMs)
 - [ ] Offline LAN party mode without Internet
 - [ ] Proximity voice channels for events

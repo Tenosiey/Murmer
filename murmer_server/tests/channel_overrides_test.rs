@@ -29,6 +29,7 @@ async fn make_state() -> Arc<AppState> {
         user_keys: Arc::new(Mutex::new(HashMap::new())),
         mutes: Arc::new(Mutex::new(HashMap::new())),
         active_screen_shares: Arc::new(Mutex::new(HashMap::new())),
+        active_webcams: Arc::new(Mutex::new(HashMap::new())),
         voice_mutes: Arc::new(Mutex::new(HashMap::new())),
         connection_stats: Arc::new(Mutex::new(HashMap::new())),
         voice_session_starts: Arc::new(Mutex::new(HashMap::new())),

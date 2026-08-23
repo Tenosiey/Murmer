@@ -66,6 +66,13 @@ export interface SearchResults {
 export interface RemotePeer {
   id: string;
   stream: MediaStream;
+  /**
+   * This peer's camera, carried by the same connection as their audio. Set
+   * once the video transceiver delivers its track and then kept, camera on or
+   * off — whose camera is *live* is the `webcam-start`/`-stop` announcement in
+   * `stores/webcam.ts`, not the presence of a track.
+   */
+  video?: MediaStream;
   stats?: ConnectionStats;
   /**
    * True while the connection to this peer is being repaired (see
@@ -243,6 +250,18 @@ export interface ScreenShareAudio {
 export interface ScreenShareActive {
   userId: string;
   channelId: number;
+}
+
+/** One tile on the video stage. */
+export interface WebcamTile {
+  /** Stable list key; our own preview and a peer never collide. */
+  key: string;
+  /** Account name whose camera this is. */
+  userId: string;
+  /** The stream to render, or null while the connection is still coming up. */
+  stream: MediaStream | null;
+  /** Our own capture, previewed rather than received from a peer. */
+  isSelf: boolean;
 }
 
 /** Entry of a right-click menu. Items with `children` open a submenu instead
