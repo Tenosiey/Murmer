@@ -46,8 +46,7 @@
     type HotkeyActionId
   } from '$lib/stores/hotkeys';
   import { suspendGlobalHotkeys, resumeGlobalHotkeys } from '$lib/stores/globalHotkeys';
-  import { check } from '@tauri-apps/plugin-updater';
-  import { relaunch } from '@tauri-apps/plugin-process';
+  import { isTauri } from '$lib/platform';
   import { dialogs } from '$lib/stores/dialogs';
   import { stats, statsConfig, statsSnapshot } from '$lib/stores/stats';
   import { session } from '$lib/stores/session';
@@ -222,6 +221,12 @@
     updating = true;
     updateMessage = 'Checking...';
     try {
+      // Dynamic so the updater plugin stays out of the web bundle, which has
+      // no shell to install anything into.
+      const [{ check }, { relaunch }] = await Promise.all([
+        import('@tauri-apps/plugin-updater'),
+        import('@tauri-apps/plugin-process')
+      ]);
       const update = await check();
       if (!update) {
         updateMessage = 'You are running the latest version.';
@@ -902,6 +907,7 @@
               push-to-talk key is configured in the Microphone &amp; Voice tab.
             </div>
 
+            {#if isTauri}
             <label class="toggle-row">
               <input type="checkbox" bind:checked={$globalHotkeysEnabled} />
               <span class="toggle-text">
@@ -913,6 +919,7 @@
                 </span>
               </span>
             </label>
+            {/if}
 
             <button class="btn reset-hotkeys" onclick={() => hotkeys.resetAll()}>
               Reset to defaults
@@ -1052,6 +1059,7 @@
             </div>
           </div>
 
+          {#if isTauri}
           <div class="setting-group">
             <span class="setting-label">Updates</span>
             <button class="btn update-btn" onclick={checkUpdates} disabled={updating}>Check for Updates</button>
@@ -1061,6 +1069,15 @@
               </div>
             {/if}
           </div>
+          {:else}
+          <div class="setting-group">
+            <span class="setting-label">Updates</span>
+            <div class="setting-description">
+              You are running the web client, which is served by the site you opened — reload the
+              page to pick up a new version.
+            </div>
+          </div>
+          {/if}
 
           <div class="setting-group">
             <span class="setting-label">Links</span>

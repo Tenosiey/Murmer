@@ -47,6 +47,10 @@ small team can deploy a private chat space quickly.
 - Private text and voice channels with per-channel View / Write-Talk overrides for roles and members
 - Secure file and image sharing (extension safe-list, content-type checks, size limits and path sanitisation)
 - Desktop client with auto-reconnect and connection quality indicators
+- The same build also runs as a **web client** in the browser, which the
+  server can host itself; invite links are ordinary URLs that open it, and
+  paste straight into the desktop client's address field (see
+  [Web client](#web-client))
 - Connection stats panel (server ping, voice RTT, jitter, packet loss); Owners
   and Admins can additionally view every user's self-reported stats (quality
   numbers only — no IPs or device details, kept in memory and dropped on
@@ -133,19 +137,29 @@ small team can deploy a private chat space quickly.
 ## Repository layout
 
 ```
-murmer_client/   Tauri + SvelteKit desktop client (TypeScript)
-murmer_server/   Axum-based WebSocket server (Rust)
+murmer_client/       SvelteKit client (TypeScript): Tauri desktop shell and web client
+murmer_server/       Axum-based WebSocket server (Rust)
+agents/skills/       task guides for contributors and AI coding agents
+docs/                architecture and subsystem reference
+plans/               design notes for work that is not built yet
 docker-compose.yml   boots the server (database is embedded)
 ```
 
-Key documentation for contributors:
+Documentation is split by audience. This README and
+[`murmer_server/BOT_API.md`](murmer_server/BOT_API.md) are for **users and
+operators**; everything below is for **contributors**:
 
-- `AGENTS.md` – repository overview and shared conventions
-- `murmer_client/AGENTS.md` – client-specific tips
-- `murmer_server/AGENTS.md` – server-specific tips
-- `murmer_server/BOT_API.md` – REST API reference for bots
-- `CONTRIBUTING.md` – code style and PR guidelines
-- `docs/turn-support.md` – design note on TURN/relay support (not implemented)
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) – how to get set up and what makes a
+  change easy to merge
+- [`AGENTS.md`](AGENTS.md) – conventions, hard constraints and the index of
+  task guides. Written for humans and AI coding agents alike; the `CLAUDE.md`
+  files are one-line pointers to it
+- [`docs/architecture.md`](docs/architecture.md) – how the system fits
+  together, and the entry point to the rest of `docs/`
+- [`agents/skills/`](agents/skills/) – procedure for a specific kind of work
+  (adding a frame, writing a test, touching crypto, cutting a release)
+- [`plans/turn-support.md`](plans/turn-support.md) – design note on
+  TURN/relay support (not implemented)
 
 ## Brand
 
@@ -172,13 +186,13 @@ The window/installer icons are generated from the SVG rather than hand-edited.
 After changing the artwork, regenerate them from `murmer_client/`:
 
 ```bash
-npx tauri icon static/logo/murmer-dark.svg -o src-tauri/icons
+bunx tauri icon static/logo/murmer-dark.svg -o src-tauri/icons
 ```
 
 That command also emits `android/`, `ios/` and `64x64.png`, which this
 desktop-only project does not bundle — delete them again. The tray PNGs
 (`icons/tray-{dark,light}.png`) are separate; regenerate each with
-`npx tauri icon static/logo/murmer-<variant>.svg -o <tmp> -p 64`.
+`bunx tauri icon static/logo/murmer-<variant>.svg -o <tmp> -p 64`.
 
 ## Requirements
 
@@ -253,12 +267,11 @@ bun audit
 ```
 
 Client unit tests use [Vitest](https://vitest.dev) and live next to the module
-they cover (`src/lib/**/*.test.ts`); shared harness code is in `test/`. They
-target logic that is easy to get subtly wrong and hard to spot by clicking
-around — the per-server namespacing of unread state, the wiki store's
-request/response correlation, the wiki line diff — not UI rendering. `vitest.config.ts` runs them
-in a plain Node environment and stubs the two framework pieces the stores
-touch: the `$app/environment` browser flag and `localStorage`.
+they cover (`src/lib/**/*.test.ts`); server tests are integration tests under
+`murmer_server/tests/`. Both target logic that is easy to get subtly wrong and
+hard to spot by clicking around — not UI rendering, which is verified by
+looking at the running app. How the suites are shaped and what belongs in one
+is [`docs/testing.md`](docs/testing.md).
 
 ## Configuration
 
@@ -272,6 +285,7 @@ Environment variables recognised by the server:
 | `ADMIN_TOKEN` | No | Enables the administrative `/role` endpoint |
 | `BIND_ADDRESS` | No | Override the socket address (defaults to `0.0.0.0:3001`) |
 | `CORS_ALLOW_ORIGINS` | No | Comma-separated allowed origins (omit in production) |
+| `WEB_CLIENT_DIR` | No | Directory with the built web client to serve at `/` (see [Web client](#web-client)) |
 | `MAX_MESSAGES_PER_MINUTE` | No | Per-user message rate limit (default: 30) |
 | `MAX_AUTH_ATTEMPTS_PER_MINUTE` | No | Per-IP auth rate limit (default: 5) |
 | `MAX_UPLOADS_PER_MINUTE` | No | Per-IP file upload rate limit (default: 20) |
@@ -280,6 +294,77 @@ Environment variables recognised by the server:
 Without `ADMIN_TOKEN` configured, channel and wiki management stay open to
 everyone so a small unadministered server remains usable; every other
 capability is still gated by roles.
+
+## Web client
+
+The same SvelteKit build that ships inside the Tauri shell also runs as an
+ordinary web page — there is no separate web bundle. Everything works except
+the parts that need the desktop shell: OS-level global hotkeys (in-app hotkeys
+still work) and the built-in updater, both of which the settings UI hides when
+it is not running inside Tauri.
+
+```bash
+cd murmer_client
+bun install
+bun run build        # writes murmer_client/build/
+```
+
+Point a server at that directory and it is a web client. The simplest
+deployment is the Murmer server itself:
+
+```bash
+WEB_CLIENT_DIR=/path/to/murmer_client/build murmer_server
+```
+
+The client is then served on the same origin as `/ws`, `/upload` and `/files`,
+which is why it needs no `CORS_ALLOW_ORIGINS` entry — CORS stays off, the
+production default. Hosting it anywhere else works too (it is static files),
+but then every Murmer server it talks to has to name that origin in
+`CORS_ALLOW_ORIGINS`.
+
+Two things the browser enforces that the desktop shell does not:
+
+- **Serve it over HTTPS.** Microphone and screen capture need a secure context,
+  so voice is unavailable over plain `http://` (except on `localhost`).
+- **HTTPS pages may only talk to `wss://` servers.** A page served over HTTPS
+  cannot open a `ws://` socket or load `http://` attachments; the server hub
+  says so when you add such an address instead of letting the connection fail
+  silently. Put the Murmer server behind TLS as well.
+
+Serve the build with a **single-page-app fallback**: the routes are prerendered
+(`servers.html`, `invite.html`, …), but a host that has no file for a path
+should answer with `build/200.html` rather than a 404, which is what makes a
+deep link like `/invite#…` resolve. `WEB_CLIENT_DIR` does this; for nginx it
+is `try_files $uri $uri.html /200.html;`.
+
+Unlike the desktop shell, a hosted page carries no Content-Security-Policy of
+its own (the one in `tauri.conf.json` applies to the packaged app only). Add
+one at your reverse proxy if you want it.
+
+### Invite links
+
+An invite link is an ordinary URL pointing at the invite route of a web client:
+
+```
+https://chat.example.com/invite#url=wss%3A%2F%2Fchat.example.com%2Fws&name=Example
+```
+
+The **Copy invite link** button on the server hub builds one for a saved
+server. It uses the origin of the web client you are on, or — in the desktop
+app, which has no origin of its own — the server's own, which is where a
+server started with `WEB_CLIENT_DIR` serves its client from.
+
+Clicking such a link opens the web client, which shows the invite on the server
+hub for confirmation before anything is saved; signed-out visitors go through
+the login screen first and the invite is still waiting afterwards. The same
+link pasted into the hub's **Address** field is recognised there, so one link
+serves web and desktop users alike.
+
+The server details live in the URL **fragment** rather than the query string
+because an invite may carry the server password: a fragment is never sent to
+the web server, so it stays out of access logs, proxy logs and `Referer`
+headers. It is still a secret in a shared link — treat an invite with a
+password like the password itself.
 
 ## Profiles, display names and nicknames
 
@@ -618,4 +703,11 @@ binary in its installer and it is worth naming:
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for detailed guidelines.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) covers setup, the checks to run and what
+makes a change easy to merge. Once you are past that,
+[`docs/architecture.md`](docs/architecture.md) is the map of the system and
+[`AGENTS.md`](AGENTS.md) indexes the task guides in
+[`agents/skills/`](agents/skills/).
+
+Bug reports go to <https://github.com/Tenosiey/Murmer/issues>. Please do not
+open a public issue for a security problem — email the maintainer instead.

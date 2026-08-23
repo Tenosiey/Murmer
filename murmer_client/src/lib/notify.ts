@@ -1,15 +1,15 @@
 import { browser } from '$app/environment';
-import {
-  isPermissionGranted,
-  requestPermission,
-  sendNotification
-} from '@tauri-apps/plugin-notification';
+import { isTauri } from '$lib/platform';
 
 export async function notify(title: string, body?: string) {
   if (!browser) return;
 
-  // Prefer Tauri's notification API when available
-  if ('__TAURI__' in window) {
+  // Prefer Tauri's notification API when available. The import is dynamic so
+  // the plugin never reaches the web bundle, where it could not work anyway.
+  if (isTauri) {
+    const { isPermissionGranted, requestPermission, sendNotification } = await import(
+      '@tauri-apps/plugin-notification'
+    );
     let granted = await isPermissionGranted();
     if (!granted) {
       const permission = await requestPermission();

@@ -1,15 +1,14 @@
 use murmer_server::{
-    RateLimiter,
+    Clock, RateLimiter,
     security::{
-        check_and_store_nonce, check_auth_rate_limit, check_message_rate_limit,
-        validate_channel_name, validate_timestamp, validate_user_name,
+        RATE_WINDOW, SWEEP_INTERVAL, check_and_store_nonce, check_auth_rate_limit,
+        check_message_rate_limit, validate_channel_name, validate_timestamp, validate_user_name,
     },
 };
 use serial_test::serial;
 use std::time::Duration;
 use temp_env::with_var;
 use tokio::runtime::Runtime;
-use tokio::time::sleep;
 
 fn with_runtime<F>(f: F)
 where
@@ -54,12 +53,98 @@ fn allows_nonce_reuse_after_expiry() {
     with_var("NONCE_EXPIRY_SECONDS", Some("1"), || {
         with_runtime(|rt| {
             rt.block_on(async {
-                let limiter = RateLimiter::new();
+                let clock = Clock::manual();
+                let limiter = RateLimiter::with_clock(clock.clone());
                 assert!(check_and_store_nonce(&limiter, "nonce-1").await);
                 assert!(!check_and_store_nonce(&limiter, "nonce-1").await);
 
-                sleep(Duration::from_secs(2)).await;
+                clock.advance(Duration::from_secs(2));
                 assert!(check_and_store_nonce(&limiter, "nonce-1").await);
+            });
+        });
+    });
+}
+
+/// The sliding window is pruned per key on every access, so a user who hit the
+/// limit is allowed again as soon as their oldest message falls out of it —
+/// and only the messages that fell out are forgiven.
+#[test]
+#[serial]
+fn frees_the_limit_as_the_window_slides() {
+    with_var("MAX_MESSAGES_PER_MINUTE", Some("2"), || {
+        with_runtime(|rt| {
+            rt.block_on(async {
+                let clock = Clock::manual();
+                let limiter = RateLimiter::with_clock(clock.clone());
+
+                assert!(check_message_rate_limit(&limiter, "alice").await);
+                clock.advance(RATE_WINDOW - Duration::from_secs(1));
+                assert!(check_message_rate_limit(&limiter, "alice").await);
+                assert!(!check_message_rate_limit(&limiter, "alice").await);
+
+                // Two seconds on, only the first of the two messages has aged
+                // out of the window, so exactly one more is allowed.
+                clock.advance(Duration::from_secs(2));
+                assert!(check_message_rate_limit(&limiter, "alice").await);
+                assert!(!check_message_rate_limit(&limiter, "alice").await);
+            });
+        });
+    });
+}
+
+/// The map sweep is what stops the limiter from holding an entry for every
+/// name or IP it has ever seen. It runs on a timer, so it is invisible to a
+/// test that cannot move the clock: without one, a sweep that never fires
+/// looks exactly like a working rate limiter.
+#[test]
+#[serial]
+fn sweeps_keys_that_went_quiet() {
+    with_var("MAX_MESSAGES_PER_MINUTE", Some("5"), || {
+        with_runtime(|rt| {
+            rt.block_on(async {
+                let clock = Clock::manual();
+                let limiter = RateLimiter::with_clock(clock.clone());
+
+                assert!(check_message_rate_limit(&limiter, "alice").await);
+                assert!(check_message_rate_limit(&limiter, "bob").await);
+                assert_eq!(limiter.message_times.lock().await.entries.len(), 2);
+
+                // Not due yet: bob is still tracked even though nobody has
+                // asked about him since.
+                clock.advance(SWEEP_INTERVAL - Duration::from_secs(1));
+                assert!(check_message_rate_limit(&limiter, "alice").await);
+                assert_eq!(limiter.message_times.lock().await.entries.len(), 2);
+
+                // Past the interval, the next check sweeps bob out entirely
+                // while alice — who is still active — keeps her window.
+                clock.advance(Duration::from_secs(2));
+                assert!(check_message_rate_limit(&limiter, "alice").await);
+                let windows = limiter.message_times.lock().await;
+                assert_eq!(windows.entries.keys().collect::<Vec<_>>(), vec!["alice"]);
+            });
+        });
+    });
+}
+
+/// The nonce store sweeps on the same timer, and its entries are the ones that
+/// grow with every authentication rather than with every distinct user.
+#[test]
+#[serial]
+fn sweeps_expired_nonces() {
+    with_var("NONCE_EXPIRY_SECONDS", Some("1"), || {
+        with_runtime(|rt| {
+            rt.block_on(async {
+                let clock = Clock::manual();
+                let limiter = RateLimiter::with_clock(clock.clone());
+                assert!(check_and_store_nonce(&limiter, "nonce-1").await);
+                assert!(check_and_store_nonce(&limiter, "nonce-2").await);
+                assert_eq!(limiter.used_nonces.lock().await.entries.len(), 2);
+
+                clock.advance(SWEEP_INTERVAL + Duration::from_secs(1));
+                assert!(check_and_store_nonce(&limiter, "nonce-3").await);
+
+                let nonces = limiter.used_nonces.lock().await;
+                assert_eq!(nonces.entries.keys().collect::<Vec<_>>(), vec!["nonce-3"]);
             });
         });
     });

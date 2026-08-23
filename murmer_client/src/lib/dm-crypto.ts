@@ -29,6 +29,13 @@ export interface EncryptedDm {
 /** Convert both parties' Ed25519 keys to the X25519 pair nacl.box needs.
  *  Returns null if either key is malformed (e.g. a corrupted binding).
  *
+ *  The length checks are load-bearing: ed2curve does not validate its input,
+ *  and happily derives a 32-byte X25519 key from a truncated or overlong
+ *  Ed25519 one. Without them a wrong-length peer key yields a ciphertext
+ *  nobody can open — the sender believes the DM went out while the peer sees a
+ *  permanent decrypt-failure placeholder. Failing here instead makes callers
+ *  take the honest "cannot encrypt" path.
+ *
  *  Shared with channel-crypto.ts, which wraps a channel key for a member with
  *  the same primitive and the same trust model: a box between two identity
  *  keys, with the server as the directory that hands them out. */
@@ -37,8 +44,16 @@ export function dhKeys(
   myEdSecretKey: string
 ): { peerPublic: Uint8Array; mySecret: Uint8Array } | null {
   try {
-    const peerPublic = ed2curve.convertPublicKey(fromBase64(peerEdPublicKey));
-    const mySecret = ed2curve.convertSecretKey(fromBase64(myEdSecretKey));
+    const peerBytes = fromBase64(peerEdPublicKey);
+    const myBytes = fromBase64(myEdSecretKey);
+    if (
+      peerBytes.length !== nacl.sign.publicKeyLength ||
+      myBytes.length !== nacl.sign.secretKeyLength
+    ) {
+      return null;
+    }
+    const peerPublic = ed2curve.convertPublicKey(peerBytes);
+    const mySecret = ed2curve.convertSecretKey(myBytes);
     return peerPublic && mySecret ? { peerPublic, mySecret } : null;
   } catch {
     return null;

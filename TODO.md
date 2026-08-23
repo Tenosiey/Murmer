@@ -60,42 +60,15 @@ stays readable. Use the checkboxes to mark something you have picked up.
 - [ ] Real-time collaborative code editing
 - [ ] Scheduled voice events / calendar integration
 - [ ] Translation services for international teams
-- [ ] Web client (browser build without Tauri, join via invite link)
 
 ---
 
 ## 🔧 Tech debt / hardening
 
-- [ ] Cover `markdown.ts` sanitisation — DOMPurify needs a DOM, so this is the
-      one file worth a `// @vitest-environment happy-dom` docblock rather than
-      moving the whole suite off the Node default. It is a security boundary
-      (`{@html}` renders its output) and currently has no tests
-- [ ] Make the rate limiter's clock injectable so the map-sweep behaviour in
-      `security.rs` can be covered by a regression test in
-      `tests/security_limits.rs` (the 60 s window uses `std::time::Instant`
-      directly and cannot be fast-forwarded)
-- [ ] Property-test `NoiseFloorTracker` in `voice/vad.ts` — the invariants are
-      already written down (the floor may never rise above the quietest level
-      of the last 20 s, and not at all until the input has been quiet for
-      `QUIET_DWELL_MS`), and a regression gates users mid-sentence, which no
-      quick smoke test catches. Needs `vi.useFakeTimers({ toFake: ['performance'] })`
-- [ ] Reject wrong-length peer keys in `dm-crypto.ts::dhKeys` —
-      `ed2curve.convertPublicKey` does not check its input length, so
-      `encryptDm` accepts a truncated key and produces a ciphertext nobody can
-      open: the sender believes the DM went out while the peer sees a permanent
-      decrypt-failure placeholder. Low severity (a malicious server
-      substituting a *valid* key already reads those DMs, and TOFU pinning
-      limits both to first contact), but the failure mode should be honest.
-      `dm-crypto.test.ts` has a test named for the current behaviour — delete
-      it with the fix
-- [ ] Test the server's pins and screen-share modules — `db/wiki.rs` is now
-      covered (full-text search in `tests/search_test.rs`, the revision
-      compare-and-swap, history and restore in `tests/wiki_test.rs`), but
-      `db/pins.rs` and `db/screenshare.rs` are untested
 - [ ] TURN support — voice does not connect at all behind symmetric NAT or a
       network that blocks UDP, and both managers hardcode one public STUN
       server with no way for an operator to change it. Designed but not
-      scheduled: see [`docs/turn-support.md`](docs/turn-support.md) for the
+      scheduled: see [`plans/turn-support.md`](plans/turn-support.md) for the
       work breakdown, the ephemeral-credential scheme, the interaction with
       `webrtc/recovery.ts` and the open questions. The first step (making the
       ICE configuration configurable at all) is small and independently useful

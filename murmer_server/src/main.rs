@@ -13,6 +13,9 @@
 //! - `ADMIN_TOKEN`: token for admin role management.
 //! - `BIND_ADDRESS`: optional socket address to bind to (defaults to `0.0.0.0:3001`).
 //! - `CORS_ALLOW_ORIGINS`: comma separated list of origins allowed to access HTTP endpoints.
+//! - `WEB_CLIENT_DIR`: directory with the built web client (`murmer_client/build`).
+//!   When set, the client is served at `/`, on the same origin as `/ws` and
+//!   `/upload` -- which is what lets a browser use it with CORS disabled.
 //! - `MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
 //!   `MAX_UPLOADS_PER_MINUTE`, `NONCE_EXPIRY_SECONDS`: rate limiting overrides.
 //!
@@ -41,7 +44,9 @@ use tokio::{
 };
 use tower::ServiceBuilder;
 use tower_http::{
-    compression::CompressionLayer, services::ServeDir, set_header::SetResponseHeaderLayer,
+    compression::CompressionLayer,
+    services::{ServeDir, ServeFile},
+    set_header::SetResponseHeaderLayer,
     trace::TraceLayer,
 };
 use tracing::info;
@@ -161,10 +166,6 @@ async fn main() -> Result<()> {
 
     let mut router = Router::new()
         .route(
-            "/",
-            get(|| async { StatusCode::OK }).head(|| async { StatusCode::OK }),
-        )
-        .route(
             "/ws",
             get(ws::ws_handler).layer(DefaultBodyLimit::disable()),
         )
@@ -185,6 +186,24 @@ async fn main() -> Result<()> {
             ServeDir::new(&config.upload_dir).append_index_html_on_directories(false),
         )
         .with_state(state);
+
+    // Everything the API does not claim: the web client when one is
+    // configured, otherwise the bare liveness response the health check and
+    // the client's reachability probe expect from `/`.
+    router = match &config.web_client_dir {
+        Some(dir) => {
+            info!(path = %dir.display(), "serving web client");
+            // The client is a prerendered single-page app: a deep link such as
+            // `/invite` has no file of its own, so anything unmatched falls
+            // back to the SPA shell, which routes it in the browser.
+            let spa = ServeDir::new(dir).fallback(ServeFile::new(dir.join("200.html")));
+            router.fallback_service(spa)
+        }
+        None => router.route(
+            "/",
+            get(|| async { StatusCode::OK }).head(|| async { StatusCode::OK }),
+        ),
+    };
 
     let security_headers = ServiceBuilder::new()
         .layer(SetResponseHeaderLayer::if_not_present(

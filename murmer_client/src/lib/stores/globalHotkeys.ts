@@ -1,4 +1,5 @@
 import { get } from 'svelte/store';
+import { isTauri } from '$lib/platform';
 import {
   hotkeys,
   HOTKEY_ACTIONS,
@@ -14,12 +15,11 @@ import {
  *
  * Note that the OS consumes a registered combo before it reaches the webview,
  * so for these combos this module is the only trigger path — the DOM keydown
- * handler in the chat page never sees them. In the plain browser (dev
- * without the Tauri shell) nothing is registered and the DOM handler covers
- * everything as before.
+ * handler in the chat page never sees them. In the web client (and in
+ * `bun run dev` without the Tauri shell) nothing is registered and the DOM
+ * handler covers everything as before — a web page cannot grab a key
+ * system-wide.
  */
-
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 /**
  * Our combo format matches the plugin's accelerator format except for the
