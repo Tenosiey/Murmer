@@ -100,6 +100,16 @@ small team can deploy a private chat space quickly.
   is on screen, so chatting on keeps working next to it; "Tile" arranges every
   open window into a grid, and each window's position and size are remembered
   per person
+- Camera video in voice channels: switch your webcam on and everyone in the
+  channel sees it, in a tile grid above the conversation that appears with the
+  first camera and disappears with the last. Pick the camera and the
+  resolution (up to 720p) from the voice controls; both apply to a running
+  camera straight away and are remembered. Your own tile is mirrored (a
+  preference, and only the preview — the others see the picture as the camera
+  saw it), each tile can go fullscreen, the grid collapses to a one-line
+  summary, and a member with their camera on is marked in the channel list.
+  The video travels over the same peer-to-peer connections as the voice, so
+  the server never sees it
 - Soundboard: a shared library of short clips anyone in a voice channel can
   play for everyone present. Uploading is gated by *Manage sounds*, playing by
   *Use soundboard*, and a server-side cooldown keeps it from becoming a spam

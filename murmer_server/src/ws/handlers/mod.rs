@@ -1,7 +1,9 @@
 //! WebSocket message handlers.
 //!
-//! The main socket loop lives here; domain-specific handlers are split into
-//! submodules to keep each file focused:
+//! The main socket loop lives here, along with the small voice, screen-share
+//! and camera handlers that are not worth a file of their own;
+//! domain-specific handlers are split into submodules to keep each file
+//! focused:
 //! - [`auth`] – user and bot authentication
 //! - [`channels`] – text/voice channel and category management
 //! - [`chat_settings`] – slow mode, message length cap and profanity filter
@@ -358,6 +360,21 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                     let _ = state.tx.send(text);
                                 }
                             }
+                            // A camera is announced to the channel the same way, but
+                            // carries no signaling of its own: the video rides the
+                            // voice peer connections that already exist.
+                            "webcam-start" => {
+                                if claims_own_user(&v, &user_name) {
+                                    handle_webcam_start(&state, &v).await;
+                                    let _ = state.tx.send(text);
+                                }
+                            }
+                            "webcam-stop" => {
+                                if claims_own_user(&v, &user_name) {
+                                    handle_webcam_stop(&state, &v).await;
+                                    let _ = state.tx.send(text);
+                                }
+                            }
                             "set-screenshare-max-bitrate" => {
                                 screenshare::handle_set_screenshare_max_bitrate(&state, &mut sender, &v, &user_name).await;
                             }
@@ -576,6 +593,8 @@ fn channel_frame_hint(msg: &str) -> bool {
         || msg.contains("voice-leave")
         || msg.contains("screenshare-start")
         || msg.contains("screenshare-stop")
+        || msg.contains("webcam-start")
+        || msg.contains("webcam-stop")
         || msg.contains("soundboard-play")
 }
 
@@ -597,6 +616,8 @@ fn channel_scope(v: &Value) -> Option<(ChannelKind, i32)> {
         | "voice-leave"
         | "screenshare-start"
         | "screenshare-stop"
+        | "webcam-start"
+        | "webcam-stop"
         | "soundboard-play" => ChannelKind::Voice,
         _ => return None,
     };
@@ -813,6 +834,7 @@ async fn handle_voice_join(
         let _ = sender.send(Message::Text(perms.to_string().into())).await;
 
         send_active_screen_shares(state, sender, ch_id).await;
+        send_active_webcams(state, sender, ch_id).await;
         send_voice_mutes(state, sender, ch_id).await;
     }
 }
@@ -838,6 +860,7 @@ async fn handle_voice_leave(
         stats::flush_voice_session(state, u).await;
         stats::flush_screenshare_session(state, u).await;
         end_screen_shares_for_user(state, u).await;
+        end_webcams_for_user(state, u).await;
         broadcast_voice(state, ch_id).await;
         if *voice_channel == Some(ch_id) {
             *voice_channel = None;
@@ -915,6 +938,74 @@ async fn handle_screenshare_stop(state: &Arc<AppState>, v: &Value) {
         set.remove(user);
         if set.is_empty() {
             shares.remove(&ch_id);
+        }
+    }
+}
+
+/// Track a camera that was just switched on.
+async fn handle_webcam_start(state: &Arc<AppState>, v: &Value) {
+    let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
+        return;
+    };
+    let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) else {
+        return;
+    };
+    state
+        .active_webcams
+        .lock()
+        .await
+        .entry(ch_id as i32)
+        .or_default()
+        .insert(user.to_string());
+}
+
+/// Remove a camera from application state.
+async fn handle_webcam_stop(state: &Arc<AppState>, v: &Value) {
+    let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
+        return;
+    };
+    let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) else {
+        return;
+    };
+    let ch_id = ch_id as i32;
+    let mut cams = state.active_webcams.lock().await;
+    if let Some(set) = cams.get_mut(&ch_id) {
+        set.remove(user);
+        if set.is_empty() {
+            cams.remove(&ch_id);
+        }
+    }
+}
+
+/// Switch off every camera owned by `user` and announce each one. A camera
+/// cannot outlive the voice session that carries its video, so this runs on
+/// voice-leave and on disconnect; a well-behaved client sends `webcam-stop`
+/// first, in which case this is a no-op.
+async fn end_webcams_for_user(state: &Arc<AppState>, user: &str) {
+    let channels_with_camera: Vec<i32> = {
+        let mut cams = state.active_webcams.lock().await;
+        let channels: Vec<i32> = cams
+            .iter()
+            .filter(|(_, users)| users.contains(user))
+            .map(|(ch_id, _)| *ch_id)
+            .collect();
+        for ch_id in &channels {
+            if let Some(set) = cams.get_mut(ch_id) {
+                set.remove(user);
+                if set.is_empty() {
+                    cams.remove(ch_id);
+                }
+            }
+        }
+        channels
+    };
+    for ch_id in channels_with_camera {
+        if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+            "type": "webcam-stop",
+            "user": user,
+            "channelId": ch_id,
+        })) {
+            let _ = state.tx.send(msg.into());
         }
     }
 }
@@ -1003,6 +1094,30 @@ async fn send_active_screen_shares(
     }
 }
 
+/// Send the cameras already on in a voice channel to a single client.
+async fn send_active_webcams(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    channel_id: i32,
+) {
+    let users: Vec<String> = {
+        let cams = state.active_webcams.lock().await;
+        cams.get(&channel_id)
+            .map(|set| set.iter().cloned().collect())
+            .unwrap_or_default()
+    };
+    if users.is_empty() {
+        return;
+    }
+    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        "type": "webcam-active",
+        "channelId": channel_id,
+        "users": users,
+    })) {
+        let _ = sender.send(Message::Text(msg.into())).await;
+    }
+}
+
 /// Handle client disconnect cleanup.
 async fn handle_disconnect(state: &Arc<AppState>, user_name: Option<String>) {
     if let Some(name) = user_name {
@@ -1035,8 +1150,10 @@ async fn handle_disconnect(state: &Arc<AppState>, user_name: Option<String>) {
         // back is not made to wait out an interval they never spent typing.
         state.slow_mode_sends.lock().await.remove(&name);
 
-        // Clean up any active screen shares owned by the disconnecting user.
+        // Clean up any active screen shares and cameras owned by the
+        // disconnecting user.
         end_screen_shares_for_user(state, &name).await;
+        end_webcams_for_user(state, &name).await;
 
         state
             .statuses

@@ -26,7 +26,7 @@ is the first decision when adding a frame.
 | Route | Mechanism | Use for |
 | --- | --- | --- |
 | Server-wide broadcast | `AppState.tx` | Events every connected client needs: profile updates, role changes, emoji edits. |
-| Channel-scoped broadcast | the per-channel sender | Anything that belongs to one channel: messages, reactions, pins, `screenshare-start`/`-stop`, `soundboard-play`. |
+| Channel-scoped broadcast | the per-channel sender | Anything that belongs to one channel: messages, reactions, pins, `screenshare-start`/`-stop`, `webcam-start`/`-stop`, `soundboard-play`. |
 | Direct | `AppState.direct` | Anything addressed to a single user. |
 
 `AppState.direct` is a registry of per-connection mailboxes keyed by user
@@ -43,7 +43,10 @@ therefore load-bearing: a signaling frame without one is dropped and its
 session never connects.
 
 `screenshare-start` and `-stop` stay on the channel broadcast, because they
-announce to a channel rather than to one peer.
+announce to a channel rather than to one peer. `webcam-start` and `-stop` do
+the same, and are the *only* frames a camera needs: camera video travels on
+the voice peer connections rather than a mesh of its own, so it has no
+signaling of its own to relay. See [`voice.md`](voice.md).
 
 ### Visibility filtering
 

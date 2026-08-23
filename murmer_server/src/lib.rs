@@ -248,6 +248,10 @@ pub struct AppState {
     pub mutes: Arc<Mutex<HashMap<String, Option<chrono::DateTime<chrono::Utc>>>>>,
     /// Active screen shares per voice channel: channel_id -> set of usernames sharing.
     pub active_screen_shares: Arc<Mutex<HashMap<i32, HashSet<String>>>>,
+    /// Cameras currently on per voice channel: channel_id -> set of usernames.
+    /// The video itself rides the existing voice peer connections; this is only
+    /// the announcement, so a client joining later learns whose camera is on.
+    pub active_webcams: Arc<Mutex<HashMap<i32, HashSet<String>>>>,
     /// Voice mute state per user: username -> (microphone_muted, output_muted).
     pub voice_mutes: Arc<Mutex<HashMap<String, (bool, bool)>>>,
     /// Latest self-reported connection stats per user (in-memory only).

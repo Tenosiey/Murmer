@@ -21,9 +21,9 @@ murmer_client/                          murmer_server/
 │                          │  /link-…   │                           │
 └──────────────────────────┘            └───────────────────────────┘
          ▲                                          
-         │  WebRTC: voice audio and screen shares travel
-         └─ peer-to-peer between clients. The server only
-            relays signaling (offer/answer/candidate).
+         │  WebRTC: voice audio, camera video and screen shares
+         └─ travel peer-to-peer between clients. The server
+            only relays signaling (offer/answer/candidate).
 ```
 
 Two consequences of that last box are worth internalising before touching

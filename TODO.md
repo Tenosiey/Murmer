@@ -47,7 +47,6 @@ stays readable. Use the checkboxes to mark something you have picked up.
 - [ ] Voice-controlled commands
 - [ ] Voice effects and filters
 - [ ] Voice sentiment analysis
-- [ ] Webcam/video in voice channels
 
 ### 🛠️ Other Features
 
