@@ -55,12 +55,12 @@ const NOISE_FLOOR_MARGIN = 1.6;
 const NOISE_FLOOR_OFFSET = 0.03;
 
 /** How fast the floor follows the input downwards, as a fraction per second. */
-const FLOOR_DECAY_PER_SECOND = 3;
+export const FLOOR_DECAY_PER_SECOND = 3;
 
 /** How fast the floor may rise, in level units per second. Deliberately far
  *  slower than it falls: a floor that is too low passes some noise, one that
  *  overshoots cuts the speaker off. */
-const FLOOR_CREEP_PER_SECOND = 0.004;
+export const FLOOR_CREEP_PER_SECOND = 0.004;
 
 /**
  * How long the input has to stay quiet before the floor may rise again.
@@ -73,7 +73,7 @@ const FLOOR_CREEP_PER_SECOND = 0.004;
  * now", so this is comfortably longer than the gate's own release delay — and
  * `VAD_RELEASE_MAX_MS` keeps it that way whatever the user picks.
  */
-const QUIET_DWELL_MS = 2500;
+export const QUIET_DWELL_MS = 2500;
 
 /**
  * Window the floor may never rise above the quietest level of. Tracked as two
@@ -84,7 +84,7 @@ const QUIET_DWELL_MS = 2500;
  * drops back to the room. The floor can never climb past that, so it can never
  * climb past the speaker.
  */
-const FLOOR_WINDOW_MS = 20_000;
+export const FLOOR_WINDOW_MS = 20_000;
 
 /**
  * How far above the floor the window's quietest moment has to sit before the
@@ -93,7 +93,7 @@ const FLOOR_WINDOW_MS = 20_000;
  * the dwell, so without this the gate would flap open forever; the margin
  * keeps a merely quiet speaker from tripping it.
  */
-const STALE_FLOOR_MARGIN = 0.02;
+export const STALE_FLOOR_MARGIN = 0.02;
 
 /**
  * Tracks the background noise level and derives a VAD threshold from it, so
@@ -116,6 +116,11 @@ const STALE_FLOOR_MARGIN = 0.02;
  * own alongside the detector's. Both measure the same signal the same way
  * (`configureVadAnalyser`/`readVadLevel`), so they converge on the same
  * threshold and the marker the user sees is the one that gates their mic.
+ *
+ * The tuning constants above are exported because `vad.test.ts` replays random
+ * microphone input through the tracker and asserts both guarantees against
+ * *them* rather than against copied numbers: retuning the tracker then moves
+ * the test with it, while breaking a guarantee still fails.
  */
 export class NoiseFloorTracker {
   private floor = 0;
