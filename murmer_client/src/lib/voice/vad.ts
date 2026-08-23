@@ -2,6 +2,7 @@
  * Voice Activity Detection (VAD) utility
  * Monitors audio levels to detect when the user is speaking
  */
+import { clampVadRelease, VAD_RELEASE_DEFAULT_MS } from '../stores/settings';
 import { getAudioContext, resumeAudioContext } from './audioContext';
 import { subscribeTick } from './ticker';
 
@@ -38,12 +39,6 @@ export function readVadLevel(analyser: AnalyserNode, dataArray: Uint8Array<Array
   return sum / dataArray.length / 255;
 }
 
-/** How long transmission stays open after the level drops below threshold. */
-const HOLD_TIME_MS = 800;
-
-/** Extra delay before closing, so brief dips mid-sentence don't chop words. */
-const RELEASE_DELAY_MS = 100;
-
 /**
  * Ends of the threshold scale, shared by the manual slider, the level meter
  * drawn under it and the clamp applied to automatically derived thresholds.
@@ -75,7 +70,8 @@ const FLOOR_CREEP_PER_SECOND = 0.004;
  * crept up a little on every gap; over a long sentence that added up until the
  * threshold overtook the speaker and cut them off mid-word. Anything shorter
  * than a real pause between sentences must not count as "the room is quiet
- * now", so this is comfortably longer than the gate's own `HOLD_TIME_MS`.
+ * now", so this is comfortably longer than the gate's own release delay — and
+ * `VAD_RELEASE_MAX_MS` keeps it that way whatever the user picks.
  */
 const QUIET_DWELL_MS = 2500;
 
@@ -222,6 +218,67 @@ export class NoiseFloorTracker {
   }
 }
 
+/** Everything that decides whether the gate is open, in one object. */
+export interface VadConfig {
+  /** Manual threshold on the 0-1 level scale (lower = easier to trigger). */
+  sensitivity: number;
+  /** Derive the threshold from the tracked noise floor instead. */
+  automatic: boolean;
+  /** How long the gate stays open after the level drops below threshold. */
+  releaseMs: number;
+}
+
+/**
+ * The open/close half of voice activity detection: the level is compared
+ * against a threshold elsewhere, this only decides how long "was speaking"
+ * outlives "is speaking".
+ *
+ * Split out of the detector because it is the part that fails invisibly — a
+ * release that is applied one burst late, or a change that only takes effect
+ * after the gate next closes, sounds exactly like a working gate to whoever is
+ * holding the microphone. Here it takes the clock as an argument and is
+ * unit-tested against it.
+ */
+export class ReleaseGate {
+  private open = false;
+  /** When the level was last above the threshold. */
+  private lastAbove = 0;
+
+  /** Whether the gate is currently open. */
+  get isOpen(): boolean {
+    return this.open;
+  }
+
+  /**
+   * Feed one measurement and return the gate state.
+   *
+   * `releaseMs` is read on every call rather than latched when the gate opens,
+   * so dragging the slider mid-sentence shortens or lengthens the release that
+   * is already running instead of the one after it.
+   */
+  update(above: boolean, now: number, releaseMs: number): boolean {
+    if (above) {
+      this.lastAbove = now;
+      this.open = true;
+      return true;
+    }
+    // The deadline is compared against the clock on each tick rather than
+    // armed as a `setTimeout`, because timers in a hidden window are throttled
+    // to once a second (and eventually once a minute) — long enough to keep
+    // the microphone open well after the user stopped talking.
+    if (this.open && now - this.lastAbove >= releaseMs) {
+      this.open = false;
+    }
+    return this.open;
+  }
+
+  /** Close the gate and forget when speech was last heard. */
+  reset() {
+    this.open = false;
+    this.lastAbove = 0;
+  }
+}
+
 export class VoiceActivityDetector {
   private analyser: AnalyserNode | null = null;
   /** Node this detector listens on. Owned by the caller, never by us. */
@@ -229,13 +286,13 @@ export class VoiceActivityDetector {
   private dataArray: Uint8Array<ArrayBuffer> | null = null;
   private stopTicks: (() => void) | null = null;
   private isActive = false;
-  private currentSensitivity = 0.1;
-  /** Derive the threshold from the noise floor instead of `currentSensitivity`. */
-  private automatic = false;
+  private config: VadConfig = {
+    sensitivity: 0.1,
+    automatic: false,
+    releaseMs: VAD_RELEASE_DEFAULT_MS
+  };
   private noiseFloor = new NoiseFloorTracker();
-
-  // Debouncing for voice activity
-  private lastVoiceTime = 0;
+  private gate = new ReleaseGate();
 
   private listeners: Array<(isActive: boolean, level: number) => void> = [];
 
@@ -252,7 +309,7 @@ export class VoiceActivityDetector {
    * voice-activity mode, which counted against the browser's context limit
    * for nothing.
    */
-  start(source: AudioNode, sensitivity: number = 0.1, automatic: boolean = false) {
+  start(source: AudioNode, config: VadConfig) {
     // Stop any existing monitoring first
     this.stop();
 
@@ -270,8 +327,7 @@ export class VoiceActivityDetector {
         this.dataArray = configureVadAnalyser(this.analyser);
       }
 
-      this.currentSensitivity = sensitivity;
-      this.automatic = automatic;
+      this.configure(config);
       // A fresh graph means a fresh room to measure: the old estimate may come
       // from a different microphone entirely.
       this.noiseFloor.reset();
@@ -285,13 +341,12 @@ export class VoiceActivityDetector {
   }
 
   /**
-   * Update sensitivity without restarting the entire VAD — the analysis loop
-   * reads both fields on every tick, so nothing has to be rebuilt. Restarting
+   * Update the configuration without restarting the entire VAD — the analysis
+   * loop reads it on every tick, so nothing has to be rebuilt. Restarting
    * would drop the gate for a tick and throw away the noise-floor estimate.
    */
-  updateSensitivity(sensitivity: number, automatic: boolean = this.automatic) {
-    this.currentSensitivity = sensitivity;
-    this.automatic = automatic;
+  configure(config: VadConfig) {
+    this.config = { ...config, releaseMs: clampVadRelease(config.releaseMs) };
   }
 
   /**
@@ -315,8 +370,8 @@ export class VoiceActivityDetector {
     this.source = null;
 
     this.noiseFloor.reset();
+    this.gate.reset();
     this.isActive = false;
-    this.lastVoiceTime = 0;
     this.notifyListeners(false, 0);
   }
 
@@ -349,29 +404,14 @@ export class VoiceActivityDetector {
       // tracker is fed either way so switching to automatic mid-call has an
       // estimate ready instead of seeding one from whatever is happening then.
       const autoThreshold = this.noiseFloor.update(normalizedLevel);
-      const threshold = this.automatic ? autoThreshold : this.currentSensitivity;
-      const currentTime = Date.now();
-      const rawVoiceDetected = normalizedLevel > threshold;
+      const threshold = this.config.automatic ? autoThreshold : this.config.sensitivity;
 
-      if (rawVoiceDetected) {
-        this.lastVoiceTime = currentTime;
-        // Immediately activate if not already active
-        if (!this.isActive) {
-          this.isActive = true;
-          this.notifyListeners(true, normalizedLevel);
-        }
-        return;
-      }
-
-      // Below threshold: hold the gate open a moment so a pause mid-sentence
-      // doesn't chop the next word, then close it. The deadline is compared
-      // against the clock on each tick rather than armed as a `setTimeout`,
-      // because timers in a hidden window are throttled to once a second (and
-      // eventually once a minute) — long enough to keep the microphone open
-      // well after the user stopped talking.
-      if (this.isActive && currentTime - this.lastVoiceTime >= HOLD_TIME_MS + RELEASE_DELAY_MS) {
-        this.isActive = false;
-        this.notifyListeners(false, normalizedLevel);
+      // Opens the moment speech is heard and stays open for the configured
+      // release afterwards, so a pause mid-sentence doesn't chop the next word.
+      const open = this.gate.update(normalizedLevel > threshold, Date.now(), this.config.releaseMs);
+      if (open !== this.isActive) {
+        this.isActive = open;
+        this.notifyListeners(open, normalizedLevel);
       }
     };
 

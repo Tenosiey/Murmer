@@ -39,7 +39,7 @@ stays readable. Use the checkboxes to mark something you have picked up.
 - [x] Separate volume for the app sounds (join, leave, mute) independent of the
       voice volume slider, which currently drives both
 - [ ] Temporary voice channels
-- [ ] VAD hold / release-delay slider — the detector already holds the gate
+- [x] VAD hold / release-delay slider — the detector already holds the gate
       open after speech stops, but the timings are the fixed `HOLD_TIME_MS` and
       `RELEASE_DELAY_MS` constants in `voice/vad.ts`; this exposes them the way
       Discord's "PTT release delay" does

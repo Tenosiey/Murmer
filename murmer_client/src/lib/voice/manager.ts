@@ -15,6 +15,7 @@ import {
   voiceMode,
   vadSensitivity,
   vadAutoSensitivity,
+  vadReleaseDelay,
   pttKey,
   isPttActive,
   voiceActivity,
@@ -28,7 +29,7 @@ import { resetSpeaking, setSpeaking, SPEAKING_RMS_THRESHOLD } from '../stores/vo
 import { captureStream } from '../stores/voiceCapture';
 import { get } from 'svelte/store';
 import type { Message, RemotePeer, ConnectionStats, VoiceChannelInfo } from '../types';
-import { VoiceActivityDetector } from './vad';
+import { VoiceActivityDetector, type VadConfig } from './vad';
 import { PushToTalkManager } from './ptt';
 import { getAudioContext, resumeAudioContext } from './audioContext';
 import { subscribeTick } from './ticker';
@@ -62,6 +63,15 @@ const INPUT_GAIN_RAMP_SECONDS = 0.05;
  * point — see `updateStats`.
  */
 const MIN_LOSS_SAMPLE_PACKETS = 20;
+
+/** The detector's settings as they currently stand, read from the stores. */
+function vadConfig(): VadConfig {
+  return {
+    sensitivity: get(vadSensitivity),
+    automatic: get(vadAutoSensitivity),
+    releaseMs: get(vadReleaseDelay)
+  };
+}
 
 export class VoiceManager {
   private peers: Record<string, RTCPeerConnection> = {};
@@ -196,8 +206,9 @@ export class VoiceManager {
       this.updateTransmissionMode();
       this.syncGlobalPushToTalk();
     });
-    vadSensitivity.subscribe(() => this.updateVadSensitivity());
-    vadAutoSensitivity.subscribe(() => this.updateVadSensitivity());
+    vadSensitivity.subscribe(() => this.updateVadConfig());
+    vadAutoSensitivity.subscribe(() => this.updateVadConfig());
+    vadReleaseDelay.subscribe(() => this.updateVadConfig());
     echoCancellation.subscribe(() => this.applyMicProcessing());
     autoGainControl.subscribe(() => this.applyMicProcessing());
     // Unlike the other two this changes the shape of the graph and not just
@@ -256,7 +267,7 @@ export class VoiceManager {
     const mode = get(voiceMode);
 
     if (mode === 'vad' && this.vad) {
-      this.vad.start(source, get(vadSensitivity), get(vadAutoSensitivity));
+      this.vad.start(source, vadConfig());
     } else if (this.vad) {
       this.vad.stop();
     }
@@ -272,9 +283,9 @@ export class VoiceManager {
     this.ptt?.setGlobalEnabled(this.userName !== null && get(voiceMode) === 'ptt');
   }
 
-  private updateVadSensitivity() {
+  private updateVadConfig() {
     if (get(voiceMode) === 'vad' && this.vad) {
-      this.vad.updateSensitivity(get(vadSensitivity), get(vadAutoSensitivity));
+      this.vad.configure(vadConfig());
     }
   }
 

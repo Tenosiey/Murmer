@@ -104,6 +104,15 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   Tune it towards never gating a talking user: transmitting a few more seconds
   of fan noise is the cheaper mistake. Each measurement chain runs its own
   tracker (the detector's and the settings meter's) on the same signal.
+  How long the gate stays open once the level drops back below the threshold is
+  the user's (`vadReleaseDelay`, Settings → Voice), applied by `ReleaseGate` in
+  `voice/vad.ts`. It replaced two fixed constants that were only ever added
+  together, and it is read on every tick rather than latched when the gate
+  opens, so dragging the slider changes the release already running. Its bounds
+  and clamp sit in `stores/settings.ts` next to `clampMicGain`, because
+  `voice/vad.ts` is downstream of the settings store and may not import back
+  into it; `VAD_RELEASE_MAX_MS` stays under the tracker's `QUIET_DWELL_MS` so no
+  setting can hold the gate open past the point where the floor may rise again.
   A peer connection that breaks mid-call is **repaired, never dropped** — see
   `src/lib/webrtc/` below, which both this manager and screen sharing use.
   Two voice-side rules hold it together: `handleAnswer` gates on
