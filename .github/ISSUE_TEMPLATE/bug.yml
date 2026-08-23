@@ -1,0 +1,64 @@
+name: Bug
+description: Report something that is broken
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Murmer is a prototype maintained by one or two people in their spare
+        time. Please do **not** report security problems here — email the
+        maintainer instead.
+
+  - type: input
+    id: version
+    attributes:
+      label: Murmer version
+      description: Settings → About, or the server's startup log
+      placeholder: e.g. 2026.729.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did it happen?
+      options:
+        - Desktop app (Tauri)
+        - Web client (browser)
+        - Server
+        - Bot API
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: OS and browser
+      placeholder: e.g. Windows 11 / Firefox 148, or Debian 13 server
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you expected, what actually happened, and the steps to reproduce it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        Server output (`cargo run` / `docker compose logs`) and the client's
+        browser console, if relevant. Redact anything that looks like a key.
+      render: shell
+
+  - type: checkboxes
+    id: voice
+    attributes:
+      label: If this is a voice or screen-sharing issue
+      options:
+        - label: The other peer was on a different network
+        - label: I know Murmer has no TURN relay yet, so peers behind symmetric NATs cannot connect (plans/turn-support.md)

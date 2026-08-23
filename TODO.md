@@ -68,7 +68,7 @@ stays readable. Use the checkboxes to mark something you have picked up.
 - [ ] TURN support — voice does not connect at all behind symmetric NAT or a
       network that blocks UDP, and both managers hardcode one public STUN
       server with no way for an operator to change it. Designed but not
-      scheduled: see [`docs/turn-support.md`](docs/turn-support.md) for the
+      scheduled: see [`plans/turn-support.md`](plans/turn-support.md) for the
       work breakdown, the ephemeral-credential scheme, the interaction with
       `webrtc/recovery.ts` and the open questions. The first step (making the
       ICE configuration configurable at all) is small and independently useful

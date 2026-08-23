@@ -1,32 +1,13 @@
 # Murmer Server
 
-Axum-based WebSocket/HTTP server with embedded SQLite persistence. For setup,
-configuration and deployment see the root [README.md](../README.md); for the
-bot REST API see [BOT_API.md](BOT_API.md).
+Axum-based WebSocket/HTTP server with embedded SQLite persistence.
 
-## Module layout
-
-```
-src/
-  main.rs          entry point: router, middleware, CLI subcommands
-                   (`set-role`, `unbind-name`)
-  lib.rs           shared state (AppState, RateLimiter) and module re-exports
-  config.rs        environment variable parsing, CORS and web client setup
-  ws/              WebSocket endpoint
-    handlers/      auth, messages, channels, DMs, emojis, moderation, pins,
-                   stats, wiki
-    helpers.rs     broadcast, permission and ephemeral-message utilities
-    validation.rs / errors.rs / constants.rs
-  db/              SQLite schema + queries, split by domain (channels,
-                   messages, reactions, roles, moderation, pins, DMs,
-                   emojis, stats, users, wiki)
-  bot/             REST API for bots (routes, models, queries)
-  upload.rs        multipart file/image upload with type and size validation
-  link_preview.rs  server-side OpenGraph fetching with SSRF protection
-  admin.rs         /role endpoint guarded by ADMIN_TOKEN
-  security.rs      rate limiting, nonce replay protection
-  roles.rs         built-in role definitions
-```
+| You want | Go to |
+| --- | --- |
+| Setup, configuration, deployment | the root [README.md](../README.md) |
+| The bot REST API | [BOT_API.md](BOT_API.md) |
+| Module map and contributor conventions | [AGENTS.md](AGENTS.md) |
+| How the system fits together | [`../docs/architecture.md`](../docs/architecture.md) |
 
 ## Development
 
@@ -38,5 +19,13 @@ cargo test
 cargo audit        # requires cargo-audit (cargo install cargo-audit)
 ```
 
-Integration tests live in `tests/` and exercise rate limiting, moderation and
-persistence logic.
+## CLI subcommands
+
+`main.rs` accepts two subcommands alongside the normal server run:
+
+- `set-role <key> <role>` — assign a role to a public key, creating the role
+  definition if it does not exist. This is the bootstrap path for the first
+  Owner when you would rather not use the `/role` HTTP endpoint.
+- `unbind-name <name>` — release a user name from the key it is bound to.
+  Names bind permanently on first use, so this is the recovery path for a
+  user who lost their keypair.
