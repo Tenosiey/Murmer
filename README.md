@@ -475,9 +475,9 @@ The trade-offs are real and worth knowing before switching it on:
 - **Uploaded files are not encrypted.** Their bytes go through `/upload` as
   usual; only the attachment's name and URL travel sealed, so who shared what is
   hidden but the file itself is not.
-- **Link previews, the profanity filter and content-derived stats stop.** All
-  three are server-side and see nothing. Slow mode and the message length cap
-  still apply.
+- **Link previews, the profanity filter, the auto-moderation rules and
+  content-derived stats stop.** All of them are server-side and see nothing.
+  Slow mode and the message length cap still apply.
 - **The server is still the directory.** It decides who is on the member roster
   and hands out the identity keys the key is wrapped for, so a malicious server
   could put a key it controls on the roster. Clients pin every member's identity
@@ -529,7 +529,7 @@ show.
 | --- | --- | --- |
 | Overview | Manage server | Server name, description, welcome message and icon, plus who is online right now |
 | Emojis | Manage emojis | The server's custom emoji library |
-| Moderation | Ban members | The ban list (lift a ban from here); with Manage server also slow mode, the message length cap and the profanity filter |
+| Moderation | Ban members | The ban list (lift a ban from here); with Manage server also slow mode, the message length cap, the profanity filter and the auto-moderation rules |
 | Stats | Manage server | The server-wide half of the double opt-in stat tracking |
 | Files & Uploads | Manage server | Per-file size cap, which file categories are accepted, and how much disk the uploads directory is using per category |
 | Voice | Manage server | Quality preset and bitrate new voice channels start with |
@@ -546,6 +546,15 @@ A few details worth knowing before you use them:
   before a message is stored or broadcast, and applies to edits too. Matching
   is per whole word and case-insensitive, so filtering `ass` leaves `class`
   alone.
+- **Auto-moderation rules** are the same idea with more to say about it. Each
+  rule is a pattern — a whole word, a substring, or a regular expression —
+  plus what to do with a message that matches: **warn** the sender and let it
+  through, **delete** it so nobody else ever sees it, or delete it and
+  **mute** the sender for a set time. Rules are checked on new messages and on
+  edits, before anything is stored, and when several match the most severe one
+  wins. Members who can manage messages are exempt, so a rule cannot silence
+  the people who would have to lift it. A rule's pattern is only ever visible
+  in this dashboard; someone the rule warns is told its *name*, nothing more.
 - **Voice defaults** apply to newly created voice channels; existing channels
   keep whatever they were created with.
 - **Storage used** is measured when the tab is opened rather than counted as
@@ -687,10 +696,11 @@ must not be marked as pre-release — the updater endpoint
   bot posting and no forward secrecy within an epoch.
 - IP-based rate limiting protects authentication, chat message throughput and
   file uploads. On top of it, **Server Dashboard → Moderation** adds a per-user
-  slow mode, a message length cap and a profanity filter. All three are
-  enforced server-side: the filter masks matched words before a message is
-  stored or broadcast (edits included), so the original never reaches another
-  client, and the length cap can only narrow the built-in 4000-character limit.
+  slow mode, a message length cap, a profanity filter and auto-moderation
+  rules. All of them are enforced server-side: the filter masks matched words
+  and a rule refuses or mutes before a message is stored or broadcast (edits
+  included), so the original never reaches another client, and the length cap
+  can only narrow the built-in 4000-character limit.
 - Uploading requires the same Ed25519 proof as connecting: the `/upload`
   endpoint accepts only a freshly signed, single-use timestamp from a key that
   already has an account on that server, so a stranger who can merely reach the

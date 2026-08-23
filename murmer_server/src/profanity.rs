@@ -19,6 +19,15 @@ fn is_word_char(c: char) -> bool {
     c.is_alphanumeric()
 }
 
+/// The word runs of `text`: the maximal runs of word characters that `mask`
+/// walks below. Shared with [`crate::automod`] so a whole-word rule and the
+/// filter can never disagree about where a word ends — the answer to "does
+/// this match 'ass'?" must not depend on which of the two is asking.
+pub fn word_runs(text: &str) -> impl Iterator<Item = &str> {
+    text.split(|c: char| !is_word_char(c))
+        .filter(|run| !run.is_empty())
+}
+
 /// Replace every word of `text` that appears in `words` with asterisks.
 /// Returns `None` when nothing matched, so the common case allocates nothing
 /// and the caller can leave the message untouched.

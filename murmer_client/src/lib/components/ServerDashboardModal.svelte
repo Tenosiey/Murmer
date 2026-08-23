@@ -5,7 +5,8 @@
 
   Every control here is cosmetic twice over: the server re-checks the
   permission behind each frame, and it enforces the settings themselves
-  (slow mode, the message cap, the profanity filter, the upload policy). What
+  (slow mode, the message cap, the profanity filter, the auto-moderation
+  rules, the upload policy). What
   a tab renders is the server's own answer — the identity, chat, upload,
   voice and screen-share frames it broadcasts — never local state that could
   drift from it.
@@ -37,6 +38,14 @@
     MAX_SLOW_MODE_SECONDS,
     MAX_PROFANITY_WORDS,
     MAX_PROFANITY_WORD_LEN,
+    AUTOMOD_ACTIONS,
+    AUTOMOD_KINDS,
+    DEFAULT_AUTOMOD_MUTE_SECONDS,
+    MAX_AUTOMOD_NAME_LEN,
+    MAX_AUTOMOD_PATTERN_LEN,
+    MAX_AUTOMOD_RULES,
+    MAX_MUTE_SECONDS,
+    MIN_MUTE_SECONDS,
     VOICE_QUALITY_PRESETS,
     MAX_VOICE_BITRATE
   } from '$lib/chat/constants';
@@ -45,6 +54,13 @@
     requestChatSettings,
     setChatSettings
   } from '$lib/stores/chatSettings';
+  import {
+    automodRules,
+    clampMuteSeconds,
+    requestAutomodRules,
+    setAutomodRules,
+    type AutomodRule
+  } from '$lib/stores/automod';
   import { bans } from '$lib/stores/bans';
   import { voiceDefaults, setVoiceDefaults } from '$lib/stores/voiceDefaults';
   import { storageUsage, formatBytes } from '$lib/stores/storageUsage';
@@ -357,10 +373,17 @@
   $effect(() => {
     if (open && activeTab === 'moderation') {
       untrack(() => {
-        if (canManageServer) requestChatSettings();
+        if (canManageServer) {
+          requestChatSettings();
+          requestAutomodRules();
+        }
         bans.refresh();
         wordsLoaded = false;
         loadChatSettings();
+        automodLoaded = false;
+        automodDraft = [];
+        automodFeedback = null;
+        automodSavePending = false;
       });
     }
   });
@@ -455,6 +478,133 @@
     });
     if (!ok) return;
     bans.unban(user);
+  }
+
+  // ── Auto-moderation rules (Moderation tab) ───────────────────────────
+  // The general form of the word list above: a pattern plus what to do about
+  // it. Same gate as the rest of the chat policy (MANAGE_SERVER), and the
+  // same shape — the draft below is local, the server's answer is the truth,
+  // and a rule the server refuses must never end up looking saved.
+  let automodDraft: AutomodRule[] = $state([]);
+  let automodFeedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
+  let automodSavePending = $state(false);
+  /** Whether the manager-only rule list has been taken into the editor. */
+  let automodLoaded = $state(false);
+
+  // The rules only travel in the answer to `get-automod-rules`, which lands
+  // after the tab opened — take them once, then leave the editor alone so a
+  // later answer cannot clobber a half-written rule.
+  $effect(() => {
+    const rules = $automodRules;
+    if (!open || activeTab !== 'moderation' || rules === null) return;
+    untrack(() => {
+      if (automodLoaded) return;
+      automodLoaded = true;
+      automodDraft = rules.map((rule) => ({ ...rule }));
+    });
+  });
+
+  let automodDirty = $derived.by(() => {
+    const current = $automodRules;
+    if (current === null) return false;
+    if (current.length !== automodDraft.length) return true;
+    return automodDraft.some((rule, index) => {
+      const stored = current[index];
+      return (
+        rule.name.trim() !== stored.name ||
+        rule.pattern.trim() !== stored.pattern ||
+        rule.kind !== stored.kind ||
+        rule.action !== stored.action ||
+        rule.enabled !== stored.enabled ||
+        clampMuteSeconds(rule.muteSeconds) !== stored.muteSeconds
+      );
+    });
+  });
+
+  // The server's answer matching the draft confirms the save.
+  $effect(() => {
+    if (automodSavePending && !automodDirty) {
+      automodSavePending = false;
+      automodFeedback = { text: 'Rules saved.', kind: 'info' };
+    }
+  });
+
+  function addAutomodRule() {
+    if (automodDraft.length >= MAX_AUTOMOD_RULES) return;
+    automodDraft = [
+      ...automodDraft,
+      {
+        name: '',
+        pattern: '',
+        kind: 'word',
+        action: 'delete',
+        muteSeconds: DEFAULT_AUTOMOD_MUTE_SECONDS,
+        enabled: true
+      }
+    ];
+    automodFeedback = null;
+  }
+
+  function removeAutomodRule(index: number) {
+    automodDraft = automodDraft.filter((_, position) => position !== index);
+    automodFeedback = null;
+  }
+
+  /**
+   * Why the draft cannot be saved, or null. Cosmetic — the server checks all
+   * of it again, including whether a regular expression compiles, which only
+   * it can answer.
+   */
+  function describeAutomodProblem(rules: AutomodRule[]): string | null {
+    for (const [index, rule] of rules.entries()) {
+      const position = index + 1;
+      const pattern = rule.pattern.trim();
+      if (!pattern) return `Rule ${position} has no pattern.`;
+      if (pattern.length > MAX_AUTOMOD_PATTERN_LEN) {
+        return `Rule ${position} has a pattern longer than ${MAX_AUTOMOD_PATTERN_LEN} characters.`;
+      }
+      if (rule.name.trim().length > MAX_AUTOMOD_NAME_LEN) {
+        return `Rule ${position} has a name longer than ${MAX_AUTOMOD_NAME_LEN} characters.`;
+      }
+      // A whole-word pattern is compared against single words, so one with a
+      // space in it would be saved and then never match anything.
+      if (rule.kind === 'word' && /\s/.test(pattern)) {
+        return `Rule ${position} matches a whole word, so its pattern cannot contain spaces.`;
+      }
+    }
+    return null;
+  }
+
+  function saveAutomodRules() {
+    const problem = describeAutomodProblem(automodDraft);
+    if (problem) {
+      automodFeedback = { text: problem, kind: 'error' };
+      return;
+    }
+    automodFeedback = null;
+    automodSavePending = true;
+    // Role-checked server-side; the confirmation is the automod-rules answer.
+    setAutomodRules(
+      automodDraft.map((rule) => ({
+        ...rule,
+        name: rule.name.trim(),
+        pattern: rule.pattern.trim(),
+        muteSeconds: clampMuteSeconds(rule.muteSeconds)
+      }))
+    );
+  }
+
+  /** Render a mute duration the way people talk about it. */
+  function describeMute(seconds: number): string {
+    const clamped = clampMuteSeconds(seconds);
+    if (clamped < 60) return `${clamped}s`;
+    if (clamped < 3600) return `${Math.round(clamped / 60)} minutes`;
+    if (clamped < 86_400) {
+      const hours = clamped / 3600;
+      return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hours`;
+    }
+    const days = clamped / 86_400;
+    return `${Number.isInteger(days) ? days : days.toFixed(1)} days`;
   }
 
   // ── Voice defaults (Voice tab) ─────────────────────────────────────────────
@@ -637,6 +787,15 @@
     'chat-settings-update-failed'
   ]);
 
+  // `automod-blocked` is deliberately absent: that one answers a chat message,
+  // not anything this dashboard sent.
+  const AUTOMOD_ERROR_CODES = new Set([
+    'automod-permission-denied',
+    'invalid-automod-rules',
+    'invalid-automod-pattern',
+    'automod-update-failed'
+  ]);
+
   const MODERATION_ERROR_CODES = new Set([
     'moderation-permission-denied',
     'moderation-target-not-found',
@@ -685,6 +844,9 @@
     } else if (UPLOAD_ERROR_CODES.has(code)) {
       uploadSavePending = false;
       uploadFeedback = { text: describeServerError(code), kind: 'error' };
+    } else if (AUTOMOD_ERROR_CODES.has(code)) {
+      automodSavePending = false;
+      automodFeedback = { text: describeServerError(code), kind: 'error' };
     } else if (CHAT_SETTINGS_ERROR_CODES.has(code) || MODERATION_ERROR_CODES.has(code)) {
       chatSavePending = false;
       chatFeedback = { text: describeServerError(code), kind: 'error' };
@@ -1259,6 +1421,117 @@
                   <div class="identity-feedback" class:error={chatFeedback.kind === 'error'}>
                     {chatFeedback.text}
                   </div>
+                {/if}
+              </div>
+
+              <div class="setting-group">
+                <span class="setting-label">Auto-moderation rules</span>
+                <div class="setting-description">
+                  Patterns the server checks every message and every edit against, before it is
+                  stored or sent on. When more than one rule matches, the most severe action wins.
+                  Members who can manage messages are exempt, and rules never apply in an
+                  end-to-end encrypted channel — the server has no text to read there.
+                </div>
+                {#if $automodRules === null}
+                  <div class="setting-description">Loading…</div>
+                {:else}
+                  {#if automodDraft.length === 0}
+                    <div class="setting-description">No rules yet.</div>
+                  {/if}
+                  <ul class="rule-list">
+                    <!-- Keyed by position: a rule has no id of its own, the
+                         list is saved and stored as one, and its order is what
+                         decides between two equally severe matches. -->
+                    {#each automodDraft as rule, index (index)}
+                      <li class="rule-row">
+                        <div class="rule-head">
+                          <label class="rule-enabled">
+                            <input type="checkbox" bind:checked={rule.enabled} />
+                            <span>Enabled</span>
+                          </label>
+                          <input
+                            class="rule-name"
+                            type="text"
+                            bind:value={rule.name}
+                            maxlength={MAX_AUTOMOD_NAME_LEN}
+                            placeholder="Name (shown to whoever trips it)"
+                            aria-label={`Name of rule ${index + 1}`}
+                          />
+                          <button
+                            class="btn btn-danger"
+                            onclick={() => removeAutomodRule(index)}
+                            aria-label={`Remove rule ${index + 1}`}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div class="rule-fields">
+                          <select bind:value={rule.kind} aria-label={`Match kind of rule ${index + 1}`}>
+                            {#each AUTOMOD_KINDS as kind}
+                              <option value={kind.id}>{kind.label}</option>
+                            {/each}
+                          </select>
+                          <input
+                            class="rule-pattern"
+                            type="text"
+                            spellcheck="false"
+                            autocomplete="off"
+                            bind:value={rule.pattern}
+                            maxlength={MAX_AUTOMOD_PATTERN_LEN}
+                            placeholder="Pattern"
+                            aria-label={`Pattern of rule ${index + 1}`}
+                          />
+                          <select bind:value={rule.action} aria-label={`Action of rule ${index + 1}`}>
+                            {#each AUTOMOD_ACTIONS as action}
+                              <option value={action.id}>{action.label}</option>
+                            {/each}
+                          </select>
+                          {#if rule.action === 'mute'}
+                            <input
+                              class="rule-mute"
+                              type="number"
+                              bind:value={rule.muteSeconds}
+                              min={MIN_MUTE_SECONDS}
+                              max={MAX_MUTE_SECONDS}
+                              step="1"
+                              aria-label={`Mute duration of rule ${index + 1} in seconds`}
+                            />
+                          {/if}
+                        </div>
+                        <div class="setting-description">
+                          {AUTOMOD_KINDS.find((kind) => kind.id === rule.kind)?.description}
+                          {AUTOMOD_ACTIONS.find((action) => action.id === rule.action)?.description}
+                          {#if rule.action === 'mute'}
+                            Muted for {describeMute(rule.muteSeconds)}.
+                          {/if}
+                        </div>
+                      </li>
+                    {/each}
+                  </ul>
+                  <div class="rule-actions">
+                    <button
+                      class="btn"
+                      onclick={addAutomodRule}
+                      disabled={automodDraft.length >= MAX_AUTOMOD_RULES}
+                    >
+                      Add rule
+                    </button>
+                    <button
+                      class="btn btn-primary"
+                      onclick={saveAutomodRules}
+                      disabled={!automodDirty}
+                    >
+                      Save rules
+                    </button>
+                    <span class="setting-description">
+                      {automodDraft.length} of {MAX_AUTOMOD_RULES}
+                    </span>
+                  </div>
+                  {#if automodFeedback}
+                    <div class="identity-feedback" class:error={automodFeedback.kind === 'error'}>
+                      {automodFeedback.text}
+                    </div>
+                  {/if}
                 {/if}
               </div>
             {/if}
@@ -2031,6 +2304,80 @@
 
   /* Ban list, online members and the storage breakdown share the plain
      list-of-rows shape the emoji list already uses. */
+  .rule-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  /* Outlined rather than filled: the inputs inside a row already carry
+     `--color-surface-raised`, so a filled card would swallow them. */
+  .rule-row {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--color-surface-outline);
+    border-radius: var(--radius-md);
+  }
+
+  .rule-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .rule-enabled {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-on-surface-variant);
+    white-space: nowrap;
+  }
+
+  .rule-enabled input[type='checkbox'] {
+    accent-color: var(--color-primary);
+    width: 1rem;
+    height: 1rem;
+    min-height: 0;
+    flex-shrink: 0;
+  }
+
+  .rule-name {
+    flex: 1 1 12rem;
+    min-width: 0;
+  }
+
+  /* The pattern gets the room: it is the part that is read character by
+     character when a rule does not do what its author expected. */
+  .rule-fields {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .rule-pattern {
+    flex: 1 1 14rem;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+  }
+
+  .rule-mute {
+    flex: 0 0 7rem;
+  }
+
+  .rule-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+
   .ban-list,
   .online-list,
   .storage-list {

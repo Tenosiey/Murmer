@@ -546,6 +546,16 @@
   };
   chat.on('user-unmuted', handleUserUnmuted);
 
+  // A `warn` rule lets the message through and tells the sender privately.
+  // It carries the rule's name, never its pattern — what the server filters
+  // is not something everyone gets to read.
+  const handleAutomodWarning = (msg: Message) => {
+    const name = typeof msg.rule === 'string' ? msg.rule.trim() : '';
+    const rule = name ? `the “${name}” rule` : 'an auto-moderation rule';
+    setCommandFeedback(`Your message was flagged by ${rule}.`, 'error');
+  };
+  chat.on('automod-warning', handleAutomodWarning);
+
   const handleUserUnbanned = (msg: Message) => {
     if (typeof msg.user !== 'string') return;
     setCommandFeedback(`${msg.user} has been unbanned.`);
@@ -601,6 +611,7 @@
     chat.off('force-disconnect', handleForceDisconnect);
     chat.off('user-muted', handleUserMuted);
     chat.off('user-unmuted', handleUserUnmuted);
+    chat.off('automod-warning', handleAutomodWarning);
     chat.off('user-unbanned', handleUserUnbanned);
     chat.off('messages-purged', handleMessagesPurged);
     chat.off('server-reset', handleServerReset);

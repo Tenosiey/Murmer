@@ -9,6 +9,12 @@ use rusqlite::params;
 
 use super::{Db, DbCall, DbError};
 
+/// Maximum duration in seconds for a timed mute (30 days).
+pub const MAX_MUTE_SECONDS: i64 = 30 * 24 * 60 * 60;
+
+/// Minimum duration in seconds for a timed mute.
+pub const MIN_MUTE_SECONDS: i64 = 10;
+
 /// Persist a ban for a public key.
 pub async fn add_ban(db: &Db, key: &str, user_name: &str, banned_by: &str) -> Result<(), DbError> {
     let key = key.to_owned();

@@ -4,6 +4,7 @@
 //! them to exercise rate limiting and validation logic.
 
 pub mod admin;
+pub mod automod;
 pub mod bot;
 pub mod channel_overrides;
 pub mod config;
@@ -283,6 +284,11 @@ pub struct AppState {
     /// held in memory rather than read back per message; the handler that
     /// writes them refreshes this in the same step.
     pub chat_settings: Arc<Mutex<db::ChatSettings>>,
+    /// The compiled auto-moderation rules (`automod_rules`). Every chat
+    /// message and every edit is checked against all of them, so they are
+    /// compiled once here rather than per message; the handler that writes
+    /// the rows rebuilds this in the same step.
+    pub automod: Arc<Mutex<automod::RuleSet>>,
     /// When each user last had a message accepted, for the slow mode gate.
     /// In-memory only and pruned on disconnect: slow mode is a pacing tool,
     /// not a punishment to be remembered across sessions.

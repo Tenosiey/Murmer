@@ -96,7 +96,7 @@ Encrypting a private channel is [`security.md`](security.md).
 
 ## Chat policy
 
-Server Dashboard → Moderation (`MANAGE_SERVER`) adds three server-enforced
+Server Dashboard → Moderation (`MANAGE_SERVER`) adds four server-enforced
 limits on top of the rate limiter:
 
 | Setting | Behaviour |
@@ -104,12 +104,13 @@ limits on top of the rate limiter:
 | **Slow mode** | Per-user send interval. Members with `MANAGE_MESSAGES` are exempt. Timestamps live in `AppState.slow_mode_sends` and are dropped on disconnect — it paces a live conversation rather than punishing someone across sessions. |
 | **Message length cap** | May only *narrow* the built-in `MAX_MESSAGE_LENGTH`, never widen it. |
 | **Profanity filter** | Masks matched words per whole word, case-insensitively (`profanity.rs`), so a filter for "ass" leaves "class" alone. |
+| **Auto-moderation rules** | Patterns with an action — see below. |
 
 The filter masks in `handle_chat` **and** `handle_edit_message`, before the
 message is stored or broadcast, so posting and immediately editing cannot
 walk past it and the original never reaches another client.
 
-All three are cached in `AppState.chat_settings` because every message
+The first three are cached in `AppState.chat_settings` because every message
 consults them; `ws/handlers/chat_settings.rs` refreshes that cache in the
 same step that writes the row. They are clamped both on write and on read
 (`db::clamp_chat_settings`), so a hand-edited row cannot widen them.
@@ -120,6 +121,43 @@ and mirrored by `murmer_client/test/server-mirror.test.ts`.
 In an end-to-end encrypted channel the profanity filter is a no-op; slow mode
 and the length cap still apply. See [`security.md`](security.md).
 
+### Auto-moderation rules
+
+A rule is a pattern (`automod.rs`) matched by whole word, by substring or as
+a regular expression, plus what to do with a message that matches:
+
+| Action | Effect |
+| --- | --- |
+| **Warn** | The message goes out; the sender gets an `automod-warning` frame naming the rule. |
+| **Delete** | The message is refused — never stored, never broadcast, so unlike a moderator's deletion nobody ever saw it. |
+| **Mute** | Refused, and the sender is muted for the rule's duration. |
+
+Four decisions are worth knowing because none of them are visible from the
+UI:
+
+- **The most severe match wins**, not the first. Ordering the list by hand to
+  get that would be a trap: the overlapping pair is the one nobody noticed.
+- **A mute rule always has a duration**, bounded by the same
+  `MIN_MUTE_SECONDS`/`MAX_MUTE_SECONDS` as a moderator's mute. An indefinite
+  mute is something a person decides and can lift; a mistyped pattern is not.
+- **`MANAGE_MESSAGES` is exempt**, as it is from slow mode — a rule that
+  mutes the moderators for quoting what it filters leaves nobody able to lift
+  it.
+- **Rules run before the profanity mask**, on the text as it was typed, so a
+  word the mask would star out cannot slip a rule matching it. They run in
+  `handle_chat` and `handle_edit_message` alike, for the same reason the mask
+  does.
+
+The compiled rules live in `AppState.automod`; `ws/handlers/automod.rs`
+recompiles them in the same step that writes the rows. Patterns come from the
+`regex` crate, which does not backtrack, so an operator's pattern is
+linear-time by construction; what is bounded explicitly is compile-time
+memory. A rule is *rejected* on save rather than dropped from the list — a
+dashboard that silently saves fewer rules than it was given is the failure an
+operator finds out about weeks later.
+
+Like the profanity filter, rules are a no-op in an encrypted channel.
+
 ## Manager-only answers
 
 Some data is an answer to a request, never a broadcast, because it is
@@ -128,12 +166,15 @@ manager information:
 - the **ban list** (`BAN_MEMBERS`) — its rows carry public keys;
 - the **storage usage** report (`MANAGE_SERVER`);
 - the **profanity word list** — the public `chat-settings` broadcast
-  deliberately omits it, and it is answered only to `get-chat-settings`.
+  deliberately omits it, and it is answered only to `get-chat-settings`;
+- the **auto-moderation rules** (`MANAGE_SERVER`) — a pattern describes what
+  a server is trying to keep out, so it is never broadcast. Only the matched
+  rule's *name* is ever disclosed, to the person who tripped it.
 
-On the client these live in `stores/bans.ts`, `stores/storageUsage.ts` and
-`stores/chatSettings.ts`, where "not disclosed yet" is `null` — deliberately
-not the same as "empty", so an editor cannot offer to save an empty list over
-a real one.
+On the client these live in `stores/bans.ts`, `stores/storageUsage.ts`,
+`stores/chatSettings.ts` and `stores/automod.ts`, where "not disclosed yet"
+is `null` — deliberately not the same as "empty", so an editor cannot offer
+to save an empty list over a real one.
 
 ## Danger Zone
 

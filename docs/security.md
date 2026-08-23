@@ -126,10 +126,10 @@ All of this is deliberate, and is also stated in `README.md` for operators:
   to encrypt with.
 - **Uploaded file bytes** — only the attachment's name and URL travel sealed.
 - **Link previews** and content-derived stats.
-- **The profanity filter** — the server holds no text to mask. Masking would
-  mean handing the server the plaintext back, so this is a limit of
-  server-side filtering, not a hole to plug. Slow mode and the message length
-  cap still apply.
+- **The profanity filter and the auto-moderation rules** — the server holds
+  no text to mask or match. Doing either would mean handing the server the
+  plaintext back, so this is a limit of server-side filtering, not a hole to
+  plug. Slow mode and the message length cap still apply.
 - **Reply quotes** — the server rebuilds them from stored plaintext, so in an
   encrypted channel it sends `replyTo` with an empty snippet and the client
   supplies the quote from inside the ciphertext.

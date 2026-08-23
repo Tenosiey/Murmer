@@ -135,8 +135,6 @@ not a description of the fix.
 
 ### 🗨️ Chat Features
 
-- [ ] Auto-moderation rules — pattern rules with actions (delete, warn, mute)
-      beyond the flat profanity word list
 - [ ] Forward a message to another channel or a DM, keeping its attribution
 - [ ] Outbound webhooks. The bot REST API covers "something else drives
       Murmer"; there is no way round for Murmer to notify something else when
