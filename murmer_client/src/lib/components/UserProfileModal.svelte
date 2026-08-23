@@ -1,12 +1,17 @@
 <!--
-  A member's profile: avatar, display name, account name, roles, member since
-  and their "about" text. Opened by clicking a member in the sidebar, their
-  avatar or name on a message, or "View profile" in the user context menu.
+  A member's profile: avatar, the name shown for them, account name, roles,
+  member since and their "about" text. Opened by clicking a member in the
+  sidebar, their avatar or name on a message, or "View profile" in the user
+  context menu.
 
-  Viewing your own profile turns it into an editor for the three things you own
-  — avatar, display name and about text. The account name is never editable: it
+  Viewing your own profile turns it into an editor for what you own — avatar,
+  display name, nickname and about text. The account name is never editable: it
   is bound to your key on the server and everything (auth, roles, DMs, message
   authorship) is addressed by it, so it is shown as a read-only handle.
+
+  A nickname set by a moderator lands in the same field: it is this server's
+  label for you, so the editor shows what it currently is rather than hiding
+  the fact that somebody else changed it.
 -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
@@ -23,7 +28,8 @@
   import {
     MAX_ABOUT_LENGTH,
     MAX_AVATAR_BYTES,
-    MAX_DISPLAY_NAME_LENGTH
+    MAX_DISPLAY_NAME_LENGTH,
+    MAX_NICKNAME_LENGTH
   } from '$lib/chat/constants';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import RoleIcon from '$lib/components/RoleIcon.svelte';
@@ -45,13 +51,17 @@
     'invalid-about',
     'profile-update-failed',
     'invalid-avatar',
-    'avatar-update-failed'
+    'avatar-update-failed',
+    'invalid-nickname',
+    'nickname-permission-denied',
+    'nickname-update-failed'
   ]);
 
   let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
   let isSelf = $derived(user !== null && user === $session.user);
   let profile = $derived(user ? ($profiles[user] ?? null) : null);
-  let displayName = $derived(profile?.displayName || user || '');
+  // Same precedence as the `displayNames` store: the server's label first.
+  let shownName = $derived(profile?.nickname || profile?.displayName || user || '');
   let avatarUrl = $derived(user ? ($avatars[user] ?? null) : null);
 
   /** The user's roles, highest position first, with `@everyone` left out. */
@@ -73,6 +83,7 @@
   // ── Editing (own profile only) ────────────────────────────────────────────
   let editing = $state(false);
   let draftName = $state('');
+  let draftNickname = $state('');
   let draftAbout = $state('');
   let feedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
   let avatarInput: HTMLInputElement | null = $state(null);
@@ -88,6 +99,7 @@
 
   function startEditing() {
     draftName = profile?.displayName ?? '';
+    draftNickname = profile?.nickname ?? '';
     draftAbout = profile?.about ?? '';
     feedback = null;
     editing = true;
@@ -100,13 +112,21 @@
 
   function saveProfile() {
     const name = draftName.trim();
+    const nickname = draftNickname.trim();
     const about = draftAbout.trim();
-    if (name.length > MAX_DISPLAY_NAME_LENGTH || about.length > MAX_ABOUT_LENGTH) {
+    if (
+      name.length > MAX_DISPLAY_NAME_LENGTH ||
+      nickname.length > MAX_NICKNAME_LENGTH ||
+      about.length > MAX_ABOUT_LENGTH
+    ) {
       feedback = { text: 'That is longer than the server allows.', kind: 'error' };
       return;
     }
     // Empty clears the field server-side; the broadcast confirms the change.
     profiles.saveSelf({ displayName: name, about });
+    // The nickname is a separate frame because it is separately authorized —
+    // only here it is our own, which never needs a permission.
+    if (user && nickname !== (profile?.nickname ?? '')) profiles.setNickname(user, nickname);
     feedback = { text: 'Changes sent.', kind: 'info' };
     editing = false;
   }
@@ -197,7 +217,7 @@
           <UserAvatar name={user} size="lg" />
           <div class="identity-text">
             <div class="name-row">
-              <span class="display-name">{displayName}</span>
+              <span class="display-name">{shownName}</span>
               {#if userRoles[0]?.icon}
                 <RoleIcon icon={userRoles[0].icon} role={userRoles[0].name} size="md" />
               {/if}
@@ -218,6 +238,20 @@
             />
             <span class="hint">
               Shown instead of your account name. Leave empty to use <strong>{user}</strong>.
+            </span>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label" for="profile-nickname">Nickname on this server</label>
+            <input
+              id="profile-nickname"
+              class="field"
+              bind:value={draftNickname}
+              maxlength={MAX_NICKNAME_LENGTH}
+              placeholder={profile?.displayName || user}
+            />
+            <span class="hint">
+              Overrides your display name here. Moderators may change it too.
             </span>
           </div>
 
@@ -259,6 +293,18 @@
             </div>
           </div>
         {:else}
+          {#if profile?.nickname}
+            <div class="field-group">
+              <span class="field-label">Nickname on this server</span>
+              <span class="member-since">
+                {profile.nickname}
+                {#if profile.displayName}
+                  <span class="hint">(display name: {profile.displayName})</span>
+                {/if}
+              </span>
+            </div>
+          {/if}
+
           {#if userRoles.length > 0}
             <div class="field-group">
               <span class="field-label">Roles</span>

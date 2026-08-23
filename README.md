@@ -117,6 +117,9 @@ small team can deploy a private chat space quickly.
   their avatar, display name, roles, member since and "about" text; your own
   profile is the editor for all three. Avatars are uploaded per server and
   shown in messages, the member list and direct messages
+- Per-server nicknames: a member with **Manage nicknames** can relabel anyone
+  they outrank on that server, and every member can set their own; the
+  nickname is shown instead of the display name everywhere
 - Server identity configurable from the dashboard (Admin/Owner): server name,
   description and icon shown to every member, plus a welcome message delivered
   to first-time members
@@ -278,13 +281,14 @@ Without `ADMIN_TOKEN` configured, channel and wiki management stay open to
 everyone so a small unadministered server remains usable; every other
 capability is still gated by roles.
 
-## Profiles and display names
+## Profiles, display names and nicknames
 
 Every member has a profile, opened by clicking them in the member list, their
 avatar or name on a message, or **View Profile** in the user context menu. It
 shows the avatar, display name, account name, roles, the date they joined and
 their "about" text. Opening your own profile (via your name in the header)
-turns it into the editor for your avatar, display name and about text.
+turns it into the editor for your avatar, display name, nickname and about
+text.
 
 The **account name is not editable**: it is bound to your public key on first
 connect and is what the server addresses everywhere — authentication, role
@@ -294,11 +298,22 @@ account name is used then) and may collide with someone else's. Every profile
 shows the account name underneath the display name, which is how you tell two
 members with the same display name apart.
 
+A **nickname** sits on top of the display name and is this server's label for
+you. You set your own in the profile editor; a member with the **Manage
+nicknames** permission can set or clear anyone's through **Change Nickname** in
+the user context menu, as long as they outrank them — which is what stops a
+moderator from renaming the owner. The name shown anywhere in the app is the
+nickname, else the display name, else the account name; clearing a nickname
+falls back to the next one down. Nicknames are as cosmetic as display names:
+nothing is ever addressed by one, so they are free to collide, and a moderator
+setting one cannot make the server treat a member as somebody else.
+
 ## Roles and permissions
 
 Authorization is permission-based. A **role** is a named, colored bundle of
 permission toggles (view channels, send messages, use soundboard, manage
-channels, kick, ban, manage roles, manage sounds, manage server, …) with a
+channels, kick, ban, manage roles, manage nicknames, manage sounds, manage
+server, …) with a
 hierarchy position. Every user
 implicitly has the built-in **@everyone** role; any additional roles they hold
 stack, and their effective permissions are the union. The built-in **Owner**

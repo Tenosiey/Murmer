@@ -214,6 +214,17 @@ pub const INVALID_ABOUT: &str = r#"{"type":"error","message":"invalid-about"}"#;
 /// Failed to persist the profile change.
 pub const PROFILE_UPDATE_FAILED: &str = r#"{"type":"error","message":"profile-update-failed"}"#;
 
+/// Nickname validation failed.
+pub const INVALID_NICKNAME: &str = r#"{"type":"error","message":"invalid-nickname"}"#;
+
+/// User may not set this member's nickname (lacks the flag or does not
+/// outrank them).
+pub const NICKNAME_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"nickname-permission-denied"}"#;
+
+/// Failed to persist the nickname change.
+pub const NICKNAME_UPDATE_FAILED: &str = r#"{"type":"error","message":"nickname-update-failed"}"#;
+
 /// Channel topic validation failed.
 pub const INVALID_CHANNEL_TOPIC: &str = r#"{"type":"error","message":"invalid-channel-topic"}"#;
 

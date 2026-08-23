@@ -106,7 +106,8 @@
     MAX_EPHEMERAL_SECONDS,
     VOICE_QUALITY_PRESETS,
     DEFAULT_VOICE_PRESET,
-    DEFAULT_CHANNEL_NAME
+    DEFAULT_CHANNEL_NAME,
+    MAX_NICKNAME_LENGTH
   } from '$lib/chat/constants';
   import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
   import ChannelPermissionsModal from '$lib/components/ChannelPermissionsModal.svelte';
@@ -1199,6 +1200,23 @@
     chat.sendRaw({ type: 'unmute-user', user });
   }
 
+  /** Set or clear another member's nickname on this server. */
+  async function changeNicknamePrompt(user: string) {
+    const current = $profiles[user]?.nickname ?? '';
+    const nickname = await dialogs.prompt({
+      title: `Nickname for ${user}`,
+      message: 'Shown instead of their display name on this server. Leave empty to clear it.',
+      label: 'Nickname',
+      initial: current,
+      maxLength: MAX_NICKNAME_LENGTH,
+      confirmLabel: 'Save',
+      required: false
+    });
+    // `null` is a cancelled dialog; an empty string is a deliberate clear.
+    if (nickname === null) return;
+    profiles.setNickname(user, nickname.trim());
+  }
+
 
   function openChannelMenu(event: MouseEvent, channelId?: number, voice?: boolean) {
     if (!$can(PERMISSIONS.MANAGE_CHANNELS)) return;
@@ -1827,6 +1845,9 @@
             { label: 'Unmute', action: () => unmuteUser(target) }
           ]
         });
+      }
+      if ($can(PERMISSIONS.MANAGE_NICKNAMES)) {
+        items.push({ label: 'Change Nickname', action: () => changeNicknamePrompt(target) });
       }
       if ($can(PERMISSIONS.KICK_MEMBERS) && $onlineUsers.includes(target)) {
         items.push({ label: 'Kick User', danger: true, action: () => kickUser(target) });

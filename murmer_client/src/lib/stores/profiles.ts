@@ -1,17 +1,17 @@
 import { derived, writable } from 'svelte/store';
 import { chat } from './chat';
-import { MAX_ABOUT_LENGTH, MAX_DISPLAY_NAME_LENGTH } from '../chat/constants';
+import { MAX_ABOUT_LENGTH, MAX_DISPLAY_NAME_LENGTH, MAX_NICKNAME_LENGTH } from '../chat/constants';
 import type { Message, UserProfile } from '../types';
 
 /**
- * Per-user profiles (display name, about text, member since), keyed by the
- * account name. The server sends a `profile-snapshot` after authentication —
- * including offline users, so a profile can be opened for anyone in the member
- * list — and broadcasts `profile-update` on every change.
+ * Per-user profiles (display name, nickname, about text, member since), keyed
+ * by the account name. The server sends a `profile-snapshot` after
+ * authentication — including offline users, so a profile can be opened for
+ * anyone in the member list — and broadcasts `profile-update` on every change.
  *
  * The account name remains the identity: nothing here is ever used to address
- * a user. Display names are cosmetic and may collide, which is why every
- * profile view also shows the account name.
+ * a user. Display names and nicknames are cosmetic and may collide, which is
+ * why every profile view also shows the account name.
  */
 
 /** Validate a server-sent profile before it enters client state. */
@@ -20,12 +20,14 @@ function toProfile(raw: unknown): UserProfile | null {
   const p = raw as Record<string, unknown>;
   if (typeof p.user !== 'string' || !p.user) return null;
   const displayName = typeof p.displayName === 'string' ? p.displayName : '';
+  const nickname = typeof p.nickname === 'string' ? p.nickname : '';
   const about = typeof p.about === 'string' ? p.about : '';
   return {
     user: p.user,
     // Trim to the same limits the server enforces so a tampered frame cannot
     // stretch a name across the member list.
     displayName: displayName.slice(0, MAX_DISPLAY_NAME_LENGTH),
+    nickname: nickname.slice(0, MAX_NICKNAME_LENGTH),
     about: about.slice(0, MAX_ABOUT_LENGTH),
     createdAt: typeof p.createdAt === 'string' ? p.createdAt : ''
   };
@@ -59,19 +61,35 @@ function createProfileStore() {
     chat.sendRaw({ type: 'set-profile', ...fields });
   }
 
-  return { subscribe, saveSelf, reset: () => set({}) };
+  /**
+   * Set (or with an empty string clear) a member's nickname on this server.
+   * Own nicknames are always allowed; somebody else's needs `MANAGE_NICKNAMES`
+   * and outranking them, which only the server decides — the caller gets an
+   * `error` frame when it does not. The change is confirmed by the broadcast.
+   */
+  function setNickname(user: string, nickname: string) {
+    chat.sendRaw({ type: 'set-nickname', user, nickname });
+  }
+
+  return { subscribe, saveSelf, setNickname, reset: () => set({}) };
 }
 
 export const profiles = createProfileStore();
 
 /**
- * What to show for a user: their display name when they set one, otherwise
- * their account name. Use this everywhere a name is rendered.
+ * What to show for a user: this server's nickname for them, else the display
+ * name they chose, else their account name. Use this everywhere a name is
+ * rendered.
+ *
+ * The nickname wins because it is the server's label — a moderator may have
+ * set it, and a user must not be able to shrug that off by editing their own
+ * display name.
  */
 export const displayNames = derived(profiles, ($profiles) => {
   const map: Record<string, string> = {};
   for (const [user, profile] of Object.entries($profiles)) {
-    if (profile.displayName) map[user] = profile.displayName;
+    const name = profile.nickname || profile.displayName;
+    if (name) map[user] = name;
   }
   return (user: string) => map[user] ?? user;
 });

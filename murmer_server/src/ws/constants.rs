@@ -45,6 +45,11 @@ pub const MAX_AVATAR_BYTES: u64 = 1024 * 1024;
 /// next to a message without pushing the timestamp off screen.
 pub const MAX_DISPLAY_NAME_LENGTH: usize = 32;
 
+/// Maximum length in characters for a member's per-server nickname. Same
+/// budget as the display name: both end up in the same slot in the member
+/// list and next to a message.
+pub const MAX_NICKNAME_LENGTH: usize = 32;
+
 /// Maximum length in characters for a user's profile "about" text.
 pub const MAX_ABOUT_LENGTH: usize = 300;
 

@@ -84,9 +84,13 @@ sync, see the Brand section in `README.md`.
   "empty" — an editor must not offer to save an empty list over a real one.
 - Names: render `$displayNames(user)` from `stores/profiles.ts`, never the raw
   user name — that is the account name and stays the key for every lookup
-  (`$roles[user]`, `$avatars[user]`, DM peers, mentions). `UserProfileModal`
-  shows both and is the only place a user edits their own display name, about
-  text and avatar.
+  (`$roles[user]`, `$avatars[user]`, DM peers, mentions). It resolves
+  nickname → display name → account name; the nickname comes first because a
+  moderator with `MANAGE_NICKNAMES` may have set it, and a component that
+  reached for `profile.displayName` itself would quietly render the name the
+  server was overriding. `UserProfileModal` shows both and is where a user
+  edits their own display name, nickname, about text and avatar; the user
+  context menu is where a moderator changes somebody else's nickname.
 
 ## Security considerations
 - Key pairs are stored in `localStorage`; treat this as acceptable for the
