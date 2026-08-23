@@ -4,10 +4,10 @@ This monorepo hosts **Murmer**, a chat prototype split into a Tauri/SvelteKit
 client (`murmer_client/`) and an Axum-based Rust server (`murmer_server/`).
 The client's single build runs both as the desktop shell and, unchanged, as a
 **web client** in a plain browser — see the Web client sections in
-`murmer_client/AGENTS.md` and `README.md`. Each directory contains its own `AGENTS.md` with tooling
-specifics. Client and server communicate over one WebSocket (`/ws`, JSON
-frames with a `type` field) plus a few HTTP endpoints (`/upload`,
-`/link-preview`, `/role`, `/files`, bot REST API).
+`murmer_client/AGENTS.md` and `README.md`. Each directory contains its own
+`AGENTS.md` with tooling specifics. Client and server communicate over one
+WebSocket (`/ws`, JSON frames with a `type` field) plus a few HTTP endpoints
+(`/upload`, `/link-preview`, `/role`, `/files`, bot REST API).
 
 ## Hard constraints
 - **TypeScript stays on major 6.** Do not upgrade to 7 or merge dependabot
@@ -241,6 +241,15 @@ frames with a `type` field) plus a few HTTP endpoints (`/upload`,
   message authorship all stay on the account name, which is bound to the user's
   key on first connect and shown next to the display name on the profile.
   Display names are deliberately not unique, so any lookup by one is a bug.
+  A **per-server nickname** (`user_keys.nickname`, `set-nickname`) layers on top
+  and wins in `$displayNames`, because it is the *server's* label rather than
+  the user's: `MANAGE_NICKNAMES` plus strictly outranking the target is what
+  lets a moderator set somebody else's, and letting the display name beat it
+  would hand the target a one-click undo. It travels in its own frame and its
+  own `UPDATE` for the same reason — the two are authorized differently, so a
+  nickname change must never be able to carry a profile edit along with it.
+  Everything above still holds: a nickname is as cosmetic as a display name,
+  which is what makes the extra reach safe.
 - Direct messages are end-to-end encrypted (NaCl box over X25519 keys derived
   from the users' Ed25519 identity keys via ed2curve). The server only
   validates, stores and relays `nonce`/`ciphertext` pairs — it must never

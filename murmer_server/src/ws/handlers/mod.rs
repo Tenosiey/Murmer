@@ -292,6 +292,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "set-profile" => {
                                 profile::handle_set_profile(&state, &mut sender, &v, &user_name).await;
                             }
+                            "set-nickname" => {
+                                profile::handle_set_nickname(&state, &mut sender, &v, &user_name).await;
+                            }
                             "ping" => {
                                 handle_ping(&mut sender, &v).await;
                             }

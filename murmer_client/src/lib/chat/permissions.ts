@@ -23,7 +23,8 @@ export const PERMISSIONS = {
   MUTE_MEMBERS: 1 << 12,
   ADMINISTRATOR: 1 << 13,
   USE_SOUNDBOARD: 1 << 14,
-  MANAGE_SOUNDS: 1 << 15
+  MANAGE_SOUNDS: 1 << 15,
+  MANAGE_NICKNAMES: 1 << 16
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;
@@ -168,6 +169,12 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         flag: PERMISSIONS.MUTE_MEMBERS,
         label: 'Mute members',
         description: 'Mute and unmute members.'
+      },
+      {
+        key: 'MANAGE_NICKNAMES',
+        flag: PERMISSIONS.MANAGE_NICKNAMES,
+        label: 'Manage nicknames',
+        description: "Set or clear other members' nicknames on this server."
       }
     ]
   },

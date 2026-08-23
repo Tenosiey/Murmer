@@ -15,7 +15,6 @@ stays readable. Use the checkboxes to mark something you have picked up.
 
 - [ ] Bot integration/webhooks (a basic REST bot API exists; webhooks do not)
 - [ ] Text-to-speech
-- [ ] User nicknames per server
 
 ### 🎤 Voice Features
 

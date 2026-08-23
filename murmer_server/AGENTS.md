@@ -168,7 +168,7 @@ authenticated member may upload and these files auto-play on every listener.
 databases once, marker-guarded, so an existing server matches a fresh one.
 
 User profiles live on the `user_keys` binding row: `avatar`, `display_name`,
-`about` and the `created_at` that doubles as "member since"
+`nickname`, `about` and the `created_at` that doubles as "member since"
 (`ws/handlers/profile.rs`, `db/users.rs`). `set-avatar` and `set-profile` only
 ever touch the requester's own row; absent fields are left alone and `null`
 clears one. Every client gets an `avatar-snapshot` plus a `profile-snapshot`
@@ -177,6 +177,18 @@ clears one. Every client gets an `avatar-snapshot` plus a `profile-snapshot`
 server code resolves one back to a user, which is why it needs no uniqueness
 check; the account name stays the identity for auth, roles, moderation, DMs
 and message authorship.
+
+`set-nickname` is the one field here somebody else may write, and the only
+reason that is safe is that a nickname is exactly as cosmetic as a display
+name. Setting your own needs nothing beyond being authenticated; setting
+anybody else's needs `MANAGE_NICKNAMES` **and** strictly outranking them, the
+same hierarchy check the moderation handlers run — without it a fresh moderator
+could relabel the owner. It writes through `db::set_user_nickname`, its own
+statement rather than a fourth parameter on `set_user_profile`, so an
+authorized nickname change can never carry a display name or "about" edit with
+it. `db::migrate_nickname_permissions` grants the flag to roles that already
+hold `KICK_MEMBERS` once, marker-guarded, so an existing server's moderators
+match a freshly seeded one — `@everyone` never gains it.
 
 The Server Dashboard's remaining settings all live in the generic
 `server_settings` key-value table, next to the stats toggle, the upload policy

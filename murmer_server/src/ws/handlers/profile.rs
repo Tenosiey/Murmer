@@ -1,4 +1,5 @@
-//! Handlers for the user profile: avatar, display name and about text.
+//! Handlers for the user profile: avatar, display name, nickname and about
+//! text.
 //!
 //! Avatars travel through the regular `/upload` endpoint (which enforces the
 //! image safe-list and magic-byte validation) and are registered here by URL,
@@ -13,9 +14,14 @@
 //! server-side ever resolves a display name back to a user. That is what keeps
 //! it safe to let it collide with another user's name — clients show the
 //! account name alongside it on the profile.
+//!
+//! The **nickname** sits on top of the display name and is the one field here
+//! somebody else may write: a member with `MANAGE_NICKNAMES` who outranks the
+//! target can relabel them for this server. It is just as cosmetic, which is
+//! why the extra reach is safe — see [`handle_set_nickname`].
 
 use crate::ws::{constants::*, errors, helpers::*, validation::*};
-use crate::{AppState, db};
+use crate::{AppState, db, permissions};
 use axum::extract::ws::{Message, WebSocket};
 use futures::{SinkExt, stream::SplitSink};
 use serde_json::Value;
@@ -80,9 +86,32 @@ fn profile_json(profile: db::UserProfile) -> Value {
     serde_json::json!({
         "user": profile.user_name,
         "displayName": profile.display_name,
+        "nickname": profile.nickname,
         "about": profile.about,
         "createdAt": profile.created_at,
     })
+}
+
+/// Re-read a user's profile row and broadcast it. Used after every change so
+/// the frame carries the full profile even when only one field was touched.
+/// Returns `false` when the row is gone, which the caller reports as a failure.
+async fn broadcast_profile(state: &Arc<AppState>, user: &str) -> bool {
+    match db::get_user_profile(&state.db, user).await {
+        Ok(Some(profile)) => {
+            if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+                "type": "profile-update",
+                "profile": profile_json(profile),
+            })) {
+                let _ = state.tx.send(msg.into());
+            }
+            true
+        }
+        Ok(None) => false,
+        Err(e) => {
+            error!("Failed to reload profile for {user}: {e}");
+            false
+        }
+    }
 }
 
 /// Broadcast a user's avatar change to all clients. `None` clears the avatar.
@@ -261,22 +290,93 @@ pub(super) async fn handle_set_profile(
         }
     }
 
-    // Re-read the row so the broadcast carries the full profile even when the
-    // frame only touched one field.
-    match db::get_user_profile(&state.db, requester).await {
-        Ok(Some(profile)) => {
-            info!(requester, "Profile updated");
-            if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-                "type": "profile-update",
-                "profile": profile_json(profile),
-            })) {
-                let _ = state.tx.send(msg.into());
-            }
+    if broadcast_profile(state, requester).await {
+        info!(requester, "Profile updated");
+    } else {
+        send_error(sender, errors::PROFILE_UPDATE_FAILED).await;
+    }
+}
+
+/// Handle `set-nickname`: set or clear a member's per-server nickname.
+///
+/// Two paths, and only the second is a moderation action: setting your **own**
+/// nickname is as self-service as the display name, while relabelling somebody
+/// else needs [`MANAGE_NICKNAMES`](crate::permissions::MANAGE_NICKNAMES) *and*
+/// strictly outranking them — otherwise a moderator could rename the owner.
+/// The nickname stays cosmetic either way: it never becomes an identity the
+/// server resolves anything by, so it may collide with a real account name
+/// without that name meaning anything different to any check.
+///
+/// `"nickname": null` (or an empty string) clears it, falling back to the
+/// user's own display name and then to their account name.
+pub(super) async fn handle_set_nickname(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(requester) = user_name.as_deref() else {
+        send_error(sender, errors::NICKNAME_UPDATE_FAILED).await;
+        return;
+    };
+
+    // An absent `user` means "my own", which is what the profile editor sends.
+    let target = match v.get("user") {
+        None => requester.to_string(),
+        Some(raw) => {
+            let Some(name) = raw.as_str().map(str::trim).filter(|n| !n.is_empty()) else {
+                send_error(sender, errors::NICKNAME_UPDATE_FAILED).await;
+                return;
+            };
+            name.to_string()
         }
-        Ok(None) => send_error(sender, errors::PROFILE_UPDATE_FAILED).await,
+    };
+
+    let Ok(nickname) = parse_profile_field(
+        sender,
+        v,
+        "nickname",
+        validate_nickname,
+        errors::INVALID_NICKNAME,
+    )
+    .await
+    else {
+        return;
+    };
+    // Nothing to do: the frame did not carry the field at all.
+    let Some(nickname) = nickname else {
+        return;
+    };
+
+    if target != requester {
+        if !has_permission(state, requester, permissions::MANAGE_NICKNAMES).await {
+            send_error(sender, errors::NICKNAME_PERMISSION_DENIED).await;
+            return;
+        }
+        if top_position(state, requester).await <= top_position(state, &target).await {
+            send_error(sender, errors::NICKNAME_PERMISSION_DENIED).await;
+            return;
+        }
+    }
+
+    match db::set_user_nickname(&state.db, &target, &nickname).await {
+        Ok(true) => {}
+        // No binding row — the name has never connected, so there is nothing
+        // to label.
+        Ok(false) => {
+            send_error(sender, errors::NICKNAME_UPDATE_FAILED).await;
+            return;
+        }
         Err(e) => {
-            error!("Failed to reload profile for {requester}: {e}");
-            send_error(sender, errors::PROFILE_UPDATE_FAILED).await;
+            error!("Failed to store nickname for {target}: {e}");
+            send_error(sender, errors::NICKNAME_UPDATE_FAILED).await;
+            return;
         }
+    }
+
+    if broadcast_profile(state, &target).await {
+        info!(requester, target, "Nickname updated");
+    } else {
+        send_error(sender, errors::NICKNAME_UPDATE_FAILED).await;
     }
 }
