@@ -1,10 +1,11 @@
 /**
  * Guards the two tables the client duplicates from the server.
  *
- * `AGENTS.md` asks twice to "keep them in sync", and nothing enforced it: the
+ * The documentation asked to "keep them in sync" and nothing enforced it: the
  * copies drift silently, and the symptom shows up far from the cause — a
  * permission whose bit means one thing to the client and another to the
  * server, or a file picker that offers an extension `/upload` rejects.
+ * `agents/skills/mirrored-constants.md` is the procedure for changing one.
  *
  * These read the Rust sources as text rather than executing them, so they stay
  * a plain Vitest run with no toolchain of their own. That means they are

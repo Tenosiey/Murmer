@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security problem
+    url: https://github.com/Tenosiey/Murmer/blob/main/CONTRIBUTING.md#reporting-bugs
+    about: Do not open a public issue. Email the maintainer instead.
+  - name: Setting up or deploying a server
+    url: https://github.com/Tenosiey/Murmer/blob/main/README.md
+    about: Configuration, Docker, roles, the web client and releases are documented in the README.
+  - name: Writing a bot
+    url: https://github.com/Tenosiey/Murmer/blob/main/murmer_server/BOT_API.md
+    about: The bot REST API reference.

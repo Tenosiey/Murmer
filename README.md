@@ -137,19 +137,29 @@ small team can deploy a private chat space quickly.
 ## Repository layout
 
 ```
-murmer_client/   SvelteKit client (TypeScript): Tauri desktop shell and web client
-murmer_server/   Axum-based WebSocket server (Rust)
+murmer_client/       SvelteKit client (TypeScript): Tauri desktop shell and web client
+murmer_server/       Axum-based WebSocket server (Rust)
+agents/skills/       task guides for contributors and AI coding agents
+docs/                architecture and subsystem reference
+plans/               design notes for work that is not built yet
 docker-compose.yml   boots the server (database is embedded)
 ```
 
-Key documentation for contributors:
+Documentation is split by audience. This README and
+[`murmer_server/BOT_API.md`](murmer_server/BOT_API.md) are for **users and
+operators**; everything below is for **contributors**:
 
-- `AGENTS.md` – repository overview and shared conventions
-- `murmer_client/AGENTS.md` – client-specific tips
-- `murmer_server/AGENTS.md` – server-specific tips
-- `murmer_server/BOT_API.md` – REST API reference for bots
-- `CONTRIBUTING.md` – code style and PR guidelines
-- `docs/turn-support.md` – design note on TURN/relay support (not implemented)
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) – how to get set up and what makes a
+  change easy to merge
+- [`AGENTS.md`](AGENTS.md) – conventions, hard constraints and the index of
+  task guides. Written for humans and AI coding agents alike; the `CLAUDE.md`
+  files are one-line pointers to it
+- [`docs/architecture.md`](docs/architecture.md) – how the system fits
+  together, and the entry point to the rest of `docs/`
+- [`agents/skills/`](agents/skills/) – procedure for a specific kind of work
+  (adding a frame, writing a test, touching crypto, cutting a release)
+- [`plans/turn-support.md`](plans/turn-support.md) – design note on
+  TURN/relay support (not implemented)
 
 ## Brand
 
@@ -176,13 +186,13 @@ The window/installer icons are generated from the SVG rather than hand-edited.
 After changing the artwork, regenerate them from `murmer_client/`:
 
 ```bash
-npx tauri icon static/logo/murmer-dark.svg -o src-tauri/icons
+bunx tauri icon static/logo/murmer-dark.svg -o src-tauri/icons
 ```
 
 That command also emits `android/`, `ios/` and `64x64.png`, which this
 desktop-only project does not bundle — delete them again. The tray PNGs
 (`icons/tray-{dark,light}.png`) are separate; regenerate each with
-`npx tauri icon static/logo/murmer-<variant>.svg -o <tmp> -p 64`.
+`bunx tauri icon static/logo/murmer-<variant>.svg -o <tmp> -p 64`.
 
 ## Requirements
 
@@ -257,12 +267,11 @@ bun audit
 ```
 
 Client unit tests use [Vitest](https://vitest.dev) and live next to the module
-they cover (`src/lib/**/*.test.ts`); shared harness code is in `test/`. They
-target logic that is easy to get subtly wrong and hard to spot by clicking
-around — the per-server namespacing of unread state, the wiki store's
-request/response correlation, the wiki line diff — not UI rendering. `vitest.config.ts` runs them
-in a plain Node environment and stubs the two framework pieces the stores
-touch: the `$app/environment` browser flag and `localStorage`.
+they cover (`src/lib/**/*.test.ts`); server tests are integration tests under
+`murmer_server/tests/`. Both target logic that is easy to get subtly wrong and
+hard to spot by clicking around — not UI rendering, which is verified by
+looking at the running app. How the suites are shaped and what belongs in one
+is [`docs/testing.md`](docs/testing.md).
 
 ## Configuration
 
@@ -694,4 +703,11 @@ binary in its installer and it is worth naming:
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for detailed guidelines.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) covers setup, the checks to run and what
+makes a change easy to merge. Once you are past that,
+[`docs/architecture.md`](docs/architecture.md) is the map of the system and
+[`AGENTS.md`](AGENTS.md) indexes the task guides in
+[`agents/skills/`](agents/skills/).
+
+Bug reports go to <https://github.com/Tenosiey/Murmer/issues>. Please do not
+open a public issue for a security problem — email the maintainer instead.

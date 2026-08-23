@@ -1,8 +1,14 @@
 # Murmer Client
 
-Client built with Tauri 2 and SvelteKit. For project setup and
-configuration see the root [README.md](../README.md); code organisation and
-conventions are described in [AGENTS.md](AGENTS.md).
+Built with Tauri 2 and SvelteKit. The same build is both the desktop shell
+and the web client.
+
+| You want | Go to |
+| --- | --- |
+| Project setup and configuration | the root [README.md](../README.md) |
+| Code organisation and conventions | [AGENTS.md](AGENTS.md) |
+| Deploying the web client and its constraints | ["Web client" in the root README](../README.md#web-client) |
+| How the system fits together | [`../docs/architecture.md`](../docs/architecture.md) |
 
 ## Development
 
@@ -14,17 +20,15 @@ bun run test         # Vitest unit tests
 bun audit            # dependency vulnerability scan
 ```
 
-The desktop shell logs to STDOUT; adjust verbosity via the `RUST_LOG`
-environment variable when launching `bun run tauri dev`.
+The desktop shell logs to STDOUT; adjust verbosity with `RUST_LOG` when
+launching `bun run tauri dev`.
 
-## Web client
+## Two targets, one build
 
-`bun run build` writes `build/`, which is both what the Tauri bundle embeds and
-a complete web client: serve that directory (the Murmer server does it with
-`WEB_CLIENT_DIR`) and Murmer runs in a browser, invite links included. The
-build is identical either way — `src/lib/platform.ts` decides at runtime which
-of the two it is running as. See "Web client" in the root
-[README.md](../README.md#web-client) for deployment and its constraints.
+`bun run build` writes `build/`, which is both what the Tauri bundle embeds
+and a complete web client: serve that directory — the Murmer server does it
+with `WEB_CLIENT_DIR` — and Murmer runs in a browser, invite links included.
+`src/lib/platform.ts` decides at runtime which of the two it is running as.
 
 Client state (server list, session, settings, keypair) is persisted in
 `localStorage` via the stores in `src/lib/stores/`.
