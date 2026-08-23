@@ -65,10 +65,6 @@ stays readable. Use the checkboxes to mark something you have picked up.
 
 ## 🔧 Tech debt / hardening
 
-- [ ] Cover `markdown.ts` sanitisation — DOMPurify needs a DOM, so this is the
-      one file worth a `// @vitest-environment happy-dom` docblock rather than
-      moving the whole suite off the Node default. It is a security boundary
-      (`{@html}` renders its output) and currently has no tests
 - [ ] Property-test `NoiseFloorTracker` in `voice/vad.ts` — the invariants are
       already written down (the floor may never rise above the quietest level
       of the last 20 s, and not at all until the input has been quiet for
