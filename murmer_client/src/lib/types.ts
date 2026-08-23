@@ -102,6 +102,12 @@ export interface UserProfile {
   user: string;
   /** Chosen display name, or an empty string when the account name is used. */
   displayName: string;
+  /**
+   * This server's nickname for the user, empty when unset. Set by the user or
+   * by a moderator with `MANAGE_NICKNAMES`, and takes precedence over the
+   * display name wherever a name is rendered.
+   */
+  nickname: string;
   /** Free-text "about me", empty when unset. */
   about: string;
   /** RFC 3339 timestamp of when the name was first claimed ("member since"). */

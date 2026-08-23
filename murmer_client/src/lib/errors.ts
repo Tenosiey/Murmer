@@ -46,6 +46,9 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-display-name': 'That display name is not allowed.',
   'invalid-about': 'That about text is not allowed.',
   'profile-update-failed': 'The server could not update your profile. Please try again.',
+  'invalid-nickname': 'That nickname is not allowed.',
+  'nickname-permission-denied': 'You are not allowed to change that member’s nickname.',
+  'nickname-update-failed': 'The server could not update the nickname. Please try again.',
   'send-permission-denied': 'You do not have permission to send messages in this channel.',
   'channel-override-permission-denied':
     'You do not have permission to edit this channel’s permissions.',

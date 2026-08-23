@@ -387,3 +387,36 @@ pub fn migrate_soundboard_permissions(conn: &rusqlite::Connection) -> rusqlite::
     )?;
     Ok(())
 }
+
+/// Grant [`MANAGE_NICKNAMES`](crate::permissions::MANAGE_NICKNAMES) to every
+/// role that already moderates members, so a server that predates nicknames
+/// keeps its moderators as capable as a freshly seeded one. `KICK_MEMBERS` is
+/// the marker of a moderating role: it is in `DEFAULT_MOD` and above but never
+/// in `@everyone`, which must not gain the ability to relabel other people.
+///
+/// Marker-guarded like the soundboard migration: it runs once, so an owner who
+/// deliberately takes the flag away again does not get it back on restart.
+pub fn migrate_nickname_permissions(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    let already: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM server_settings WHERE key = 'nickname_perms'",
+        [],
+        |row| row.get(0),
+    )?;
+    if already > 0 {
+        return Ok(());
+    }
+
+    conn.execute(
+        "UPDATE role_definitions SET permissions = permissions | ?1 WHERE permissions & ?2 != 0",
+        params![
+            crate::permissions::MANAGE_NICKNAMES as i64,
+            crate::permissions::KICK_MEMBERS as i64,
+        ],
+    )?;
+
+    conn.execute(
+        "INSERT OR IGNORE INTO server_settings (key, value) VALUES ('nickname_perms', '1')",
+        [],
+    )?;
+    Ok(())
+}

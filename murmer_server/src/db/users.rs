@@ -121,13 +121,17 @@ pub async fn count_avatar_references(db: &Db, avatar: &str) -> Result<i64, DbErr
     .await
 }
 
-/// A user's profile as stored on their name/key binding. `display_name` and
-/// `about` are empty when unset; `created_at` is when the name was first
-/// claimed and doubles as "member since".
+/// A user's profile as stored on their name/key binding. `display_name`,
+/// `nickname` and `about` are empty when unset; `created_at` is when the name
+/// was first claimed and doubles as "member since".
+///
+/// The nickname is the server's label for the user and wins over the
+/// display name in the UI, because a moderator may have set it.
 #[derive(Clone, Debug)]
 pub struct UserProfile {
     pub user_name: String,
     pub display_name: String,
+    pub nickname: String,
     pub about: String,
     pub created_at: String,
 }
@@ -161,18 +165,38 @@ pub async fn set_user_profile(
     .await
 }
 
+/// Set (or with an empty string clear) a user's nickname. Unlike the profile
+/// fields this may be written by somebody else, which is why it is its own
+/// statement: an authorized nickname change must never be able to carry a
+/// display name or "about" edit along with it. Returns `true` if the user has
+/// a binding row.
+pub async fn set_user_nickname(db: &Db, user_name: &str, nickname: &str) -> Result<bool, DbError> {
+    let user_name = user_name.to_owned();
+    let nickname = nickname.to_owned();
+    db.call_db(move |conn| {
+        let updated = conn.execute(
+            "UPDATE user_keys SET nickname = ?2 WHERE user_name = ?1",
+            params![user_name, nickname],
+        )?;
+        Ok(updated > 0)
+    })
+    .await
+}
+
 /// Every known user's profile, for the snapshot sent to new clients.
 pub async fn get_all_profiles(db: &Db) -> Result<Vec<UserProfile>, DbError> {
     db.call_db(|conn| {
-        let mut stmt = conn
-            .prepare_cached("SELECT user_name, display_name, about, created_at FROM user_keys")?;
+        let mut stmt = conn.prepare_cached(
+            "SELECT user_name, display_name, nickname, about, created_at FROM user_keys",
+        )?;
         let rows = stmt
             .query_map([], |row| {
                 Ok(UserProfile {
                     user_name: row.get(0)?,
                     display_name: row.get(1)?,
-                    about: row.get(2)?,
-                    created_at: row.get(3)?,
+                    nickname: row.get(2)?,
+                    about: row.get(3)?,
+                    created_at: row.get(4)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -186,15 +210,16 @@ pub async fn get_user_profile(db: &Db, user_name: &str) -> Result<Option<UserPro
     let user_name = user_name.to_owned();
     db.call_db(move |conn| {
         conn.query_row(
-            "SELECT user_name, display_name, about, created_at FROM user_keys \
+            "SELECT user_name, display_name, nickname, about, created_at FROM user_keys \
              WHERE user_name = ?1",
             params![user_name],
             |row| {
                 Ok(UserProfile {
                     user_name: row.get(0)?,
                     display_name: row.get(1)?,
-                    about: row.get(2)?,
-                    created_at: row.get(3)?,
+                    nickname: row.get(2)?,
+                    about: row.get(3)?,
+                    created_at: row.get(4)?,
                 })
             },
         )

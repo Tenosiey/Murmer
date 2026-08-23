@@ -2,10 +2,10 @@
 
 use super::constants::{
     MAX_ABOUT_LENGTH, MAX_ALLOWED_VOICE_BITRATE, MAX_DISPLAY_NAME_LENGTH, MAX_EMOJI_NAME_LEN,
-    MAX_ROLE_NAME_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH,
-    MAX_SOUND_NAME_LEN, MAX_TOPIC_LENGTH, MAX_WELCOME_MESSAGE_LENGTH, MAX_WIKI_SLUG_LENGTH,
-    MAX_WIKI_TITLE_LENGTH, MIN_EMOJI_NAME_LEN, MIN_SOUND_NAME_LEN, UPLOAD_IMAGE_EXTENSIONS,
-    UPLOAD_SOUND_EXTENSIONS, USER_STATUSES,
+    MAX_NICKNAME_LENGTH, MAX_ROLE_NAME_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH,
+    MAX_SERVER_NAME_LENGTH, MAX_SOUND_NAME_LEN, MAX_TOPIC_LENGTH, MAX_WELCOME_MESSAGE_LENGTH,
+    MAX_WIKI_SLUG_LENGTH, MAX_WIKI_TITLE_LENGTH, MIN_EMOJI_NAME_LEN, MIN_SOUND_NAME_LEN,
+    UPLOAD_IMAGE_EXTENSIONS, UPLOAD_SOUND_EXTENSIONS, USER_STATUSES,
 };
 
 /// Normalize a user status string to a valid status value.
@@ -86,6 +86,16 @@ pub fn validate_welcome_message(value: &str) -> bool {
 /// DMs, mentions) and is shown alongside it on the profile.
 pub fn validate_display_name(value: &str) -> bool {
     value.chars().count() <= MAX_DISPLAY_NAME_LENGTH
+        && value == value.trim()
+        && !value.chars().any(char::is_control)
+}
+
+/// Validate a member's per-server nickname. Same rules as the display name —
+/// it lands in the same slot in the UI — and it is just as cosmetic: nothing
+/// server-side ever resolves a nickname back to a user, so a moderator setting
+/// one cannot impersonate anybody into an authorization check.
+pub fn validate_nickname(value: &str) -> bool {
+    value.chars().count() <= MAX_NICKNAME_LENGTH
         && value == value.trim()
         && !value.chars().any(char::is_control)
 }

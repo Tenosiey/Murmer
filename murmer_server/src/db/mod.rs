@@ -267,6 +267,7 @@ CREATE TABLE IF NOT EXISTS user_keys (
     public_key TEXT NOT NULL,
     avatar TEXT NOT NULL DEFAULT '',
     display_name TEXT NOT NULL DEFAULT '',
+    nickname TEXT NOT NULL DEFAULT '',
     about TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT ({NOW_UTC})
 );
@@ -336,6 +337,10 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         // Grant the soundboard flags to pre-soundboard databases so an existing
         // server behaves like a freshly seeded one. Marker-guarded, runs once.
         roles::migrate_soundboard_permissions(conn)?;
+        // Grant the nickname flag to roles that already moderate members, so
+        // an existing server's moderators keep the capability set they had
+        // when nicknames shipped. Marker-guarded, runs once.
+        roles::migrate_nickname_permissions(conn)?;
 
         // Columns added after a table first shipped; CREATE TABLE IF NOT
         // EXISTS does not extend existing tables.
@@ -356,6 +361,7 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
             "TEXT NOT NULL DEFAULT ''",
         )?;
         ensure_column(conn, "user_keys", "about", "TEXT NOT NULL DEFAULT ''")?;
+        ensure_column(conn, "user_keys", "nickname", "TEXT NOT NULL DEFAULT ''")?;
         ensure_column(
             conn,
             "user_stats",

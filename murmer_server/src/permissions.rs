@@ -45,6 +45,10 @@ pub const ADMINISTRATOR: Permissions = 1 << 13;
 pub const USE_SOUNDBOARD: Permissions = 1 << 14;
 /// Upload, rename and delete the server's soundboard sounds.
 pub const MANAGE_SOUNDS: Permissions = 1 << 15;
+/// Set or clear another member's per-server nickname. Everyone may always set
+/// their own; this flag is what lets a moderator relabel somebody else, and it
+/// is hierarchy-checked like the other member actions.
+pub const MANAGE_NICKNAMES: Permissions = 1 << 16;
 
 /// Union of every defined permission flag. Used to reject unknown bits from
 /// clients and to expand [`ADMINISTRATOR`] into a concrete mask.
@@ -63,7 +67,8 @@ pub const ALL: Permissions = VIEW_CHANNELS
     | MUTE_MEMBERS
     | ADMINISTRATOR
     | USE_SOUNDBOARD
-    | MANAGE_SOUNDS;
+    | MANAGE_SOUNDS
+    | MANAGE_NICKNAMES;
 
 /// Baseline permissions granted to every user through the `@everyone` role.
 /// Keeps a fresh or unadministered server usable: everyone can read, chat and
@@ -81,7 +86,8 @@ pub const DEFAULT_MOD: Permissions = DEFAULT_EVERYONE
     | MANAGE_SOUNDS
     | KICK_MEMBERS
     | BAN_MEMBERS
-    | MUTE_MEMBERS;
+    | MUTE_MEMBERS
+    | MANAGE_NICKNAMES;
 
 /// Default permissions seeded for the built-in `Admin` role: everything a Mod
 /// can do plus server settings and read-only server/connection insight.
