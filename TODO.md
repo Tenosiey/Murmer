@@ -74,10 +74,6 @@ stays readable. Use the checkboxes to mark something you have picked up.
       limits both to first contact), but the failure mode should be honest.
       `dm-crypto.test.ts` has a test named for the current behaviour — delete
       it with the fix
-- [ ] Test the server's pins and screen-share modules — `db/wiki.rs` is now
-      covered (full-text search in `tests/search_test.rs`, the revision
-      compare-and-swap, history and restore in `tests/wiki_test.rs`), but
-      `db/pins.rs` and `db/screenshare.rs` are untested
 - [ ] TURN support — voice does not connect at all behind symmetric NAT or a
       network that blocks UDP, and both managers hardcode one public STUN
       server with no way for an operator to change it. Designed but not
