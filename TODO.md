@@ -70,10 +70,6 @@ stays readable. Use the checkboxes to mark something you have picked up.
       one file worth a `// @vitest-environment happy-dom` docblock rather than
       moving the whole suite off the Node default. It is a security boundary
       (`{@html}` renders its output) and currently has no tests
-- [ ] Make the rate limiter's clock injectable so the map-sweep behaviour in
-      `security.rs` can be covered by a regression test in
-      `tests/security_limits.rs` (the 60 s window uses `std::time::Instant`
-      directly and cannot be fast-forwarded)
 - [ ] Property-test `NoiseFloorTracker` in `voice/vad.ts` — the invariants are
       already written down (the floor may never rise above the quietest level
       of the last 20 s, and not at all until the input has been quiet for

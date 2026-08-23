@@ -19,7 +19,10 @@ pub mod ws;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Instant,
 };
 use tokio::sync::{Mutex, broadcast, mpsc};
@@ -55,6 +58,56 @@ pub const DIRECT_MAILBOX_CAPACITY: usize = 256;
 /// mailbox and not a newer one belonging to the same name.
 pub type DirectRegistry = HashMap<String, HashMap<u64, mpsc::Sender<Frame>>>;
 
+/// Where the rate limiter reads "now" from.
+///
+/// Production uses [`Clock::system`], which is `Instant::now()` and nothing
+/// else. Tests use [`Clock::manual`] plus [`Clock::advance`]: the sliding
+/// window and the map sweep are both measured in minutes, and a
+/// `std::time::Instant` cannot be moved by hand — so without this the sweep
+/// could only be covered by a test that really sleeps for over a minute,
+/// which is to say not at all.
+#[derive(Clone)]
+pub struct Clock {
+    /// The instant a manual clock was created at and how far it has since
+    /// been advanced, in nanoseconds. `None` is the real clock.
+    manual: Option<(Instant, Arc<AtomicU64>)>,
+}
+
+impl Clock {
+    /// The real monotonic clock.
+    pub fn system() -> Self {
+        Self { manual: None }
+    }
+
+    /// A clock that only moves when [`advance`](Self::advance) is called.
+    ///
+    /// It starts at the current instant rather than at some epoch because
+    /// `Instant` has no constructor — the offset is what the test controls.
+    pub fn manual() -> Self {
+        Self {
+            manual: Some((Instant::now(), Arc::new(AtomicU64::new(0)))),
+        }
+    }
+
+    /// Read the current instant.
+    pub fn now(&self) -> Instant {
+        match &self.manual {
+            None => Instant::now(),
+            Some((base, offset)) => {
+                *base + std::time::Duration::from_nanos(offset.load(Ordering::Relaxed))
+            }
+        }
+    }
+
+    /// Move a manual clock forward. A no-op on [`Clock::system`], which
+    /// nothing but the passage of time can advance.
+    pub fn advance(&self, by: std::time::Duration) {
+        if let Some((_, offset)) = &self.manual {
+            offset.fetch_add(by.as_nanos() as u64, Ordering::Relaxed);
+        }
+    }
+}
+
 /// A set of sliding windows keyed by user name, IP or nonce, plus the last
 /// time the whole map was swept for entries that fell out of their window.
 ///
@@ -68,10 +121,13 @@ pub struct SlidingWindows<T> {
 }
 
 impl<T> SlidingWindows<T> {
-    fn new() -> Self {
+    /// `now` comes from the limiter's [`Clock`] rather than from
+    /// `Instant::now()`, so a manual clock starts its first sweep interval at
+    /// the same instant every later check is measured against.
+    fn new(now: Instant) -> Self {
         Self {
             entries: HashMap::new(),
-            last_sweep: Instant::now(),
+            last_sweep: now,
         }
     }
 }
@@ -100,19 +156,29 @@ pub struct RateLimiter {
     pub max_uploads_per_minute: usize,
     /// How long a used nonce stays remembered.
     pub nonce_expiry: std::time::Duration,
+    /// Where every window and expiry check reads "now" from.
+    pub clock: Clock,
 }
 
 impl RateLimiter {
     pub fn new() -> Self {
+        Self::with_clock(Clock::system())
+    }
+
+    /// Build a limiter reading time from `clock`, for tests that need to
+    /// fast-forward past the sliding window or the sweep interval.
+    pub fn with_clock(clock: Clock) -> Self {
+        let now = clock.now();
         Self {
-            message_times: Arc::new(Mutex::new(SlidingWindows::new())),
-            auth_attempts: Arc::new(Mutex::new(SlidingWindows::new())),
-            upload_attempts: Arc::new(Mutex::new(SlidingWindows::new())),
-            used_nonces: Arc::new(Mutex::new(SlidingWindows::new())),
+            message_times: Arc::new(Mutex::new(SlidingWindows::new(now))),
+            auth_attempts: Arc::new(Mutex::new(SlidingWindows::new(now))),
+            upload_attempts: Arc::new(Mutex::new(SlidingWindows::new(now))),
+            used_nonces: Arc::new(Mutex::new(SlidingWindows::new(now))),
             max_messages_per_minute: security::get_max_messages_per_minute(),
             max_auth_attempts_per_minute: security::get_max_auth_attempts_per_minute(),
             max_uploads_per_minute: security::get_max_uploads_per_minute(),
             nonce_expiry: std::time::Duration::from_secs(security::get_nonce_expiry_seconds()),
+            clock,
         }
     }
 }
