@@ -2,8 +2,9 @@
 
 The audio pipeline in `murmer_client/src/lib/voice/`: how the microphone
 signal is built, how transmission is gated, how the codec is configured, and
-how a broken connection is repaired. Screen sharing shares the repair layer
-and lives in [`screen-sharing.md`](screen-sharing.md).
+how a broken connection is repaired. Camera video rides these same
+connections and is the last section below. Screen sharing shares only the
+repair layer and lives in [`screen-sharing.md`](screen-sharing.md).
 
 Audio is peer-to-peer. Everyone in a voice channel holds a connection to
 everyone else and the server relays only signaling, which is why per-peer
@@ -168,6 +169,41 @@ Two voice-side rules hold the rest together:
   offer/answer, so the old check silently dropped every one of them.
 - Which of the two ends re-offers is decided by comparing the account names,
   so both machines pick the same side without a round trip to agree.
+
+## Camera video
+
+Cameras are **not** a mesh of their own. Every voice connection negotiates a
+`sendrecv` video transceiver at `createPeer` time, camera or no camera, and
+switching a camera on is `replaceTrack` on the sender that already exists.
+
+That is the whole reason for the design: a `replaceTrack` needs no
+renegotiation, so a camera toggle is never an offer. Renegotiating per toggle
+would mean two peers switching their cameras on in the same instant send each
+other an offer while holding one of their own — glare, which neither
+`handleOffer` nor the repair layer has a rollback for. Video also inherits
+voice's ICE, its repair policy and its teardown for free.
+
+**Only the offering side may create the transceiver.** A transceiver from
+`addTransceiver` is never matched to an incoming offer's m-line — only
+`addTrack` ones are — so creating it on the answering side leaves the camera
+on a transceiver with no `mid`, sending to nobody, while the offer's video
+line quietly gets a fresh `recvonly` transceiver of its own. The answerer
+therefore takes over the one the offer brought (`adoptVideoTransceiver`) and
+flips it to `sendrecv` *before* the answer, which is what pre-negotiates its
+own camera in the same round.
+
+`webcam-start`/`-stop` (and the `webcam-active` catch-up on join) are
+announcements only — no SDP. They exist because the transceiver delivers a
+track whether or not a camera is on: without them a camera that was switched
+off would still look live, and the receiving track's `muted` flag is both
+slow and inconsistent across browsers. `stores/webcam.ts` owns them and the
+local capture.
+
+The presets in `voice/camera.ts` stop at 720p and 1.5 Mbps deliberately.
+Video is a full mesh like the audio — one encode per peer — so a channel of
+five with cameras on already costs each machine four encodes and four
+decodes. Senders use `maintain-framerate`: a face reads fine soft and badly
+stuttering, the opposite trade-off from a screen share.
 
 ## Soundboard playback
 

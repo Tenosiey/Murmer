@@ -26,8 +26,25 @@ export const voice = {
   leave: (channelId: number) => {
     soundboardPlayer.setChannel(null);
     manager.leave(channelId, get(peers));
+  },
+  /**
+   * Send (or stop sending) our camera to everyone in the channel. Video rides
+   * the voice connections, so this is the voice manager's job rather than a
+   * mesh of its own; `stores/webcam.ts` owns the capture that feeds it.
+   */
+  setCameraTrack: (track: MediaStreamTrack | null, maxBitrate?: number) => {
+    manager.setCameraTrack(track, maxBitrate);
   }
 };
+
+/** Each peer's camera stream, keyed by account name. */
+export const voiceVideo = derived(voice, ($voice) => {
+  const map: Record<string, MediaStream> = {};
+  for (const p of $voice as unknown as RemotePeer[]) {
+    if (p.video) map[p.id] = p.video;
+  }
+  return map;
+});
 
 /** Names of the peers whose connection is currently being repaired. */
 export const voiceReconnecting = derived(voice, ($voice) => {

@@ -32,7 +32,7 @@ bun run test         # Vitest (bun run test:watch while iterating)
 | `src/lib/components/chat/` | Sections of the chat page (sidebar, header, …) |
 | `src/lib/stores/` | Svelte stores holding client state — [`../docs/client-state.md`](../docs/client-state.md) |
 | `src/lib/chat/` | Constants and helpers for the chat page |
-| `src/lib/voice/` | WebRTC voice, push-to-talk, RNNoise, mic tooling — [`../docs/voice.md`](../docs/voice.md) |
+| `src/lib/voice/` | WebRTC voice, camera video, push-to-talk, RNNoise, mic tooling — [`../docs/voice.md`](../docs/voice.md) |
 | `src/lib/screenshare/` | Screen sharing manager — [`../docs/screen-sharing.md`](../docs/screen-sharing.md) |
 | `src/lib/webrtc/` | What both WebRTC managers share: `recovery.ts`, `fingerprint.ts` |
 | `src/lib/wiki/` | Channel wiki: slug rules, `[[wikilink]]`, the pure line diff |

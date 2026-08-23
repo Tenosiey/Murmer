@@ -1,11 +1,13 @@
 <!--
   Left-hand sidebar: text/voice channel list grouped by category, the users in
-  each voice channel and the voice control panel (mute, leave, screen share).
+  each voice channel and the voice control panel (mute, leave, screen share,
+  camera).
 -->
 <script lang="ts">
   import { browser } from '$app/environment';
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
   import ScreenShareControls from '$lib/components/ScreenShareControls.svelte';
+  import WebcamControls from '$lib/components/WebcamControls.svelte';
   import SoundboardPanel from '$lib/components/SoundboardPanel.svelte';
   import RoleIcon from '$lib/components/RoleIcon.svelte';
   import { channels } from '$lib/stores/channels';
@@ -26,6 +28,7 @@
     screenSharePreview,
     watchedScreenShares
   } from '$lib/stores/screenShare';
+  import { activeWebcams } from '$lib/stores/webcam';
   import { unread } from '$lib/stores/unread';
   import { can } from '$lib/stores/permissions';
   import { PERMISSIONS } from '$lib/chat/permissions';
@@ -511,6 +514,15 @@
                           <span>LIVE</span>
                         </button>
                       {/if}
+                      {#if $activeWebcams[ch.id]?.includes(user)}
+                        <span
+                          class="webcam-indicator"
+                          title={`${$displayNames(user)} has their camera on`}
+                          aria-label={`${$displayNames(user)} has their camera on`}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                        </span>
+                      {/if}
                       <ConnectionBars
                         strength={user === $session.user ? serverStrength : ($voiceStats[user]?.strength ?? 0)}
                         reconnecting={user !== $session.user && $voiceReconnecting.has(user)}
@@ -604,6 +616,7 @@
 
       {#if inVoice}
         <ScreenShareControls currentVoiceChannel={currentVoiceChannelId} {inVoice} />
+        <WebcamControls currentVoiceChannel={currentVoiceChannelId} {inVoice} />
         <SoundboardPanel
           currentVoiceChannel={currentVoiceChannelId}
           {inVoice}
@@ -1014,5 +1027,14 @@
 
   .screenshare-indicator svg {
     flex-shrink: 0;
+  }
+
+  /* A camera that is on. Not a button: unlike a screen share there is nothing
+     to open — every camera in the channel is already on the video stage. */
+  .webcam-indicator {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    color: var(--color-primary);
   }
 </style>

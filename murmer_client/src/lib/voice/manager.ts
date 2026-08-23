@@ -4,6 +4,9 @@
  * Handles peer connection setup using messages sent over the WebSocket chat
  * channel. Consumers subscribe to updates to receive the list of remote peers
  * currently connected.
+ *
+ * Camera video rides these same connections — see `setCameraTrack` for why it
+ * is not a mesh of its own.
  */
 import { chat } from '../stores/chat';
 import {
@@ -40,6 +43,14 @@ import { remoteFingerprint } from '../webrtc/fingerprint';
 import { PeerRecovery } from '../webrtc/recovery';
 
 const DEFAULT_AUDIO_BITRATE = 64_000;
+
+/**
+ * Encoder cap for the camera, in bits per second, until the store pushes the
+ * chosen quality down. Matches the default preset in `camera.ts`; a peer that
+ * connects in the moment between the camera opening and the settings landing
+ * would otherwise encode uncapped.
+ */
+const DEFAULT_CAMERA_BITRATE = 800_000;
 
 /**
  * Time constant for opening and closing the transmission gate. Switching the
@@ -102,6 +113,19 @@ export class VoiceManager {
   private userName: string | null = null;
   private channelId: number | null = null;
   private listeners: Array<(peers: RemotePeer[]) => void> = [];
+
+  /** Sender of each peer's pre-negotiated camera transceiver. */
+  private videoSenders: Record<string, RTCRtpSender> = {};
+  /**
+   * Incoming camera stream per peer, kept and updated in place rather than
+   * rebuilt: handing a video element a new `MediaStream` re-attaches its
+   * source and restarts playback from black.
+   */
+  private remoteVideo: Record<string, MediaStream> = {};
+  /** Our camera track while the camera is on, attached to every peer. */
+  private cameraTrack: MediaStreamTrack | null = null;
+  /** Encoder cap for the camera, in bits per second. */
+  private cameraBitrate = DEFAULT_CAMERA_BITRATE;
 
   /**
    * The peer list of the current session. Held here as well as threaded
@@ -496,6 +520,93 @@ export class VoiceManager {
     }
   }
 
+  /**
+   * Cap a camera sender and tell the encoder what to give up first.
+   *
+   * `maintain-framerate` because a talking head reads fine soft and reads
+   * badly stuttering — the opposite trade-off from a screen share, where the
+   * text has to stay sharp.
+   */
+  private configureVideoSender(sender: RTCRtpSender) {
+    try {
+      const params = sender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) {
+        params.encodings = [{}];
+      }
+      for (const encoding of params.encodings) {
+        encoding.maxBitrate = this.cameraBitrate;
+      }
+      params.degradationPreference = 'maintain-framerate';
+      sender.setParameters(params).catch(() => {});
+    } catch {
+      // Ignore configuration errors
+    }
+  }
+
+  /**
+   * Attach (or clear) our camera on every peer.
+   *
+   * `replaceTrack` on the transceiver the connection already negotiated,
+   * which is what keeps a camera toggle from being an offer: no
+   * renegotiation, no glare, and nothing for a peer mid-repair to answer.
+   * Peers that connect later pick the track up as they are built, in
+   * `createPeer` or `adoptVideoTransceiver` depending on which end offered.
+   */
+  setCameraTrack(track: MediaStreamTrack | null, maxBitrate?: number) {
+    this.cameraTrack = track;
+    if (maxBitrate && maxBitrate > 0) this.cameraBitrate = maxBitrate;
+    for (const sender of Object.values(this.videoSenders)) {
+      sender.replaceTrack(track).catch((error) => {
+        console.error('Failed to update the outgoing camera track:', error);
+      });
+      if (track) this.configureVideoSender(sender);
+    }
+  }
+
+  /**
+   * Claim the video m-line of an offer we are answering.
+   *
+   * The answerer cannot pre-create this transceiver (see `createPeer`), so it
+   * arrives from `setRemoteDescription` as `recvonly`. Turning it `sendrecv`
+   * *before* the answer is what pre-negotiates our own camera: the direction
+   * is settled in this very round of offer/answer, and switching the camera
+   * on later stays a `replaceTrack` with nothing to renegotiate.
+   */
+  private adoptVideoTransceiver(id: string, pc: RTCPeerConnection) {
+    // `mid` is what says a transceiver actually belongs to an m-line.
+    const video = pc
+      .getTransceivers()
+      .find((t) => t.mid !== null && t.receiver.track?.kind === 'video');
+    if (!video) return;
+    video.direction = 'sendrecv';
+    this.videoSenders[id] = video.sender;
+    if (this.cameraTrack) {
+      video.sender.replaceTrack(this.cameraTrack).catch((error) => {
+        console.error('Failed to attach the camera to an answered connection:', error);
+      });
+    }
+    this.configureVideoSender(video.sender);
+  }
+
+  /**
+   * The stream carrying `id`'s camera, holding `track`. One stream per peer,
+   * reused for the lifetime of the connection — the transceiver is
+   * pre-negotiated, so a peer switching their camera off and on again swaps
+   * the track behind this without `ontrack` firing a second time.
+   */
+  private trackRemoteVideo(id: string, track: MediaStreamTrack): MediaStream {
+    let stream = this.remoteVideo[id];
+    if (!stream) {
+      stream = new MediaStream();
+      this.remoteVideo[id] = stream;
+    }
+    if (!stream.getTrackById(track.id)) {
+      for (const existing of stream.getVideoTracks()) stream.removeTrack(existing);
+      stream.addTrack(track);
+    }
+    return stream;
+  }
+
   private applyChannelConfigToPeers() {
     if (!this.channelConfig) return;
     for (const pc of Object.values(this.peers)) {
@@ -645,6 +756,8 @@ export class VoiceManager {
       delete this.prevPacketCounts[id];
       delete this.lossWindows[id];
     }
+    delete this.videoSenders[id];
+    delete this.remoteVideo[id];
     // Remove in place. `peersList` is the array every other emit spreads, so a
     // peer that was only filtered out of the copy handed to subscribers comes
     // back the moment anything else emits — a closed connection reappearing in
@@ -835,14 +948,35 @@ export class VoiceManager {
         }
       }
     }
+    // Every voice connection carries a camera transceiver whether or not a
+    // camera is on. A transceiver that already exists takes a track through
+    // `replaceTrack`, which needs no renegotiation — so switching a camera on
+    // is not an offer, and two peers doing it at the same instant cannot
+    // collide. Renegotiating per toggle would be exactly the glare neither
+    // this manager nor `handleOffer` has a rollback for.
+    //
+    // Only the side that offers may create it. A transceiver from
+    // `addTransceiver` is **never** matched to an incoming offer's m-line —
+    // only `addTrack` ones are — so creating it here on the answering side
+    // left the camera on a transceiver with no `mid`, silently sending to
+    // nobody while the offer's video line got a fresh recvonly one.
+    // `adoptVideoTransceiver` takes that one over instead.
+    if (initiator) {
+      const video = pc.addTransceiver(this.cameraTrack ?? 'video', { direction: 'sendrecv' });
+      this.videoSenders[id] = video.sender;
+      this.configureVideoSender(video.sender);
+    }
     pc.ontrack = (ev) => {
-      const stream = ev.streams[0];
       const existing = peersList.find((r) => r.id === id);
-      if (existing) {
-        existing.stream = stream;
-      } else {
-        peersList.push({ id, stream });
+      // The camera transceiver is created rather than added with a track, so
+      // it has no stream association and `ev.streams` is empty for video.
+      const peer = existing ?? { id, stream: new MediaStream() };
+      if (ev.track.kind === 'video') {
+        peer.video = this.trackRemoteVideo(id, ev.track);
+      } else if (ev.streams[0]) {
+        peer.stream = ev.streams[0];
       }
+      if (!existing) peersList.push(peer);
       this.emit([...peersList]);
     };
     pc.onicecandidate = (ev) => {
@@ -950,6 +1084,11 @@ export class VoiceManager {
     }
     this.cleanupAudioProcessing();
     this.localStream = null;
+    // The capture itself belongs to the webcam store, which stops it on the
+    // same path; only the references are dropped here.
+    this.cameraTrack = null;
+    this.videoSenders = {};
+    this.remoteVideo = {};
 
     if (this.vad) {
       this.vad.stop();
@@ -1016,6 +1155,9 @@ export class VoiceManager {
     await pc.setRemoteDescription(
       new RTCSessionDescription(withOpusFeatures(msg.sdp as RTCSessionDescriptionInit))
     );
+    // Has to happen before the answer: the answer is what tells the peer we
+    // will be sending video on that m-line as well as receiving it.
+    this.adoptVideoTransceiver(remote, pc);
     const answer = withOpusFeatures(await pc.createAnswer());
     await pc.setLocalDescription(answer);
     chat.sendRaw({
