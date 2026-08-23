@@ -96,11 +96,10 @@ pub const MAX_FAVORITE_SOUNDS: i64 = 5;
 /// Upper bound accepted for reported latency/jitter values in milliseconds.
 pub const MAX_REPORTED_STAT_MS: f64 = 60_000.0;
 
-/// Maximum duration in seconds for a timed mute (30 days).
-pub const MAX_MUTE_SECONDS: i64 = 30 * 24 * 60 * 60;
-
-/// Minimum duration in seconds for a timed mute.
-pub const MIN_MUTE_SECONDS: i64 = 10;
+/// Bounds for a timed mute. Defined next to the rows they bound
+/// (`db::moderation`) because the auto-moderation rules reach for the same
+/// pair — a rule may not mute for longer than a moderator could by hand.
+pub use crate::db::{MAX_MUTE_SECONDS, MIN_MUTE_SECONDS};
 
 /// Bound for a voice channel's bitrate. Defined next to the configurable
 /// defaults it limits (`db::voice_defaults`) so the two can never disagree;

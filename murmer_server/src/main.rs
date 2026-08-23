@@ -29,8 +29,8 @@ use axum::{
 };
 use dotenvy::dotenv;
 use murmer_server::{
-    AppState, RateLimiter, VoiceChannelState, admin, bot, config::Config, db, link_preview, upload,
-    ws,
+    AppState, RateLimiter, VoiceChannelState, admin, automod, bot, config::Config, db,
+    link_preview, upload, ws,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -101,6 +101,9 @@ async fn main() -> Result<()> {
     // Consulted by every chat message; see `AppState::chat_settings`.
     let chat_settings = db::chat_settings(&db_client).await.unwrap_or_default();
 
+    // Compiled once here rather than per message; see `AppState::automod`.
+    let automod_rules = db::automod_rules(&db_client).await.unwrap_or_default();
+
     tokio::fs::create_dir_all(&config.upload_dir)
         .await
         .with_context(|| {
@@ -158,6 +161,7 @@ async fn main() -> Result<()> {
         rate_limiter: RateLimiter::default(),
         stats_enabled: std::sync::atomic::AtomicBool::new(stats_enabled),
         chat_settings: Arc::new(Mutex::new(chat_settings)),
+        automod: Arc::new(Mutex::new(automod::RuleSet::compile(automod_rules))),
         slow_mode_sends: Arc::new(Mutex::new(HashMap::new())),
     });
 

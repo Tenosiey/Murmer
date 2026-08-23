@@ -9,6 +9,7 @@
 //! `channel_id`.
 //!
 //! Submodules group queries by domain:
+//! - [`automod`] – auto-moderation rules applied to every chat message
 //! - [`channel_keys`] – wrapped per-channel keys of encrypted channels
 //! - [`channels`] – text channels, voice channels and categories
 //! - [`chat_settings`] – slow mode, message length cap and profanity filter
@@ -29,6 +30,7 @@
 //! - [`voice_defaults`] – quality/bitrate new voice channels start with
 //! - [`wiki`] – per-channel Markdown wiki pages with revision history
 
+mod automod;
 mod channel_keys;
 mod channel_overrides;
 mod channels;
@@ -50,6 +52,7 @@ mod users;
 mod voice_defaults;
 mod wiki;
 
+pub use automod::*;
 pub use channel_keys::*;
 pub use channel_overrides::*;
 pub use channels::*;
@@ -327,6 +330,7 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         ))?;
 
         conn.execute_batch(&stats::stats_schema())?;
+        conn.execute_batch(&automod::automod_schema())?;
         conn.execute_batch(&wiki::wiki_schema())?;
         conn.execute_batch(&soundboard::soundboard_schema())?;
 

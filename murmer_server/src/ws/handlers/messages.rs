@@ -357,6 +357,18 @@ pub(super) async fn handle_chat(
         }
     }
 
+    // Auto-moderation sees the text as it was typed, before the mask below:
+    // a word the filter would star out must not be able to walk a rule that
+    // matches it. Like the mask it is a no-op in an encrypted channel, where
+    // there is no text to read.
+    if !encrypted
+        && let Some(text) = v.get("text").and_then(|t| t.as_str())
+        && super::automod::screen(state, sender, user, text).await
+            == super::automod::Screen::Blocked
+    {
+        return;
+    }
+
     // Masking happens before the message is stored or broadcast, so the
     // filtered form is the only one any other client can ever see. It is a
     // no-op in an encrypted channel: the server holds no text to mask there,
@@ -618,8 +630,11 @@ pub(super) async fn handle_edit_message(
     // in a plaintext one.
     let encrypted = channel_is_e2ee(state, channel_id).await;
     let max_length = super::chat_settings::max_message_length(state).await;
-    let mut new_text = String::new();
     let mut new_enc = Value::Null;
+    // The replacement text of a plaintext channel, neither screened nor
+    // masked yet: screening can mute whoever sent it, so it waits until the
+    // edit is known to be one this user is allowed to make at all.
+    let mut raw_text = "";
     if encrypted {
         if v.get("text").is_some_and(|value| !value.is_null()) {
             send_error(sender, errors::CHANNEL_REQUIRES_ENCRYPTION).await;
@@ -633,19 +648,15 @@ pub(super) async fn handle_edit_message(
             }
         }
     } else {
-        let Some(raw_text) = v.get("text").and_then(|t| t.as_str()) else {
+        let Some(text) = v.get("text").and_then(|t| t.as_str()) else {
             send_error(sender, errors::INVALID_MESSAGE_TEXT).await;
             return;
         };
-        if raw_text.trim().is_empty() || raw_text.len() > max_length {
+        if text.trim().is_empty() || text.len() > max_length {
             send_error(sender, errors::MESSAGE_TOO_LONG).await;
             return;
         }
-        // An edit runs through the same filter as a new message: otherwise
-        // posting and immediately editing would walk straight past it. There
-        // is nothing to filter in an encrypted channel — the server never sees
-        // the text, before or after the edit.
-        new_text = super::chat_settings::mask_text(state, raw_text).await;
+        raw_text = text;
     }
     let record = match db::get_message_record(&state.db, message_id).await {
         Ok(Some(record)) => record,
@@ -676,6 +687,20 @@ pub(super) async fn handle_edit_message(
     if owner.as_deref() != Some(requester.as_str()) {
         send_error(sender, errors::MESSAGE_PERMISSION_DENIED).await;
         return;
+    }
+
+    // An edit runs through the same rules and the same filter as a new
+    // message: otherwise posting and immediately editing would walk straight
+    // past both. There is nothing to screen or filter in an encrypted
+    // channel — the server never sees the text, before or after the edit.
+    let mut new_text = String::new();
+    if !encrypted {
+        if super::automod::screen(state, sender, &requester, raw_text).await
+            == super::automod::Screen::Blocked
+        {
+            return;
+        }
+        new_text = super::chat_settings::mask_text(state, raw_text).await;
     }
 
     let mut content = record.content.clone();

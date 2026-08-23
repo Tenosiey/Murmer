@@ -46,6 +46,7 @@ async fn make_app() -> (Router, Arc<AppState>) {
         rate_limiter: RateLimiter::new(),
         stats_enabled: std::sync::atomic::AtomicBool::new(false),
         chat_settings: Arc::new(Mutex::new(murmer_server::db::ChatSettings::default())),
+        automod: Arc::new(Mutex::new(murmer_server::automod::RuleSet::default())),
         slow_mode_sends: Arc::new(Mutex::new(HashMap::new())),
     });
     (bot::routes::router().with_state(Arc::clone(&state)), state)

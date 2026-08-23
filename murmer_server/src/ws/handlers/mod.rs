@@ -5,6 +5,7 @@
 //! domain-specific handlers are split into submodules to keep each file
 //! focused:
 //! - [`auth`] – user and bot authentication
+//! - [`automod`] – auto-moderation rules and the screening of each message
 //! - [`channels`] – text/voice channel and category management
 //! - [`chat_settings`] – slow mode, message length cap and profanity filter
 //! - [`dms`] – direct messages between two users
@@ -22,6 +23,7 @@
 //! - [`wiki`] – per-channel Markdown wiki pages
 
 mod auth;
+mod automod;
 mod channel_keys;
 mod channel_overrides;
 mod channels;
@@ -389,6 +391,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "set-chat-settings" => {
                                 chat_settings::handle_set_chat_settings(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "get-automod-rules" => {
+                                automod::handle_get_automod_rules(&state, &mut sender, &user_name).await;
+                            }
+                            "set-automod-rules" => {
+                                automod::handle_set_automod_rules(&state, &mut sender, &v, &user_name).await;
                             }
                             "set-voice-defaults" => {
                                 voice_defaults::handle_set_voice_defaults(&state, &mut sender, &v, &user_name).await;

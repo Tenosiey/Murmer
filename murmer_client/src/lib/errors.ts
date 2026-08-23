@@ -141,6 +141,14 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'chat-settings-permission-denied':
     'You do not have permission to change the chat settings on this server.',
   'invalid-chat-settings': 'Those chat settings are not valid.',
+  'automod-blocked': 'An auto-moderation rule on this server blocked that message.',
+  'automod-permission-denied':
+    'You do not have permission to change the auto-moderation rules on this server.',
+  'invalid-automod-rules': 'Those auto-moderation rules are not valid.',
+  'invalid-automod-pattern':
+    'One of those patterns is not valid. A regular expression must compile, and a whole-word pattern cannot contain spaces.',
+  'automod-update-failed':
+    'The server could not update the auto-moderation rules. Please try again.',
   'chat-settings-update-failed':
     'The server could not update the chat settings. Please try again.',
   'voice-defaults-permission-denied':

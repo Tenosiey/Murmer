@@ -135,8 +135,6 @@ not a description of the fix.
 
 ### 🗨️ Chat Features
 
-- [ ] Auto-moderation rules — pattern rules with actions (delete, warn, mute)
-      beyond the flat profanity word list
 - [ ] Drafts kept per channel, so switching channels mid-sentence does not
       throw the sentence away
 - [ ] Forward a message to another channel or a DM, keeping its attribution

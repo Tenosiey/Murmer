@@ -471,6 +471,27 @@ pub const INVALID_CHAT_SETTINGS: &str = r#"{"type":"error","message":"invalid-ch
 pub const CHAT_SETTINGS_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"chat-settings-update-failed"}"#;
 
+/// An auto-moderation rule refused the message. Covers both the delete and
+/// the mute action: the message did not go out either way, and the mute
+/// itself is announced by the `user-muted` frame that follows.
+pub const AUTOMOD_BLOCKED: &str = r#"{"type":"error","message":"automod-blocked"}"#;
+
+/// User lacks permission to read or change the auto-moderation rules.
+pub const AUTOMOD_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"automod-permission-denied"}"#;
+
+/// An auto-moderation rule failed validation; nothing was stored.
+pub const INVALID_AUTOMOD_RULES: &str = r#"{"type":"error","message":"invalid-automod-rules"}"#;
+
+/// An auto-moderation rule's *pattern* was refused: a regular expression that
+/// does not compile, or a whole-word pattern with a space in it. Told apart
+/// from the frame being invalid because it is the one an operator can fix by
+/// looking at what they typed.
+pub const INVALID_AUTOMOD_PATTERN: &str = r#"{"type":"error","message":"invalid-automod-pattern"}"#;
+
+/// Failed to persist or load the auto-moderation rules.
+pub const AUTOMOD_UPDATE_FAILED: &str = r#"{"type":"error","message":"automod-update-failed"}"#;
+
 /// User lacks permission to change the voice defaults.
 pub const VOICE_DEFAULTS_PERMISSION_DENIED: &str =
     r#"{"type":"error","message":"voice-defaults-permission-denied"}"#;

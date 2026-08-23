@@ -1,5 +1,5 @@
 /**
- * Guards the two tables the client duplicates from the server.
+ * Guards the tables the client duplicates from the server.
  *
  * The documentation asked to "keep them in sync" and nothing enforced it: the
  * copies drift silently, and the symptom shows up far from the cause — a
@@ -27,7 +27,15 @@ import {
   MAX_SLOW_MODE_SECONDS,
   MAX_PROFANITY_WORDS,
   MAX_PROFANITY_WORD_LEN,
-  MAX_VOICE_BITRATE
+  MAX_VOICE_BITRATE,
+  MIN_MUTE_SECONDS,
+  MAX_MUTE_SECONDS,
+  MAX_AUTOMOD_RULES,
+  MAX_AUTOMOD_PATTERN_LEN,
+  MAX_AUTOMOD_NAME_LEN,
+  DEFAULT_AUTOMOD_MUTE_SECONDS,
+  AUTOMOD_KINDS,
+  AUTOMOD_ACTIONS
 } from '../src/lib/chat/constants';
 
 function readServerSource(relative: string): string {
@@ -38,6 +46,8 @@ const permissionsRs = readServerSource('permissions.rs');
 const uploadRs = readServerSource('upload.rs');
 const chatSettingsRs = readServerSource('db/chat_settings.rs');
 const voiceDefaultsRs = readServerSource('db/voice_defaults.rs');
+const moderationRs = readServerSource('db/moderation.rs');
+const automodRs = readServerSource('automod.rs');
 
 /** `pub const NAME: Permissions = 1 << N;` — one line per flag. */
 function serverPermissionFlags(): Record<string, number> {
@@ -68,6 +78,18 @@ function serverNumberConstant(source: string, name: string, type: string): numbe
     .split('*')
     .map((part) => Number(part.trim().replace(/_/g, '')))
     .reduce((product, value) => product * value, 1);
+}
+
+/**
+ * Wire names from an enum's `as_str` block: `Self::Word => "word",`. The
+ * server rejects a kind or action it does not know rather than falling back
+ * to a default, so a client offering one it spelled differently would save
+ * nothing and say nothing.
+ */
+function serverWireNames(source: string, enumName: string): string[] {
+  const block = source.match(new RegExp(`^impl ${enumName} \\{([\\s\\S]*?)\\n\\}`, 'm'));
+  expect(block, `impl ${enumName} not found in automod.rs`).not.toBeNull();
+  return [...block![1].matchAll(/Self::\w+ => "([a-z]+)"/g)].map((match) => match[1]);
 }
 
 type ServerCategory = { id: string; label: string; extensions: string[] };
@@ -225,5 +247,45 @@ describe('chat policy mirror', () => {
     expect(serverNumberConstant(voiceDefaultsRs, 'MAX_ALLOWED_VOICE_BITRATE', 'i32')).toBe(
       MAX_VOICE_BITRATE
     );
+  });
+});
+
+describe('auto-moderation mirror', () => {
+  it('parsed the server vocabularies at all', () => {
+    // Cheap canary, as above: a reformat that breaks the regex must not turn
+    // the comparisons below into two empty arrays agreeing with each other.
+    expect(serverWireNames(automodRs, 'RuleKind').length).toBe(3);
+    expect(serverWireNames(automodRs, 'RuleAction').length).toBe(3);
+  });
+
+  it('offers exactly the match kinds the server accepts', () => {
+    expect(serverWireNames(automodRs, 'RuleKind')).toEqual(AUTOMOD_KINDS.map((kind) => kind.id));
+  });
+
+  it('offers the actions in the server\'s severity order', () => {
+    // The Rust enum is ordered least to most severe and compared as such —
+    // that ordering is what decides between two matching rules, so the
+    // dashboard listing them in another order would misdescribe the outcome.
+    expect(serverWireNames(automodRs, 'RuleAction')).toEqual(
+      AUTOMOD_ACTIONS.map((action) => action.id)
+    );
+  });
+
+  it('agrees on the rule bounds', () => {
+    expect(serverNumberConstant(automodRs, 'MAX_AUTOMOD_RULES', 'usize')).toBe(MAX_AUTOMOD_RULES);
+    expect(serverNumberConstant(automodRs, 'MAX_AUTOMOD_PATTERN_LEN', 'usize')).toBe(
+      MAX_AUTOMOD_PATTERN_LEN
+    );
+    expect(serverNumberConstant(automodRs, 'MAX_AUTOMOD_NAME_LEN', 'usize')).toBe(
+      MAX_AUTOMOD_NAME_LEN
+    );
+    expect(serverNumberConstant(automodRs, 'DEFAULT_AUTOMOD_MUTE_SECONDS', 'i64')).toBe(
+      DEFAULT_AUTOMOD_MUTE_SECONDS
+    );
+  });
+
+  it('agrees on the mute duration bounds a rule is clamped to', () => {
+    expect(serverNumberConstant(moderationRs, 'MIN_MUTE_SECONDS', 'i64')).toBe(MIN_MUTE_SECONDS);
+    expect(serverNumberConstant(moderationRs, 'MAX_MUTE_SECONDS', 'i64')).toBe(MAX_MUTE_SECONDS);
   });
 });
