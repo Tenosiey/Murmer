@@ -67,6 +67,61 @@ pruned on disconnect. The client's cooldown is a cosmetic mirror.
 `db::migrate_soundboard_permissions` grants the two flags to pre-soundboard
 databases once, marker-guarded, so an existing server matches a fresh one.
 
+## Message forwarding
+
+Server: `ws/handlers/messages.rs::handle_forward_message`,
+`ws/helpers.rs::prepare_forward` / `forwarded_body`. Client:
+`src/lib/chat/forward.ts`.
+
+**A forward into a channel is a copy the server makes.** The client sends a
+message id and a destination and nothing else; the words and the
+`forwardedFrom` stamp are both read out of the stored row. The author of the
+new message stays the forwarder — the stamp is what says whose words these
+are. Letting the client name that author would let anyone make any member
+appear to have said anything, in front of a room with no way to check; it is
+the same reason a reply's quoted snippet is rebuilt rather than trusted.
+
+The copy carries `text`, `image` and `attachment` and **nothing else** from
+the source. Reactions, the thread id, the reply, the edit marker and the id
+all describe the original posting and would be false on a copy.
+
+Forwarding a forward keeps the *first* attribution rather than nesting one
+inside the other. The words are still the first author's, and a chain of
+"forwarded from a forward of…" tells the reader nothing.
+
+Three refusals carry the design:
+
+- **The source is view-checked, and the refusal is deliberately ambiguous.**
+  Message ids are small integers, so without the check a member could guess
+  one, forward it into a channel they can post in, and read a private
+  channel's contents out of the result. "You cannot see it" and "it does not
+  exist" answer with the same code, so guessing cannot even confirm that a
+  hidden message is there.
+- **An encrypted channel at either end refuses.** The server holds no
+  plaintext of a sealed message and no key to seal a copy with, so the only
+  way across that boundary would be to let the client supply the words under
+  a server-stamped attribution — the forgery the frame exists to prevent.
+- **An ephemeral message refuses.** It was posted on the promise that it
+  disappears; a copy without the expiry breaks that promise, and a copy
+  carrying it would start a second countdown nobody asked for.
+
+**A forward cannot be edited.** Editing is normally the author's own right,
+never a moderator's, precisely because it rewrites somebody's words — but a
+forward is the one message whose author did not write it, so that rule stops
+protecting anyone there. `may_edit_message` refuses, or forwarding and then
+editing would put arbitrary words under somebody else's name with the
+server's own attribution still on top of them. Deleting a forward stays
+allowed: withdrawing it claims nothing.
+
+**Forwarding into a DM is the client's copy, not the server's.** A DM is
+end-to-end encrypted, so the server can read neither the message being
+forwarded nor the copy, and there is no field for it to stamp — the
+attribution travels inside the ciphertext as text, because a DM's plaintext
+*is* its text. A forwarded DM is therefore a claim by its sender. That is the
+honest shape for it and not a weakening: in a two-person conversation the
+sender could type the same words anyway, so there is nothing a stamp would
+protect. See [`security.md`](security.md).
+
 ## Profiles, display names and nicknames
 
 Server: `ws/handlers/profile.rs`, `db/users.rs`. Client:

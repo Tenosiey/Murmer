@@ -2,7 +2,7 @@
  * Utility functions for message processing and validation.
  */
 
-import type { AttachmentInfo, Message, ReplyInfo } from './types';
+import type { AttachmentInfo, ForwardInfo, Message, ReplyInfo } from './types';
 
 /**
  * Normalize reactions object to ensure consistent structure.
@@ -62,6 +62,27 @@ export function normalizeReplyTo(value: unknown): ReplyInfo | undefined {
 }
 
 /**
+ * Validate the forwarding metadata the server stamps on a forwarded message.
+ *
+ * The stamp is the only thing telling a reader that these words are somebody
+ * else's, so a malformed one is dropped rather than half-rendered: a chip
+ * naming an empty author under real text reads as an attribution failure, and
+ * an unattributed forward reads as the forwarder's own words. Both are worse
+ * than showing the message plainly.
+ * @param value - Raw forwardedFrom data
+ * @returns A safe forwarding descriptor, or undefined if invalid
+ */
+export function normalizeForwardedFrom(value: unknown): ForwardInfo | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.id !== 'number' || !Number.isFinite(raw.id)) return undefined;
+  if (typeof raw.channelId !== 'number' || !Number.isFinite(raw.channelId)) return undefined;
+  if (typeof raw.user !== 'string' || raw.user === '') return undefined;
+  const channel = typeof raw.channel === 'string' ? raw.channel : '';
+  return { id: raw.id, user: raw.user, channel, channelId: raw.channelId };
+}
+
+/**
  * Prepare a raw message for display by normalizing timestamps, reactions, and ephemeral status.
  * @param raw - Raw message from server
  * @returns Prepared message ready for display
@@ -110,6 +131,14 @@ export function prepareMessage(raw: Message): Message {
   }
   if (typeof raw.threadId !== 'number' || !Number.isFinite(raw.threadId)) {
     delete (msg as any).threadId;
+  }
+
+  // Normalize forwarding metadata
+  const forwardedFrom = normalizeForwardedFrom(raw.forwardedFrom);
+  if (forwardedFrom) {
+    msg.forwardedFrom = forwardedFrom;
+  } else {
+    delete (msg as any).forwardedFrom;
   }
 
   // Normalize expiry

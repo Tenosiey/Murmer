@@ -666,6 +666,25 @@ function createChatStore() {
   }
 
   /**
+   * Forward an existing message into another channel.
+   *
+   * Only the two ids travel. The server copies the words out of the message it
+   * stored and stamps the attribution itself, so a forward cannot claim
+   * somebody said something they did not — see
+   * `murmer_server/src/ws/handlers/messages.rs`.
+   *
+   * Forwarding into a DM is not this: that copy is composed and sealed by the
+   * client, because the server can read neither end of it. See
+   * `src/lib/chat/forward.ts`.
+   * @returns null on success, or an error message for the caller to surface
+   */
+  function forward(messageId: number, channelId: number): string | null {
+    if (!wsManager.isConnected()) return 'Not connected to the server.';
+    wsManager.send({ type: 'forward-message', messageId, channelId });
+    return null;
+  }
+
+  /**
    * Switch the connection to a channel.
    * @param channelId - Channel to join
    * @param announce - False records the channel the server already placed us
@@ -904,6 +923,7 @@ function createChatStore() {
     join,
     send,
     sendUpload,
+    forward,
     sendDm,
     sendEphemeral,
     sendTyping,

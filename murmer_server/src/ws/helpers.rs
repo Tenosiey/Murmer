@@ -973,6 +973,169 @@ pub fn reply_preview(text: &str, max_chars: usize) -> String {
     text.chars().take(max_chars).collect()
 }
 
+/// The fields that hold a message's actual content.
+///
+/// A client may only send them in a *plaintext* channel. In an encrypted one
+/// they are the plaintext the channel exists to keep off the server, so a
+/// frame carrying any of them is rejected rather than quietly stripped: a
+/// client that got this wrong has a bug its user needs to hear about, not a
+/// message that silently loses its attachment.
+///
+/// They are also exactly what a forward copies — see [`forwarded_body`].
+pub const PLAINTEXT_MESSAGE_FIELDS: [&str; 3] = ["text", "image", "attachment"];
+
+/// Build the body of a forwarded message from the stored copy of its source.
+///
+/// Only the content fields travel: the rest of the stored frame belongs to
+/// the original posting — its reactions, its thread, its edit marker, its
+/// expiry — and would be false on the copy. In their place goes a
+/// `forwardedFrom` stamp naming the original author and the channel the words
+/// were written in.
+///
+/// The stamp is assembled here, from the row the server stored, for the same
+/// reason [`reply_preview`] rebuilds a quote instead of trusting the sender's:
+/// a forward puts words in somebody else's mouth in front of a whole channel,
+/// and the readers have no way of checking them. A client that could name the
+/// author itself could make any member appear to have said anything.
+///
+/// Forwarding a forward keeps the *original* stamp rather than nesting one
+/// inside the other. The words are still the first author's, and a chain of
+/// "forwarded from a forward of…" tells the reader nothing they wanted.
+///
+/// Returns `None` when the source holds nothing that can be copied.
+pub fn forwarded_body(
+    source_id: i64,
+    source: &Value,
+    source_channel_id: i32,
+    source_channel_name: &str,
+) -> Option<Value> {
+    let mut body = Map::new();
+    for field in PLAINTEXT_MESSAGE_FIELDS {
+        if let Some(value) = source.get(field)
+            && !value.is_null()
+        {
+            body.insert(field.to_string(), value.clone());
+        }
+    }
+    if body.is_empty() {
+        return None;
+    }
+
+    let attribution = source.get("forwardedFrom").cloned().unwrap_or_else(|| {
+        serde_json::json!({
+            "id": source_id,
+            "user": source.get("user").and_then(|u| u.as_str()).unwrap_or(""),
+            "channel": source_channel_name,
+            "channelId": source_channel_id,
+        })
+    });
+    body.insert("forwardedFrom".to_string(), attribution);
+    Some(Value::Object(body))
+}
+
+/// Whether `requester` may rewrite the words of a stored message.
+///
+/// Two rules, and the second only exists because of the first. Editing
+/// rewrites somebody's words, so unlike deletion it is never extended to
+/// moderators — only the author may do it. A **forward** is the one message
+/// whose author did not write it, so that rule stops protecting anyone there:
+/// without the second check, forwarding a message and then editing it would
+/// put arbitrary words under somebody else's name with the server's own
+/// attribution still sitting on top of them. Deleting a forward stays
+/// allowed — withdrawing it claims nothing.
+pub fn may_edit_message(record: &Value, requester: &str) -> Result<(), &'static str> {
+    if record.get("user").and_then(|user| user.as_str()) != Some(requester) {
+        return Err(super::errors::MESSAGE_PERMISSION_DENIED);
+    }
+    if record
+        .get("forwardedFrom")
+        .is_some_and(|value| !value.is_null())
+    {
+        return Err(super::errors::CANNOT_EDIT_FORWARD);
+    }
+    Ok(())
+}
+
+/// Decide whether `user` may forward message `message_id` into text channel
+/// `target_id`, and build the copy if they may.
+///
+/// Every rule specific to forwarding lives here rather than in the handler, so
+/// the refusals are reachable from a test: they are the part of the feature
+/// that has to hold. Returns the error frame to send back
+/// ([`crate::ws::errors`]) or the message body to post.
+///
+/// The generic message rules — rate limit, mute, slow mode, the length cap —
+/// are the caller's, because a forward answers to them exactly as a typed
+/// message does.
+pub async fn prepare_forward(
+    state: &Arc<AppState>,
+    user: &str,
+    message_id: i64,
+    target_id: i32,
+) -> Result<Value, &'static str> {
+    // The destination is gated exactly as a new message there would be: the
+    // forward writes into that channel, so it answers to that channel's rules
+    // and not to the one the connection happens to be sitting in.
+    if !can_view_channel(state, user, ChannelKind::Text, target_id).await
+        || !has_channel_permission(
+            state,
+            user,
+            ChannelKind::Text,
+            target_id,
+            permissions::SEND_MESSAGES,
+        )
+        .await
+    {
+        return Err(super::errors::SEND_PERMISSION_DENIED);
+    }
+
+    let record = match db::get_message_record(&state.db, message_id).await {
+        Ok(Some(record)) => record,
+        Ok(None) => return Err(super::errors::FORWARD_SOURCE_NOT_FOUND),
+        Err(error) => {
+            error!("failed to load forward source {message_id}: {error}");
+            return Err(super::errors::FORWARD_SOURCE_NOT_FOUND);
+        }
+    };
+
+    // Without this check forwarding would be a read oracle over every private
+    // channel on the server: message ids are small integers, so guess one,
+    // forward it somewhere you can post, and read what comes out. The answer
+    // is deliberately the same code as "no such message", so guessing cannot
+    // even tell a hidden message from a missing one.
+    if !can_view_channel(state, user, ChannelKind::Text, record.channel_id).await {
+        return Err(super::errors::FORWARD_SOURCE_NOT_FOUND);
+    }
+
+    // Either end being end-to-end encrypted stops the copy here. The server
+    // holds no plaintext of a sealed message and no key to seal one with, so
+    // the only way across that boundary would be to let the *client* supply
+    // the words under a server-stamped attribution — the forgery this whole
+    // frame exists to avoid.
+    if channel_is_e2ee(state, record.channel_id).await || channel_is_e2ee(state, target_id).await {
+        return Err(super::errors::CANNOT_FORWARD_ENCRYPTED);
+    }
+
+    // An ephemeral message was posted on the promise that it disappears. A
+    // copy without that expiry breaks the promise, and a copy carrying it
+    // would start a second countdown nobody asked for.
+    if record.content.get("ephemeral") == Some(&Value::Bool(true)) {
+        return Err(super::errors::CANNOT_FORWARD_EPHEMERAL);
+    }
+
+    let source_channel_name = db::get_channel_by_id(&state.db, record.channel_id)
+        .await
+        .map(|channel| channel.name)
+        .unwrap_or_default();
+    forwarded_body(
+        message_id,
+        &record.content,
+        record.channel_id,
+        &source_channel_name,
+    )
+    .ok_or(super::errors::NOTHING_TO_FORWARD)
+}
+
 /// Why an end-to-end encrypted payload's fields were rejected.
 #[derive(Debug, PartialEq, Eq)]
 pub enum SealedPayloadError {

@@ -322,6 +322,29 @@ pub const REACTION_FAILED: &str = r#"{"type":"error","message":"reaction-failed"
 /// The message a reply targets no longer exists.
 pub const REPLY_TARGET_NOT_FOUND: &str = r#"{"type":"error","message":"reply-target-not-found"}"#;
 
+/// The message a forward names cannot be read by the requester — it does not
+/// exist, or it sits in a channel they cannot see. Deliberately one code for
+/// both, so probing ids cannot tell the two apart.
+pub const FORWARD_SOURCE_NOT_FOUND: &str =
+    r#"{"type":"error","message":"forward-source-not-found"}"#;
+
+/// One end of a forward is an end-to-end encrypted channel, so the server
+/// holds no copy of the message it would have to make.
+pub const CANNOT_FORWARD_ENCRYPTED: &str =
+    r#"{"type":"error","message":"cannot-forward-encrypted"}"#;
+
+/// The message a forward names is ephemeral; copying it would outlive the
+/// expiry its author chose.
+pub const CANNOT_FORWARD_EPHEMERAL: &str =
+    r#"{"type":"error","message":"cannot-forward-ephemeral"}"#;
+
+/// The message a forward names carries no text, image or attachment to copy.
+pub const NOTHING_TO_FORWARD: &str = r#"{"type":"error","message":"nothing-to-forward"}"#;
+
+/// The message is a forward. Its words are somebody else's, so its author —
+/// the forwarder — may delete it but never rewrite it.
+pub const CANNOT_EDIT_FORWARD: &str = r#"{"type":"error","message":"cannot-edit-forward"}"#;
+
 /// Failed to load a thread.
 pub const THREAD_LOAD_FAILED: &str = r#"{"type":"error","message":"thread-load-failed"}"#;
 

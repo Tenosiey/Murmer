@@ -278,6 +278,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "chat" => {
                                 messages::handle_chat(&state, &mut sender, &mut v, channel_id, &user_name).await;
                             }
+                            "forward-message" => {
+                                messages::handle_forward_message(&state, &mut sender, &v, &user_name).await;
+                            }
                             "delete-message" => {
                                 messages::handle_delete_message(&state, &mut sender, &v, channel_id, &user_name).await;
                             }
