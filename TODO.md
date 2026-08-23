@@ -65,11 +65,6 @@ stays readable. Use the checkboxes to mark something you have picked up.
 
 ## 🔧 Tech debt / hardening
 
-- [ ] Property-test `NoiseFloorTracker` in `voice/vad.ts` — the invariants are
-      already written down (the floor may never rise above the quietest level
-      of the last 20 s, and not at all until the input has been quiet for
-      `QUIET_DWELL_MS`), and a regression gates users mid-sentence, which no
-      quick smoke test catches. Needs `vi.useFakeTimers({ toFake: ['performance'] })`
 - [ ] Reject wrong-length peer keys in `dm-crypto.ts::dhKeys` —
       `ed2curve.convertPublicKey` does not check its input length, so
       `encryptDm` accepts a truncated key and produces a ciphertext nobody can
