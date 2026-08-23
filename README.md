@@ -78,6 +78,11 @@ small team can deploy a private chat space quickly.
 - Ephemeral messaging, search across messages and wiki pages, server-synced
   pinned messages and message editing
 - Message replies with quoted previews and lightweight threads
+- Message forwarding to another channel or a direct message, keeping the
+  original author and the channel it came from. A forward into a channel is
+  copied by the server, so the attribution is not something the sender can
+  write; encrypted channels are excluded at both ends, because the server has
+  no copy to make there
 - Typing indicators and per-channel unread badges with new-message markers
 - Moderation tools: role-gated kick, ban and timed mutes
 - End-to-end encrypted direct messages with persistent history and unread
@@ -475,6 +480,10 @@ The trade-offs are real and worth knowing before switching it on:
 - **Link previews, the profanity filter and content-derived stats stop.** All
   three are server-side and see nothing. Slow mode and the message length cap
   still apply.
+- **Messages cannot be forwarded into or out of the channel.** Forwarding is a
+  copy the server makes so that the original author's name on it is not
+  something the sender wrote, and there is nothing for it to copy here.
+  Forwarding into a direct message still works.
 - **The server is still the directory.** It decides who is on the member roster
   and hands out the identity keys the key is wrapped for, so a malicious server
   could put a key it controls on the roster. Clients pin every member's identity

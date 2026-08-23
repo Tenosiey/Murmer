@@ -103,6 +103,12 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'pin-limit-reached': 'This channel already has the maximum number of pinned messages.',
   'pin-failed': 'The server could not update the pinned messages.',
   'reply-target-not-found': 'The message you are replying to no longer exists.',
+  'forward-source-not-found': 'That message no longer exists, or you cannot see it.',
+  'cannot-forward-encrypted':
+    'Messages cannot be forwarded into or out of an end-to-end encrypted channel.',
+  'cannot-forward-ephemeral': 'A disappearing message cannot be forwarded.',
+  'nothing-to-forward': 'That message has nothing that can be forwarded.',
+  'cannot-edit-forward': 'A forwarded message cannot be edited — its words are someone else’s.',
   'thread-load-failed': 'The server could not load that thread. Please try again.',
   'emoji-permission-denied': 'You do not have permission to manage emojis on this server.',
   'invalid-emoji-name':

@@ -10,6 +10,22 @@ export interface ReplyInfo {
   text: string;
 }
 
+/**
+ * Where a forwarded message was originally posted. Built by the server from
+ * the message it stored, never from the forwarder — see
+ * `murmer_server/src/ws/helpers.rs`.
+ */
+export interface ForwardInfo {
+  /** Id of the original message. */
+  id: number;
+  /** Account name of the original author. */
+  user: string;
+  /** Name of the channel it was posted in. */
+  channel: string;
+  /** Id of that channel; the jump link only works where it is still visible. */
+  channelId: number;
+}
+
 export interface Message {
   type: string;
   user?: string;
@@ -27,6 +43,8 @@ export interface Message {
   editedAt?: string;
   replyTo?: ReplyInfo;
   threadId?: number;
+  /** Set on a message forwarded from elsewhere; `user` stays the forwarder. */
+  forwardedFrom?: ForwardInfo;
   /** Direct messages: sender/recipient names (metadata stays plaintext). */
   from?: string;
   to?: string;

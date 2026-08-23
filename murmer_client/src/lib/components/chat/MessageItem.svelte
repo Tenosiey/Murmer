@@ -2,11 +2,13 @@
   A single chat message row. Group heads render an avatar, username, role and
   timestamp; continuation messages (same author within the grouping window)
   render compactly and reveal their timestamp in the gutter on hover.
-  A floating action toolbar (react/reply/edit/pin/delete) appears on hover or
-  keyboard focus.
+  A floating action toolbar (react/reply/forward/edit/pin/delete) appears on
+  hover or keyboard focus. A forwarded message keeps the forwarder as its
+  author and carries the original's attribution above it.
 -->
 <script lang="ts">
-  import type { Message } from '$lib/types';
+  import type { ForwardInfo, Message } from '$lib/types';
+  import { channels } from '$lib/stores/channels';
   import { roles } from '$lib/stores/roles';
   import { displayNames } from '$lib/stores/profiles';
   import { session } from '$lib/stores/session';
@@ -40,7 +42,9 @@
     canDelete?: boolean;
     canPin?: boolean;
     onFocusMessage: (id: number) => void;
+    onFocusForwarded: (origin: ForwardInfo) => void;
     onReply: (msg: Message) => void;
+    onForward: (msg: Message) => void;
     onEdit: (msg: Message) => void;
     onTogglePin: (msg: Message) => void;
     onDelete: (msg: Message) => void;
@@ -62,7 +66,9 @@
     canDelete = false,
     canPin = false,
     onFocusMessage,
+    onFocusForwarded,
     onReply,
+    onForward,
     onEdit,
     onTogglePin,
     onDelete,
@@ -120,6 +126,29 @@
   </div>
 
   <div class="body">
+    {#if message.forwardedFrom}
+      {@const origin = message.forwardedFrom}
+      <!-- The jump only exists where the original still does: the source may
+           be a channel this reader cannot see, which is the forwarder's doing
+           and not something to offer them a dead link to. -->
+      {@const reachable = $channels.some((channel) => channel.id === origin.channelId)}
+      <button
+        type="button"
+        class="forward-note"
+        disabled={!reachable}
+        onclick={() => onFocusForwarded(origin)}
+        title={reachable
+          ? `Jump to the original message`
+          : 'The channel this was forwarded from is not visible to you'}
+      >
+        <span class="forward-note-arrow" aria-hidden="true">↪</span>
+        <span class="forward-note-text">
+          Forwarded from <span class="forward-note-user">{$displayNames(origin.user)}</span>
+          {#if origin.channel}in <span class="forward-note-channel">#{origin.channel}</span>{/if}
+        </span>
+      </button>
+    {/if}
+
     {#if message.replyTo}
       {@const reply = message.replyTo}
       <button
@@ -267,6 +296,10 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
         <span class="sr-only">Reply</span>
       </button>
+      <button type="button" class="message-action" onclick={() => onForward(message)} title="Forward">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
+        <span class="sr-only">Forward</span>
+      </button>
       {#if canEdit}
         <button type="button" class="message-action" onclick={() => onEdit(message)} title="Edit message">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
@@ -412,6 +445,51 @@
     line-height: 1rem;
     background: var(--color-primary-container);
     color: var(--color-primary);
+  }
+
+  /* Sits above the author row: the words below belong to somebody else, and
+     that has to read before the name of whoever passed them on. */
+  .forward-note {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    /* Only as wide as its own text: it jumps the reader to another channel,
+       and the row it sits on is otherwise a full-width invisible target. */
+    align-self: flex-start;
+    max-width: 100%;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--color-muted);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .forward-note:disabled {
+    cursor: default;
+  }
+
+  .forward-note:not(:disabled):hover .forward-note-text {
+    color: var(--color-on-surface);
+  }
+
+  .forward-note-arrow {
+    flex-shrink: 0;
+    opacity: 0.7;
+  }
+
+  .forward-note-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .forward-note-user,
+  .forward-note-channel {
+    font-weight: 600;
+    color: var(--color-on-surface-variant);
   }
 
   .reply-quote {

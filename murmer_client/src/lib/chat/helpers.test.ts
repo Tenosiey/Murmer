@@ -76,6 +76,22 @@ describe('buildMessageBlocks', () => {
     expect(messages.map((block) => block.continuation)).toEqual([false, true, false]);
   });
 
+  it('breaks the group for a forward, so its attribution is not buried', () => {
+    // Grouped under the forwarder's own header, a forward reads as their
+    // words with a footnote — which is the one thing the attribution is
+    // there to prevent.
+    const blocks = buildMessageBlocks([
+      message({ id: 1, timestamp: at(2026, 3, 4, 10, 0) }),
+      message({
+        id: 2,
+        timestamp: at(2026, 3, 4, 10, 1),
+        forwardedFrom: { id: 9, user: 'bob', channel: 'general', channelId: 1 }
+      })
+    ]);
+    const messages = blocks.filter((block) => block.kind === 'message');
+    expect(messages.map((block) => block.continuation)).toEqual([false, false]);
+  });
+
   it('breaks the group when the author changes', () => {
     const blocks = buildMessageBlocks([
       message({ id: 1, user: 'alice', timestamp: at(2026, 3, 4, 10, 0) }),

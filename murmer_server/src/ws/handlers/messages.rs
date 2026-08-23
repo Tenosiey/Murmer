@@ -1,4 +1,11 @@
-//! Handlers for chat messages, message deletion, editing, reactions, history and search.
+//! Handlers for chat messages, message deletion, editing, forwarding,
+//! reactions, history and search.
+//!
+//! Forwarding is the odd one out: the copy is made *here*, from the row the
+//! server stored, so that the original author's name on it is not something
+//! the sender could write. The rules it has to clear live in
+//! [`crate::ws::helpers::prepare_forward`], and `docs/features.md` records
+//! why each refusal exists.
 
 use crate::channel_overrides::ChannelKind;
 use crate::ws::{constants::*, errors, helpers::*, validation::is_emoji_shortcode};
@@ -19,13 +26,6 @@ async fn can_view_text(state: &Arc<AppState>, user_name: &Option<String>, channe
         None => false,
     }
 }
-
-/// Fields a client may only send in a *plaintext* channel. In an encrypted one
-/// they are the plaintext the channel exists to keep off the server, so a
-/// frame carrying any of them is rejected rather than quietly stripped: a
-/// client that got this wrong has a bug its user needs to hear about, not a
-/// message that silently loses its attachment.
-const PLAINTEXT_MESSAGE_FIELDS: [&str; 3] = ["text", "image", "attachment"];
 
 /// Read and shape-check a message's `enc` object — the sealed envelope of an
 /// encrypted channel. The plaintext inside is a JSON object holding the
@@ -455,8 +455,27 @@ pub(super) async fn handle_chat(
         map.remove("ephemeral");
     }
 
+    publish_message(state, v, channel_id, user, &timestamp, ephemeral_expiry).await;
+}
+
+/// Store a finished message frame and announce it everywhere it has to be
+/// announced: to the destination channel's own broadcast, and server-wide as
+/// a `message-notify` so clients viewing another channel can still count it.
+///
+/// Shared by a new message and by a forwarded copy. Both are an ordinary
+/// message by the time the frame is built, and both have to land on every one
+/// of these steps — a copy that skipped the notify would simply never raise
+/// anyone's unread badge.
+async fn publish_message(
+    state: &Arc<AppState>,
+    v: &mut Value,
+    channel_id: i32,
+    user: &str,
+    timestamp: &DateTime<Utc>,
+    ephemeral_expiry: Option<DateTime<Utc>>,
+) {
     ensure_reactions(v);
-    ensure_time(v, &timestamp);
+    ensure_time(v, timestamp);
 
     let out = serde_json::to_string(&v).unwrap_or_else(|_| v.to_string());
     match db::insert_message(&state.db, channel_id, &out).await {
@@ -500,6 +519,90 @@ pub(super) async fn handle_chat(
         }
         Err(e) => error!("db insert error: {e}"),
     }
+}
+
+/// Handle a request to forward an existing message into another text channel.
+///
+/// The client names a message id and a destination and nothing else: the words
+/// *and* the attribution are both copied out of the row the server stored (see
+/// [`forwarded_body`]). A client-composed "quote" would let anyone make any
+/// member appear to have said anything, in front of a channel with no way to
+/// check — the same reason a reply's snippet is rebuilt rather than trusted.
+///
+/// Forwarding into a direct message is not this frame. DM content is
+/// end-to-end encrypted, so there is no copy for the server to make; the
+/// client composes that one itself and the attribution travels sealed with it
+/// (see `murmer_client/src/lib/chat/forward.ts`).
+pub(super) async fn handle_forward_message(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(user) = user_name.clone() else {
+        send_error(sender, errors::NOT_AUTHENTICATED).await;
+        return;
+    };
+
+    let Some(message_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
+        send_error(sender, errors::INVALID_MESSAGE_ID).await;
+        return;
+    };
+    let Some(target_id) = v
+        .get("channelId")
+        .and_then(|c| c.as_i64())
+        .and_then(|c| i32::try_from(c).ok())
+    else {
+        send_error(sender, errors::UNKNOWN_CHANNEL).await;
+        return;
+    };
+
+    if !security::check_message_rate_limit(&state.rate_limiter, &user).await {
+        send_error(sender, errors::MESSAGE_RATE_LIMIT).await;
+        return;
+    }
+    if super::moderation::is_muted(state, &user).await {
+        send_error(sender, errors::MUTED).await;
+        return;
+    }
+    if !super::chat_settings::slow_mode_allows(state, &user).await {
+        send_error(sender, errors::SLOW_MODE).await;
+        return;
+    }
+
+    let mut out = match prepare_forward(state, &user, message_id, target_id).await {
+        Ok(body) => body,
+        Err(code) => {
+            send_error(sender, code).await;
+            return;
+        }
+    };
+
+    // The stored copy passed the length limit when it was written, but the
+    // limit may have been lowered since and the copy is a new message under
+    // the current policy.
+    let max_length = super::chat_settings::max_message_length(state).await;
+    if out
+        .get("text")
+        .and_then(|t| t.as_str())
+        .is_some_and(|text| text.len() > max_length)
+    {
+        send_error(sender, errors::MESSAGE_TOO_LONG).await;
+        return;
+    }
+
+    out["type"] = Value::String("chat".to_string());
+    out["user"] = Value::String(user.clone());
+    out["channelId"] = Value::from(target_id);
+    let timestamp = Utc::now();
+    out["timestamp"] = Value::String(timestamp.to_rfc3339());
+
+    // Re-filtered rather than trusted: the word list may have grown since the
+    // original was stored, and a forward is the cheapest way to bring an old
+    // message back under the current policy.
+    super::chat_settings::apply_profanity_filter(state, &mut out).await;
+
+    publish_message(state, &mut out, target_id, &user, &timestamp, None).await;
 }
 
 /// Handle delete message request.
@@ -665,16 +768,8 @@ pub(super) async fn handle_edit_message(
         return;
     }
 
-    let owner = record
-        .content
-        .get("user")
-        .and_then(|user| user.as_str())
-        .map(|value| value.to_string());
-
-    // Editing rewrites someone's words, so unlike deletion it is never
-    // extended to moderators - only the author may do it.
-    if owner.as_deref() != Some(requester.as_str()) {
-        send_error(sender, errors::MESSAGE_PERMISSION_DENIED).await;
+    if let Err(code) = may_edit_message(&record.content, &requester) {
+        send_error(sender, code).await;
         return;
     }
 

@@ -133,6 +133,14 @@ All of this is deliberate, and is also stated in `README.md` for operators:
 - **Reply quotes** — the server rebuilds them from stored plaintext, so in an
   encrypted channel it sends `replyTo` with an empty snippet and the client
   supplies the quote from inside the ciphertext.
+- **Forwarding**, at either end. A forward into a channel is a copy the
+  server makes, and it has neither the plaintext of a sealed message nor a
+  key to seal a copy with. Letting the client supply the words under a
+  server-stamped attribution instead would be the exact forgery the frame
+  exists to prevent, so `prepare_forward` refuses. Forwarding into a **DM**
+  works and is client-side for the same reason: the attribution travels
+  inside the ciphertext as text, which makes it the sender's claim rather
+  than the server's — see [`features.md`](features.md).
 - **Forward secrecy within an epoch.**
 
 `handle_chat` and `handle_edit_message` branch on `channel_is_e2ee` and

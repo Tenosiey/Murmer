@@ -105,13 +105,16 @@ export function buildMessageBlocks(
     }
 
     /* A message continues the current group when it has the same author,
-       arrives within the grouping window and is not a reply (replies show
-       their quote and deserve a fresh header). */
+       arrives within the grouping window and is neither a reply nor a
+       forward. Both carry a line above them that a continuation would bury:
+       a reply's quote, and — worse to lose — the note saying the words below
+       belong to somebody other than the author of the group. */
     const time = timestamp?.getTime() ?? null;
     const continuation =
       groupUser !== null &&
       message.user === groupUser &&
       !message.replyTo &&
+      !message.forwardedFrom &&
       groupTime !== null &&
       time !== null &&
       time - groupTime <= GROUP_WINDOW_MS;

@@ -43,7 +43,8 @@
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { categories } from '$lib/stores/categories';
-  import type { CategoryInfo, ChannelInfo, ContextMenuItem } from '$lib/types';
+  import type { CategoryInfo, ChannelInfo, ContextMenuItem, ForwardInfo } from '$lib/types';
+  import { forwardOptions, forwardedDmText, parseForwardTarget } from '$lib/chat/forward';
   import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
   import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
@@ -918,6 +919,77 @@
     wikiOpen = true;
   }
 
+  /**
+   * Forward a message to another channel or into a direct message.
+   *
+   * The two destinations take different routes and have to: a channel forward
+   * is a server-side copy, so only the ids are sent and the attribution is the
+   * server's; a DM is end-to-end encrypted, so the copy is composed and sealed
+   * here instead. See `src/lib/chat/forward.ts`.
+   */
+  async function forwardMessage(msg: Message) {
+    const messageId = typeof msg.id === 'number' ? msg.id : null;
+    if (messageId === null) return;
+
+    const me = $session.user;
+    // Conversations already open first — they are who a forward usually goes
+    // to — then everyone else this server knows, online or not.
+    const peers = [...Object.keys($dmConversations), ...$onlineUsers, ...$offlineUsers].filter(
+      (peer, index, all) => peer !== me && all.indexOf(peer) === index
+    );
+    const options = forwardOptions({
+      channels: $channels,
+      currentChannelId: currentChatChannelId,
+      peers,
+      displayName: $displayNames
+    });
+    if (options.length === 0) {
+      void dialogs.alert({
+        title: 'Forward message',
+        message: 'There is nowhere else on this server to forward this to.'
+      });
+      return;
+    }
+
+    const target = parseForwardTarget(
+      await dialogs.select({
+        title: 'Forward message',
+        message: 'The copy keeps the original author and says where it came from.',
+        options,
+        confirmLabel: 'Forward'
+      })
+    );
+    if (!target) return;
+
+    if (target.kind === 'channel') {
+      const error = chat.forward(messageId, target.channelId);
+      if (error) {
+        setCommandFeedback(error, 'error');
+        return;
+      }
+      const name = $channels.find((channel) => channel.id === target.channelId)?.name ?? '';
+      setCommandFeedback(`Forwarded to #${name}.`);
+      return;
+    }
+
+    const error = await chat.sendDm(
+      target.user,
+      forwardedDmText(msg, currentChatChannelName, $displayNames)
+    );
+    if (error) {
+      void dialogs.alert({ title: 'Message not sent', message: error });
+      return;
+    }
+    setCommandFeedback(`Forwarded to ${$displayNames(target.user)}.`);
+  }
+
+  /** Jump to the original of a forwarded message, switching channels first. */
+  function focusForwardedSource(origin: ForwardInfo) {
+    if (!$channels.some((channel) => channel.id === origin.channelId)) return;
+    joinChannel(origin.channelId);
+    focusMessage(origin.id);
+  }
+
   function startReply(msg: Message) {
     if (typeof msg.id !== 'number') return;
     replyingTo = msg;
@@ -1351,6 +1423,9 @@
     const current = $session.user;
     if (!current || typeof msg.id !== 'number') return false;
     if (typeof msg.text !== 'string' || msg.text.trim() === '') return false;
+    // A forward's words are the original author's; the server refuses to let
+    // the forwarder rewrite them under their own attribution.
+    if (msg.forwardedFrom) return false;
     return msg.user === current;
   }
 
@@ -2092,7 +2167,9 @@
                 canDelete={canDeleteMessage(block.message)}
                 canPin={canPinMessage(block.message)}
                 onFocusMessage={focusMessage}
+                onFocusForwarded={focusForwardedSource}
                 onReply={startReply}
+                onForward={forwardMessage}
                 onEdit={editChatMessage}
                 onTogglePin={togglePinMessage}
                 onDelete={deleteChatMessage}

@@ -8,7 +8,7 @@
 //! - [`validation`] – input validation for status, quality and bitrate
 
 mod constants;
-mod errors;
+pub mod errors;
 mod handlers;
 pub mod helpers;
 pub mod validation;
