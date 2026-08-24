@@ -4,12 +4,18 @@
 //! `BAN_MEMBERS`, `MUTE_MEMBERS`) and the requester must strictly outrank the
 //! target in the role hierarchy. Unlike channel management there is no "no
 //! admin token" fallback: moderation is never open to unprivileged users.
+//!
+//! Every action that goes through also writes an audit entry
+//! ([`crate::db::audit`]), after it succeeded and never on a refusal, so the
+//! Server Dashboard can answer "who banned them?" without the operator's
+//! terminal.
 
+use crate::db::actions;
 use crate::permissions::Permissions;
 use crate::ws::{constants::*, errors, helpers::*};
 use crate::{AppState, db};
 use axum::extract::ws::{Message, WebSocket};
-use chrono::{Duration as ChronoDuration, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use futures::{SinkExt, stream::SplitSink};
 use serde_json::Value;
 use std::sync::Arc;
@@ -96,6 +102,16 @@ fn broadcast_force_disconnect(state: &Arc<AppState>, target: &str, action: &str,
     let _ = state.tx.send(msg.to_string().into());
 }
 
+/// Describe a mute's expiry for the audit log. The wall-clock instant is what
+/// is recorded rather than the requested duration, because that is what a
+/// moderator reading the log weeks later needs to know.
+fn describe_mute(until: Option<DateTime<Utc>>) -> String {
+    match until {
+        Some(until) => format!("until {}", until.to_rfc3339()),
+        None => "indefinite".to_string(),
+    }
+}
+
 /// Handle kick-user request: disconnect the target without persisting anything.
 pub(super) async fn handle_kick_user(
     state: &Arc<AppState>,
@@ -128,6 +144,7 @@ pub(super) async fn handle_kick_user(
     }
 
     broadcast_force_disconnect(state, &target, "kicked", &requester);
+    record_audit(state, actions::KICK, &requester, &target, "").await;
     info!(requester, target, "User kicked");
 }
 
@@ -166,6 +183,7 @@ pub(super) async fn handle_ban_user(
     }
 
     broadcast_force_disconnect(state, &target, "banned", &requester);
+    record_audit(state, actions::BAN, &requester, &target, "").await;
     info!(requester, target, "User banned");
 }
 
@@ -202,6 +220,7 @@ pub(super) async fn handle_unban_user(
                 "by": requester,
             });
             let _ = state.tx.send(msg.to_string().into());
+            record_audit(state, actions::UNBAN, &requester, &target, "").await;
             info!(requester, target, "User unbanned");
         }
         Ok(false) => {
@@ -266,6 +285,14 @@ pub(super) async fn handle_mute_user(
         "until": until.map(|value| value.to_rfc3339()),
     });
     let _ = state.tx.send(msg.to_string().into());
+    record_audit(
+        state,
+        actions::MUTE,
+        &requester,
+        &target,
+        &describe_mute(until),
+    )
+    .await;
     info!(requester, target, ?until, "User muted");
 }
 
@@ -308,6 +335,7 @@ pub(super) async fn handle_unmute_user(
                 "by": requester,
             });
             let _ = state.tx.send(msg.to_string().into());
+            record_audit(state, actions::UNMUTE, &requester, &target, "").await;
             info!(requester, target, "User unmuted");
         }
         Ok(_) => {

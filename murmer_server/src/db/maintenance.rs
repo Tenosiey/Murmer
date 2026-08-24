@@ -7,6 +7,11 @@
 //! narrow about what they touch: identities, bans, mutes, emojis, sounds and
 //! recorded stats survive a reset, because losing those is never what
 //! "start over" is asked to mean.
+//!
+//! The **audit log survives too**, and that one is not a convenience: an
+//! action that erased the record of itself would make the log worth nothing
+//! precisely when somebody needs it. Both actions add an entry of their own —
+//! see [`super::audit`].
 
 use rusqlite::params;
 

@@ -533,3 +533,10 @@ pub const MAINTENANCE_NOT_CONFIRMED: &str =
 
 /// A Danger Zone action failed part-way; the database was left unchanged.
 pub const MAINTENANCE_FAILED: &str = r#"{"type":"error","message":"maintenance-failed"}"#;
+
+/// User lacks permission to read the audit log (`VIEW_AUDIT_LOG`).
+pub const AUDIT_LOG_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"audit-log-permission-denied"}"#;
+
+/// Failed to load the audit log.
+pub const AUDIT_LOG_FAILED: &str = r#"{"type":"error","message":"audit-log-failed"}"#;

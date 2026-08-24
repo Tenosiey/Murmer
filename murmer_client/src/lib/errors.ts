@@ -161,6 +161,8 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
     'You do not have permission to change the voice defaults on this server.',
   'voice-defaults-update-failed':
     'The server could not update the voice defaults. Please try again.',
+  'audit-log-permission-denied': 'You do not have permission to view this server’s audit log.',
+  'audit-log-failed': 'The server could not load the audit log.',
   'maintenance-permission-denied': 'Only an Owner can purge or reset this server.',
   'maintenance-not-confirmed': 'That action was not confirmed. Nothing was changed.',
   'maintenance-failed': 'The server could not complete that action. Nothing was changed.',

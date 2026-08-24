@@ -36,10 +36,6 @@ not a description of the fix.
 
 ## 🔧 Tech debt / hardening
 
-- [ ] Audit log for moderation and dashboard actions. Kicks, bans, mutes,
-      permission changes and Danger Zone resets go to `tracing` and nowhere
-      else, so the only record lives in the operator's terminal — the people
-      who can see the Server Dashboard cannot see who did what from it
 - [ ] Cap voice channel occupancy. The mesh is one connection per pair, so
       cost grows with the square of the room, and nothing stops the twentieth
       person joining; the first symptom is everyone's CPU rather than an

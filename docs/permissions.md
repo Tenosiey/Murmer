@@ -169,12 +169,56 @@ manager information:
   deliberately omits it, and it is answered only to `get-chat-settings`;
 - the **auto-moderation rules** (`MANAGE_SERVER`) — a pattern describes what
   a server is trying to keep out, so it is never broadcast. Only the matched
-  rule's *name* is ever disclosed, to the person who tripped it.
+  rule's *name* is ever disclosed, to the person who tripped it;
+- the **audit log** (`VIEW_AUDIT_LOG`) — see below.
 
 On the client these live in `stores/bans.ts`, `stores/storageUsage.ts`,
-`stores/chatSettings.ts` and `stores/automod.ts`, where "not disclosed yet"
-is `null` — deliberately not the same as "empty", so an editor cannot offer
-to save an empty list over a real one.
+`stores/chatSettings.ts`, `stores/automod.ts` and `stores/auditLog.ts`, where
+"not disclosed yet" is `null` — deliberately not the same as "empty", so an
+editor cannot offer to save an empty list over a real one.
+
+## The audit log
+
+Kicks, bans, mutes, role and per-channel permission changes, `/role` grants
+and both Danger Zone actions each append a row to `audit_log`
+(`db/audit.rs`), read back through the `get-audit-log` frame
+(`ws/handlers/audit.rs`) and shown on the dashboard's Audit Log tab. Before
+it existed these actions reached `tracing` and nowhere else, which put the
+only record on the operator's terminal — out of reach of the people holding
+the dashboard, who are the ones asked "who banned them?".
+
+Five decisions carry the feature, and none of them are visible from the UI:
+
+- **Entries are written after the action succeeded**, by the handler that
+  carried it out, never on a refusal. A rejected frame did not happen, and a
+  log that recorded attempts could be filled by anyone able to send one.
+- **A failed write never fails the action.** `record_audit` in `ws/helpers.rs`
+  logs the error and returns; the ban already happened, and reporting a
+  failure to the moderator would be a lie about what the server did.
+- **`VIEW_AUDIT_LOG` is its own flag**, seeded into `DEFAULT_ADMIN` rather
+  than `DEFAULT_MOD`. The log is the record *of* the moderators, so who may
+  read it is a separate decision from who may act; an owner who wants their
+  moderators to read it grants the flag. Existing servers get it once,
+  through `db::migrate_audit_log_permissions`, on the roles that already hold
+  `MANAGE_SERVER`.
+- **A reset does not clear it.** An action that erased the record of itself
+  would make the log worthless exactly when somebody needs it — see the
+  Danger Zone below.
+- **Retention is a row cap**, trimmed on insert (`MAX_AUDIT_ENTRIES`), so a
+  busy server cannot fill a self-hosted disk with a log nobody reads.
+
+The `/role` HTTP endpoint has no account behind it, so its entries are
+attributed to `ACTOR_ADMIN_TOKEN` — a name `validate_user_name` cannot
+produce, which is what keeps it from being confused with a member's. Its
+*target* is the account bound to the key it was given, falling back to the
+key itself, which is what the bootstrap grant to a key nobody has connected
+with yet still looks like.
+
+The `set-role` **CLI** is deliberately *not* recorded, and that is a line
+rather than an omission: it runs on the server host, where whoever ran it
+could edit the `audit_log` table directly anyway. The log covers what reaches
+the server over the network — the dashboard, the member context menus and
+`/role` — not somebody who already has the database.
 
 ## Danger Zone
 
@@ -185,7 +229,8 @@ deletions in one transaction.
 
 A reset deliberately keeps `@everyone` and the Owner role — deleting them
 would leave the server with nobody able to administer it — along with
-identities, bans, mutes, emojis, sounds and stats.
+identities, bans, mutes, emojis, sounds, stats and the audit log. Both
+actions add an entry of their own.
 
 It must also clear the **in-memory mirrors** of what it deleted
 (`voice_channels`, `channel_overrides`, `role_defs`, `user_roles`) and
