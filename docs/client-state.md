@@ -56,9 +56,11 @@ the broadcast to confirm. It never writes the store itself.
 Some of these are answers to a request rather than broadcasts, because they
 are manager-only: the profanity word list (`chat-settings` in reply to
 `get-chat-settings`), `stores/automod.ts`, `stores/bans.ts`,
-`stores/storageUsage.ts` and `stores/auditLog.ts`. Their "not disclosed yet"
-state is `null`, which is deliberately **not** the same as "empty" — an
-editor must not offer to save an empty list over a real one.
+`stores/storageUsage.ts`, `stores/auditLog.ts` and
+`stores/serverMetrics.ts`. Their "not disclosed yet" state is `null`, which
+is deliberately **not** the same as "empty" — an editor must not offer to
+save an empty list over a real one, and a health readout must not show a
+server it was refused as one doing nothing.
 
 ### 3. Trust state
 

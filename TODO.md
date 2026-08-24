@@ -55,9 +55,6 @@ not a description of the fix.
       warning and no resync — the message simply never appears for that one
       person. Log the skipped count at minimum; better, tell the client to
       re-request the affected state
-- [ ] Metrics for operators. Connection count, frames per second, database
-      latency and rate-limit rejections exist only as log lines, so there is
-      no way to see a server degrading before users report it
 - [ ] Mirror-test the soundboard constants. `SOUND_EXTENSIONS`,
       `MAX_SOUND_FILE_BYTES`, `MAX_SOUNDBOARD_SOUNDS`, the name-length bounds
       and the cooldown are all defined on both sides, and

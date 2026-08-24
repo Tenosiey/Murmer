@@ -107,6 +107,16 @@ everything. Statements go through `prepare_cached` (the cache capacity is
 raised in `db::init`, since the default of 16 is below the number of distinct
 statements here).
 
+That shared thread is also why `metrics.rs` times database calls from the
+*caller's* side, queue wait included: a number that timed only the statement
+would stay flat while the queue in front of it grew. The counters there —
+open connections, frames taken in, database latency, rate-limit rejections —
+are process-global atomics and nothing else. They describe one run of the
+server, they are gone at the next restart, and they are deliberately
+cumulative rather than rates: a rate needs a window, and the server has no
+business keeping one per dashboard watching it. The Health tab subtracts two
+of its own samples instead.
+
 **On the client**, in Svelte stores under `src/lib/stores/`, most persisted
 to `localStorage` under `murmer_*` keys and namespaced by server URL where
 the value is per-server. The important distinction — local preference versus

@@ -1,6 +1,12 @@
 //! Security utilities for rate limiting and replay attack prevention.
+//!
+//! Every refusal below is counted in [`crate::metrics`] as well as logged.
+//! A rejection is the one event here an operator has to see *while* it is
+//! happening — a burst of them is a brute-force attempt, a spam run or a
+//! limit set too low, and none of those are noticed by reading the log
+//! afterwards.
 
-use crate::{Clock, RateLimiter, SlidingWindows};
+use crate::{Clock, RateLimiter, SlidingWindows, metrics};
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use std::{
@@ -180,6 +186,7 @@ pub async fn check_auth_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool
     )
     .await;
     if !allowed {
+        metrics::rejected(metrics::Limit::Auth);
         warn!("Rate limit exceeded for auth attempts from IP: {}", ip);
     }
     allowed
@@ -207,6 +214,7 @@ pub async fn check_upload_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bo
     )
     .await;
     if !allowed {
+        metrics::rejected(metrics::Limit::Uploads);
         warn!("Rate limit exceeded for uploads from IP: {}", ip);
     }
     allowed
@@ -233,6 +241,7 @@ pub async fn check_message_rate_limit(rate_limiter: &RateLimiter, user: &str) ->
     )
     .await;
     if !allowed {
+        metrics::rejected(metrics::Limit::Messages);
         warn!("Rate limit exceeded for messages from user: {}", user);
     }
     allowed
@@ -273,6 +282,7 @@ pub async fn check_and_store_nonce(rate_limiter: &RateLimiter, nonce: &str) -> b
         .get(nonce)
         .is_some_and(|seen_at| now.saturating_duration_since(*seen_at) < expiry)
     {
+        metrics::rejected(metrics::Limit::Replays);
         warn!("Replay attack detected - nonce already used: {}", nonce);
         return false;
     }

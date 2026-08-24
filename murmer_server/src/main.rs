@@ -77,6 +77,9 @@ async fn main() -> Result<()> {
     }
 
     init_tracing();
+    // Uptime is what the dashboard's cumulative counters are divided by, so
+    // it starts here rather than at whatever first touches one.
+    murmer_server::metrics::mark_start();
 
     let config = Config::from_env()?;
 
