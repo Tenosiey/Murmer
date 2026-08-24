@@ -4,6 +4,12 @@
 //! set and assigns a role to a user by their public key. It is the primary way
 //! to bootstrap the first Owner before the dashboard is reachable; the role is
 //! added to any existing assignments rather than replacing them.
+//!
+//! It is also the most privileged permission change on the server, so it is
+//! recorded in the audit log like the dashboard's own. The bearer token is
+//! not an account, so the entry is attributed to
+//! [`ACTOR_ADMIN_TOKEN`](crate::db::ACTOR_ADMIN_TOKEN) — a name no account can
+//! hold.
 
 use axum::{
     extract::{Json, State},
@@ -82,6 +88,24 @@ pub async fn set_role(
             }
         }
     }
+
+    // The endpoint takes a key, so the audit entry names the account bound to
+    // it where there is one — a base64 key means nothing to somebody reading
+    // the log. On the bootstrap path there is often no binding yet, and then
+    // the key is the only identity there is.
+    let target = db::user_for_key(&state.db, &body.key)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| body.key.clone());
+    helpers::record_audit(
+        &state,
+        db::actions::ADMIN_ROLE_GRANT,
+        db::ACTOR_ADMIN_TOKEN,
+        &target,
+        &def.name,
+    )
+    .await;
 
     helpers::broadcast_role_definitions(&state).await;
     for user in affected {

@@ -11,7 +11,12 @@
 //! Administrators (the Owner role) sit at [`i64::MAX`] and bypass these bounds.
 //! All checks run against the in-memory role state, so a client cannot spoof
 //! authority by editing its local copy.
+//!
+//! Every change that goes through is recorded in the audit log
+//! ([`crate::db::audit`]): a permission grant is the change nobody notices
+//! until it is used, so who made it is worth keeping.
 
+use crate::db::actions;
 use crate::permissions::{self, Permissions};
 use crate::roles::RoleDef;
 use crate::ws::{constants::*, errors, helpers::*, validation::*};
@@ -19,6 +24,7 @@ use crate::{AppState, db};
 use axum::extract::ws::{Message, WebSocket};
 use futures::stream::SplitSink;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{error, info};
 
@@ -131,6 +137,38 @@ async fn snapshot_defs(state: &Arc<AppState>) -> Vec<RoleDef> {
     state.role_defs.lock().await.values().cloned().collect()
 }
 
+/// Name the roles `ids` refers to, in the order given, for an audit entry.
+/// Ids are resolved to names rather than logged raw: a role id means nothing
+/// to somebody reading the log, and a deleted role's id means nothing at all.
+fn role_name_summary(defs: &HashMap<i64, RoleDef>, ids: &[i64]) -> String {
+    if ids.is_empty() {
+        return "none".to_string();
+    }
+    ids.iter()
+        .map(|id| {
+            defs.get(id)
+                .map(|def| def.name.clone())
+                .unwrap_or_else(|| id.to_string())
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Summarize what `update-role` actually changed. Only the two changes that
+/// matter later are named: a rename, because the target column no longer
+/// matches what people remember the role being called, and a permission
+/// change, because that is the one somebody comes to the log looking for.
+fn describe_role_update(before: &RoleDef, name: &str, perms: Permissions) -> String {
+    let mut parts = Vec::new();
+    if !name.eq_ignore_ascii_case(&before.name) {
+        parts.push(format!("renamed from {}", before.name));
+    }
+    if perms != before.permissions {
+        parts.push("permissions changed".to_string());
+    }
+    parts.join("; ")
+}
+
 /// Handle create-role: define a new custom role.
 pub(super) async fn handle_create_role(
     state: &Arc<AppState>,
@@ -209,6 +247,7 @@ pub(super) async fn handle_create_role(
     };
     state.role_defs.lock().await.insert(id, def);
     broadcast_role_definitions(state).await;
+    record_audit(state, actions::ROLE_CREATE, &requester, name, "").await;
     info!(requester, role = name, "Role created");
 }
 
@@ -328,6 +367,14 @@ pub(super) async fn handle_update_role(
         }
     }
     broadcast_role_definitions(state).await;
+    record_audit(
+        state,
+        actions::ROLE_UPDATE,
+        &requester,
+        &name,
+        &describe_role_update(&target, &name, perms),
+    )
+    .await;
     info!(requester, role = %name, "Role updated");
 }
 
@@ -393,6 +440,7 @@ pub(super) async fn handle_delete_role(
     for (user, ids) in affected {
         broadcast_user_roles(state, &user, &ids).await;
     }
+    record_audit(state, actions::ROLE_DELETE, &requester, &target.name, "").await;
     info!(requester, role = %target.name, "Role deleted");
 }
 
@@ -467,6 +515,14 @@ pub(super) async fn handle_reorder_roles(
         }
     }
     broadcast_role_definitions(state).await;
+    record_audit(
+        state,
+        actions::ROLE_REORDER,
+        &requester,
+        "",
+        &role_name_summary(&defs, &ids),
+    )
+    .await;
     info!(requester, "Roles reordered");
 }
 
@@ -539,5 +595,13 @@ pub(super) async fn handle_set_user_roles(
         .await
         .insert(target_user.to_string(), ids.clone());
     broadcast_user_roles(state, target_user, &ids).await;
+    record_audit(
+        state,
+        actions::USER_ROLES,
+        &requester,
+        target_user,
+        &role_name_summary(&defs, &ids),
+    )
+    .await;
     info!(requester, target_user, "User roles updated");
 }

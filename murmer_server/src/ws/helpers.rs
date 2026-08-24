@@ -526,6 +526,25 @@ pub async fn effective_permissions(state: &Arc<AppState>, user: &str) -> Permiss
     }
 }
 
+/// Append one entry to the audit log (see [`crate::db::audit`]).
+///
+/// Call this **after** the action succeeded, never on a refusal: the log is a
+/// record of what happened, and a rejected frame did not happen. A failed
+/// write is logged and swallowed on purpose — the action is already done, so
+/// reporting an error here would tell the caller their ban failed when it did
+/// not.
+pub async fn record_audit(
+    state: &Arc<AppState>,
+    action: &str,
+    actor: &str,
+    target: &str,
+    detail: &str,
+) {
+    if let Err(e) = db::record_audit_entry(&state.db, action, actor, target, detail).await {
+        error!("failed to record audit entry for {action} by {actor}: {e}");
+    }
+}
+
 /// Whether `user` is authorised for `required`.
 ///
 /// Without an `ADMIN_TOKEN` configured, channel and wiki management stay open

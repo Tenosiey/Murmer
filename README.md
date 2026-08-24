@@ -87,7 +87,8 @@ small team can deploy a private chat space quickly.
 - Per-conversation drafts: unsent text stays with the channel, thread or DM
   it was typed in, so switching away mid-sentence and coming back keeps it.
   Drafts are held for the session only and never written to disk
-- Moderation tools: role-gated kick, ban and timed mutes
+- Moderation tools: role-gated kick, ban and timed mutes, recorded in a
+  server-side audit log
 - End-to-end encrypted direct messages with persistent history and unread
   badges: message text is encrypted on-device (NaCl box over the users'
   identity keys), so the server only ever stores and relays ciphertext
@@ -146,10 +147,11 @@ small team can deploy a private chat space quickly.
   description and icon shown to every member, plus a welcome message delivered
   to first-time members
 - Server Dashboard beyond identity: a chat policy (slow mode, message length
-  cap, profanity filter), the ban list, the upload policy with a storage-usage
-  breakdown, voice defaults for new channels, the screen-share bitrate cap,
-  who is online right now, and a Danger Zone that purges all messages or
-  resets the server's structure
+  cap, profanity filter), the ban list, an audit log of moderation and
+  permission changes, the upload policy with a storage-usage breakdown, voice
+  defaults for new channels, the screen-share bitrate cap, who is online right
+  now, and a Danger Zone that purges all messages or resets the server's
+  structure
 - REST API for bots (see [`murmer_server/BOT_API.md`](murmer_server/BOT_API.md))
 
 ## Repository layout
@@ -539,6 +541,7 @@ show.
 | Overview | Manage server | Server name, description, welcome message and icon, plus who is online right now |
 | Emojis | Manage emojis | The server's custom emoji library |
 | Moderation | Ban members | The ban list (lift a ban from here); with Manage server also slow mode, the message length cap, the profanity filter and the auto-moderation rules |
+| Audit Log | View audit log | Who kicked, banned or muted a member, changed a role or a channel's permissions, or ran a Danger Zone action |
 | Stats | Manage server | The server-wide half of the double opt-in stat tracking |
 | Files & Uploads | Manage server | Per-file size cap, which file categories are accepted, and how much disk the uploads directory is using per category |
 | Voice | Manage server | Quality preset and bitrate new voice channels start with |
@@ -564,6 +567,11 @@ A few details worth knowing before you use them:
   wins. Members who can manage messages are exempt, so a rule cannot silence
   the people who would have to lift it. A rule's pattern is only ever visible
   in this dashboard; someone the rule warns is told its *name*, nothing more.
+- **The audit log** records each of those actions as it succeeds — a refused
+  action leaves no entry. It is not granted to the Mod role by default,
+  because it is the record *of* the moderators; give the **View audit log**
+  permission to any role that should read it. A server reset deliberately
+  does not clear it, and the oldest entries drop off once the log fills up.
 - **Voice defaults** apply to newly created voice channels; existing channels
   keep whatever they were created with.
 - **Storage used** is measured when the tab is opened rather than counted as

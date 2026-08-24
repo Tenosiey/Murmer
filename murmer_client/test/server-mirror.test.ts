@@ -18,6 +18,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PERMISSIONS, ALL_PERMISSIONS } from '../src/lib/chat/permissions';
 import {
+  AUDIT_ACTIONS,
+  AUDIT_ACTOR_ADMIN_TOKEN,
+  auditTargetIsMember
+} from '../src/lib/chat/audit';
+import {
   UPLOAD_CATEGORIES,
   DEFAULT_UPLOAD_MAX_BYTES,
   MIN_UPLOAD_MAX_BYTES,
@@ -48,6 +53,7 @@ const chatSettingsRs = readServerSource('db/chat_settings.rs');
 const voiceDefaultsRs = readServerSource('db/voice_defaults.rs');
 const moderationRs = readServerSource('db/moderation.rs');
 const automodRs = readServerSource('automod.rs');
+const auditRs = readServerSource('db/audit.rs');
 
 /** `pub const NAME: Permissions = 1 << N;` — one line per flag. */
 function serverPermissionFlags(): Record<string, number> {
@@ -287,5 +293,48 @@ describe('auto-moderation mirror', () => {
   it('agrees on the mute duration bounds a rule is clamped to', () => {
     expect(serverNumberConstant(moderationRs, 'MIN_MUTE_SECONDS', 'i64')).toBe(MIN_MUTE_SECONDS);
     expect(serverNumberConstant(moderationRs, 'MAX_MUTE_SECONDS', 'i64')).toBe(MAX_MUTE_SECONDS);
+  });
+});
+
+describe('audit action mirror', () => {
+  /** The `pub const NAME: &str = "wire-name";` lines inside `mod actions`. */
+  function serverAuditActions(): string[] {
+    const block = auditRs.match(/pub mod actions \{([\s\S]*?)\n\}/);
+    expect(block).not.toBeNull();
+    return [...block![1].matchAll(/pub const [A-Z_]+: &str = "([^"]+)";/g)].map((m) => m[1]);
+  }
+
+  it('parsed the server actions at all', () => {
+    // Cheap canary, as above: a reformat that breaks the regex must not turn
+    // the coverage assertion into an empty list nothing can be missing from.
+    expect(serverAuditActions().length).toBeGreaterThan(10);
+  });
+
+  it('labels every action the server can record', () => {
+    // An unlabelled action still renders — `auditActionLabel` falls back to
+    // the wire name — so this is the difference between a readable log and a
+    // log of raw identifiers, not between a log and a crash.
+    expect(serverAuditActions().sort()).toEqual(Object.keys(AUDIT_ACTIONS).sort());
+  });
+
+  it('only claims a member target for actions the server records', () => {
+    // The set that decides this is a third copy of the action names, and a
+    // stale entry there would run a role or channel name through the member
+    // nickname lookup — relabelling it as whoever shares the name.
+    const known = serverAuditActions();
+    for (const action of known) expect(typeof auditTargetIsMember(action)).toBe('boolean');
+    expect(known.filter(auditTargetIsMember).sort()).toEqual(
+      ['admin-role-grant', 'ban', 'kick', 'mute', 'unban', 'unmute', 'user-roles'].sort()
+    );
+  });
+
+  it('agrees on the sentinel the /role endpoint is recorded under', () => {
+    // It has to be a name no account can hold, which is what the parentheses
+    // buy: `validate_user_name` allows only alphanumerics, dashes,
+    // underscores and spaces.
+    const actor = auditRs.match(/pub const ACTOR_ADMIN_TOKEN: &str = "([^"]+)";/);
+    expect(actor).not.toBeNull();
+    expect(actor![1]).toBe(AUDIT_ACTOR_ADMIN_TOKEN);
+    expect(AUDIT_ACTOR_ADMIN_TOKEN).not.toMatch(/^[A-Za-z0-9_ -]+$/);
   });
 });

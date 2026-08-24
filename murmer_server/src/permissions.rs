@@ -49,6 +49,11 @@ pub const MANAGE_SOUNDS: Permissions = 1 << 15;
 /// their own; this flag is what lets a moderator relabel somebody else, and it
 /// is hierarchy-checked like the other member actions.
 pub const MANAGE_NICKNAMES: Permissions = 1 << 16;
+/// Read the server audit log: who kicked, banned, muted, changed permissions
+/// or ran a Danger Zone action. Deliberately its own flag rather than riding
+/// on the moderation ones — the log is the record *of* the moderators, so who
+/// may read it is a decision separate from who may act.
+pub const VIEW_AUDIT_LOG: Permissions = 1 << 17;
 
 /// Union of every defined permission flag. Used to reject unknown bits from
 /// clients and to expand [`ADMINISTRATOR`] into a concrete mask.
@@ -68,7 +73,8 @@ pub const ALL: Permissions = VIEW_CHANNELS
     | ADMINISTRATOR
     | USE_SOUNDBOARD
     | MANAGE_SOUNDS
-    | MANAGE_NICKNAMES;
+    | MANAGE_NICKNAMES
+    | VIEW_AUDIT_LOG;
 
 /// Baseline permissions granted to every user through the `@everyone` role.
 /// Keeps a fresh or unadministered server usable: everyone can read, chat and
@@ -91,8 +97,12 @@ pub const DEFAULT_MOD: Permissions = DEFAULT_EVERYONE
 
 /// Default permissions seeded for the built-in `Admin` role: everything a Mod
 /// can do plus server settings and read-only server/connection insight.
+///
+/// The audit log starts here rather than at `Mod` on purpose: it exists so
+/// that whoever oversees the moderators can see what they did. An owner who
+/// wants their moderators to read it grants the flag explicitly.
 pub const DEFAULT_ADMIN: Permissions =
-    DEFAULT_MOD | MANAGE_SERVER | VIEW_SERVER_INFO | VIEW_CONNECTION_STATS;
+    DEFAULT_MOD | MANAGE_SERVER | VIEW_SERVER_INFO | VIEW_CONNECTION_STATS | VIEW_AUDIT_LOG;
 
 /// Default permissions seeded for the built-in `Owner` role.
 pub const DEFAULT_OWNER: Permissions = ADMINISTRATOR;

@@ -4,6 +4,7 @@
 //! and camera handlers that are not worth a file of their own;
 //! domain-specific handlers are split into submodules to keep each file
 //! focused:
+//! - [`audit`] – reading the audit log of moderation and dashboard actions
 //! - [`auth`] – user and bot authentication
 //! - [`automod`] – auto-moderation rules and the screening of each message
 //! - [`channels`] – text/voice channel and category management
@@ -22,6 +23,7 @@
 //! - [`voice_defaults`] – quality/bitrate new voice channels start with
 //! - [`wiki`] – per-channel Markdown wiki pages
 
+mod audit;
 mod auth;
 mod automod;
 mod channel_keys;
@@ -427,6 +429,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "get-ban-list" => {
                                 moderation::handle_get_ban_list(&state, &mut sender, &user_name).await;
+                            }
+                            "get-audit-log" => {
+                                audit::handle_get_audit_log(&state, &mut sender, &user_name).await;
                             }
                             "mute-user" => {
                                 moderation::handle_mute_user(&state, &mut sender, &v, &user_name).await;

@@ -79,7 +79,7 @@ the exact opposite of the truth.
 
 `test/server-mirror.test.ts` parses `murmer_server/src/` as **text** and
 fails when the client's copies of the server's tables drift — permissions,
-upload categories, chat-settings bounds, voice defaults.
+upload categories, chat-settings bounds, voice defaults, audit actions.
 
 Reading the Rust as text rather than executing it keeps this a plain Vitest
 run with no toolchain of its own. The cost is that it is coupled to the
