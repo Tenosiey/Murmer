@@ -85,6 +85,11 @@ pub const INVALID_VOICE_BITRATE: &str = r#"{"type":"error","message":"invalid-vo
 /// Voice channel does not exist.
 pub const UNKNOWN_VOICE_CHANNEL: &str = r#"{"type":"error","message":"unknown-voice-channel"}"#;
 
+/// The voice channel is already at `MAX_VOICE_CHANNEL_USERS`. Mesh audio
+/// costs one connection per pair, so the cap is a capacity limit, not a
+/// permission one — the same user is welcome once somebody leaves.
+pub const VOICE_CHANNEL_FULL: &str = r#"{"type":"error","message":"voice-channel-full"}"#;
+
 /// Failed to update voice channel configuration.
 pub const VOICE_CHANNEL_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"voice-channel-update-failed"}"#;

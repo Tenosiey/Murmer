@@ -514,6 +514,10 @@
       leaveToServers(description);
       return;
     }
+    // The join was refused after the microphone was already open — drop the
+    // half-open session rather than leave the UI showing a channel we are
+    // not actually in.
+    if (code === 'voice-channel-full') leaveVoice();
     setCommandFeedback(description, 'error');
   };
   chat.on('error', handleServerError);

@@ -36,11 +36,6 @@ not a description of the fix.
 
 ## 🔧 Tech debt / hardening
 
-- [ ] Cap voice channel occupancy. The mesh is one connection per pair, so
-      cost grows with the square of the room, and nothing stops the twentieth
-      person joining; the first symptom is everyone's CPU rather than an
-      error. A server-configurable per-channel limit is the small fix, an SFU
-      the real one — see Future Ideas
 - [ ] Content-Security-Policy for the web client. The desktop shell ships a
       full policy in `tauri.conf.json`; the same bundle served over HTTP gets
       `nosniff`, `referrer-policy` and `x-frame-options` and nothing else. Two

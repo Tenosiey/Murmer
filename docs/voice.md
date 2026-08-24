@@ -211,6 +211,24 @@ Soundboard sounds are never mixed into a microphone stream. The server
 authorizes `play-sound` and fans out a `soundboard-play` frame; each client
 fetches and plays the file itself. See [`features.md`](features.md).
 
+## Room size
+
+The mesh is one connection per pair, so a channel of *n* people carries
+*n(n-1)/2* connections and each client encodes and uploads its microphone
+*n-1* times. Nothing about that degrades gracefully: the first symptom of a
+crowded channel is everyone's CPU and uplink, not an error anybody can point
+at.
+
+So the server refuses a join past `MAX_VOICE_CHANNEL_USERS`
+(`security::voice_channel_has_room`, default 10) with a `voice-channel-full`
+error. Capacity is checked *before* the joiner is removed from their current
+channel, so bouncing off a full room leaves them where they were. Someone
+already in the channel is never refused, or a re-sent `voice-join` would lock
+a client out of the room it is sitting in.
+
+The cap is a bound on the symptom, not a fix for the cause — an SFU is, and
+that is a plan rather than code today.
+
 ## Relay support
 
 Murmer has no TURN/relay support today, so two peers behind symmetric NATs

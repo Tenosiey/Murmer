@@ -807,21 +807,26 @@ async fn handle_voice_join(
             return;
         }
         let mut map = state.voice_channels.lock().await;
+        let Some(entry) = map.get(&ch_id) else {
+            return;
+        };
+        // Capacity is decided before the user is pulled out of whatever
+        // channel they are in, so a full target leaves them where they were
+        // instead of dropping them out of voice entirely.
+        if !crate::security::voice_channel_has_room(&entry.users, u) {
+            drop(map);
+            info!("voice channel {ch_id} is full; refused join from {u}");
+            send_error(sender, errors::VOICE_CHANNEL_FULL).await;
+            return;
+        }
         for info in map.values_mut() {
             info.users.remove(u);
         }
-        let joined = match map.get_mut(&ch_id) {
-            Some(entry) => {
-                entry.users.insert(u.to_string());
-                *voice_channel = Some(ch_id);
-                true
-            }
-            None => false,
-        };
-        drop(map);
-        if !joined {
-            return;
+        if let Some(entry) = map.get_mut(&ch_id) {
+            entry.users.insert(u.to_string());
         }
+        *voice_channel = Some(ch_id);
+        drop(map);
         stats::note_voice_join(state, u).await;
         broadcast_voice(state, ch_id).await;
         let msg = serde_json::json!({
