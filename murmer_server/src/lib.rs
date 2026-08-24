@@ -10,6 +10,7 @@ pub mod channel_overrides;
 pub mod config;
 pub mod db;
 pub mod link_preview;
+pub mod metrics;
 pub mod permissions;
 pub mod profanity;
 pub mod roles;

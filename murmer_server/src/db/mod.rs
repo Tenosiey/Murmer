@@ -102,7 +102,15 @@ impl DbCall for Db {
         F: FnOnce(&mut rusqlite::Connection) -> rusqlite::Result<R> + Send + 'static,
         R: Send + 'static,
     {
-        self.call(f).await
+        // Every query in the process funnels through here, so this is the
+        // one place database latency can be measured without a timer at
+        // every call site. What is timed is the wait a caller actually
+        // experiences, the queue for the connection thread included — see
+        // [`crate::metrics::db_call`].
+        let started = std::time::Instant::now();
+        let result = self.call(f).await;
+        crate::metrics::db_call(started.elapsed());
+        result
     }
 }
 

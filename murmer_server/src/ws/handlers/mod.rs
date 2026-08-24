@@ -1,7 +1,8 @@
 //! WebSocket message handlers.
 //!
 //! The main socket loop lives here, along with the small voice, screen-share
-//! and camera handlers that are not worth a file of their own;
+//! and camera handlers, the server-info and operator-metrics answers, and the
+//! rest of what is not worth a file of its own;
 //! domain-specific handlers are split into submodules to keep each file
 //! focused:
 //! - [`audit`] – reading the audit log of moderation and dashboard actions
@@ -123,6 +124,8 @@ async fn general_channel_id(state: &Arc<AppState>) -> i32 {
 #[tracing::instrument(skip(socket, state), fields(client_ip = %peer_addr.ip()))]
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::net::SocketAddr) {
     let client_ip = peer_addr.ip().to_string();
+    // Counted for the lifetime of this function, however it ends.
+    let _counted = crate::metrics::Connection::open();
     info!("Client connected");
 
     let (mut sender, mut receiver) = socket.split();
@@ -149,6 +152,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                     Ok(Message::Text(t)) => t,
                     _ => break,
                 };
+                crate::metrics::frame_received();
 
                 if let Ok(mut v) = serde_json::from_str::<Value>(&text) {
                     if let Some(t) = v.get("type").and_then(|t| t.as_str()) {
@@ -309,6 +313,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "get-server-info" => {
                                 handle_get_server_info(&state, &mut sender, &user_name).await;
+                            }
+                            "get-server-metrics" => {
+                                handle_get_server_metrics(&state, &mut sender, &user_name).await;
                             }
                             "connection-stats" => {
                                 handle_connection_stats(&state, &v, &user_name).await;
@@ -713,6 +720,50 @@ async fn handle_get_server_info(
     let msg = serde_json::json!({
         "type": "server-info",
         "version": env!("CARGO_PKG_VERSION"),
+    });
+    let _ = sender.send(Message::Text(msg.to_string().into())).await;
+}
+
+/// Handle `get-server-metrics`: answer with the live operator counters —
+/// connections, frames taken in, database latency and rate-limit rejections.
+///
+/// Gated on `MANAGE_SERVER` like the storage report, and dropped silently
+/// rather than answered with an error for the same reason as
+/// `get-server-info`: the dashboard polls this on a timer, so a denial would
+/// otherwise become a stream of error toasts.
+///
+/// The counters are cumulative and the frame carries the uptime with them, so
+/// a viewer can turn two samples into the rate over its own polling interval
+/// without the server keeping a window per viewer. See
+/// [`crate::metrics`].
+async fn handle_get_server_metrics(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    user_name: &Option<String>,
+) {
+    let Some(requester) = user_name.as_deref() else {
+        return;
+    };
+
+    if !has_permission(state, requester, crate::permissions::MANAGE_SERVER).await {
+        info!(requester, "Denied server metrics request");
+        return;
+    }
+
+    let m = crate::metrics::snapshot();
+    let msg = serde_json::json!({
+        "type": "server-metrics",
+        "uptimeSeconds": m.uptime_secs,
+        "connections": m.connections,
+        "peakConnections": m.peak_connections,
+        "frames": m.frames,
+        "dbCalls": m.db_calls,
+        "dbTotalMs": m.db_total_ms,
+        "dbMaxMs": m.db_max_ms,
+        "rejectedMessages": m.rejected_messages,
+        "rejectedAuth": m.rejected_auth,
+        "rejectedUploads": m.rejected_uploads,
+        "rejectedReplays": m.rejected_replays,
     });
     let _ = sender.send(Message::Text(msg.to_string().into())).await;
 }

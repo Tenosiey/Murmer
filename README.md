@@ -540,6 +540,7 @@ show.
 | Tab | Permission | What it holds |
 | --- | --- | --- |
 | Overview | Manage server | Server name, description, welcome message and icon, plus who is online right now |
+| Health | Manage server | Live connection count, frames per second, database latency and rate-limit rejections |
 | Emojis | Manage emojis | The server's custom emoji library |
 | Moderation | Ban members | The ban list (lift a ban from here); with Manage server also slow mode, the message length cap, the profanity filter and the auto-moderation rules |
 | Audit Log | View audit log | Who kicked, banned or muted a member, changed a role or a channel's permissions, or ran a Danger Zone action |
@@ -575,6 +576,16 @@ A few details worth knowing before you use them:
   does not clear it, and the oldest entries drop off once the log fills up.
 - **Voice defaults** apply to newly created voice channels; existing channels
   keep whatever they were created with.
+- **Health** is the one live readout: it re-asks the server every few seconds
+  while the tab is open. The counters live in the server's memory and start
+  again from zero at every restart, so they describe the current run and
+  nothing before it. Database latency is measured from the caller's side and
+  includes the wait for the single connection thread every query shares —
+  which is the number that climbs first when a server starts struggling. The
+  rejection counts are the four rate limits under
+  [Configuration](#configuration); a climbing authentication count is
+  somebody guessing keys, while climbing messages or uploads is either a
+  member flooding or a limit set too low for the room.
 - **Storage used** is measured when the tab is opened rather than counted as
   files arrive, so it covers uploads, emojis, avatars and soundboard clips
   alike. Deleting a message or an emoji does not delete its file.
