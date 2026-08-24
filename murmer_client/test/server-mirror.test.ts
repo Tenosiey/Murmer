@@ -40,7 +40,13 @@ import {
   MAX_AUTOMOD_NAME_LEN,
   DEFAULT_AUTOMOD_MUTE_SECONDS,
   AUTOMOD_KINDS,
-  AUTOMOD_ACTIONS
+  AUTOMOD_ACTIONS,
+  MIN_SOUND_NAME_LEN,
+  MAX_SOUND_NAME_LEN,
+  MAX_SOUND_FILE_BYTES,
+  MAX_SOUNDBOARD_SOUNDS,
+  SOUND_EXTENSIONS,
+  SOUNDBOARD_COOLDOWN_MS
 } from '../src/lib/chat/constants';
 
 function readServerSource(relative: string): string {
@@ -54,6 +60,7 @@ const voiceDefaultsRs = readServerSource('db/voice_defaults.rs');
 const moderationRs = readServerSource('db/moderation.rs');
 const automodRs = readServerSource('automod.rs');
 const auditRs = readServerSource('db/audit.rs');
+const wsConstantsRs = readServerSource('ws/constants.rs');
 
 /** `pub const NAME: Permissions = 1 << N;` — one line per flag. */
 function serverPermissionFlags(): Record<string, number> {
@@ -96,6 +103,15 @@ function serverWireNames(source: string, enumName: string): string[] {
   const block = source.match(new RegExp(`^impl ${enumName} \\{([\\s\\S]*?)\\n\\}`, 'm'));
   expect(block, `impl ${enumName} not found in automod.rs`).not.toBeNull();
   return [...block![1].matchAll(/Self::\w+ => "([a-z]+)"/g)].map((match) => match[1]);
+}
+
+/** `pub const NAME: &[&str] = &["a", "b"];` — a safe-list as written. */
+function serverStrList(source: string, name: string): string[] {
+  const match = source.match(
+    new RegExp(String.raw`^pub const ${name}: &\[&str\] = &\[([^\]]*)\];$`, 'm')
+  );
+  expect(match, `${name} not found`).not.toBeNull();
+  return [...match![1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 }
 
 type ServerCategory = { id: string; label: string; extensions: string[] };
@@ -218,6 +234,58 @@ describe('upload safe-list mirror', () => {
     expect(serverByteConstant('DEFAULT_MAX_FILE_SIZE')).toBe(DEFAULT_UPLOAD_MAX_BYTES);
     expect(serverByteConstant('MIN_CONFIGURABLE_FILE_SIZE')).toBe(MIN_UPLOAD_MAX_BYTES);
     expect(serverByteConstant('MAX_CONFIGURABLE_FILE_SIZE')).toBe(MAX_UPLOAD_MAX_BYTES);
+  });
+});
+
+describe('soundboard mirror', () => {
+  // A sound is stored by `/upload` first and only then registered over the
+  // WebSocket, so every drift here is paid after the file is already on disk:
+  // the client offers a file the `add-sound` frame rejects, leaving an orphan
+  // upload and an error the user cannot act on.
+  const extensions = serverStrList(wsConstantsRs, 'UPLOAD_SOUND_EXTENSIONS');
+
+  it('parsed the server extensions at all', () => {
+    expect(extensions.length).toBeGreaterThan(1);
+  });
+
+  it('offers exactly the extensions `add-sound` accepts', () => {
+    expect(extensions).toEqual(SOUND_EXTENSIONS);
+  });
+
+  it('keeps the sound extensions inside the upload audio category', () => {
+    // `/upload` gates on its own category safe-list, so an extension only
+    // `add-sound` knows about is rejected before it is ever stored.
+    const audio = serverUploadCategories().find((c) => c.id === 'audio');
+    expect(audio, 'no audio category in upload.rs').toBeDefined();
+    for (const extension of extensions) {
+      expect(audio!.extensions, `"${extension}" is not an audio upload`).toContain(extension);
+    }
+  });
+
+  it('agrees on the file size and sound count limits', () => {
+    expect(serverNumberConstant(wsConstantsRs, 'MAX_SOUND_FILE_BYTES', 'u64')).toBe(
+      MAX_SOUND_FILE_BYTES
+    );
+    expect(serverNumberConstant(wsConstantsRs, 'MAX_SOUNDBOARD_SOUNDS', 'i64')).toBe(
+      MAX_SOUNDBOARD_SOUNDS
+    );
+  });
+
+  it('agrees on the name length bounds', () => {
+    expect(serverNumberConstant(wsConstantsRs, 'MIN_SOUND_NAME_LEN', 'usize')).toBe(
+      MIN_SOUND_NAME_LEN
+    );
+    expect(serverNumberConstant(wsConstantsRs, 'MAX_SOUND_NAME_LEN', 'usize')).toBe(
+      MAX_SOUND_NAME_LEN
+    );
+  });
+
+  it('agrees on the playback cooldown', () => {
+    // Cosmetic on the client — the server enforces it — but a client that
+    // thinks the window is shorter re-enables the button into a rejection.
+    expect(serverNumberConstant(wsConstantsRs, 'SOUNDBOARD_COOLDOWN_MS', 'u64')).toBe(
+      SOUNDBOARD_COOLDOWN_MS
+    );
   });
 });
 

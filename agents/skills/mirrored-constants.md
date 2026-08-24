@@ -3,14 +3,14 @@
 Read this before changing anything defined in both the Rust server and the
 TypeScript client.
 
-Six tables exist twice. The server's copy is the authority and the client's
+Seven tables exist twice. The server's copy is the authority and the client's
 copy is cosmetic — a picker's `accept` attribute, a composer's `maxlength`, a
 greyed-out button. But a drift between them does not fail loudly where it
 happens: the symptom shows up far away, as a permission bit that means one
 thing to the client and another to the server, or a file picker offering an
 extension `/upload` rejects.
 
-## The six pairs
+## The seven pairs
 
 | Authority (Rust) | Mirror (TypeScript) |
 | --- | --- |
@@ -20,6 +20,7 @@ extension `/upload` rejects.
 | `murmer_server/src/db/voice_defaults.rs` | `murmer_client/src/lib/chat/constants.ts` |
 | `murmer_server/src/automod.rs` (bounds, kind/action names) plus the mute bounds in `db/moderation.rs` | `murmer_client/src/lib/chat/constants.ts` |
 | `murmer_server/src/db/audit.rs` (action names, the `/role` actor sentinel) | `murmer_client/src/lib/chat/audit.ts` |
+| `murmer_server/src/ws/constants.rs` (soundboard limits) | `murmer_client/src/lib/chat/constants.ts` |
 
 ## The guard
 
@@ -58,6 +59,10 @@ makes a regex stop matching — rather than silently comparing nothing.
   action the client has no label for renders as its own wire name rather than
   being dropped — a log that quietly omits rows is worse than an ugly one.
   Renaming an action orphans every row already stored under the old name.
+- **A soundboard extension must also be an `audio` upload.** A sound is
+  stored by `/upload` before it is registered over the WebSocket, so an
+  extension only one of the two lists knows about fails after the file is on
+  disk — or never gets there at all.
 - **An auto-moderation kind or action is its wire name.** The server rejects
   one it does not know rather than falling back to a default, so a client
   offering a name spelled differently saves nothing and says nothing. The
