@@ -3,9 +3,11 @@ use murmer_server::{
     security::{
         RATE_WINDOW, SWEEP_INTERVAL, check_and_store_nonce, check_auth_rate_limit,
         check_message_rate_limit, validate_channel_name, validate_timestamp, validate_user_name,
+        voice_channel_has_room,
     },
 };
 use serial_test::serial;
+use std::collections::HashSet;
 use std::time::Duration;
 use temp_env::with_var;
 use tokio::runtime::Runtime;
@@ -147,6 +149,24 @@ fn sweeps_expired_nonces() {
                 assert_eq!(nonces.entries.keys().collect::<Vec<_>>(), vec!["nonce-3"]);
             });
         });
+    });
+}
+
+/// The mesh cost is quadratic in the room, so the cap is what stops the
+/// twentieth joiner from being felt as CPU load rather than as an error.
+#[test]
+#[serial]
+fn caps_voice_channel_occupancy() {
+    let occupants: HashSet<String> = ["alice", "bob"].iter().map(|u| u.to_string()).collect();
+    with_var("MAX_VOICE_CHANNEL_USERS", Some("2"), || {
+        assert!(!voice_channel_has_room(&occupants, "carol"));
+        // Already inside, so a repeated `voice-join` is never a lockout.
+        assert!(voice_channel_has_room(&occupants, "alice"));
+        assert!(voice_channel_has_room(&HashSet::new(), "carol"));
+    });
+    // `0` means no cap at all.
+    with_var("MAX_VOICE_CHANNEL_USERS", Some("0"), || {
+        assert!(voice_channel_has_room(&occupants, "carol"));
     });
 }
 

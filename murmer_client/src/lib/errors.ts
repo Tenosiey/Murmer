@@ -31,6 +31,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-voice-quality': 'Invalid voice quality setting.',
   'invalid-voice-bitrate': 'Invalid voice bitrate setting.',
   'unknown-voice-channel': 'That voice channel no longer exists.',
+  'voice-channel-full': 'That voice channel is full. Try again once somebody leaves.',
   'voice-channel-update-failed': 'The server could not update the voice channel.',
   'role-permission-denied': 'You do not have permission to manage roles on this server.',
   'role-target-not-found': 'That user is not connected to the server.',

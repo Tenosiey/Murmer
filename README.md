@@ -310,6 +310,7 @@ Environment variables recognised by the server:
 | `MAX_AUTH_ATTEMPTS_PER_MINUTE` | No | Per-IP auth rate limit (default: 5) |
 | `MAX_UPLOADS_PER_MINUTE` | No | Per-IP file upload rate limit (default: 20) |
 | `NONCE_EXPIRY_SECONDS` | No | Replay protection window (default: 300) |
+| `MAX_VOICE_CHANNEL_USERS` | No | People allowed in one voice channel (default: 10, `0` for no limit) |
 
 Without `ADMIN_TOKEN` configured, channel and wiki management stay open to
 everyone so a small unadministered server remains usable; every other

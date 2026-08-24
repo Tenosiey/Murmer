@@ -4,7 +4,7 @@ use crate::{Clock, RateLimiter, SlidingWindows};
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     time::{Duration, Instant},
 };
 use tokio::sync::Mutex;
@@ -53,6 +53,27 @@ pub fn get_nonce_expiry_seconds() -> u64 {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(300) // 5 minutes
+}
+
+/// Whether a voice channel holding `occupants` has room for `user`.
+///
+/// Voice is a full mesh: one peer connection per pair, so the work every
+/// client does grows with the square of the room. Without a cap the first
+/// symptom of a crowded channel is everyone's CPU rather than an error, which
+/// is why the limit exists at all.
+///
+/// Reads `MAX_VOICE_CHANNEL_USERS`, defaulting to 10; `0` disables the cap.
+/// Resolved per call rather than cached because a join is a human action —
+/// one environment lookup per join costs nothing.
+///
+/// Someone already in the channel is never refused: a client re-sending
+/// `voice-join` for the channel it is already in must not lock itself out.
+pub fn voice_channel_has_room(occupants: &HashSet<String>, user: &str) -> bool {
+    let limit: usize = std::env::var("MAX_VOICE_CHANNEL_USERS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10);
+    limit == 0 || occupants.contains(user) || occupants.len() < limit
 }
 
 /// How often the sliding-window maps are swept end to end to drop entries for
