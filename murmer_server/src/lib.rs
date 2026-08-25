@@ -287,4 +287,19 @@ pub struct AppState {
     /// In-memory only and pruned on disconnect: slow mode is a pacing tool,
     /// not a punishment to be remembered across sessions.
     pub slow_mode_sends: Arc<Mutex<HashMap<String, Instant>>>,
+    /// Stamp bumped whenever an input to a channel visibility decision moves:
+    /// channel overrides, role definitions or role assignments. Each
+    /// connection memoises its own answers in a
+    /// [`VisibilityCache`](ws::helpers::VisibilityCache) and throws the whole
+    /// table away when this changes, so the fan-out filter stops re-resolving
+    /// permissions for every recipient of every channel-scoped frame.
+    ///
+    /// This is an invalidation stamp, never an authorization decision — the
+    /// answers still come from `can_view_channel`. Bumping it needlessly only
+    /// costs a re-resolve; *not* bumping it serves a stale answer, which is a
+    /// permission leak, so the bump lives inside the three broadcasts that
+    /// announce those changes (`channels-refresh`, `role-definitions`,
+    /// `user-roles`) plus `cleanup_channel`. A mutation that reaches clients
+    /// therefore cannot skip the invalidation.
+    pub visibility_epoch: std::sync::atomic::AtomicU64,
 }

@@ -129,6 +129,8 @@ fn role_definitions_frame(defs: &HashMap<i64, RoleDef>) -> Option<String> {
 
 /// Broadcast the full set of role definitions to all connected clients.
 pub async fn broadcast_role_definitions(state: &Arc<AppState>) {
+    // A role's permission mask feeds every channel visibility decision.
+    invalidate_channel_visibility(state);
     let defs = state.role_defs.lock().await;
     if let Some(msg) = role_definitions_frame(&defs) {
         let _ = state.tx.send(msg.into());
@@ -148,6 +150,11 @@ pub async fn send_role_definitions(
 
 /// Broadcast one user's assigned role ids to all connected clients.
 pub async fn broadcast_user_roles(state: &Arc<AppState>, user: &str, role_ids: &[i64]) {
+    // Which roles a user holds feeds every channel visibility decision. The
+    // stamp is server-wide rather than per user: one user's reassignment is
+    // rare next to the frames the memo saves, so the coarser invalidation is
+    // cheaper than tracking who each entry belongs to.
+    invalidate_channel_visibility(state);
     if let Ok(msg) = serde_json::to_string(&serde_json::json!({
         "type": "user-roles",
         "user": user,
@@ -632,6 +639,7 @@ pub async fn has_channel_permission(
 /// channel and voice lists. Sent when a channel's permission overrides change,
 /// so private channels appear/disappear per viewer without leaking structure.
 pub async fn broadcast_channels_refresh(state: &Arc<AppState>) {
+    invalidate_channel_visibility(state);
     // A fixed frame, so it needs no allocation at all.
     let _ = state
         .tx
@@ -727,6 +735,81 @@ pub async fn user_can_see_channel(
     match user {
         Some(u) => can_view_channel(state, u, kind, channel_id).await,
         None => !channel_is_private(state, kind, channel_id).await,
+    }
+}
+
+/// Discard every connection's memoised channel visibility.
+///
+/// Called from the three broadcasts that announce a change to the inputs of
+/// [`user_can_see_channel`] — channel overrides, role definitions and role
+/// assignments — so a mutation cannot reach clients without also invalidating
+/// the server's memo. See [`AppState::visibility_epoch`].
+pub fn invalidate_channel_visibility(state: &Arc<AppState>) {
+    // Release pairs with the Acquire load in `VisibilityCache`: a connection
+    // that observes the new epoch also observes the mutation that caused it.
+    state
+        .visibility_epoch
+        .fetch_add(1, std::sync::atomic::Ordering::Release);
+}
+
+/// One connection's memo of which channels it may receive frames for.
+///
+/// Resolving that answer means locking `channel_overrides`, `role_defs`,
+/// `user_roles` and `user_keys` and re-applying the override set — work the
+/// fan-out filter used to redo once per recipient for every frame scoped to a
+/// restricted channel. The inputs only move on the changes that bump
+/// [`AppState::visibility_epoch`], so each connection can resolve a channel
+/// once and reuse the answer until then.
+///
+/// This is a memo of the enforcement point, not a second one: every entry is
+/// produced by [`user_can_see_channel`], and a moved epoch or a change of
+/// account throws the whole table away rather than trying to repair it.
+#[derive(Default)]
+pub struct VisibilityCache {
+    /// The account the entries were resolved for; `None` while anonymous. A
+    /// connection starts anonymous and is named by `presence`, and the two
+    /// answer differently — an anonymous viewer sees every non-private
+    /// channel, a named one only what its roles allow.
+    user: Option<String>,
+    /// The epoch the entries were resolved at.
+    epoch: u64,
+    answers: HashMap<(ChannelKind, i32), bool>,
+}
+
+impl VisibilityCache {
+    /// Whether this connection may receive frames scoped to a channel,
+    /// resolving and remembering the answer the first time it is asked.
+    ///
+    /// A channel with no overrides at all reaches everyone. That fast path is
+    /// the reason the filter is cheap in the common case, and it is cached
+    /// alongside the resolved answers so an unrestricted channel stops
+    /// locking `channel_overrides` per frame as well.
+    pub async fn can_receive(
+        &mut self,
+        state: &Arc<AppState>,
+        user: Option<&str>,
+        kind: ChannelKind,
+        channel_id: i32,
+    ) -> bool {
+        let epoch = state
+            .visibility_epoch
+            .load(std::sync::atomic::Ordering::Acquire);
+        if self.epoch != epoch || self.user.as_deref() != user {
+            self.answers.clear();
+            self.epoch = epoch;
+            self.user = user.map(str::to_owned);
+        }
+        if let Some(&allowed) = self.answers.get(&(kind, channel_id)) {
+            return allowed;
+        }
+        let restricted = state
+            .channel_overrides
+            .lock()
+            .await
+            .contains_key(&(kind, channel_id));
+        let allowed = !restricted || user_can_see_channel(state, user, kind, channel_id).await;
+        self.answers.insert((kind, channel_id), allowed);
+        allowed
     }
 }
 

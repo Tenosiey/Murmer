@@ -70,7 +70,8 @@ existence or content:
 
 - channel-list senders are viewer-aware;
 - channel-scoped broadcasts are filtered per recipient in the `global_rx`
-  loop (`ws/handlers/mod.rs`);
+  loop (`ws/handlers/mod.rs`), from a per-connection memo whose invalidation
+  is [`protocol.md`](protocol.md);
 - join, history, search, send, react, pin, `voice-join` and every wiki read
   and write are channel-gated.
 

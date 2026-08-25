@@ -137,6 +137,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
     let mut voice_channel: Option<i32> = None;
     let mut authenticated = state.password.is_none();
     let mut last_typing_broadcast: Option<std::time::Instant> = None;
+    // This connection's memo of which channels it may receive frames for.
+    let mut visibility = VisibilityCache::default();
 
     loop {
         tokio::select! {
@@ -533,19 +535,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 continue;
                             }
                             // Channel-scoped frames must not reach a user who
-                            // cannot see the channel. Channels with no overrides
-                            // are visible to everyone (fast path).
-                            if let Some((kind, id)) = channel_scope(v) {
-                                let restricted = state
-                                    .channel_overrides
-                                    .lock()
-                                    .await
-                                    .contains_key(&(kind, id));
-                                if restricted
-                                    && !user_can_see_channel(&state, user_name.as_deref(), kind, id).await
-                                {
-                                    continue;
-                                }
+                            // cannot see the channel. Resolved once per
+                            // channel and memoised until the permissions that
+                            // decide it change.
+                            if let Some((kind, id)) = channel_scope(v)
+                                && !visibility.can_receive(&state, user_name.as_deref(), kind, id).await
+                            {
+                                continue;
                             }
                         }
 

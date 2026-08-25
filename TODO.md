@@ -111,12 +111,6 @@ not a description of the fix.
 
 ## ⚡ Performance
 
-- [ ] Cache each connection's channel visibility instead of resolving it per
-      frame. Every frame scoped to a restricted channel locks
-      `channel_overrides` and re-resolves the recipient's permissions, once
-      per recipient. The answer only changes on `channels-refresh`, which is
-      already broadcast — so it can be computed once per connection and
-      invalidated there
 - [ ] One array holds every message from every channel. `$chat` is flat and
       unbounded: each update re-filters it for the open channel and rebuilds
       every block, and every message ever scrolled into view stays in the DOM.
