@@ -514,7 +514,16 @@ pub(super) async fn handle_create_voice_channel(
 
     let private = v.get("private").and_then(|p| p.as_bool()).unwrap_or(false);
 
-    match db::add_voice_channel(&state.db, ch, &quality_value, bitrate_value, category_id).await {
+    match db::add_voice_channel(
+        &state.db,
+        ch,
+        &quality_value,
+        bitrate_value,
+        category_id,
+        None,
+    )
+    .await
+    {
         Ok(Some(record)) => {
             let info = VoiceChannelState {
                 name: record.name.clone(),
@@ -523,6 +532,7 @@ pub(super) async fn handle_create_voice_channel(
                 bitrate: record.bitrate,
                 category_id: record.category_id,
                 position: record.position,
+                breakout_parent: record.breakout_parent,
             };
             state
                 .voice_channels
@@ -731,6 +741,10 @@ pub(super) async fn handle_delete_voice_channel(
         return;
     }
 
+    // Breakout rooms of this channel go with it: their way back is the
+    // channel being deleted, so leaving them behind would strand everybody
+    // in a room with no parent.
+    super::breakout::close_breakouts(state, ch_id, false).await;
     super::channel_overrides::cleanup_channel(state, ChannelKind::Voice, ch_id).await;
     state.voice_channels.lock().await.remove(&ch_id);
     if let Err(e) = db::remove_voice_channel(&state.db, ch_id).await {

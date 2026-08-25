@@ -110,6 +110,13 @@ small team can deploy a private chat space quickly.
   summary, and a member with their camera on is marked in the channel list.
   The video travels over the same peer-to-peer connections as the voice, so
   the server never sees it
+- Breakout rooms: split a voice channel into two to six temporary rooms
+  (right-click the channel → *Split into Breakout Rooms*). Everyone in the
+  call is dealt out evenly and moved into a room, which appears indented under
+  the channel it came from; *Close Breakout Rooms* sends everybody back and
+  deletes the rooms again. A private channel's rooms are private too, and
+  rooms never outlive the split — a server restart clears any left behind.
+  Opening and closing a split needs *Manage channels*
 - Soundboard: a shared library of short clips anyone in a voice channel can
   play for everyone present. Uploading is gated by *Manage sounds*, playing by
   *Use soundboard*, and a server-side cooldown keeps it from becoming a spam

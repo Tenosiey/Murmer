@@ -69,9 +69,16 @@ async fn reset_clears_the_structure_but_keeps_general_and_the_protected_roles() 
         .await
         .expect("channel")
         .expect("created");
-    db::add_voice_channel(&db, "Lounge", "standard", Some(64_000), Some(category))
-        .await
-        .expect("voice channel");
+    db::add_voice_channel(
+        &db,
+        "Lounge",
+        "standard",
+        Some(64_000),
+        Some(category),
+        None,
+    )
+    .await
+    .expect("voice channel");
     db::insert_message(&db, channel, r#"{"user":"a","text":"hello"}"#)
         .await
         .expect("insert");

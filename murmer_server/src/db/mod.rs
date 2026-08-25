@@ -197,13 +197,17 @@ CREATE TABLE IF NOT EXISTS channels (
     position INTEGER NOT NULL DEFAULT 0,
     e2ee INTEGER NOT NULL DEFAULT 0
 );
+-- `breakout_parent` is the voice channel a breakout room was split off
+-- from, and NULL for every ordinary channel. Rooms are ephemeral: the sweep
+-- further down deletes them on every startup.
 CREATE TABLE IF NOT EXISTS voice_channels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     quality TEXT NOT NULL DEFAULT 'standard',
     bitrate INTEGER,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
-    position INTEGER NOT NULL DEFAULT 0
+    position INTEGER NOT NULL DEFAULT 0,
+    breakout_parent INTEGER
 );
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -367,6 +371,22 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
             "user_stats",
             "sounds_played",
             "INTEGER NOT NULL DEFAULT 0",
+        )?;
+        // Nullable on purpose: NULL is "not a breakout room", which is what
+        // every existing row is.
+        ensure_column(conn, "voice_channels", "breakout_parent", "INTEGER")?;
+
+        // Breakout rooms exist only for as long as the session that opened
+        // them. Nobody is in one after a restart, and an empty room nobody
+        // remembers opening would linger in the sidebar forever, so they are
+        // swept here rather than being closed by whoever notices. Their
+        // overrides go first: they are keyed by channel id, and an id SQLite
+        // will hand out again would otherwise resurrect them on a channel
+        // that has nothing to do with the room.
+        conn.execute_batch(
+            r#"DELETE FROM channel_overrides WHERE channel_kind = 'voice' AND channel_id IN
+    (SELECT id FROM voice_channels WHERE breakout_parent IS NOT NULL);
+DELETE FROM voice_channels WHERE breakout_parent IS NOT NULL;"#,
         )?;
 
         // One-time wipe of pre-E2EE plaintext direct messages: DMs are

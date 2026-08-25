@@ -150,7 +150,6 @@ not a description of the fix.
 
 ### 🎤 Voice Features
 
-- [ ] Breakout rooms
 - [ ] Collaborative whiteboard during voice chats
 - [ ] Ducking — drop the soundboard (and other app sounds) while somebody is
       actually talking, so a clip never buries the conversation

@@ -107,11 +107,11 @@ async fn reorder_channels_sets_category_and_positions() {
 async fn reorder_voice_channels() {
     let db = db::init(":memory:").await.expect("in-memory db");
 
-    let lobby = db::add_voice_channel(&db, "Lobby", "standard", None, None)
+    let lobby = db::add_voice_channel(&db, "Lobby", "standard", None, None, None)
         .await
         .expect("add")
         .expect("created");
-    let games = db::add_voice_channel(&db, "Games", "standard", None, None)
+    let games = db::add_voice_channel(&db, "Games", "standard", None, None, None)
         .await
         .expect("add")
         .expect("created");
@@ -191,11 +191,11 @@ async fn rename_channel_outcomes() {
 async fn rename_voice_channel_outcomes() {
     let db = db::init(":memory:").await.expect("in-memory db");
 
-    let lobby = db::add_voice_channel(&db, "Lobby", "standard", None, None)
+    let lobby = db::add_voice_channel(&db, "Lobby", "standard", None, None, None)
         .await
         .expect("add")
         .expect("created");
-    db::add_voice_channel(&db, "Games", "standard", None, None)
+    db::add_voice_channel(&db, "Games", "standard", None, None, None)
         .await
         .expect("add")
         .expect("created");

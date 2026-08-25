@@ -129,6 +129,7 @@ async fn main() -> Result<()> {
                         bitrate: record.bitrate,
                         category_id: record.category_id,
                         position: record.position,
+                        breakout_parent: record.breakout_parent,
                     },
                 );
             }

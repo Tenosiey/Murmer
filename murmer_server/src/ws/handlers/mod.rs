@@ -5,6 +5,7 @@
 //! domain-specific handlers are split into submodules to keep each file
 //! focused:
 //! - [`auth`] – user and bot authentication
+//! - [`breakout`] – splitting a voice channel into temporary rooms
 //! - [`channels`] – text/voice channel and category management
 //! - [`chat_settings`] – slow mode, message length cap and profanity filter
 //! - [`dms`] – direct messages between two users
@@ -22,6 +23,7 @@
 //! - [`wiki`] – per-channel Markdown wiki pages
 
 mod auth;
+mod breakout;
 mod channel_keys;
 mod channel_overrides;
 mod channels;
@@ -272,6 +274,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "delete-voice-channel" => {
                                 channels::handle_delete_voice_channel(&state, &mut sender, &v, &user_name, &mut voice_channel).await;
+                            }
+                            "open-breakouts" => {
+                                breakout::handle_open_breakouts(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "close-breakouts" => {
+                                breakout::handle_close_breakouts(&state, &mut sender, &v, &user_name).await;
                             }
                             "chat" => {
                                 messages::handle_chat(&state, &mut sender, &mut v, channel_id, &user_name).await;

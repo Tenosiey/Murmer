@@ -215,6 +215,10 @@ pub struct VoiceChannelState {
     pub bitrate: Option<i32>,
     pub category_id: Option<i32>,
     pub position: i32,
+    /// Set on a breakout room, naming the channel it was split off from.
+    /// Breakout rooms are deleted when the split is closed, so this is also
+    /// what marks a row as temporary.
+    pub breakout_parent: Option<i32>,
 }
 
 /// Shared application state passed to handlers.
