@@ -41,9 +41,6 @@ not a description of the fix.
       `nosniff`, `referrer-policy` and `x-frame-options` and nothing else. Two
       shipped targets, the same `{@html}` markdown boundary, two different
       security postures — and the browser one is the weaker
-- [ ] Dependency advisories in CI. `cargo audit` and `bun audit` are
-      documented as "run locally", which in practice means never. A weekly
-      scheduled workflow that fails only on advisories costs one job
 - [ ] Expiring, revocable invite links. An invite is a plain URL carrying the
       server address and password in its fragment, valid forever with no use
       limit; the only way to withdraw one is to change `SERVER_PASSWORD` for

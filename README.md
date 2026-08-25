@@ -269,9 +269,8 @@ cargo clippy -- -D warnings
 ## Quality checks
 
 `.github/workflows/ci.yml` runs these on every push to `main`/`dev` and on
-every pull request (two parallel jobs, client and server). `cargo audit` and
-`bun audit` are not part of it — run them locally. Run the rest before pushing
-so you find breakage before CI does:
+every pull request (two parallel jobs, client and server). Run them before
+pushing so you find breakage before CI does:
 
 ```bash
 cd murmer_server
@@ -285,6 +284,13 @@ bun run check
 bun run test
 bun audit
 ```
+
+The two `audit` lines are the only ones you do not have to remember:
+`.github/workflows/audit.yml` runs them every Monday against every committed
+lockfile — the Tauri shell's included — and fails on nothing else. It is a separate weekly job because an
+advisory is published against code that has not changed, so there is no push
+to hang the check on. Run them by hand when you change a dependency rather
+than waiting for the sweep.
 
 Client unit tests use [Vitest](https://vitest.dev) and live next to the module
 they cover (`src/lib/**/*.test.ts`); server tests are integration tests under

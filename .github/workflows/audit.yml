@@ -1,0 +1,64 @@
+# Weekly scan of the committed lockfiles for published security advisories.
+#
+# Deliberately not part of `ci.yml`: an advisory lands against code that has
+# not changed, so a push-triggered check would either fail a build no commit
+# caused or — most weeks see no push to `main` — never run at all. A schedule
+# is the only trigger that matches how advisories actually arrive.
+#
+# The job fails **only** on an advisory. It compiles nothing, lints nothing
+# and installs no dependencies; all three audits read a lockfile that is in
+# the repository. A red run here means "go read the advisory", never "the
+# build broke".
+name: Audit
+
+on:
+  schedule:
+    # Mondays 06:00 UTC. A schedule only ever fires from the default
+    # branch, so this file does nothing until it reaches `main`. GitHub
+    # queues scheduled runs on a best-effort basis and can delay them by a
+    # good while, which for a weekly advisory sweep costs nothing.
+    - cron: "0 6 * * 1"
+  # Also on demand, which is how you check a fix without waiting a week.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Dependency advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Ships the prebuilt binary; `cargo install cargo-audit` would spend
+      # several minutes compiling it on every run.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      # Each audit runs even after an earlier one failed — one advisory in
+      # the client should not hide another in the server for a week.
+      #
+      # `bun audit` resolves `bun.lock`, so no `bun install` (and no cache)
+      # is needed.
+      - name: Client dependencies
+        working-directory: murmer_client
+        run: bun audit
+
+      # `--file` likewise inspects the lockfile directly, so neither Rust
+      # crate needs its toolchain or a build. Informational advisories
+      # (`unmaintained`, `unsound`) are printed but do not fail the run —
+      # the Tauri shell pulls in eighteen of them through GTK3 alone, and a
+      # job that is permanently red is a job nobody reads.
+      - name: Server dependencies
+        if: ${{ !cancelled() }}
+        run: cargo audit --file murmer_server/Cargo.lock
+
+      - name: Tauri shell dependencies
+        if: ${{ !cancelled() }}
+        run: cargo audit --file murmer_client/src-tauri/Cargo.lock
