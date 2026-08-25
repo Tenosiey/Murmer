@@ -1,10 +1,16 @@
 //! Security utilities for rate limiting and replay attack prevention.
+//!
+//! Every refusal below is counted in [`crate::metrics`] as well as logged.
+//! A rejection is the one event here an operator has to see *while* it is
+//! happening — a burst of them is a brute-force attempt, a spam run or a
+//! limit set too low, and none of those are noticed by reading the log
+//! afterwards.
 
-use crate::{Clock, RateLimiter, SlidingWindows};
+use crate::{Clock, RateLimiter, SlidingWindows, metrics};
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     time::{Duration, Instant},
 };
 use tokio::sync::Mutex;
@@ -53,6 +59,27 @@ pub fn get_nonce_expiry_seconds() -> u64 {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(300) // 5 minutes
+}
+
+/// Whether a voice channel holding `occupants` has room for `user`.
+///
+/// Voice is a full mesh: one peer connection per pair, so the work every
+/// client does grows with the square of the room. Without a cap the first
+/// symptom of a crowded channel is everyone's CPU rather than an error, which
+/// is why the limit exists at all.
+///
+/// Reads `MAX_VOICE_CHANNEL_USERS`, defaulting to 10; `0` disables the cap.
+/// Resolved per call rather than cached because a join is a human action —
+/// one environment lookup per join costs nothing.
+///
+/// Someone already in the channel is never refused: a client re-sending
+/// `voice-join` for the channel it is already in must not lock itself out.
+pub fn voice_channel_has_room(occupants: &HashSet<String>, user: &str) -> bool {
+    let limit: usize = std::env::var("MAX_VOICE_CHANNEL_USERS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10);
+    limit == 0 || occupants.contains(user) || occupants.len() < limit
 }
 
 /// How often the sliding-window maps are swept end to end to drop entries for
@@ -159,6 +186,7 @@ pub async fn check_auth_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool
     )
     .await;
     if !allowed {
+        metrics::rejected(metrics::Limit::Auth);
         warn!("Rate limit exceeded for auth attempts from IP: {}", ip);
     }
     allowed
@@ -186,6 +214,7 @@ pub async fn check_upload_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bo
     )
     .await;
     if !allowed {
+        metrics::rejected(metrics::Limit::Uploads);
         warn!("Rate limit exceeded for uploads from IP: {}", ip);
     }
     allowed
@@ -212,6 +241,7 @@ pub async fn check_message_rate_limit(rate_limiter: &RateLimiter, user: &str) ->
     )
     .await;
     if !allowed {
+        metrics::rejected(metrics::Limit::Messages);
         warn!("Rate limit exceeded for messages from user: {}", user);
     }
     allowed
@@ -252,6 +282,7 @@ pub async fn check_and_store_nonce(rate_limiter: &RateLimiter, nonce: &str) -> b
         .get(nonce)
         .is_some_and(|seen_at| now.saturating_duration_since(*seen_at) < expiry)
     {
+        metrics::rejected(metrics::Limit::Replays);
         warn!("Replay attack detected - nonce already used: {}", nonce);
         return false;
     }
@@ -355,15 +386,18 @@ fn validate_name(name: &str, max_length: usize) -> bool {
         .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ' ')
 }
 
-/// Validate channel name for security (max 50 characters).
+/// Maximum length in bytes of a text, voice or category channel name.
+pub const MAX_CHANNEL_NAME_LENGTH: usize = 50;
+
+/// Validate channel name for security (max [`MAX_CHANNEL_NAME_LENGTH`] bytes).
 ///
 /// Channel names must:
-/// - Be non-empty and no longer than 50 characters
+/// - Be non-empty and no longer than [`MAX_CHANNEL_NAME_LENGTH`] bytes
 /// - Contain only alphanumeric characters, dashes, underscores, and spaces
 /// - Not have leading or trailing whitespace
 /// - Not be composed entirely of whitespace
 pub fn validate_channel_name(name: &str) -> bool {
-    validate_name(name, 50)
+    validate_name(name, MAX_CHANNEL_NAME_LENGTH)
 }
 
 /// Validate user name for security (max 32 characters).

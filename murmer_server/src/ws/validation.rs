@@ -1,12 +1,13 @@
 //! Validation helpers for WebSocket message parameters.
 
 use super::constants::{
-    MAX_ABOUT_LENGTH, MAX_ALLOWED_VOICE_BITRATE, MAX_DISPLAY_NAME_LENGTH, MAX_EMOJI_NAME_LEN,
-    MAX_NICKNAME_LENGTH, MAX_ROLE_NAME_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH,
+    MAX_ABOUT_LENGTH, MAX_ALLOWED_VOICE_BITRATE, MAX_BREAKOUT_ROOMS, MAX_DISPLAY_NAME_LENGTH,
+    MAX_EMOJI_NAME_LEN, MAX_NICKNAME_LENGTH, MAX_ROLE_NAME_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH,
     MAX_SERVER_NAME_LENGTH, MAX_SOUND_NAME_LEN, MAX_TOPIC_LENGTH, MAX_WELCOME_MESSAGE_LENGTH,
-    MAX_WIKI_SLUG_LENGTH, MAX_WIKI_TITLE_LENGTH, MIN_EMOJI_NAME_LEN, MIN_SOUND_NAME_LEN,
-    UPLOAD_IMAGE_EXTENSIONS, UPLOAD_SOUND_EXTENSIONS, USER_STATUSES,
+    MAX_WIKI_SLUG_LENGTH, MAX_WIKI_TITLE_LENGTH, MIN_BREAKOUT_ROOMS, MIN_EMOJI_NAME_LEN,
+    MIN_SOUND_NAME_LEN, UPLOAD_IMAGE_EXTENSIONS, UPLOAD_SOUND_EXTENSIONS, USER_STATUSES,
 };
+use crate::security::MAX_CHANNEL_NAME_LENGTH;
 
 /// Normalize a user status string to a valid status value.
 ///
@@ -157,6 +158,38 @@ pub fn validate_bitrate(value: i64) -> Option<i32> {
         return None;
     }
     i32::try_from(value).ok()
+}
+
+/// Validate the requested number of breakout rooms, returning it as a count.
+///
+/// Returns `None` outside [`MIN_BREAKOUT_ROOMS`]..=[`MAX_BREAKOUT_ROOMS`].
+pub fn breakout_room_count(value: i64) -> Option<usize> {
+    let count = usize::try_from(value).ok()?;
+    (MIN_BREAKOUT_ROOMS..=MAX_BREAKOUT_ROOMS)
+        .contains(&count)
+        .then_some(count)
+}
+
+/// Name a breakout room after its parent channel and its number.
+///
+/// Voice channel names are capped at [`MAX_CHANNEL_NAME_LENGTH`] bytes and
+/// rejected outright when they are longer, so a long parent name is truncated
+/// — on a character boundary, and without leaving the trailing space that
+/// would itself fail validation — to leave room for the suffix. The caller
+/// still runs the result past `validate_channel_name`: that is the check that
+/// decides whether the room can be created.
+pub fn breakout_room_name(parent: &str, index: usize) -> String {
+    let suffix = format!(" Room {index}");
+    let budget = MAX_CHANNEL_NAME_LENGTH.saturating_sub(suffix.len());
+    let mut base = String::new();
+    for c in parent.chars() {
+        if base.len() + c.len_utf8() > budget {
+            break;
+        }
+        base.push(c);
+    }
+    let base = base.trim_end();
+    format!("{base}{suffix}").trim().to_string()
 }
 
 /// Validate a wiki page slug: lowercase alphanumerics and single dashes,

@@ -32,7 +32,7 @@
   import { unread } from '$lib/stores/unread';
   import { can } from '$lib/stores/permissions';
   import { PERMISSIONS } from '$lib/chat/permissions';
-  import { formatVoiceQuality } from '$lib/chat/helpers';
+  import { formatVoiceQuality, orderVoiceChannels } from '$lib/chat/helpers';
   import type { CategoryInfo, ChannelInfo, VoiceChannelInfo } from '$lib/types';
 
   interface Props {
@@ -423,13 +423,14 @@
               <h3 class="section">Voice Channels</h3>
             {/if}
           {/if}
-          {#each group.voiceChannels as ch (ch.id)}
-            <div class="voice-group">
+          {#each orderVoiceChannels(group.voiceChannels) as row (row.channel.id)}
+            {@const ch = row.channel}
+            <div class="voice-group" class:breakout={row.room}>
               <button
                 class:dragging={draggedChannel?.id === ch.id && draggedChannel.voice}
                 class:drop-before={channelDropTarget?.id === ch.id && channelDropTarget.voice && !channelDropTarget.after}
                 class:drop-after={channelDropTarget?.id === ch.id && channelDropTarget.voice && channelDropTarget.after}
-                draggable="true"
+                draggable={!row.room}
                 ondragstart={(e) => handleChannelDragStart(e, ch, true)}
                 ondragend={handleChannelDragEnd}
                 ondragover={(e) => handleChannelItemDragOver(e, ch, true)}
@@ -442,6 +443,9 @@
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
                 </span>
                 <span class="voice-channel-name">{ch.name}</span>
+                {#if row.room}
+                  <span class="badge breakout-badge" title="Temporary breakout room">Breakout</span>
+                {/if}
                 {#if ch.private}
                   <span class="chan-lock" title="Private channel" aria-label="Private channel">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -797,6 +801,16 @@
   .voice-group {
     display: flex;
     flex-direction: column;
+  }
+
+  /* A breakout room sits under the call it was split off from; the indent is
+     what says "this is part of that" without a second list. */
+  .voice-group.breakout {
+    padding-left: var(--space-4);
+  }
+
+  .breakout-badge {
+    flex-shrink: 0;
   }
 
   .voice-user-list {

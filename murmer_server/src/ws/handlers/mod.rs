@@ -1,19 +1,25 @@
 //! WebSocket message handlers.
 //!
 //! The main socket loop lives here, along with the small voice, screen-share
-//! and camera handlers that are not worth a file of their own;
+//! and camera handlers, the server-info and operator-metrics answers, and the
+//! rest of what is not worth a file of its own;
 //! domain-specific handlers are split into submodules to keep each file
 //! focused:
+//! - [`audit`] – reading the audit log of moderation and dashboard actions
 //! - [`auth`] – user and bot authentication
+//! - [`automod`] – auto-moderation rules and the screening of each message
+//! - [`breakout`] – splitting a voice channel into temporary rooms
 //! - [`channels`] – text/voice channel and category management
 //! - [`chat_settings`] – slow mode, message length cap and profanity filter
 //! - [`dms`] – direct messages between two users
 //! - [`emojis`] – custom server emoji management
 //! - [`identity`] – server name, description, welcome message and icon
+//! - [`invites`] – minting, listing and revoking server invite codes
 //! - [`maintenance`] – Danger Zone purge/reset actions
 //! - [`messages`] – chat, history, threads, typing, search and reactions
 //! - [`moderation`] – kick, ban, mute and the ban list
 //! - [`pins`] – shared, persisted message pins
+//! - [`scheduled`] – reminders, scheduled messages and the scheduler
 //! - [`screenshare`] – server-wide screen share configuration (bitrate cap)
 //! - [`soundboard`] – shared sound library and voice-channel playback
 //! - [`stats`] – lifetime user statistics (double opt-in gated)
@@ -21,7 +27,10 @@
 //! - [`voice_defaults`] – quality/bitrate new voice channels start with
 //! - [`wiki`] – per-channel Markdown wiki pages
 
+mod audit;
 mod auth;
+mod automod;
+mod breakout;
 mod channel_keys;
 mod channel_overrides;
 mod channels;
@@ -29,18 +38,22 @@ mod chat_settings;
 mod dms;
 mod emojis;
 mod identity;
+mod invites;
 mod maintenance;
 mod messages;
 mod moderation;
 mod pins;
 mod profile;
 mod roles;
+mod scheduled;
 mod screenshare;
 mod soundboard;
 mod stats;
 mod uploads;
 mod voice_defaults;
 mod wiki;
+
+pub use scheduled::{recover_claimed_scheduled_messages, spawn_scheduler};
 
 use super::{errors, helpers::*, validation::*};
 use crate::channel_overrides::ChannelKind;
@@ -119,6 +132,8 @@ async fn general_channel_id(state: &Arc<AppState>) -> i32 {
 #[tracing::instrument(skip(socket, state), fields(client_ip = %peer_addr.ip()))]
 async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::net::SocketAddr) {
     let client_ip = peer_addr.ip().to_string();
+    // Counted for the lifetime of this function, however it ends.
+    let _counted = crate::metrics::Connection::open();
     info!("Client connected");
 
     let (mut sender, mut receiver) = socket.split();
@@ -137,6 +152,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
     let mut voice_channel: Option<i32> = None;
     let mut authenticated = state.password.is_none();
     let mut last_typing_broadcast: Option<std::time::Instant> = None;
+    // This connection's memo of which channels it may receive frames for.
+    let mut visibility = VisibilityCache::default();
 
     loop {
         tokio::select! {
@@ -145,6 +162,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                     Ok(Message::Text(t)) => t,
                     _ => break,
                 };
+                crate::metrics::frame_received();
 
                 if let Ok(mut v) = serde_json::from_str::<Value>(&text) {
                     if let Some(t) = v.get("type").and_then(|t| t.as_str()) {
@@ -273,8 +291,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "delete-voice-channel" => {
                                 channels::handle_delete_voice_channel(&state, &mut sender, &v, &user_name, &mut voice_channel).await;
                             }
+                            "open-breakouts" => {
+                                breakout::handle_open_breakouts(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "close-breakouts" => {
+                                breakout::handle_close_breakouts(&state, &mut sender, &v, &user_name).await;
+                            }
                             "chat" => {
                                 messages::handle_chat(&state, &mut sender, &mut v, channel_id, &user_name).await;
+                            }
+                            "forward-message" => {
+                                messages::handle_forward_message(&state, &mut sender, &v, &user_name).await;
                             }
                             "delete-message" => {
                                 messages::handle_delete_message(&state, &mut sender, &v, channel_id, &user_name).await;
@@ -302,6 +329,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "get-server-info" => {
                                 handle_get_server_info(&state, &mut sender, &user_name).await;
+                            }
+                            "get-server-metrics" => {
+                                handle_get_server_metrics(&state, &mut sender, &user_name).await;
                             }
                             "connection-stats" => {
                                 handle_connection_stats(&state, &v, &user_name).await;
@@ -390,6 +420,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "set-chat-settings" => {
                                 chat_settings::handle_set_chat_settings(&state, &mut sender, &v, &user_name).await;
                             }
+                            "get-automod-rules" => {
+                                automod::handle_get_automod_rules(&state, &mut sender, &user_name).await;
+                            }
+                            "set-automod-rules" => {
+                                automod::handle_set_automod_rules(&state, &mut sender, &v, &user_name).await;
+                            }
                             "set-voice-defaults" => {
                                 voice_defaults::handle_set_voice_defaults(&state, &mut sender, &v, &user_name).await;
                             }
@@ -416,6 +452,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "get-ban-list" => {
                                 moderation::handle_get_ban_list(&state, &mut sender, &user_name).await;
+                            }
+                            "get-audit-log" => {
+                                audit::handle_get_audit_log(&state, &mut sender, &user_name).await;
                             }
                             "mute-user" => {
                                 moderation::handle_mute_user(&state, &mut sender, &v, &user_name).await;
@@ -477,6 +516,33 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "set-server-identity" => {
                                 identity::handle_set_server_identity(&state, &mut sender, &v, &user_name).await;
                             }
+                            "get-invites" => {
+                                invites::handle_get_invites(&state, &mut sender, &user_name).await;
+                            }
+                            "create-invite" => {
+                                invites::handle_create_invite(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "revoke-invite" => {
+                                invites::handle_revoke_invite(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "schedule-message" => {
+                                scheduled::handle_schedule_message(&state, &mut sender, &mut v, &user_name).await;
+                            }
+                            "cancel-scheduled-message" => {
+                                scheduled::handle_cancel_scheduled_message(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "get-scheduled-messages" => {
+                                scheduled::handle_get_scheduled_messages(&state, &mut sender, &user_name).await;
+                            }
+                            "set-reminder" => {
+                                scheduled::handle_set_reminder(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "cancel-reminder" => {
+                                scheduled::handle_cancel_reminder(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "get-reminders" => {
+                                scheduled::handle_get_reminders(&state, &mut sender, &user_name).await;
+                            }
                             _ => {
                                 error!("unknown message type: {t}");
                             }
@@ -533,19 +599,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 continue;
                             }
                             // Channel-scoped frames must not reach a user who
-                            // cannot see the channel. Channels with no overrides
-                            // are visible to everyone (fast path).
-                            if let Some((kind, id)) = channel_scope(v) {
-                                let restricted = state
-                                    .channel_overrides
-                                    .lock()
-                                    .await
-                                    .contains_key(&(kind, id));
-                                if restricted
-                                    && !user_can_see_channel(&state, user_name.as_deref(), kind, id).await
-                                {
-                                    continue;
-                                }
+                            // cannot see the channel. Resolved once per
+                            // channel and memoised until the permissions that
+                            // decide it change.
+                            if let Some((kind, id)) = channel_scope(v)
+                                && !visibility.can_receive(&state, user_name.as_deref(), kind, id).await
+                            {
+                                continue;
                             }
                         }
 
@@ -701,6 +761,50 @@ async fn handle_get_server_info(
     let _ = sender.send(Message::Text(msg.to_string().into())).await;
 }
 
+/// Handle `get-server-metrics`: answer with the live operator counters —
+/// connections, frames taken in, database latency and rate-limit rejections.
+///
+/// Gated on `MANAGE_SERVER` like the storage report, and dropped silently
+/// rather than answered with an error for the same reason as
+/// `get-server-info`: the dashboard polls this on a timer, so a denial would
+/// otherwise become a stream of error toasts.
+///
+/// The counters are cumulative and the frame carries the uptime with them, so
+/// a viewer can turn two samples into the rate over its own polling interval
+/// without the server keeping a window per viewer. See
+/// [`crate::metrics`].
+async fn handle_get_server_metrics(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    user_name: &Option<String>,
+) {
+    let Some(requester) = user_name.as_deref() else {
+        return;
+    };
+
+    if !has_permission(state, requester, crate::permissions::MANAGE_SERVER).await {
+        info!(requester, "Denied server metrics request");
+        return;
+    }
+
+    let m = crate::metrics::snapshot();
+    let msg = serde_json::json!({
+        "type": "server-metrics",
+        "uptimeSeconds": m.uptime_secs,
+        "connections": m.connections,
+        "peakConnections": m.peak_connections,
+        "frames": m.frames,
+        "dbCalls": m.db_calls,
+        "dbTotalMs": m.db_total_ms,
+        "dbMaxMs": m.db_max_ms,
+        "rejectedMessages": m.rejected_messages,
+        "rejectedAuth": m.rejected_auth,
+        "rejectedUploads": m.rejected_uploads,
+        "rejectedReplays": m.rejected_replays,
+    });
+    let _ = sender.send(Message::Text(msg.to_string().into())).await;
+}
+
 /// Store a client's self-reported connection quality numbers (ping, voice
 /// RTT/jitter/packet loss). The entry is keyed by the authenticated user name
 /// so clients cannot report on behalf of someone else, values are validated
@@ -791,21 +895,26 @@ async fn handle_voice_join(
             return;
         }
         let mut map = state.voice_channels.lock().await;
+        let Some(entry) = map.get(&ch_id) else {
+            return;
+        };
+        // Capacity is decided before the user is pulled out of whatever
+        // channel they are in, so a full target leaves them where they were
+        // instead of dropping them out of voice entirely.
+        if !crate::security::voice_channel_has_room(&entry.users, u) {
+            drop(map);
+            info!("voice channel {ch_id} is full; refused join from {u}");
+            send_error(sender, errors::VOICE_CHANNEL_FULL).await;
+            return;
+        }
         for info in map.values_mut() {
             info.users.remove(u);
         }
-        let joined = match map.get_mut(&ch_id) {
-            Some(entry) => {
-                entry.users.insert(u.to_string());
-                *voice_channel = Some(ch_id);
-                true
-            }
-            None => false,
-        };
-        drop(map);
-        if !joined {
-            return;
+        if let Some(entry) = map.get_mut(&ch_id) {
+            entry.users.insert(u.to_string());
         }
+        *voice_channel = Some(ch_id);
+        drop(map);
         stats::note_voice_join(state, u).await;
         broadcast_voice(state, ch_id).await;
         let msg = serde_json::json!({

@@ -74,11 +74,62 @@ export const MAX_SLOW_MODE_SECONDS = 6 * 60 * 60;
 export const MAX_PROFANITY_WORDS = 200;
 export const MAX_PROFANITY_WORD_LEN = 32;
 
+/* Timed mute bounds, mirrored from `murmer_server/src/db/moderation.rs`. The
+   server clamps every mute it issues, by hand or by rule; this bounds the
+   duration input in the auto-moderation editor. */
+export const MIN_MUTE_SECONDS = 10;
+export const MAX_MUTE_SECONDS = 30 * 24 * 60 * 60;
+
+/* Auto-moderation mirror of `murmer_server/src/automod.rs`. The server
+   validates every rule it is sent, compiles the patterns itself and enforces
+   the actions; these only bound what the dashboard editor offers. Each `id`
+   is the wire name — the server rejects anything it does not know rather than
+   falling back to a default, so these must stay exactly as spelled in Rust. */
+export type AutomodKind = 'word' | 'substring' | 'regex';
+export type AutomodAction = 'warn' | 'delete' | 'mute';
+
+export const MAX_AUTOMOD_RULES = 50;
+export const MAX_AUTOMOD_PATTERN_LEN = 200;
+export const MAX_AUTOMOD_NAME_LEN = 48;
+export const DEFAULT_AUTOMOD_MUTE_SECONDS = 300;
+
+export const AUTOMOD_KINDS: Array<{ id: AutomodKind; label: string; description: string }> = [
+  {
+    id: 'word',
+    label: 'Whole word',
+    description: 'The word on its own, ignoring case — “ass” leaves “class” alone.'
+  },
+  { id: 'substring', label: 'Contains', description: 'Anywhere in the message, ignoring case.' },
+  {
+    id: 'regex',
+    label: 'Regular expression',
+    description: 'Rust regex syntax, ignoring case. No lookaround or backreferences.'
+  }
+];
+
+/* Ordered from least to most severe, the same order the server resolves two
+   matching rules by. */
+export const AUTOMOD_ACTIONS: Array<{ id: AutomodAction; label: string; description: string }> = [
+  { id: 'warn', label: 'Warn', description: 'Deliver it and tell the sender it matched.' },
+  { id: 'delete', label: 'Delete', description: 'Refuse it; nobody else ever sees it.' },
+  { id: 'mute', label: 'Mute', description: 'Refuse it and mute the sender.' }
+];
+
 export const MESSAGE_INPUT_MAX_HEIGHT = 360;
 export const MAX_TOPIC_LENGTH = 256;
 export const PIN_PREVIEW_LIMIT = 120;
 export const MIN_EPHEMERAL_SECONDS = 5;
 export const MAX_EPHEMERAL_SECONDS = 86_400;
+
+/* Reminder and scheduling bounds, mirrored from
+   `murmer_server/src/ws/constants.rs`. The server refuses a time outside them
+   outright rather than clamping — "when" is the whole request — so these exist
+   to keep the picker from offering a time that would only bounce back. */
+export const MIN_SCHEDULE_LEAD_SECONDS = 30;
+export const MAX_SCHEDULE_AHEAD_SECONDS = 365 * 24 * 60 * 60;
+export const MAX_SCHEDULED_MESSAGES_PER_USER = 25;
+export const MAX_REMINDERS_PER_USER = 50;
+export const MAX_REMINDER_TEXT_LENGTH = 500;
 
 export const VOICE_QUALITY_PRESETS: Array<{
   quality: string;
@@ -147,6 +198,23 @@ export const HELP_COMMANDS: Array<{
   {
     usage: '/search [query]',
     description: 'Open the search overlay and optionally pre-fill it with a query.'
+  },
+  {
+    usage: '/remind <when> <note>',
+    description:
+      'Set a private reminder. “When” is a duration such as 90s, 15m, 2h or 3d, ' +
+      'or a clock time like 17:30.',
+    aliases: ['/remindme <when> <note>']
+  },
+  {
+    usage: '/schedule <when> <message>',
+    description:
+      'Post a message to this channel later. Same “when” as /remind; the queue ' +
+      'is in the Reminders panel.'
+  },
+  {
+    usage: '/reminders',
+    description: 'Open the panel listing your reminders and scheduled messages.'
   }
 ];
 

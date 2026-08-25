@@ -6,8 +6,15 @@
 //! (View + Write/Talk) so channel settings can never grant management or
 //! moderation powers. Every change persists, updates the in-memory cache and
 //! signals clients to re-derive their visible channel lists.
+//!
+//! An override edited from the dashboard is recorded in the audit log
+//! ([`crate::db::audit`]) — it is how somebody loses sight of a channel, and
+//! "it just vanished" is exactly the report the log has to answer. Seeding a
+//! freshly created private channel is not: that is part of creating the
+//! channel, not a later change to who can see it.
 
 use crate::channel_overrides::{ChannelKind, OverridePair};
+use crate::db::actions;
 use crate::permissions::{self, Permissions};
 use crate::ws::{errors, helpers::*};
 use crate::{AppState, db};
@@ -122,6 +129,65 @@ pub(super) async fn make_channel_private(
     }
 }
 
+/// Name the channel an override belongs to, for the audit entry. Falls back
+/// to the id: a channel deleted between the edit and the write is not a
+/// reason to lose the record of the edit.
+async fn channel_label(state: &Arc<AppState>, kind: ChannelKind, channel_id: i32) -> String {
+    let name = match kind {
+        ChannelKind::Text => db::get_channel_by_id(&state.db, channel_id)
+            .await
+            .map(|record| record.name),
+        ChannelKind::Voice => state
+            .voice_channels
+            .lock()
+            .await
+            .get(&channel_id)
+            .map(|info| info.name.clone()),
+    };
+    match (kind, name) {
+        (ChannelKind::Text, Some(name)) => name,
+        (ChannelKind::Voice, Some(name)) => format!("{name} (voice)"),
+        (_, None) => format!("channel {channel_id}"),
+    }
+}
+
+/// Name whose override changed: `@everyone`, or the role/member label.
+fn describe_target(target_type: &str, label: &str) -> String {
+    match target_type {
+        "everyone" => "@everyone".to_string(),
+        _ if label.is_empty() => target_type.to_string(),
+        _ => label.to_string(),
+    }
+}
+
+/// Describe a written override: who it applies to and what it grants or
+/// denies. Only the two overridable flags exist, so this stays a short phrase
+/// rather than a mask nobody can read.
+fn override_detail(
+    target_type: &str,
+    label: &str,
+    allow: Permissions,
+    deny: Permissions,
+) -> String {
+    let mut parts = Vec::new();
+    for (flag, name) in [
+        (permissions::VIEW_CHANNELS, "view"),
+        (permissions::SEND_MESSAGES, "write"),
+    ] {
+        if allow & flag != 0 {
+            parts.push(format!("+{name}"));
+        }
+        if deny & flag != 0 {
+            parts.push(format!("-{name}"));
+        }
+    }
+    format!(
+        "{}: {}",
+        describe_target(target_type, label),
+        parts.join(" ")
+    )
+}
+
 /// Handle `set-channel-override`: create or update one target's override.
 pub(super) async fn handle_set_channel_override(
     state: &Arc<AppState>,
@@ -129,7 +195,7 @@ pub(super) async fn handle_set_channel_override(
     v: &Value,
     user_name: &Option<String>,
 ) {
-    let Some(_requester) = require_channel_manager(state, sender, user_name).await else {
+    let Some(requester) = require_channel_manager(state, sender, user_name).await else {
         return;
     };
     let Some((kind, channel_id)) = channel_ref(v) else {
@@ -187,7 +253,17 @@ pub(super) async fn handle_set_channel_override(
 
     // An empty override is a removal.
     if allow == 0 && deny == 0 {
-        remove_and_notify(state, sender, kind, channel_id, target_type, &target_id).await;
+        remove_and_notify(
+            state,
+            sender,
+            kind,
+            channel_id,
+            target_type,
+            &target_id,
+            &requester,
+            &label,
+        )
+        .await;
         return;
     }
 
@@ -207,6 +283,15 @@ pub(super) async fn handle_set_channel_override(
         return;
     }
 
+    record_audit(
+        state,
+        actions::OVERRIDE_SET,
+        &requester,
+        &channel_label(state, kind, channel_id).await,
+        &override_detail(target_type, &label, allow, deny),
+    )
+    .await;
+
     broadcast_channels_refresh(state).await;
     send_channel_overrides(state, sender, kind, channel_id).await;
 }
@@ -218,7 +303,7 @@ pub(super) async fn handle_remove_channel_override(
     v: &Value,
     user_name: &Option<String>,
 ) {
-    let Some(_requester) = require_channel_manager(state, sender, user_name).await else {
+    let Some(requester) = require_channel_manager(state, sender, user_name).await else {
         return;
     };
     let Some((kind, channel_id)) = channel_ref(v) else {
@@ -230,10 +315,18 @@ pub(super) async fn handle_remove_channel_override(
         .and_then(|t| t.get("type"))
         .and_then(|t| t.as_str())
         .unwrap_or("");
-    let target_id = match target_type {
-        "everyone" => String::new(),
+    // The label is only for the audit entry: an override is stored by key or
+    // role id, neither of which means anything to somebody reading the log.
+    let (target_id, label) = match target_type {
+        "everyone" => (String::new(), String::new()),
         "role" => match target.and_then(|t| t.get("id")).and_then(|i| i.as_i64()) {
-            Some(id) => id.to_string(),
+            Some(id) => {
+                let name = match db::get_role_def(&state.db, id).await {
+                    Ok(Some(def)) => def.name,
+                    _ => id.to_string(),
+                };
+                (id.to_string(), name)
+            }
             None => {
                 send_error(sender, errors::INVALID_CHANNEL_OVERRIDE).await;
                 return;
@@ -245,7 +338,7 @@ pub(super) async fn handle_remove_channel_override(
                 return;
             };
             match lookup_user_key(state, user).await {
-                Some(key) => key,
+                Some(key) => (key, user.to_string()),
                 None => {
                     send_error(sender, errors::OVERRIDE_TARGET_NOT_FOUND).await;
                     return;
@@ -257,11 +350,22 @@ pub(super) async fn handle_remove_channel_override(
             return;
         }
     };
-    remove_and_notify(state, sender, kind, channel_id, target_type, &target_id).await;
+    remove_and_notify(
+        state,
+        sender,
+        kind,
+        channel_id,
+        target_type,
+        &target_id,
+        &requester,
+        &label,
+    )
+    .await;
 }
 
 /// Delete an override from the database and cache, then refresh clients and
 /// reply with the updated list.
+#[allow(clippy::too_many_arguments)]
 async fn remove_and_notify(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -269,6 +373,8 @@ async fn remove_and_notify(
     channel_id: i32,
     target_type: &str,
     target_id: &str,
+    requester: &str,
+    target_label: &str,
 ) {
     if let Err(e) =
         db::delete_channel_override(&state.db, kind, channel_id, target_type, target_id).await
@@ -297,6 +403,14 @@ async fn remove_and_notify(
             }
         }
     }
+    record_audit(
+        state,
+        actions::OVERRIDE_REMOVE,
+        requester,
+        &channel_label(state, kind, channel_id).await,
+        &describe_target(target_type, target_label),
+    )
+    .await;
     broadcast_channels_refresh(state).await;
     send_channel_overrides(state, sender, kind, channel_id).await;
 }
@@ -329,4 +443,8 @@ pub(super) async fn cleanup_channel(state: &Arc<AppState>, kind: ChannelKind, ch
         .lock()
         .await
         .remove(&(kind, channel_id));
+    // Deletion announces `channel-remove`, not `channels-refresh`, so the
+    // stamp is bumped by hand here. Channel ids are rowids and get reused, so
+    // a memo left behind would answer for a different channel later.
+    invalidate_channel_visibility(state);
 }

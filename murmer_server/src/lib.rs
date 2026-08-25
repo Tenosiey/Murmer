@@ -4,11 +4,13 @@
 //! them to exercise rate limiting and validation logic.
 
 pub mod admin;
+pub mod automod;
 pub mod bot;
 pub mod channel_overrides;
 pub mod config;
 pub mod db;
 pub mod link_preview;
+pub mod metrics;
 pub mod permissions;
 pub mod profanity;
 pub mod roles;
@@ -215,6 +217,10 @@ pub struct VoiceChannelState {
     pub bitrate: Option<i32>,
     pub category_id: Option<i32>,
     pub position: i32,
+    /// Set on a breakout room, naming the channel it was split off from.
+    /// Breakout rooms are deleted when the split is closed, so this is also
+    /// what marks a row as temporary.
+    pub breakout_parent: Option<i32>,
 }
 
 /// Shared application state passed to handlers.
@@ -283,8 +289,28 @@ pub struct AppState {
     /// held in memory rather than read back per message; the handler that
     /// writes them refreshes this in the same step.
     pub chat_settings: Arc<Mutex<db::ChatSettings>>,
+    /// The compiled auto-moderation rules (`automod_rules`). Every chat
+    /// message and every edit is checked against all of them, so they are
+    /// compiled once here rather than per message; the handler that writes
+    /// the rows rebuilds this in the same step.
+    pub automod: Arc<Mutex<automod::RuleSet>>,
     /// When each user last had a message accepted, for the slow mode gate.
     /// In-memory only and pruned on disconnect: slow mode is a pacing tool,
     /// not a punishment to be remembered across sessions.
     pub slow_mode_sends: Arc<Mutex<HashMap<String, Instant>>>,
+    /// Stamp bumped whenever an input to a channel visibility decision moves:
+    /// channel overrides, role definitions or role assignments. Each
+    /// connection memoises its own answers in a
+    /// [`VisibilityCache`](ws::helpers::VisibilityCache) and throws the whole
+    /// table away when this changes, so the fan-out filter stops re-resolving
+    /// permissions for every recipient of every channel-scoped frame.
+    ///
+    /// This is an invalidation stamp, never an authorization decision — the
+    /// answers still come from `can_view_channel`. Bumping it needlessly only
+    /// costs a re-resolve; *not* bumping it serves a stale answer, which is a
+    /// permission leak, so the bump lives inside the three broadcasts that
+    /// announce those changes (`channels-refresh`, `role-definitions`,
+    /// `user-roles`) plus `cleanup_channel`. A mutation that reaches clients
+    /// therefore cannot skip the invalidation.
+    pub visibility_epoch: std::sync::atomic::AtomicU64,
 }

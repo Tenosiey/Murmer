@@ -6,6 +6,8 @@
 const SERVER_ERROR_MESSAGES: Record<string, string> = {
   unauthenticated: 'You are not authenticated with this server.',
   'invalid-password': 'The server password is incorrect.',
+  'invalid-invite':
+    'That invite is no longer valid — it expired, ran out of uses or was withdrawn. Ask for a fresh one.',
   'auth-rate-limit': 'Too many connection attempts. Please wait a moment and try again.',
   'invalid-timestamp': 'Authentication failed: your system clock appears to be wrong.',
   'replay-attack': 'Authentication failed. Please try connecting again.',
@@ -31,7 +33,12 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-voice-quality': 'Invalid voice quality setting.',
   'invalid-voice-bitrate': 'Invalid voice bitrate setting.',
   'unknown-voice-channel': 'That voice channel no longer exists.',
+  'voice-channel-full': 'That voice channel is full. Try again once somebody leaves.',
   'voice-channel-update-failed': 'The server could not update the voice channel.',
+  'invalid-breakout-rooms': 'That is not a valid number of breakout rooms.',
+  'breakout-already-open': 'That channel already has breakout rooms open.',
+  'breakout-create-failed':
+    'The server could not open the breakout rooms. A channel of that name may already exist.',
   'role-permission-denied': 'You do not have permission to manage roles on this server.',
   'role-target-not-found': 'That user is not connected to the server.',
   'role-update-failed': 'The server could not update the role. Please try again.',
@@ -103,6 +110,12 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'pin-limit-reached': 'This channel already has the maximum number of pinned messages.',
   'pin-failed': 'The server could not update the pinned messages.',
   'reply-target-not-found': 'The message you are replying to no longer exists.',
+  'forward-source-not-found': 'That message no longer exists, or you cannot see it.',
+  'cannot-forward-encrypted':
+    'Messages cannot be forwarded into or out of an end-to-end encrypted channel.',
+  'cannot-forward-ephemeral': 'A disappearing message cannot be forwarded.',
+  'nothing-to-forward': 'That message has nothing that can be forwarded.',
+  'cannot-edit-forward': 'A forwarded message cannot be edited — its words are someone else’s.',
   'thread-load-failed': 'The server could not load that thread. Please try again.',
   'emoji-permission-denied': 'You do not have permission to manage emojis on this server.',
   'invalid-emoji-name':
@@ -141,12 +154,22 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'chat-settings-permission-denied':
     'You do not have permission to change the chat settings on this server.',
   'invalid-chat-settings': 'Those chat settings are not valid.',
+  'automod-blocked': 'An auto-moderation rule on this server blocked that message.',
+  'automod-permission-denied':
+    'You do not have permission to change the auto-moderation rules on this server.',
+  'invalid-automod-rules': 'Those auto-moderation rules are not valid.',
+  'invalid-automod-pattern':
+    'One of those patterns is not valid. A regular expression must compile, and a whole-word pattern cannot contain spaces.',
+  'automod-update-failed':
+    'The server could not update the auto-moderation rules. Please try again.',
   'chat-settings-update-failed':
     'The server could not update the chat settings. Please try again.',
   'voice-defaults-permission-denied':
     'You do not have permission to change the voice defaults on this server.',
   'voice-defaults-update-failed':
     'The server could not update the voice defaults. Please try again.',
+  'audit-log-permission-denied': 'You do not have permission to view this server’s audit log.',
+  'audit-log-failed': 'The server could not load the audit log.',
   'maintenance-permission-denied': 'Only an Owner can purge or reset this server.',
   'maintenance-not-confirmed': 'That action was not confirmed. Nothing was changed.',
   'maintenance-failed': 'The server could not complete that action. Nothing was changed.',
@@ -161,7 +184,23 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'wiki-page-not-found': 'That wiki page no longer exists.',
   'wiki-revision-not-found': 'That revision is no longer stored.',
   'wiki-page-limit-reached': 'This channel has reached its wiki page limit.',
-  'wiki-save-failed': 'The server could not update the wiki. Please try again.'
+  'wiki-save-failed': 'The server could not update the wiki. Please try again.',
+  'invite-permission-denied': 'You do not have permission to manage invites on this server.',
+  'invalid-invite-options': 'That invite expiry or use limit is out of range.',
+  'invite-limit-reached': 'This server has reached its invite limit. Revoke one first.',
+  'invite-not-found': 'That invite no longer exists.',
+  'invite-update-failed': 'The server could not update the invite. Please try again.',
+  'invalid-schedule-time':
+    'Pick a time between 30 seconds and a year from now.',
+  'schedule-limit-reached':
+    'You already have the maximum number of scheduled messages. Cancel one first.',
+  'scheduled-message-not-found': 'That scheduled message no longer exists.',
+  'schedule-failed': 'The server could not schedule that message. Please try again.',
+  'invalid-reminder': 'A reminder needs a note of up to 500 characters.',
+  'reminder-limit-reached':
+    'You already have the maximum number of reminders. Dismiss one first.',
+  'reminder-not-found': 'That reminder no longer exists.',
+  'reminder-failed': 'The server could not save that reminder. Please try again.'
 };
 
 /**
@@ -171,6 +210,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
 const FATAL_CONNECTION_ERRORS = new Set([
   'unauthenticated',
   'invalid-password',
+  'invalid-invite',
   'auth-rate-limit',
   'invalid-timestamp',
   'replay-attack',

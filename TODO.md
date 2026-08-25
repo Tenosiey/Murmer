@@ -36,37 +36,17 @@ not a description of the fix.
 
 ## 🔧 Tech debt / hardening
 
-- [ ] Audit log for moderation and dashboard actions. Kicks, bans, mutes,
-      permission changes and Danger Zone resets go to `tracing` and nowhere
-      else, so the only record lives in the operator's terminal — the people
-      who can see the Server Dashboard cannot see who did what from it
-- [ ] Cap voice channel occupancy. The mesh is one connection per pair, so
-      cost grows with the square of the room, and nothing stops the twentieth
-      person joining; the first symptom is everyone's CPU rather than an
-      error. A server-configurable per-channel limit is the small fix, an SFU
-      the real one — see Future Ideas
 - [ ] Content-Security-Policy for the web client. The desktop shell ships a
       full policy in `tauri.conf.json`; the same bundle served over HTTP gets
       `nosniff`, `referrer-policy` and `x-frame-options` and nothing else. Two
       shipped targets, the same `{@html}` markdown boundary, two different
       security postures — and the browser one is the weaker
-- [ ] Dependency advisories in CI. `cargo audit` and `bun audit` are
-      documented as "run locally", which in practice means never. A weekly
-      scheduled workflow that fails only on advisories costs one job
-- [ ] Expiring, revocable invite links. An invite is a plain URL carrying the
-      server address and password in its fragment, valid forever with no use
-      limit; the only way to withdraw one is to change `SERVER_PASSWORD` for
-      everybody. Server-issued invite tokens with an expiry and a use count
-      would make a leaked link recoverable
 - [ ] Lagged broadcast receivers are dropped silently. Both
       `RecvError::Lagged` arms in `ws/handlers/mod.rs` are empty, so a client
       that falls behind the 100-frame channel loses frames with no log, no
       warning and no resync — the message simply never appears for that one
       person. Log the skipped count at minimum; better, tell the client to
       re-request the affected state
-- [ ] Metrics for operators. Connection count, frames per second, database
-      latency and rate-limit rejections exist only as log lines, so there is
-      no way to see a server degrading before users report it
 - [ ] Mirror-test the soundboard constants. `SOUND_EXTENSIONS`,
       `MAX_SOUND_FILE_BYTES`, `MAX_SOUNDBOARD_SOUNDS`, the name-length bounds
       and the cooldown are all defined on both sides, and
@@ -111,12 +91,6 @@ not a description of the fix.
 
 ## ⚡ Performance
 
-- [ ] Cache each connection's channel visibility instead of resolving it per
-      frame. Every frame scoped to a restricted channel locks
-      `channel_overrides` and re-resolves the recipient's permissions, once
-      per recipient. The answer only changes on `channels-refresh`, which is
-      already broadcast — so it can be computed once per connection and
-      invalidated there
 - [ ] One array holds every message from every channel. `$chat` is flat and
       unbounded: each update re-filters it for the open channel and rebuilds
       every block, and every message ever scrolled into view stays in the DOM.
@@ -135,22 +109,15 @@ not a description of the fix.
 
 ### 🗨️ Chat Features
 
-- [ ] Auto-moderation rules — pattern rules with actions (delete, warn, mute)
-      beyond the flat profanity word list
-- [ ] Drafts kept per channel, so switching channels mid-sentence does not
-      throw the sentence away
-- [ ] Forward a message to another channel or a DM, keeping its attribution
 - [ ] Outbound webhooks. The bot REST API covers "something else drives
       Murmer"; there is no way round for Murmer to notify something else when
       a message arrives
-- [ ] Reminders and scheduled messages
 - [ ] Saved messages — a personal bookmark list, separate from the
       server-wide pins
 - [ ] Text-to-speech
 
 ### 🎤 Voice Features
 
-- [ ] Breakout rooms
 - [ ] Collaborative whiteboard during voice chats
 - [ ] Ducking — drop the soundboard (and other app sounds) while somebody is
       actually talking, so a clip never buries the conversation

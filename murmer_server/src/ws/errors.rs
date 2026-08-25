@@ -11,6 +11,11 @@ pub const UNAUTHENTICATED: &str = r#"{"type":"error","message":"unauthenticated"
 /// The provided server password did not match.
 pub const INVALID_PASSWORD: &str = r#"{"type":"error","message":"invalid-password"}"#;
 
+/// The presented invite code is unknown, expired or out of uses. One code
+/// covers all three on purpose: telling them apart would let anyone holding a
+/// guess find out whether it named a real invite.
+pub const INVALID_INVITE: &str = r#"{"type":"error","message":"invalid-invite"}"#;
+
 /// Authentication rate limit exceeded.
 pub const AUTH_RATE_LIMIT: &str = r#"{"type":"error","message":"auth-rate-limit"}"#;
 
@@ -85,9 +90,23 @@ pub const INVALID_VOICE_BITRATE: &str = r#"{"type":"error","message":"invalid-vo
 /// Voice channel does not exist.
 pub const UNKNOWN_VOICE_CHANNEL: &str = r#"{"type":"error","message":"unknown-voice-channel"}"#;
 
+/// The voice channel is already at `MAX_VOICE_CHANNEL_USERS`. Mesh audio
+/// costs one connection per pair, so the cap is a capacity limit, not a
+/// permission one — the same user is welcome once somebody leaves.
+pub const VOICE_CHANNEL_FULL: &str = r#"{"type":"error","message":"voice-channel-full"}"#;
+
 /// Failed to update voice channel configuration.
 pub const VOICE_CHANNEL_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"voice-channel-update-failed"}"#;
+
+/// Requested breakout room count is outside the accepted range.
+pub const INVALID_BREAKOUT_ROOMS: &str = r#"{"type":"error","message":"invalid-breakout-rooms"}"#;
+
+/// The channel already has breakout rooms open, or is itself a breakout room.
+pub const BREAKOUT_ALREADY_OPEN: &str = r#"{"type":"error","message":"breakout-already-open"}"#;
+
+/// The server could not create the breakout rooms.
+pub const BREAKOUT_CREATE_FAILED: &str = r#"{"type":"error","message":"breakout-create-failed"}"#;
 
 /// User lacks permission to manage roles.
 pub const ROLE_PERMISSION_DENIED: &str = r#"{"type":"error","message":"role-permission-denied"}"#;
@@ -322,6 +341,29 @@ pub const REACTION_FAILED: &str = r#"{"type":"error","message":"reaction-failed"
 /// The message a reply targets no longer exists.
 pub const REPLY_TARGET_NOT_FOUND: &str = r#"{"type":"error","message":"reply-target-not-found"}"#;
 
+/// The message a forward names cannot be read by the requester — it does not
+/// exist, or it sits in a channel they cannot see. Deliberately one code for
+/// both, so probing ids cannot tell the two apart.
+pub const FORWARD_SOURCE_NOT_FOUND: &str =
+    r#"{"type":"error","message":"forward-source-not-found"}"#;
+
+/// One end of a forward is an end-to-end encrypted channel, so the server
+/// holds no copy of the message it would have to make.
+pub const CANNOT_FORWARD_ENCRYPTED: &str =
+    r#"{"type":"error","message":"cannot-forward-encrypted"}"#;
+
+/// The message a forward names is ephemeral; copying it would outlive the
+/// expiry its author chose.
+pub const CANNOT_FORWARD_EPHEMERAL: &str =
+    r#"{"type":"error","message":"cannot-forward-ephemeral"}"#;
+
+/// The message a forward names carries no text, image or attachment to copy.
+pub const NOTHING_TO_FORWARD: &str = r#"{"type":"error","message":"nothing-to-forward"}"#;
+
+/// The message is a forward. Its words are somebody else's, so its author —
+/// the forwarder — may delete it but never rewrite it.
+pub const CANNOT_EDIT_FORWARD: &str = r#"{"type":"error","message":"cannot-edit-forward"}"#;
+
 /// Failed to load a thread.
 pub const THREAD_LOAD_FAILED: &str = r#"{"type":"error","message":"thread-load-failed"}"#;
 
@@ -345,6 +387,22 @@ pub const EMOJI_UPDATE_FAILED: &str = r#"{"type":"error","message":"emoji-update
 
 /// The referenced custom emoji does not exist.
 pub const EMOJI_NOT_FOUND: &str = r#"{"type":"error","message":"emoji-not-found"}"#;
+
+/// User lacks permission to mint, list or revoke invites.
+pub const INVITE_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"invite-permission-denied"}"#;
+
+/// The requested expiry or use limit is outside the accepted range.
+pub const INVALID_INVITE_OPTIONS: &str = r#"{"type":"error","message":"invalid-invite-options"}"#;
+
+/// The server already holds as many invites as it allows.
+pub const INVITE_LIMIT_REACHED: &str = r#"{"type":"error","message":"invite-limit-reached"}"#;
+
+/// The invite named for revocation does not exist (any more).
+pub const INVITE_NOT_FOUND: &str = r#"{"type":"error","message":"invite-not-found"}"#;
+
+/// Failed to persist an invite change.
+pub const INVITE_UPDATE_FAILED: &str = r#"{"type":"error","message":"invite-update-failed"}"#;
 
 /// User lacks permission to manage soundboard sounds.
 pub const SOUND_PERMISSION_DENIED: &str = r#"{"type":"error","message":"sound-permission-denied"}"#;
@@ -471,6 +529,27 @@ pub const INVALID_CHAT_SETTINGS: &str = r#"{"type":"error","message":"invalid-ch
 pub const CHAT_SETTINGS_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"chat-settings-update-failed"}"#;
 
+/// An auto-moderation rule refused the message. Covers both the delete and
+/// the mute action: the message did not go out either way, and the mute
+/// itself is announced by the `user-muted` frame that follows.
+pub const AUTOMOD_BLOCKED: &str = r#"{"type":"error","message":"automod-blocked"}"#;
+
+/// User lacks permission to read or change the auto-moderation rules.
+pub const AUTOMOD_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"automod-permission-denied"}"#;
+
+/// An auto-moderation rule failed validation; nothing was stored.
+pub const INVALID_AUTOMOD_RULES: &str = r#"{"type":"error","message":"invalid-automod-rules"}"#;
+
+/// An auto-moderation rule's *pattern* was refused: a regular expression that
+/// does not compile, or a whole-word pattern with a space in it. Told apart
+/// from the frame being invalid because it is the one an operator can fix by
+/// looking at what they typed.
+pub const INVALID_AUTOMOD_PATTERN: &str = r#"{"type":"error","message":"invalid-automod-pattern"}"#;
+
+/// Failed to persist or load the auto-moderation rules.
+pub const AUTOMOD_UPDATE_FAILED: &str = r#"{"type":"error","message":"automod-update-failed"}"#;
+
 /// User lacks permission to change the voice defaults.
 pub const VOICE_DEFAULTS_PERMISSION_DENIED: &str =
     r#"{"type":"error","message":"voice-defaults-permission-denied"}"#;
@@ -489,3 +568,37 @@ pub const MAINTENANCE_NOT_CONFIRMED: &str =
 
 /// A Danger Zone action failed part-way; the database was left unchanged.
 pub const MAINTENANCE_FAILED: &str = r#"{"type":"error","message":"maintenance-failed"}"#;
+
+/// User lacks permission to read the audit log (`VIEW_AUDIT_LOG`).
+pub const AUDIT_LOG_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"audit-log-permission-denied"}"#;
+
+/// Failed to load the audit log.
+pub const AUDIT_LOG_FAILED: &str = r#"{"type":"error","message":"audit-log-failed"}"#;
+
+/// A reminder or scheduled message named a time that is unparseable, already
+/// past, inside the minimum lead time or beyond the maximum horizon.
+pub const INVALID_SCHEDULE_TIME: &str = r#"{"type":"error","message":"invalid-schedule-time"}"#;
+
+/// The user already holds the maximum number of scheduled messages.
+pub const SCHEDULE_LIMIT_REACHED: &str = r#"{"type":"error","message":"schedule-limit-reached"}"#;
+
+/// The named scheduled message does not exist, or belongs to somebody else.
+/// One code for both, so probing ids cannot tell the two apart.
+pub const SCHEDULED_MESSAGE_NOT_FOUND: &str =
+    r#"{"type":"error","message":"scheduled-message-not-found"}"#;
+
+/// Failed to persist or load a scheduled message.
+pub const SCHEDULE_FAILED: &str = r#"{"type":"error","message":"schedule-failed"}"#;
+
+/// A reminder carried no note, or one longer than the limit.
+pub const INVALID_REMINDER: &str = r#"{"type":"error","message":"invalid-reminder"}"#;
+
+/// The user already holds the maximum number of reminders.
+pub const REMINDER_LIMIT_REACHED: &str = r#"{"type":"error","message":"reminder-limit-reached"}"#;
+
+/// The named reminder does not exist, or belongs to somebody else.
+pub const REMINDER_NOT_FOUND: &str = r#"{"type":"error","message":"reminder-not-found"}"#;
+
+/// Failed to persist or load a reminder.
+pub const REMINDER_FAILED: &str = r#"{"type":"error","message":"reminder-failed"}"#;

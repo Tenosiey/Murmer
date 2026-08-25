@@ -28,7 +28,17 @@ function normalizeChannel(value: any): VoiceChannelInfo | null {
   }
   const categoryId = typeof value.categoryId === 'number' ? value.categoryId : null;
   const position = typeof value.position === 'number' ? value.position : 0;
-  return { id, name, quality, bitrate, categoryId, position, private: value.private === true };
+  const breakoutParent = typeof value.breakoutParent === 'number' ? value.breakoutParent : null;
+  return {
+    id,
+    name,
+    quality,
+    bitrate,
+    categoryId,
+    position,
+    private: value.private === true,
+    breakoutParent
+  };
 }
 
 function createVoiceChannelStore() {
@@ -149,7 +159,28 @@ function createVoiceChannelStore() {
     chat.sendRaw({ type: 'delete-voice-channel', channelId });
   }
 
-  return { subscribe, set, create, configure, rename, remove };
+  /* Breakout rooms. The server creates the rooms, tells each member which one
+     to move to (a `breakout-move` frame the chat page acts on) and deletes
+     them again on close — nothing here is optimistic, the rooms arrive as
+     ordinary `voice-channel-add` frames carrying a `breakoutParent`. */
+  function openBreakouts(channelId: number, rooms: number) {
+    chat.sendRaw({ type: 'open-breakouts', channelId, rooms });
+  }
+
+  function closeBreakouts(channelId: number) {
+    chat.sendRaw({ type: 'close-breakouts', channelId });
+  }
+
+  return {
+    subscribe,
+    set,
+    create,
+    configure,
+    rename,
+    remove,
+    openBreakouts,
+    closeBreakouts
+  };
 }
 
 export const voiceChannels = createVoiceChannelStore();

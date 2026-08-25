@@ -43,16 +43,26 @@
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { categories } from '$lib/stores/categories';
-  import type { CategoryInfo, ChannelInfo, ContextMenuItem } from '$lib/types';
+  import type { CategoryInfo, ChannelInfo, ContextMenuItem, ForwardInfo } from '$lib/types';
+  import { forwardOptions, forwardedDmText, parseForwardTarget } from '$lib/chat/forward';
+  import {
+    parseWhen,
+    splitWhen,
+    scheduleBoundsError,
+    reminderTextError,
+    describeWhen
+  } from '$lib/chat/schedule';
   import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
   import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
   import { pinned } from '$lib/stores/pins';
   import type { PinnedEntry } from '$lib/stores/pins';
+  import { scheduledAttention } from '$lib/stores/scheduled';
   import { typing } from '$lib/stores/typing';
   import { unread } from '$lib/stores/unread';
   import { threadData } from '$lib/stores/thread';
   import { dm } from '$lib/stores/dm';
+  import { channelDraft, dmDraft, drafts, threadDraft } from '$lib/stores/drafts';
   import { peerKeys } from '$lib/stores/peerKeys';
   import { channelKeys } from '$lib/stores/channelKeys';
   import { dmFingerprint } from '$lib/dm-crypto';
@@ -113,11 +123,13 @@
     VOICE_QUALITY_PRESETS,
     DEFAULT_VOICE_PRESET,
     DEFAULT_CHANNEL_NAME,
-    MAX_NICKNAME_LENGTH
+    MAX_NICKNAME_LENGTH,
+    MAX_REMINDER_TEXT_LENGTH
   } from '$lib/chat/constants';
   import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
   import ChannelPermissionsModal from '$lib/components/ChannelPermissionsModal.svelte';
   import UserStatsModal from '$lib/components/UserStatsModal.svelte';
+  import SchedulePanel from '$lib/components/SchedulePanel.svelte';
   import UserProfileModal from '$lib/components/UserProfileModal.svelte';
   import WikiView from '$lib/components/wiki/WikiView.svelte';
   import { wikilinks } from '$lib/wiki/links';
@@ -150,6 +162,8 @@
 
   let helpOpen = $state(false);
   let helpOverlay: HelpOverlay | undefined = $state();
+
+  let remindersOpen = $state(false);
 
   let now = $state(Date.now());
   let expiryTicker: number | null = null;
@@ -192,6 +206,80 @@
 
   function closeHelp() {
     helpOpen = false;
+  }
+
+  function openReminders() {
+    clearCommandFeedback();
+    remindersOpen = true;
+  }
+
+  function closeReminders() {
+    remindersOpen = false;
+  }
+
+  /**
+   * Ask for a "when" and a note, then set a reminder anchored to a message.
+   *
+   * The note is never pre-filled from the message: in an encrypted channel the
+   * server would then be holding a plaintext copy of something it is not
+   * supposed to be able to read, and a rule that only sometimes applies is a
+   * rule somebody eventually forgets. What the user types is what is stored.
+   */
+  async function remindAboutMessage(msg: Message) {
+    const messageId = typeof msg.id === 'number' ? msg.id : undefined;
+    const when = await dialogs.prompt({
+      title: 'Remind me about this',
+      label: 'When',
+      placeholder: '15m, 2h, 3d, or 17:30',
+      initial: '1h'
+    });
+    if (when === null) return;
+    const preview = parseWhen(when);
+    if (!preview) {
+      void dialogs.alert({
+        title: 'Remind me about this',
+        message: `“${when}” is not a time. Try 15m, 2h, 3d or 17:30.`
+      });
+      return;
+    }
+    const previewBounds = scheduleBoundsError(preview);
+    if (previewBounds) {
+      void dialogs.alert({ title: 'Remind me about this', message: previewBounds });
+      return;
+    }
+    const note = await dialogs.prompt({
+      title: `Reminder ${describeWhen(preview.toISOString())}`,
+      label: 'Note',
+      maxLength: MAX_REMINDER_TEXT_LENGTH,
+      placeholder: 'What is this about?'
+    });
+    if (note === null) return;
+    const invalid = reminderTextError(note);
+    if (invalid) {
+      void dialogs.alert({ title: 'Remind me about this', message: invalid });
+      return;
+    }
+    // Re-read the "when" now rather than reusing what it meant two dialogs
+    // ago. A "45s" typed while the note prompt was still open would otherwise
+    // be sent as a time already in the past, and the server would answer with
+    // a message about bounds rather than about anything the user did. Both
+    // readings are what was meant: a duration counts from finishing, an
+    // absolute time is the same instant either way.
+    const at = parseWhen(when);
+    const bounds = at ? scheduleBoundsError(at) : 'That is not a time.';
+    if (!at || bounds) {
+      void dialogs.alert({ title: 'Remind me about this', message: bounds ?? '' });
+      return;
+    }
+    chat.setReminder(note.trim(), at.toISOString(), messageId);
+    setCommandFeedback(`Reminder set for ${describeWhen(at.toISOString())}.`);
+  }
+
+  /** Jump to the message a reminder was set on, switching channels if needed. */
+  function openReminderTarget(channelId: number, messageId: number) {
+    if (!$channels.some((channel) => channel.id === channelId)) return;
+    joinChannel(channelId);
+    focusMessage(messageId);
   }
 
   function setPendingFile(file: File | null) {
@@ -474,7 +562,8 @@
           publicKey: kp.publicKey,
           timestamp: ts,
           signature: sign(ts, kp.secretKey),
-          password: entry?.password
+          password: entry?.password,
+          invite: entry?.invite
         });
       }
       // Presence response already loads history for the default channel,
@@ -512,6 +601,10 @@
       leaveToServers(description);
       return;
     }
+    // The join was refused after the microphone was already open — drop the
+    // half-open session rather than leave the UI showing a channel we are
+    // not actually in.
+    if (code === 'voice-channel-full') leaveVoice();
     setCommandFeedback(description, 'error');
   };
   chat.on('error', handleServerError);
@@ -545,6 +638,16 @@
   };
   chat.on('user-unmuted', handleUserUnmuted);
 
+  // A `warn` rule lets the message through and tells the sender privately.
+  // It carries the rule's name, never its pattern — what the server filters
+  // is not something everyone gets to read.
+  const handleAutomodWarning = (msg: Message) => {
+    const name = typeof msg.rule === 'string' ? msg.rule.trim() : '';
+    const rule = name ? `the “${name}” rule` : 'an auto-moderation rule';
+    setCommandFeedback(`Your message was flagged by ${rule}.`, 'error');
+  };
+  chat.on('automod-warning', handleAutomodWarning);
+
   const handleUserUnbanned = (msg: Message) => {
     if (typeof msg.user !== 'string') return;
     setCommandFeedback(`${msg.user} has been unbanned.`);
@@ -558,6 +661,18 @@
     setCommandFeedback(`Every message on this server was deleted${by}.`, 'error');
   };
   chat.on('messages-purged', handleMessagesPurged);
+
+  /* A breakout split moves people between voice channels, and the server can
+     only ask: the audio is peer-to-peer, so the client is what tears down the
+     old peer connections and joins the room. Ignored while not in voice —
+     being asked to move is not a reason to open a microphone. */
+  const handleBreakoutMove = (msg: Message) => {
+    const target = (msg as { channelId?: unknown }).channelId;
+    if (typeof target !== 'number' || !inVoice) return;
+    if (currentVoiceChannelId === target) return;
+    void joinVoiceChannel(target);
+  };
+  chat.on('breakout-move', handleBreakoutMove);
 
   const handleServerReset = (msg: Message) => {
     const by = typeof msg.by === 'string' && msg.by ? ` by ${msg.by}` : '';
@@ -591,15 +706,20 @@
   });
 
   onDestroy(() => {
+    // Leaving the server: park what is in the composer alongside the drafts
+    // of the other channels, which the store already holds per server URL.
+    drafts.park(channelDraft(currentChatChannelId), message);
     chat.off('history', handleHistory);
     chat.off('message-deleted', handleMessageDeleted);
     chat.off('error', handleServerError);
     chat.off('force-disconnect', handleForceDisconnect);
     chat.off('user-muted', handleUserMuted);
     chat.off('user-unmuted', handleUserUnmuted);
+    chat.off('automod-warning', handleAutomodWarning);
     chat.off('user-unbanned', handleUserUnbanned);
     chat.off('messages-purged', handleMessagesPurged);
     chat.off('server-reset', handleServerReset);
+    chat.off('breakout-move', handleBreakoutMove);
     chat.disconnect();
     if (currentVoiceChannelId !== null) {
       voice.leave(currentVoiceChannelId);
@@ -835,6 +955,69 @@
         }
         return true;
       }
+      case 'reminders': {
+        openReminders();
+        return true;
+      }
+      case 'remind':
+      case 'remindme': {
+        const { when, text } = splitWhen(rest);
+        if (!when || !text) {
+          setCommandFeedback('Usage: /remind <when> <note> — e.g. /remind 15m stretch', 'error');
+          return true;
+        }
+        const at = parseWhen(when);
+        if (!at) {
+          setCommandFeedback(`“${when}” is not a time. Try 15m, 2h, 3d or 17:30.`, 'error');
+          return true;
+        }
+        const bounds = scheduleBoundsError(at);
+        if (bounds) {
+          setCommandFeedback(bounds, 'error');
+          return true;
+        }
+        const invalid = reminderTextError(text);
+        if (invalid) {
+          setCommandFeedback(invalid, 'error');
+          return true;
+        }
+        chat.setReminder(text, at.toISOString());
+        setCommandFeedback(`Reminder set for ${describeWhen(at.toISOString())}.`);
+        return true;
+      }
+      case 'schedule': {
+        const { when, text } = splitWhen(rest);
+        if (!when || !text) {
+          setCommandFeedback(
+            'Usage: /schedule <when> <message> — e.g. /schedule 2h notes are up',
+            'error'
+          );
+          return true;
+        }
+        const at = parseWhen(when);
+        if (!at) {
+          setCommandFeedback(`“${when}” is not a time. Try 15m, 2h, 3d or 17:30.`, 'error');
+          return true;
+        }
+        const bounds = scheduleBoundsError(at);
+        if (bounds) {
+          setCommandFeedback(bounds, 'error');
+          return true;
+        }
+        // Sealed here for an encrypted channel, which is why this goes through
+        // the chat store rather than a raw frame.
+        const scheduleError = chat.scheduleMessage(
+          currentChatChannelId,
+          text,
+          at.toISOString()
+        );
+        if (scheduleError) {
+          setCommandFeedback(scheduleError, 'error');
+          return true;
+        }
+        setCommandFeedback(`Message queued for ${describeWhen(at.toISOString())}.`);
+        return true;
+      }
       default: {
         setCommandFeedback(`Unknown command: /${commandName}`, 'error');
         return true;
@@ -876,8 +1059,13 @@
 
   function joinChannel(id: number) {
     if (id === currentChatChannelId) return;
+    // Park the half-typed sentence under the channel being left and restore
+    // whatever was parked for the one being entered. One composer serves
+    // every channel, so without this the text follows the user across.
+    drafts.park(channelDraft(currentChatChannelId), message);
     wikiInitialSlug = null;
     currentChatChannelId = id;
+    message = drafts.take(channelDraft(id));
     unreadMarkerAfterId = unread.getLastRead(id);
     unread.setActive(id);
     replyingTo = null;
@@ -916,6 +1104,77 @@
     }
     wikiInitialSlug = slug;
     wikiOpen = true;
+  }
+
+  /**
+   * Forward a message to another channel or into a direct message.
+   *
+   * The two destinations take different routes and have to: a channel forward
+   * is a server-side copy, so only the ids are sent and the attribution is the
+   * server's; a DM is end-to-end encrypted, so the copy is composed and sealed
+   * here instead. See `src/lib/chat/forward.ts`.
+   */
+  async function forwardMessage(msg: Message) {
+    const messageId = typeof msg.id === 'number' ? msg.id : null;
+    if (messageId === null) return;
+
+    const me = $session.user;
+    // Conversations already open first — they are who a forward usually goes
+    // to — then everyone else this server knows, online or not.
+    const peers = [...Object.keys($dmConversations), ...$onlineUsers, ...$offlineUsers].filter(
+      (peer, index, all) => peer !== me && all.indexOf(peer) === index
+    );
+    const options = forwardOptions({
+      channels: $channels,
+      currentChannelId: currentChatChannelId,
+      peers,
+      displayName: $displayNames
+    });
+    if (options.length === 0) {
+      void dialogs.alert({
+        title: 'Forward message',
+        message: 'There is nowhere else on this server to forward this to.'
+      });
+      return;
+    }
+
+    const target = parseForwardTarget(
+      await dialogs.select({
+        title: 'Forward message',
+        message: 'The copy keeps the original author and says where it came from.',
+        options,
+        confirmLabel: 'Forward'
+      })
+    );
+    if (!target) return;
+
+    if (target.kind === 'channel') {
+      const error = chat.forward(messageId, target.channelId);
+      if (error) {
+        setCommandFeedback(error, 'error');
+        return;
+      }
+      const name = $channels.find((channel) => channel.id === target.channelId)?.name ?? '';
+      setCommandFeedback(`Forwarded to #${name}.`);
+      return;
+    }
+
+    const error = await chat.sendDm(
+      target.user,
+      forwardedDmText(msg, currentChatChannelName, $displayNames)
+    );
+    if (error) {
+      void dialogs.alert({ title: 'Message not sent', message: error });
+      return;
+    }
+    setCommandFeedback(`Forwarded to ${$displayNames(target.user)}.`);
+  }
+
+  /** Jump to the original of a forwarded message, switching channels first. */
+  function focusForwardedSource(origin: ForwardInfo) {
+    if (!$channels.some((channel) => channel.id === origin.channelId)) return;
+    joinChannel(origin.channelId);
+    focusMessage(origin.id);
   }
 
   function startReply(msg: Message) {
@@ -1351,6 +1610,9 @@
     const current = $session.user;
     if (!current || typeof msg.id !== 'number') return false;
     if (typeof msg.text !== 'string' || msg.text.trim() === '') return false;
+    // A forward's words are the original author's; the server refuses to let
+    // the forwarder rewrite them under their own attribution.
+    if (msg.forwardedFrom) return false;
     return msg.user === current;
   }
 
@@ -1556,6 +1818,39 @@
     return targets.length ? [{ label: 'Move to', children: targets }] : [];
   }
 
+  /* Room counts offered when splitting a call. Not a mirror of the server's
+     cap — that one is the authority and validates every request; this is the
+     handful of splits worth one click. */
+  const BREAKOUT_ROOM_CHOICES = [2, 3, 4, 5, 6];
+
+  /**
+   * Builds the breakout entry for a voice channel: either splitting it, or
+   * closing the split it is part of. A channel is never both.
+   */
+  function buildBreakoutItems(channelId: number): ContextMenuItem[] {
+    const channel = $voiceChannels.find((c) => c.id === channelId);
+    if (!channel) return [];
+    const openOn = channel.breakoutParent ?? channelId;
+    const splitIsOpen =
+      channel.breakoutParent != null || $voiceChannels.some((c) => c.breakoutParent === channelId);
+    if (splitIsOpen) {
+      return [
+        {
+          label: 'Close Breakout Rooms',
+          action: () => voiceChannels.closeBreakouts(openOn)
+        }
+      ];
+    }
+    return [
+      {
+        label: 'Split into Breakout Rooms',
+        children: BREAKOUT_ROOM_CHOICES.map((rooms) => ({
+          label: `${rooms} rooms`,
+          action: () => voiceChannels.openBreakouts(channelId, rooms)
+        }))
+      }
+    ];
+  }
 
   let messagesContainer: HTMLDivElement | undefined = $state();
   async function scrollBottom() {
@@ -1719,7 +2014,11 @@
   );
   $effect(() => {
     if ($channels.length && !$channels.some((c) => c.id === currentChatChannelId)) {
+      // Same swap as joinChannel: this fires on the first channel list and
+      // whenever the channel being viewed is deleted underneath the user.
+      drafts.park(channelDraft(currentChatChannelId), message);
       currentChatChannelId = defaultChannel($channels).id;
+      message = drafts.take(channelDraft(currentChatChannelId));
       unreadMarkerAfterId = unread.getLastRead(currentChatChannelId);
       unread.setActive(currentChatChannelId);
       loadingHistory = false;
@@ -1940,6 +2239,7 @@
                 })
             }))
           },
+          ...buildBreakoutItems(menuVoiceChannelId),
           { label: 'Rename Voice Channel', action: () => renameVoiceChannelPrompt(menuVoiceChannelId!) },
           ...buildMoveToItems(menuVoiceChannelId, true),
           { label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannelId!), danger: true }
@@ -1996,6 +2296,8 @@
         {statusMap}
         onEditTopic={editTopic}
         onOpenSearch={() => openSearch()}
+        onOpenReminders={openReminders}
+        reminderAttention={$scheduledAttention}
         onOpenSettings={openSettings}
         {wikiOpen}
         onToggleWiki={toggleWiki}
@@ -2019,6 +2321,11 @@
         channelName={channelPermsName}
       />
       <UserStatsModal open={statsUser !== null} user={statsUser} close={closeUserStats} />
+      <SchedulePanel
+        open={remindersOpen}
+        close={closeReminders}
+        onOpenMessage={openReminderTarget}
+      />
       <UserProfileModal
         open={profileUser !== null}
         user={profileUser}
@@ -2092,7 +2399,10 @@
                 canDelete={canDeleteMessage(block.message)}
                 canPin={canPinMessage(block.message)}
                 onFocusMessage={focusMessage}
+                onFocusForwarded={focusForwardedSource}
                 onReply={startReply}
+                onForward={forwardMessage}
+                onRemind={remindAboutMessage}
                 onEdit={editChatMessage}
                 onTogglePin={togglePinMessage}
                 onDelete={deleteChatMessage}
@@ -2138,6 +2448,7 @@
           placeholder="Reply in thread…"
           onSend={sendThreadReply}
           onClose={closeThread}
+          draftKey={threadDraft(threadRootId)}
           emphasize={(msg) => msg.id === threadRootId}
         />
       {/if}
@@ -2151,6 +2462,7 @@
           placeholder={`Message ${$displayNames($dmActivePeer)}…`}
           onSend={sendDmMessage}
           onClose={closeDm}
+          draftKey={dmDraft($dmActivePeer)}
           emphasize={(msg) => msg.from === $session.user}
           keyWarning={$dmActivePeer in $peerKeyConflicts}
           onTrustKey={trustDmKey}

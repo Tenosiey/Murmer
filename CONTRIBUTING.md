@@ -62,7 +62,9 @@ cd murmer_client/src-tauri && cargo fmt --check && cargo clippy --all-targets --
 
 `bun run check` must report **0 errors and 0 warnings**.
 
-Not in CI, worth running locally on a dependency change:
+CI sweeps the lockfiles for security advisories once a week
+(`.github/workflows/audit.yml`). The same two checks by hand, worth running
+when you change a dependency rather than waiting for the sweep:
 
 ```bash
 cd murmer_server && cargo audit

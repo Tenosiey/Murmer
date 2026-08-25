@@ -1,4 +1,11 @@
-//! Handlers for chat messages, message deletion, editing, reactions, history and search.
+//! Handlers for chat messages, message deletion, editing, forwarding,
+//! reactions, history and search.
+//!
+//! Forwarding is the odd one out: the copy is made *here*, from the row the
+//! server stored, so that the original author's name on it is not something
+//! the sender could write. The rules it has to clear live in
+//! [`crate::ws::helpers::prepare_forward`], and `docs/features.md` records
+//! why each refusal exists.
 
 use crate::channel_overrides::ChannelKind;
 use crate::ws::{constants::*, errors, helpers::*, validation::is_emoji_shortcode};
@@ -19,13 +26,6 @@ async fn can_view_text(state: &Arc<AppState>, user_name: &Option<String>, channe
         None => false,
     }
 }
-
-/// Fields a client may only send in a *plaintext* channel. In an encrypted one
-/// they are the plaintext the channel exists to keep off the server, so a
-/// frame carrying any of them is rejected rather than quietly stripped: a
-/// client that got this wrong has a bug its user needs to hear about, not a
-/// message that silently loses its attachment.
-const PLAINTEXT_MESSAGE_FIELDS: [&str; 3] = ["text", "image", "attachment"];
 
 /// Read and shape-check a message's `enc` object — the sealed envelope of an
 /// encrypted channel. The plaintext inside is a JSON object holding the
@@ -275,20 +275,18 @@ pub(super) async fn handle_search_history(
     }
 }
 
-/// Handle chat message: persist, broadcast, and schedule ephemeral deletion.
-#[tracing::instrument(skip(state, sender, v), fields(channel_id = %channel_id, user = ?user_name))]
-pub(super) async fn handle_chat(
+/// Whether `user` may put a message into `channel_id` at all: the channel's
+/// rules, the message rate limit and the mute list. Replies to the client with
+/// the reason and returns `false` when they may not.
+///
+/// Shared with [`super::scheduled`], so writing a message for later clears
+/// exactly the gate that writing one now does.
+pub(super) async fn authorize_send(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
-    v: &mut Value,
     channel_id: i32,
-    user_name: &Option<String>,
-) {
-    let user = match user_name {
-        Some(u) => u,
-        None => return,
-    };
-
+    user: &str,
+) -> bool {
     // Sending requires seeing the channel and holding SEND_MESSAGES within it
     // (per-channel overrides included). Enforced server-side so a client whose
     // permission was revoked cannot post by ignoring the disabled composer.
@@ -303,27 +301,40 @@ pub(super) async fn handle_chat(
         .await
     {
         send_error(sender, errors::SEND_PERMISSION_DENIED).await;
-        return;
+        return false;
     }
 
     if !security::check_message_rate_limit(&state.rate_limiter, user).await {
         send_error(sender, errors::MESSAGE_RATE_LIMIT).await;
-        return;
+        return false;
     }
 
     if super::moderation::is_muted(state, user).await {
         send_error(sender, errors::MUTED).await;
-        return;
+        return false;
     }
 
-    // Slow mode is checked before anything is written, and only recorded once
-    // the message is actually on its way (see the end of this function), so a
-    // rejected message never costs the sender their turn.
-    if !super::chat_settings::slow_mode_allows(state, user).await {
-        send_error(sender, errors::SLOW_MODE).await;
-        return;
-    }
+    true
+}
 
+/// Turn a client `chat` frame into the body the server stores: the encryption
+/// shape the channel demands, auto-moderation, the profanity mask, the stamped
+/// author and channel, and the reply rebuilt from the message it quotes.
+/// Returns the message's timestamp, or `Err(())` once the client has been told
+/// why the frame was refused.
+///
+/// Everything here is *content* policy, which is why [`super::scheduled`]
+/// applies it at compose time: the author is present to hear the refusal, and
+/// a message that would be blocked should not sit in a queue for a week first.
+/// The caller is still responsible for authorization —
+/// [`authorize_send`] — and for anything about *when* the message is posted.
+pub(super) async fn prepare_chat_body(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &mut Value,
+    channel_id: i32,
+    user: &str,
+) -> Result<DateTime<Utc>, ()> {
     // An encrypted channel takes sealed envelopes and nothing else; a
     // plaintext one takes plaintext and no `enc`. Deciding this from the
     // channel's stored flag rather than from the frame is what keeps a client
@@ -336,13 +347,13 @@ pub(super) async fn handle_chat(
             .any(|field| v.get(field).is_some_and(|value| !value.is_null()))
         {
             send_error(sender, errors::CHANNEL_REQUIRES_ENCRYPTION).await;
-            return;
+            return Err(());
         }
         match sealed_message(v, max_length) {
             Ok(enc) => v["enc"] = enc,
             Err(code) => {
                 send_error(sender, code).await;
-                return;
+                return Err(());
             }
         }
     } else {
@@ -350,11 +361,23 @@ pub(super) async fn handle_chat(
             && text.len() > max_length
         {
             send_error(sender, errors::MESSAGE_TOO_LONG).await;
-            return;
+            return Err(());
         }
         if let Some(map) = v.as_object_mut() {
             map.remove("enc");
         }
+    }
+
+    // Auto-moderation sees the text as it was typed, before the mask below:
+    // a word the filter would star out must not be able to walk a rule that
+    // matches it. Like the mask it is a no-op in an encrypted channel, where
+    // there is no text to read.
+    if !encrypted
+        && let Some(text) = v.get("text").and_then(|t| t.as_str())
+        && super::automod::screen(state, sender, user, text).await
+            == super::automod::Screen::Blocked
+    {
+        return Err(());
     }
 
     // Masking happens before the message is stored or broadcast, so the
@@ -363,7 +386,7 @@ pub(super) async fn handle_chat(
     // which is a limit of the profanity filter rather than a way around it.
     super::chat_settings::apply_profanity_filter(state, v).await;
 
-    v["user"] = Value::String(user.clone());
+    v["user"] = Value::String(user.to_string());
     v["channelId"] = Value::from(channel_id);
     if let Some(map) = v.as_object_mut() {
         map.remove("channel");
@@ -424,13 +447,46 @@ pub(super) async fn handle_chat(
             }
             Ok(_) => {
                 send_error(sender, errors::REPLY_TARGET_NOT_FOUND).await;
-                return;
+                return Err(());
             }
             Err(error) => {
                 error!("failed to load reply target {target_id}: {error}");
             }
         }
     }
+
+    Ok(timestamp)
+}
+
+/// Handle chat message: persist, broadcast, and schedule ephemeral deletion.
+#[tracing::instrument(skip(state, sender, v), fields(channel_id = %channel_id, user = ?user_name))]
+pub(super) async fn handle_chat(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &mut Value,
+    channel_id: i32,
+    user_name: &Option<String>,
+) {
+    let user = match user_name {
+        Some(u) => u,
+        None => return,
+    };
+
+    if !authorize_send(state, sender, channel_id, user).await {
+        return;
+    }
+
+    // Slow mode is checked before anything is written, and only recorded once
+    // the message is actually on its way (in `publish_message`), so a rejected
+    // message never costs the sender their turn.
+    if !super::chat_settings::slow_mode_allows(state, user).await {
+        send_error(sender, errors::SLOW_MODE).await;
+        return;
+    }
+
+    let Ok(timestamp) = prepare_chat_body(state, sender, v, channel_id, user).await else {
+        return;
+    };
 
     let mut ephemeral_expiry: Option<DateTime<Utc>> = None;
     if let Some(raw_expiry) = v.get("expiresAt").and_then(|value| value.as_str()) {
@@ -455,8 +511,27 @@ pub(super) async fn handle_chat(
         map.remove("ephemeral");
     }
 
+    publish_message(state, v, channel_id, user, &timestamp, ephemeral_expiry).await;
+}
+
+/// Store a finished message frame and announce it everywhere it has to be
+/// announced: to the destination channel's own broadcast, and server-wide as
+/// a `message-notify` so clients viewing another channel can still count it.
+///
+/// Shared by a new message and by a forwarded copy. Both are an ordinary
+/// message by the time the frame is built, and both have to land on every one
+/// of these steps — a copy that skipped the notify would simply never raise
+/// anyone's unread badge.
+pub(super) async fn publish_message(
+    state: &Arc<AppState>,
+    v: &mut Value,
+    channel_id: i32,
+    user: &str,
+    timestamp: &DateTime<Utc>,
+    ephemeral_expiry: Option<DateTime<Utc>>,
+) {
     ensure_reactions(v);
-    ensure_time(v, &timestamp);
+    ensure_time(v, timestamp);
 
     let out = serde_json::to_string(&v).unwrap_or_else(|_| v.to_string());
     match db::insert_message(&state.db, channel_id, &out).await {
@@ -500,6 +575,98 @@ pub(super) async fn handle_chat(
         }
         Err(e) => error!("db insert error: {e}"),
     }
+}
+
+/// Handle a request to forward an existing message into another text channel.
+///
+/// The client names a message id and a destination and nothing else: the words
+/// *and* the attribution are both copied out of the row the server stored (see
+/// [`forwarded_body`]). A client-composed "quote" would let anyone make any
+/// member appear to have said anything, in front of a channel with no way to
+/// check — the same reason a reply's snippet is rebuilt rather than trusted.
+///
+/// Forwarding into a direct message is not this frame. DM content is
+/// end-to-end encrypted, so there is no copy for the server to make; the
+/// client composes that one itself and the attribution travels sealed with it
+/// (see `murmer_client/src/lib/chat/forward.ts`).
+pub(super) async fn handle_forward_message(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(user) = user_name.clone() else {
+        send_error(sender, errors::NOT_AUTHENTICATED).await;
+        return;
+    };
+
+    let Some(message_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
+        send_error(sender, errors::INVALID_MESSAGE_ID).await;
+        return;
+    };
+    let Some(target_id) = v
+        .get("channelId")
+        .and_then(|c| c.as_i64())
+        .and_then(|c| i32::try_from(c).ok())
+    else {
+        send_error(sender, errors::UNKNOWN_CHANNEL).await;
+        return;
+    };
+
+    if !security::check_message_rate_limit(&state.rate_limiter, &user).await {
+        send_error(sender, errors::MESSAGE_RATE_LIMIT).await;
+        return;
+    }
+    if super::moderation::is_muted(state, &user).await {
+        send_error(sender, errors::MUTED).await;
+        return;
+    }
+    if !super::chat_settings::slow_mode_allows(state, &user).await {
+        send_error(sender, errors::SLOW_MODE).await;
+        return;
+    }
+
+    let mut out = match prepare_forward(state, &user, message_id, target_id).await {
+        Ok(body) => body,
+        Err(code) => {
+            send_error(sender, code).await;
+            return;
+        }
+    };
+
+    // The stored copy passed the length limit when it was written, but the
+    // limit may have been lowered since and the copy is a new message under
+    // the current policy.
+    let max_length = super::chat_settings::max_message_length(state).await;
+    if out
+        .get("text")
+        .and_then(|t| t.as_str())
+        .is_some_and(|text| text.len() > max_length)
+    {
+        send_error(sender, errors::MESSAGE_TOO_LONG).await;
+        return;
+    }
+
+    out["type"] = Value::String("chat".to_string());
+    out["user"] = Value::String(user.clone());
+    out["channelId"] = Value::from(target_id);
+    let timestamp = Utc::now();
+    out["timestamp"] = Value::String(timestamp.to_rfc3339());
+
+    // The copy answers to the current policy, not the one in force when the
+    // original was written — otherwise forwarding an old message would be the
+    // cheapest way to walk a rule or a word past both of them. The stored text
+    // has already been masked once, so unlike `handle_chat` this cannot see it
+    // exactly as it was typed; it screens what there is.
+    if let Some(text) = out.get("text").and_then(|t| t.as_str())
+        && super::automod::screen(state, sender, &user, text).await
+            == super::automod::Screen::Blocked
+    {
+        return;
+    }
+    super::chat_settings::apply_profanity_filter(state, &mut out).await;
+
+    publish_message(state, &mut out, target_id, &user, &timestamp, None).await;
 }
 
 /// Handle delete message request.
@@ -618,8 +785,11 @@ pub(super) async fn handle_edit_message(
     // in a plaintext one.
     let encrypted = channel_is_e2ee(state, channel_id).await;
     let max_length = super::chat_settings::max_message_length(state).await;
-    let mut new_text = String::new();
     let mut new_enc = Value::Null;
+    // The replacement text of a plaintext channel, neither screened nor
+    // masked yet: screening can mute whoever sent it, so it waits until the
+    // edit is known to be one this user is allowed to make at all.
+    let mut raw_text = "";
     if encrypted {
         if v.get("text").is_some_and(|value| !value.is_null()) {
             send_error(sender, errors::CHANNEL_REQUIRES_ENCRYPTION).await;
@@ -633,19 +803,15 @@ pub(super) async fn handle_edit_message(
             }
         }
     } else {
-        let Some(raw_text) = v.get("text").and_then(|t| t.as_str()) else {
+        let Some(text) = v.get("text").and_then(|t| t.as_str()) else {
             send_error(sender, errors::INVALID_MESSAGE_TEXT).await;
             return;
         };
-        if raw_text.trim().is_empty() || raw_text.len() > max_length {
+        if text.trim().is_empty() || text.len() > max_length {
             send_error(sender, errors::MESSAGE_TOO_LONG).await;
             return;
         }
-        // An edit runs through the same filter as a new message: otherwise
-        // posting and immediately editing would walk straight past it. There
-        // is nothing to filter in an encrypted channel — the server never sees
-        // the text, before or after the edit.
-        new_text = super::chat_settings::mask_text(state, raw_text).await;
+        raw_text = text;
     }
     let record = match db::get_message_record(&state.db, message_id).await {
         Ok(Some(record)) => record,
@@ -665,17 +831,23 @@ pub(super) async fn handle_edit_message(
         return;
     }
 
-    let owner = record
-        .content
-        .get("user")
-        .and_then(|user| user.as_str())
-        .map(|value| value.to_string());
-
-    // Editing rewrites someone's words, so unlike deletion it is never
-    // extended to moderators - only the author may do it.
-    if owner.as_deref() != Some(requester.as_str()) {
-        send_error(sender, errors::MESSAGE_PERMISSION_DENIED).await;
+    if let Err(code) = may_edit_message(&record.content, &requester) {
+        send_error(sender, code).await;
         return;
+    }
+
+    // An edit runs through the same rules and the same filter as a new
+    // message: otherwise posting and immediately editing would walk straight
+    // past both. There is nothing to screen or filter in an encrypted
+    // channel — the server never sees the text, before or after the edit.
+    let mut new_text = String::new();
+    if !encrypted {
+        if super::automod::screen(state, sender, &requester, raw_text).await
+            == super::automod::Screen::Blocked
+        {
+            return;
+        }
+        new_text = super::chat_settings::mask_text(state, raw_text).await;
     }
 
     let mut content = record.content.clone();

@@ -5,7 +5,8 @@
 
   Every control here is cosmetic twice over: the server re-checks the
   permission behind each frame, and it enforces the settings themselves
-  (slow mode, the message cap, the profanity filter, the upload policy). What
+  (slow mode, the message cap, the profanity filter, the auto-moderation
+  rules, the upload policy). What
   a tab renders is the server's own answer — the identity, chat, upload,
   voice and screen-share frames it broadcasts — never local state that could
   drift from it.
@@ -37,6 +38,14 @@
     MAX_SLOW_MODE_SECONDS,
     MAX_PROFANITY_WORDS,
     MAX_PROFANITY_WORD_LEN,
+    AUTOMOD_ACTIONS,
+    AUTOMOD_KINDS,
+    DEFAULT_AUTOMOD_MUTE_SECONDS,
+    MAX_AUTOMOD_NAME_LEN,
+    MAX_AUTOMOD_PATTERN_LEN,
+    MAX_AUTOMOD_RULES,
+    MAX_MUTE_SECONDS,
+    MIN_MUTE_SECONDS,
     VOICE_QUALITY_PRESETS,
     MAX_VOICE_BITRATE
   } from '$lib/chat/constants';
@@ -45,9 +54,32 @@
     requestChatSettings,
     setChatSettings
   } from '$lib/stores/chatSettings';
+  import {
+    automodRules,
+    clampMuteSeconds,
+    requestAutomodRules,
+    setAutomodRules,
+    type AutomodRule
+  } from '$lib/stores/automod';
   import { bans } from '$lib/stores/bans';
+  import { auditLog } from '$lib/stores/auditLog';
+  import {
+    auditActionLabel,
+    auditTargetIsMember,
+    AUDIT_ACTOR_ADMIN_TOKEN
+  } from '$lib/chat/audit';
+  import { invites, inviteSpent, type InviteEntry } from '$lib/stores/invites';
+  import { servers } from '$lib/stores/servers';
+  import { createInviteLink } from '$lib/invite';
+  import { isWebClient } from '$lib/platform';
   import { voiceDefaults, setVoiceDefaults } from '$lib/stores/voiceDefaults';
   import { storageUsage, formatBytes } from '$lib/stores/storageUsage';
+  import {
+    serverMetrics,
+    formatUptime,
+    formatMs,
+    METRICS_POLL_INTERVAL_MS
+  } from '$lib/stores/serverMetrics';
   import { uploadConfig, setUploadConfig } from '$lib/stores/uploadConfig';
   import { stats, statsConfig } from '$lib/stores/stats';
   import { serverIdentity } from '$lib/stores/serverIdentity';
@@ -77,8 +109,11 @@
   // controls so a role only sees what it can act on.
   const TABS = [
     { id: 'overview', label: 'Overview', perm: PERMISSIONS.MANAGE_SERVER },
+    { id: 'health', label: 'Health', perm: PERMISSIONS.MANAGE_SERVER },
     { id: 'emojis', label: 'Emojis', perm: PERMISSIONS.MANAGE_EMOJIS },
     { id: 'moderation', label: 'Moderation', perm: PERMISSIONS.BAN_MEMBERS },
+    { id: 'invites', label: 'Invites', perm: PERMISSIONS.CREATE_INVITES },
+    { id: 'audit', label: 'Audit Log', perm: PERMISSIONS.VIEW_AUDIT_LOG },
     { id: 'stats', label: 'Stats', perm: PERMISSIONS.MANAGE_SERVER },
     { id: 'uploads', label: 'Files & Uploads', perm: PERMISSIONS.MANAGE_SERVER },
     { id: 'voice', label: 'Voice', perm: PERMISSIONS.MANAGE_SERVER },
@@ -357,10 +392,17 @@
   $effect(() => {
     if (open && activeTab === 'moderation') {
       untrack(() => {
-        if (canManageServer) requestChatSettings();
+        if (canManageServer) {
+          requestChatSettings();
+          requestAutomodRules();
+        }
         bans.refresh();
         wordsLoaded = false;
         loadChatSettings();
+        automodLoaded = false;
+        automodDraft = [];
+        automodFeedback = null;
+        automodSavePending = false;
       });
     }
   });
@@ -455,6 +497,288 @@
     });
     if (!ok) return;
     bans.unban(user);
+  }
+
+  // ── Audit log (Audit Log tab) ─────────────────────────────────────────
+  // A record rather than live state: it is fetched when the tab opens and on
+  // demand, never kept in step with events. Nothing here is editable — the
+  // entries are written by the server as the actions happen.
+  let auditFeedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
+
+  $effect(() => {
+    if (open && activeTab === 'audit') {
+      untrack(() => {
+        auditFeedback = null;
+        auditLog.refresh();
+      });
+    }
+  });
+
+  // ── Invites (Invites tab) ──────────────────────────────────────────────────
+
+  /** Lifetimes offered by the picker, in seconds. 0 is "never expires". */
+  const INVITE_EXPIRY_OPTIONS = [
+    { seconds: 30 * 60, label: '30 minutes' },
+    { seconds: 6 * 60 * 60, label: '6 hours' },
+    { seconds: 24 * 60 * 60, label: '1 day' },
+    { seconds: 7 * 24 * 60 * 60, label: '7 days' },
+    { seconds: 30 * 24 * 60 * 60, label: '30 days' },
+    { seconds: 0, label: 'Never' }
+  ];
+  /** Use limits offered by the picker. 0 is "no limit". */
+  const INVITE_USE_OPTIONS = [1, 5, 10, 25, 50, 100, 0];
+
+  let inviteExpiry = $state(24 * 60 * 60);
+  let inviteMaxUses = $state(1);
+  let inviteFeedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
+  /** Which code's link was last copied, for the button's transient label. */
+  let copiedInvite: string | null = $state(null);
+  let inviteCopyTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  $effect(() => {
+    if (open && activeTab === 'invites') {
+      untrack(() => {
+        inviteFeedback = null;
+        invites.refresh();
+      });
+    }
+  });
+
+  function refreshAuditLog() {
+    auditFeedback = null;
+    auditLog.refresh();
+  }
+
+  /** Full date and time: an audit entry's value is knowing exactly when. */
+  function formatAuditDate(value: string | null): string {
+    if (!value) return 'unknown time';
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? 'unknown time' : parsed.toLocaleString();
+  }
+
+  /**
+   * How to label whoever acted. The `/role` endpoint's sentinel is not an
+   * account, so it must skip the nickname lookup — that lookup would leave it
+   * alone today, but a member named after it is exactly the confusion the
+   * sentinel's parentheses exist to prevent.
+   */
+  function auditActorLabel(actor: string): string {
+    if (!actor) return 'unknown';
+    if (actor === AUDIT_ACTOR_ADMIN_TOKEN) return actor;
+    return $displayNames(actor);
+  }
+
+  /**
+   * A target is only run through the nickname lookup when the action says it
+   * is a member. A role or a channel that shares a name with somebody would
+   * otherwise be relabelled as that person.
+   */
+  function auditTargetLabel(action: string, target: string): string {
+    return auditTargetIsMember(action) ? $displayNames(target) : target;
+  }
+
+  // ── Health (Health tab) ───────────────────────────────────────────────
+  // The only live readout in the dashboard, so the only one that polls. The
+  // counters are cumulative; two samples are what turn them into a rate, so
+  // the first refresh after opening the tab still shows averages since the
+  // server started rather than nothing at all.
+  $effect(() => {
+    if (!open || activeTab !== 'health') return;
+    serverMetrics.refresh();
+    const timer = setInterval(() => serverMetrics.refresh(), METRICS_POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  });
+
+  /** Thousands separators: these counters reach seven figures on a busy day. */
+  function formatCount(value: number): string {
+    return value.toLocaleString();
+  }
+
+  // ── Auto-moderation rules (Moderation tab) ───────────────────────────
+  // The general form of the word list above: a pattern plus what to do about
+  // it. Same gate as the rest of the chat policy (MANAGE_SERVER), and the
+  // same shape — the draft below is local, the server's answer is the truth,
+  // and a rule the server refuses must never end up looking saved.
+  let automodDraft: AutomodRule[] = $state([]);
+  let automodFeedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
+  let automodSavePending = $state(false);
+  /** Whether the manager-only rule list has been taken into the editor. */
+  let automodLoaded = $state(false);
+
+  // The rules only travel in the answer to `get-automod-rules`, which lands
+  // after the tab opened — take them once, then leave the editor alone so a
+  // later answer cannot clobber a half-written rule.
+  $effect(() => {
+    const rules = $automodRules;
+    if (!open || activeTab !== 'moderation' || rules === null) return;
+    untrack(() => {
+      if (automodLoaded) return;
+      automodLoaded = true;
+      automodDraft = rules.map((rule) => ({ ...rule }));
+    });
+  });
+
+  let automodDirty = $derived.by(() => {
+    const current = $automodRules;
+    if (current === null) return false;
+    if (current.length !== automodDraft.length) return true;
+    return automodDraft.some((rule, index) => {
+      const stored = current[index];
+      return (
+        rule.name.trim() !== stored.name ||
+        rule.pattern.trim() !== stored.pattern ||
+        rule.kind !== stored.kind ||
+        rule.action !== stored.action ||
+        rule.enabled !== stored.enabled ||
+        clampMuteSeconds(rule.muteSeconds) !== stored.muteSeconds
+      );
+    });
+  });
+
+  // The server's answer matching the draft confirms the save.
+  $effect(() => {
+    if (automodSavePending && !automodDirty) {
+      automodSavePending = false;
+      automodFeedback = { text: 'Rules saved.', kind: 'info' };
+    }
+  });
+
+  function addAutomodRule() {
+    if (automodDraft.length >= MAX_AUTOMOD_RULES) return;
+    automodDraft = [
+      ...automodDraft,
+      {
+        name: '',
+        pattern: '',
+        kind: 'word',
+        action: 'delete',
+        muteSeconds: DEFAULT_AUTOMOD_MUTE_SECONDS,
+        enabled: true
+      }
+    ];
+    automodFeedback = null;
+  }
+
+  function removeAutomodRule(index: number) {
+    automodDraft = automodDraft.filter((_, position) => position !== index);
+    automodFeedback = null;
+  }
+
+  /**
+   * Why the draft cannot be saved, or null. Cosmetic — the server checks all
+   * of it again, including whether a regular expression compiles, which only
+   * it can answer.
+   */
+  function describeAutomodProblem(rules: AutomodRule[]): string | null {
+    for (const [index, rule] of rules.entries()) {
+      const position = index + 1;
+      const pattern = rule.pattern.trim();
+      if (!pattern) return `Rule ${position} has no pattern.`;
+      if (pattern.length > MAX_AUTOMOD_PATTERN_LEN) {
+        return `Rule ${position} has a pattern longer than ${MAX_AUTOMOD_PATTERN_LEN} characters.`;
+      }
+      if (rule.name.trim().length > MAX_AUTOMOD_NAME_LEN) {
+        return `Rule ${position} has a name longer than ${MAX_AUTOMOD_NAME_LEN} characters.`;
+      }
+      // A whole-word pattern is compared against single words, so one with a
+      // space in it would be saved and then never match anything.
+      if (rule.kind === 'word' && /\s/.test(pattern)) {
+        return `Rule ${position} matches a whole word, so its pattern cannot contain spaces.`;
+      }
+    }
+    return null;
+  }
+
+  function saveAutomodRules() {
+    const problem = describeAutomodProblem(automodDraft);
+    if (problem) {
+      automodFeedback = { text: problem, kind: 'error' };
+      return;
+    }
+    automodFeedback = null;
+    automodSavePending = true;
+    // Role-checked server-side; the confirmation is the automod-rules answer.
+    setAutomodRules(
+      automodDraft.map((rule) => ({
+        ...rule,
+        name: rule.name.trim(),
+        pattern: rule.pattern.trim(),
+        muteSeconds: clampMuteSeconds(rule.muteSeconds)
+      }))
+    );
+  }
+
+  /** Render a mute duration the way people talk about it. */
+  function describeMute(seconds: number): string {
+    const clamped = clampMuteSeconds(seconds);
+    if (clamped < 60) return `${clamped}s`;
+    if (clamped < 3600) return `${Math.round(clamped / 60)} minutes`;
+    if (clamped < 86_400) {
+      const hours = clamped / 3600;
+      return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hours`;
+    }
+    const days = clamped / 86_400;
+    return `${Number.isInteger(days) ? days : days.toFixed(1)} days`;
+  }
+
+  function describeInviteUses(invite: InviteEntry): string {
+    return invite.maxUses > 0 ? `${invite.uses}/${invite.maxUses} uses` : `${invite.uses} uses`;
+  }
+
+  function describeInviteExpiry(invite: InviteEntry): string {
+    if (!invite.expiresAt) return 'never expires';
+    const parsed = new Date(invite.expiresAt);
+    if (Number.isNaN(parsed.getTime())) return 'unknown expiry';
+    return `${parsed <= new Date() ? 'expired' : 'expires'} ${parsed.toLocaleString()}`;
+  }
+
+  /**
+   * The shareable link for a code. It points at the web client we are running
+   * in, or — in the desktop app, which has no origin of its own — at the
+   * server, which is where a server started with `WEB_CLIENT_DIR` serves the
+   * client from.
+   */
+  function inviteLink(code: string): string | null {
+    const url = $selectedServer;
+    if (!url) return null;
+    const entry = servers.get(url) ?? { url, name: url };
+    return createInviteLink(entry, isWebClient ? location.origin : undefined, code);
+  }
+
+  async function copyInviteLink(code: string) {
+    const link = inviteLink(code);
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      copiedInvite = code;
+      if (inviteCopyTimeout) clearTimeout(inviteCopyTimeout);
+      inviteCopyTimeout = setTimeout(() => {
+        if (copiedInvite === code) copiedInvite = null;
+        inviteCopyTimeout = null;
+      }, 2000);
+    } catch (err) {
+      inviteFeedback = { text: 'Could not copy the link. Copy the code instead.', kind: 'error' };
+      if (import.meta.env.DEV) {
+        console.error('Failed to copy invite link', err);
+      }
+    }
+  }
+
+  function createInvite() {
+    inviteFeedback = null;
+    invites.create(inviteExpiry, inviteMaxUses);
+  }
+
+  async function revokeInvite(code: string) {
+    const ok = await dialogs.confirm({
+      title: 'Revoke this invite?',
+      message:
+        'The link stops working immediately. Members who already joined through it keep their access — remove one of those with a ban.',
+      confirmLabel: 'Revoke'
+    });
+    if (!ok) return;
+    inviteFeedback = null;
+    invites.revoke(code);
   }
 
   // ── Voice defaults (Voice tab) ─────────────────────────────────────────────
@@ -637,6 +961,15 @@
     'chat-settings-update-failed'
   ]);
 
+  // `automod-blocked` is deliberately absent: that one answers a chat message,
+  // not anything this dashboard sent.
+  const AUTOMOD_ERROR_CODES = new Set([
+    'automod-permission-denied',
+    'invalid-automod-rules',
+    'invalid-automod-pattern',
+    'automod-update-failed'
+  ]);
+
   const MODERATION_ERROR_CODES = new Set([
     'moderation-permission-denied',
     'moderation-target-not-found',
@@ -651,10 +984,20 @@
     'invalid-voice-bitrate'
   ]);
 
+  const AUDIT_ERROR_CODES = new Set(['audit-log-permission-denied', 'audit-log-failed']);
+
   const MAINTENANCE_ERROR_CODES = new Set([
     'maintenance-permission-denied',
     'maintenance-not-confirmed',
     'maintenance-failed'
+  ]);
+
+  const INVITE_ERROR_CODES = new Set([
+    'invite-permission-denied',
+    'invalid-invite-options',
+    'invite-limit-reached',
+    'invite-not-found',
+    'invite-update-failed'
   ]);
 
   const ROLE_ERROR_CODES = new Set([
@@ -685,21 +1028,31 @@
     } else if (UPLOAD_ERROR_CODES.has(code)) {
       uploadSavePending = false;
       uploadFeedback = { text: describeServerError(code), kind: 'error' };
+    } else if (AUTOMOD_ERROR_CODES.has(code)) {
+      automodSavePending = false;
+      automodFeedback = { text: describeServerError(code), kind: 'error' };
     } else if (CHAT_SETTINGS_ERROR_CODES.has(code) || MODERATION_ERROR_CODES.has(code)) {
       chatSavePending = false;
       chatFeedback = { text: describeServerError(code), kind: 'error' };
     } else if (VOICE_DEFAULTS_ERROR_CODES.has(code)) {
       voiceSavePending = false;
       voiceFeedback = { text: describeServerError(code), kind: 'error' };
+    } else if (AUDIT_ERROR_CODES.has(code)) {
+      auditFeedback = { text: describeServerError(code), kind: 'error' };
     } else if (MAINTENANCE_ERROR_CODES.has(code)) {
       dangerFeedback = { text: describeServerError(code), kind: 'error' };
+    } else if (INVITE_ERROR_CODES.has(code)) {
+      inviteFeedback = { text: describeServerError(code), kind: 'error' };
     } else if (ROLE_ERROR_CODES.has(code)) {
       roleErrorFeedback(code);
     }
   }
 
   onMount(() => chat.on('error', handleServerError));
-  onDestroy(() => chat.off('error', handleServerError));
+  onDestroy(() => {
+    chat.off('error', handleServerError);
+    if (inviteCopyTimeout) clearTimeout(inviteCopyTimeout);
+  });
 
   function handleEmojiFileChange(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
@@ -1103,6 +1456,87 @@
           </div>
         {/if}
 
+        {#if activeTab === 'health'}
+          <div class="settings-section">
+            <h3 class="section-title">Health</h3>
+            <div class="setting-group">
+              <div class="setting-description">
+                What this server is doing right now. The counters are kept in memory and
+                start again from zero at every restart, so they describe the current run
+                and nothing before it. Rates are measured across refreshes, which happen
+                every {METRICS_POLL_INTERVAL_MS / 1000} seconds while this tab is open.
+              </div>
+              {#if $serverMetrics === null}
+                <div class="setting-description">Waiting for the server…</div>
+              {:else}
+                <ul class="metric-grid">
+                  <li class="metric">
+                    <span class="metric-value">{formatCount($serverMetrics.connections)}</span>
+                    <span class="metric-label">Connections open</span>
+                    <span class="metric-note">
+                      peak {formatCount($serverMetrics.peakConnections)} this run
+                    </span>
+                  </li>
+                  <li class="metric">
+                    <span class="metric-value">
+                      {$serverMetrics.framesPerSecond.toFixed(1)}<span class="metric-unit">/s</span>
+                    </span>
+                    <span class="metric-label">Frames received</span>
+                    <span class="metric-note">
+                      {formatCount($serverMetrics.frames)} total
+                    </span>
+                  </li>
+                  <li class="metric">
+                    <span class="metric-value">
+                      {$serverMetrics.dbAverageMs === null
+                        ? '—'
+                        : formatMs($serverMetrics.dbAverageMs)}
+                    </span>
+                    <span class="metric-label">Database call</span>
+                    <span class="metric-note">
+                      {$serverMetrics.dbAverageMs === null ? 'idle · ' : ''}worst
+                      {formatMs($serverMetrics.dbMaxMs)} ·
+                      {formatCount($serverMetrics.dbCalls)} calls
+                    </span>
+                  </li>
+                  <li class="metric">
+                    <span class="metric-value">{formatUptime($serverMetrics.uptimeSeconds)}</span>
+                    <span class="metric-label">Uptime</span>
+                    <span class="metric-note">since the last restart</span>
+                  </li>
+                </ul>
+              {/if}
+            </div>
+
+            <div class="setting-group">
+              <span class="setting-label">Rate-limit rejections</span>
+              <div class="setting-description">
+                Requests turned away since the server started. A climbing auth count is
+                somebody guessing keys; climbing messages or uploads is either a member
+                flooding or a limit set too low for the room. All four limits are set by
+                the server's environment, not from here.
+              </div>
+              {#if $serverMetrics === null}
+                <div class="setting-description">Waiting for the server…</div>
+              {:else}
+                <ul class="storage-list">
+                  {#each [
+                    { label: 'Messages', value: $serverMetrics.rejectedMessages },
+                    { label: 'Authentication', value: $serverMetrics.rejectedAuth },
+                    { label: 'Uploads', value: $serverMetrics.rejectedUploads },
+                    { label: 'Replayed signatures', value: $serverMetrics.rejectedReplays }
+                  ] as row (row.label)}
+                    <li class="storage-row">
+                      <span class="storage-label">{row.label}</span>
+                      <span class="storage-value">{formatCount(row.value)}</span>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
+          </div>
+        {/if}
+
         {#if activeTab === 'emojis'}
           <div class="settings-section">
             <h3 class="section-title">Custom Emojis</h3>
@@ -1261,6 +1695,117 @@
                   </div>
                 {/if}
               </div>
+
+              <div class="setting-group">
+                <span class="setting-label">Auto-moderation rules</span>
+                <div class="setting-description">
+                  Patterns the server checks every message and every edit against, before it is
+                  stored or sent on. When more than one rule matches, the most severe action wins.
+                  Members who can manage messages are exempt, and rules never apply in an
+                  end-to-end encrypted channel — the server has no text to read there.
+                </div>
+                {#if $automodRules === null}
+                  <div class="setting-description">Loading…</div>
+                {:else}
+                  {#if automodDraft.length === 0}
+                    <div class="setting-description">No rules yet.</div>
+                  {/if}
+                  <ul class="rule-list">
+                    <!-- Keyed by position: a rule has no id of its own, the
+                         list is saved and stored as one, and its order is what
+                         decides between two equally severe matches. -->
+                    {#each automodDraft as rule, index (index)}
+                      <li class="rule-row">
+                        <div class="rule-head">
+                          <label class="rule-enabled">
+                            <input type="checkbox" bind:checked={rule.enabled} />
+                            <span>Enabled</span>
+                          </label>
+                          <input
+                            class="rule-name"
+                            type="text"
+                            bind:value={rule.name}
+                            maxlength={MAX_AUTOMOD_NAME_LEN}
+                            placeholder="Name (shown to whoever trips it)"
+                            aria-label={`Name of rule ${index + 1}`}
+                          />
+                          <button
+                            class="btn btn-danger"
+                            onclick={() => removeAutomodRule(index)}
+                            aria-label={`Remove rule ${index + 1}`}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div class="rule-fields">
+                          <select bind:value={rule.kind} aria-label={`Match kind of rule ${index + 1}`}>
+                            {#each AUTOMOD_KINDS as kind}
+                              <option value={kind.id}>{kind.label}</option>
+                            {/each}
+                          </select>
+                          <input
+                            class="rule-pattern"
+                            type="text"
+                            spellcheck="false"
+                            autocomplete="off"
+                            bind:value={rule.pattern}
+                            maxlength={MAX_AUTOMOD_PATTERN_LEN}
+                            placeholder="Pattern"
+                            aria-label={`Pattern of rule ${index + 1}`}
+                          />
+                          <select bind:value={rule.action} aria-label={`Action of rule ${index + 1}`}>
+                            {#each AUTOMOD_ACTIONS as action}
+                              <option value={action.id}>{action.label}</option>
+                            {/each}
+                          </select>
+                          {#if rule.action === 'mute'}
+                            <input
+                              class="rule-mute"
+                              type="number"
+                              bind:value={rule.muteSeconds}
+                              min={MIN_MUTE_SECONDS}
+                              max={MAX_MUTE_SECONDS}
+                              step="1"
+                              aria-label={`Mute duration of rule ${index + 1} in seconds`}
+                            />
+                          {/if}
+                        </div>
+                        <div class="setting-description">
+                          {AUTOMOD_KINDS.find((kind) => kind.id === rule.kind)?.description}
+                          {AUTOMOD_ACTIONS.find((action) => action.id === rule.action)?.description}
+                          {#if rule.action === 'mute'}
+                            Muted for {describeMute(rule.muteSeconds)}.
+                          {/if}
+                        </div>
+                      </li>
+                    {/each}
+                  </ul>
+                  <div class="rule-actions">
+                    <button
+                      class="btn"
+                      onclick={addAutomodRule}
+                      disabled={automodDraft.length >= MAX_AUTOMOD_RULES}
+                    >
+                      Add rule
+                    </button>
+                    <button
+                      class="btn btn-primary"
+                      onclick={saveAutomodRules}
+                      disabled={!automodDirty}
+                    >
+                      Save rules
+                    </button>
+                    <span class="setting-description">
+                      {automodDraft.length} of {MAX_AUTOMOD_RULES}
+                    </span>
+                  </div>
+                  {#if automodFeedback}
+                    <div class="identity-feedback" class:error={automodFeedback.kind === 'error'}>
+                      {automodFeedback.text}
+                    </div>
+                  {/if}
+                {/if}
+              </div>
             {/if}
 
             <div class="setting-group">
@@ -1294,6 +1839,125 @@
               {#if !canManageServer && chatFeedback}
                 <div class="identity-feedback" class:error={chatFeedback.kind === 'error'}>
                   {chatFeedback.text}
+                </div>
+              {/if}
+            </div>
+          </div>
+        {/if}
+
+        {#if activeTab === 'invites'}
+          <div class="settings-section">
+            <h3 class="section-title">Invites</h3>
+            <div class="setting-group">
+              <div class="setting-description">
+                An invite link lets somebody join without being told the server password. Each
+                one can expire and can be limited to a number of uses, so a link that leaks can
+                be withdrawn on its own — changing the password for everybody is not the only
+                way out. Revoking an invite stops new joins; members who already used it stay,
+                and are removed with a ban.
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <span class="setting-label">Create an invite</span>
+              <div class="invite-form">
+                <label class="invite-field">
+                  <span>Expires after</span>
+                  <select bind:value={inviteExpiry}>
+                    {#each INVITE_EXPIRY_OPTIONS as option (option.seconds)}
+                      <option value={option.seconds}>{option.label}</option>
+                    {/each}
+                  </select>
+                </label>
+                <label class="invite-field">
+                  <span>Max uses</span>
+                  <select bind:value={inviteMaxUses}>
+                    {#each INVITE_USE_OPTIONS as uses (uses)}
+                      <option value={uses}>{uses === 0 ? 'No limit' : uses}</option>
+                    {/each}
+                  </select>
+                </label>
+                <button class="btn btn-primary" onclick={createInvite}>Create invite</button>
+              </div>
+              {#if inviteFeedback}
+                <div class="identity-feedback" class:error={inviteFeedback.kind === 'error'}>
+                  {inviteFeedback.text}
+                </div>
+              {/if}
+            </div>
+
+            <div class="setting-group">
+              <span class="setting-label">Active invites</span>
+              {#if $invites === null}
+                <div class="setting-description">Loading…</div>
+              {:else if $invites.length === 0}
+                <div class="setting-description">No invites yet.</div>
+              {:else}
+                <ul class="invite-list">
+                  {#each $invites as invite (invite.code)}
+                    <li class="invite-row" class:spent={inviteSpent(invite)}>
+                      <div class="invite-identity">
+                        <code class="invite-code">{invite.code}</code>
+                        <span class="invite-meta">
+                          {describeInviteUses(invite)} · {describeInviteExpiry(invite)}{invite.createdBy
+                            ? ` · by ${$displayNames(invite.createdBy)}`
+                            : ''}
+                        </span>
+                      </div>
+                      <button class="btn" onclick={() => copyInviteLink(invite.code)}>
+                        {copiedInvite === invite.code ? 'Copied!' : 'Copy link'}
+                      </button>
+                      <button class="btn" onclick={() => revokeInvite(invite.code)}>Revoke</button>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
+          </div>
+        {/if}
+
+        {#if activeTab === 'audit'}
+          <div class="settings-section">
+            <h3 class="section-title">Audit Log</h3>
+            <div class="setting-group">
+              <div class="setting-description">
+                Who kicked, banned or muted a member, who changed a role or a channel's
+                permissions, and who ran a Danger Zone action. Written by the server as each
+                action succeeds — a refused action is not an action and leaves no entry. The log
+                survives a server reset on purpose, and the oldest entries are dropped once it
+                fills up.
+              </div>
+              <div class="rule-actions">
+                <button class="btn" onclick={refreshAuditLog}>Refresh</button>
+                {#if $auditLog !== null}
+                  <span class="setting-description">
+                    {$auditLog.length}
+                    {$auditLog.length === 1 ? 'entry' : 'entries'}
+                  </span>
+                {/if}
+              </div>
+              {#if $auditLog === null}
+                <div class="setting-description">Loading…</div>
+              {:else if $auditLog.length === 0}
+                <div class="setting-description">Nothing has been recorded yet.</div>
+              {:else}
+                <ul class="audit-list">
+                  {#each $auditLog as entry (entry.id)}
+                    <li class="audit-row">
+                      <span class="audit-action">{auditActionLabel(entry.action)}</span>
+                      <span class="audit-meta">
+                        {auditActorLabel(entry.actor)}{entry.target
+                          ? ` → ${auditTargetLabel(entry.action, entry.target)}`
+                          : ''}{entry.detail ? ` · ${entry.detail}` : ''}
+                      </span>
+                      <span class="audit-time">{formatAuditDate(entry.at)}</span>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+              {#if auditFeedback}
+                <div class="identity-feedback" class:error={auditFeedback.kind === 'error'}>
+                  {auditFeedback.text}
                 </div>
               {/if}
             </div>
@@ -2031,9 +2695,140 @@
 
   /* Ban list, online members and the storage breakdown share the plain
      list-of-rows shape the emoji list already uses. */
+  .rule-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  /* Outlined rather than filled: the inputs inside a row already carry
+     `--color-surface-raised`, so a filled card would swallow them. */
+  .rule-row {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--color-surface-outline);
+    border-radius: var(--radius-md);
+  }
+
+  .rule-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .rule-enabled {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-on-surface-variant);
+    white-space: nowrap;
+  }
+
+  .rule-enabled input[type='checkbox'] {
+    accent-color: var(--color-primary);
+    width: 1rem;
+    height: 1rem;
+    min-height: 0;
+    flex-shrink: 0;
+  }
+
+  .rule-name {
+    flex: 1 1 12rem;
+    min-width: 0;
+  }
+
+  /* The pattern gets the room: it is the part that is read character by
+     character when a rule does not do what its author expected. */
+  .rule-fields {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .rule-pattern {
+    flex: 1 1 14rem;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+  }
+
+  .rule-mute {
+    flex: 0 0 7rem;
+  }
+
+  .rule-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .invite-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--space-3);
+  }
+
+  .invite-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+  }
+
+  .invite-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+  }
+
+  .invite-row:hover {
+    background: var(--color-surface-raised);
+  }
+
+  /* An expired or used-up invite is kept in the list so it can be cleared
+     away deliberately, but it should not read as one that still works. */
+  .invite-row.spent .invite-code,
+  .invite-row.spent .invite-meta {
+    opacity: 0.55;
+    text-decoration: line-through;
+  }
+
+  .invite-identity {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+    margin-right: auto;
+  }
+
+  .invite-code {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--color-on-surface);
+    overflow-wrap: anywhere;
+  }
+
+  .invite-meta {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+  }
+
+  .audit-list,
   .ban-list,
   .online-list,
-  .storage-list {
+  .storage-list,
+  .invite-list {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -2054,6 +2849,40 @@
   .ban-row:hover,
   .online-row:hover {
     background: var(--color-surface-raised);
+  }
+
+  /* The log is dense and unbounded in width — the timestamp is pushed to the
+     end so the eye can scan down it, and the middle column takes the slack.
+     Rows carry the raised background all the time rather than on hover: they
+     are read, not acted on, and the separation is what keeps a wrapped entry
+     from running into the next one. */
+  .audit-row {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    background: var(--color-surface-raised);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+  }
+
+  .audit-action {
+    color: var(--color-on-surface);
+    font-size: var(--text-sm);
+    flex-shrink: 0;
+  }
+
+  .audit-meta {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .audit-time {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+    flex-shrink: 0;
   }
 
   .ban-name,
@@ -2079,6 +2908,47 @@
     border-radius: 50%;
     background: var(--color-success, #22c55e);
     flex-shrink: 0;
+  }
+
+  .metric-grid {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: var(--space-2);
+  }
+
+  .metric {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-raised);
+  }
+
+  .metric-value {
+    font-size: var(--text-lg);
+    color: var(--color-on-surface);
+    /* The numbers change every few seconds in place; a proportional font
+       would make the whole tile shuffle sideways on every refresh. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  .metric-unit {
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+  }
+
+  .metric-label {
+    font-size: var(--text-sm);
+    color: var(--color-on-surface);
+  }
+
+  .metric-note {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
   }
 
   .storage-total {

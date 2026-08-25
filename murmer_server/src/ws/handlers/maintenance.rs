@@ -6,7 +6,12 @@
 //! server. The database work runs in one transaction in `db::maintenance`;
 //! what is left here is refreshing the in-memory caches that mirror the rows
 //! just deleted and telling every connected client to rebuild its view.
+//!
+//! Both are recorded in the audit log ([`crate::db::audit`]), which the reset
+//! deliberately leaves standing: the record of a wipe is worth most right
+//! after one.
 
+use crate::db::actions;
 use crate::ws::{errors, helpers::*};
 use crate::{AppState, db};
 use axum::extract::ws::{Message, WebSocket};
@@ -73,6 +78,14 @@ pub(super) async fn handle_purge_all_messages(
         }
     };
 
+    record_audit(
+        state,
+        actions::PURGE_MESSAGES,
+        &requester,
+        "",
+        &format!("{purged} messages"),
+    )
+    .await;
     info!(requester, purged, "All messages purged");
     broadcast_messages_purged(state, &requester, purged);
 }
@@ -136,6 +149,22 @@ pub(super) async fn handle_reset_server(
             .map(|(user, ids)| (user.clone(), ids.clone()))
             .collect()
     };
+
+    record_audit(
+        state,
+        actions::SERVER_RESET,
+        &requester,
+        "",
+        &format!(
+            "{} messages, {} channels, {} voice channels, {} categories, {} roles",
+            summary.messages,
+            summary.channels,
+            summary.voice_channels,
+            summary.categories,
+            summary.roles
+        ),
+    )
+    .await;
 
     info!(
         requester,

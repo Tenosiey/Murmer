@@ -24,7 +24,9 @@ export const PERMISSIONS = {
   ADMINISTRATOR: 1 << 13,
   USE_SOUNDBOARD: 1 << 14,
   MANAGE_SOUNDS: 1 << 15,
-  MANAGE_NICKNAMES: 1 << 16
+  MANAGE_NICKNAMES: 1 << 16,
+  VIEW_AUDIT_LOG: 1 << 17,
+  CREATE_INVITES: 1 << 18
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;
@@ -175,6 +177,12 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         flag: PERMISSIONS.MANAGE_NICKNAMES,
         label: 'Manage nicknames',
         description: "Set or clear other members' nicknames on this server."
+      },
+      {
+        key: 'CREATE_INVITES',
+        flag: PERMISSIONS.CREATE_INVITES,
+        label: 'Create invites',
+        description: 'Mint and revoke invite links, which let someone join without the server password.'
       }
     ]
   },
@@ -228,6 +236,12 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         flag: PERMISSIONS.VIEW_CONNECTION_STATS,
         label: 'View connection stats',
         description: "View other members' connection quality."
+      },
+      {
+        key: 'VIEW_AUDIT_LOG',
+        flag: PERMISSIONS.VIEW_AUDIT_LOG,
+        label: 'View audit log',
+        description: 'Read the record of moderation, permission and Danger Zone actions.'
       },
       {
         key: 'ADMINISTRATOR',

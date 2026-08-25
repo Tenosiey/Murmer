@@ -29,8 +29,8 @@ use axum::{
 };
 use dotenvy::dotenv;
 use murmer_server::{
-    AppState, RateLimiter, VoiceChannelState, admin, bot, config::Config, db, link_preview, upload,
-    ws,
+    AppState, RateLimiter, VoiceChannelState, admin, automod, bot, config::Config, db,
+    link_preview, upload, ws,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -77,6 +77,9 @@ async fn main() -> Result<()> {
     }
 
     init_tracing();
+    // Uptime is what the dashboard's cumulative counters are divided by, so
+    // it starts here rather than at whatever first touches one.
+    murmer_server::metrics::mark_start();
 
     let config = Config::from_env()?;
 
@@ -100,6 +103,9 @@ async fn main() -> Result<()> {
 
     // Consulted by every chat message; see `AppState::chat_settings`.
     let chat_settings = db::chat_settings(&db_client).await.unwrap_or_default();
+
+    // Compiled once here rather than per message; see `AppState::automod`.
+    let automod_rules = db::automod_rules(&db_client).await.unwrap_or_default();
 
     tokio::fs::create_dir_all(&config.upload_dir)
         .await
@@ -129,6 +135,7 @@ async fn main() -> Result<()> {
                         bitrate: record.bitrate,
                         category_id: record.category_id,
                         position: record.position,
+                        breakout_parent: record.breakout_parent,
                     },
                 );
             }
@@ -158,12 +165,20 @@ async fn main() -> Result<()> {
         rate_limiter: RateLimiter::default(),
         stats_enabled: std::sync::atomic::AtomicBool::new(stats_enabled),
         chat_settings: Arc::new(Mutex::new(chat_settings)),
+        automod: Arc::new(Mutex::new(automod::RuleSet::compile(automod_rules))),
         slow_mode_sends: Arc::new(Mutex::new(HashMap::new())),
+        visibility_epoch: std::sync::atomic::AtomicU64::new(0),
     });
 
     // Ephemeral deletion timers only live in memory; re-arm any that were
     // lost to a restart (expired ones are deleted immediately).
     ws::helpers::resume_ephemeral_deletions(&state).await;
+
+    // A scheduled message left claimed by a process that stopped mid-delivery
+    // may or may not have been posted, so it is reported to its author as a
+    // failure rather than retried. Must run before the scheduler starts.
+    ws::recover_claimed_scheduled_messages(&state).await;
+    ws::spawn_scheduler(Arc::clone(&state));
 
     let mut router = Router::new()
         .route(

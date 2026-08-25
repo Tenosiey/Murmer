@@ -126,14 +126,34 @@ All of this is deliberate, and is also stated in `README.md` for operators:
   to encrypt with.
 - **Uploaded file bytes** — only the attachment's name and URL travel sealed.
 - **Link previews** and content-derived stats.
-- **The profanity filter** — the server holds no text to mask. Masking would
-  mean handing the server the plaintext back, so this is a limit of
-  server-side filtering, not a hole to plug. Slow mode and the message length
-  cap still apply.
+- **The profanity filter and the auto-moderation rules** — the server holds
+  no text to mask or match. Doing either would mean handing the server the
+  plaintext back, so this is a limit of server-side filtering, not a hole to
+  plug. Slow mode and the message length cap still apply.
 - **Reply quotes** — the server rebuilds them from stored plaintext, so in an
   encrypted channel it sends `replyTo` with an empty snippet and the client
   supplies the quote from inside the ciphertext.
+- **Forwarding**, at either end. A forward into a channel is a copy the
+  server makes, and it has neither the plaintext of a sealed message nor a
+  key to seal a copy with. Letting the client supply the words under a
+  server-stamped attribution instead would be the exact forgery the frame
+  exists to prevent, so `prepare_forward` refuses. Forwarding into a **DM**
+  works and is client-side for the same reason: the attribution travels
+  inside the ciphertext as text, which makes it the sender's claim rather
+  than the server's — see [`features.md`](features.md).
 - **Forward secrecy within an epoch.**
+- **Reminders.** A reminder's note is written by its owner and stored in
+  plaintext, like a channel topic — a reminder set on a message in an
+  encrypted channel therefore only ever holds what its owner typed, never a
+  copy of the message. The client deliberately does not pre-fill it from the
+  decrypted text, because a rule that applies only in some channels is one
+  somebody eventually forgets.
+
+A **scheduled message** is the exception that proves the shape: it is sealed
+by the client at compose time and the server stores the envelope opaquely,
+exactly as it stores a live one. It goes out under the epoch that was current
+when it was written, which is the same epoch a message sent then would have
+used — see [`features.md`](features.md).
 
 `handle_chat` and `handle_edit_message` branch on `channel_is_e2ee` and
 **reject** a `text`, `image` or `attachment` field there rather than
@@ -225,8 +245,40 @@ limiter** — which is why it is worth a test at all.
   off — the default — runs no query per message. That is a shortcut, not a
   gate: the authoritative double opt-in check stays inside
   `db::record_user_stats`, in the same call that performs the increments.
-- Invite links carry their payload — which may include the server password —
-  in the URL **fragment**, so it never reaches a web server's access logs or
-  a `Referer` header. One `https://…/invite#…` URL serves both clients:
-  clicking it opens the web client's `/invite` route, pasting it into the
-  server hub's address field is parsed there (`src/lib/invite.ts`).
+- Invite links carry their payload — a server-issued invite code, or on a
+  hub-built link the server password — in the URL **fragment**, so it never
+  reaches a web server's access logs or a `Referer` header. One
+  `https://…/invite#…` URL serves both clients: clicking it opens the web
+  client's `/invite` route, pasting it into the server hub's address field is
+  parsed there (`src/lib/invite.ts`).
+
+## Invite codes
+
+A password-protected server admits a connection on one of three credentials,
+tried in that order in `ws/handlers/auth.rs`: the server password, an
+invite-granted membership bound to the connecting public key, or a live invite
+code. Codes are 12 random bytes, base64url-encoded, and carry an optional
+expiry and use limit (`db/invites.rs`).
+
+Three properties are load-bearing, and each exists because the obvious
+alternative fails:
+
+- **Membership is checked before the code.** Redemption records the joining
+  key in `invite_members`, so a member's reconnect neither spends another use
+  nor depends on the invite still existing. Without that, an invite could not
+  both be single-use and survive its holder reconnecting.
+- **Redemption happens after the name and ban checks, not at the credential
+  check.** A presence frame that is going to be rejected must not cost the
+  invite one of its uses. The validity check is re-run inside the transaction
+  that increments the counter, so two clients racing for the last use cannot
+  both be admitted.
+- **Membership outlives the invite.** Revoking a code deletes the row, which
+  stops future joins; it deliberately does not evict the people who already
+  joined through it. Removing one of those is a ban, bound to the same public
+  key. The alternative — cascading a revocation into a mass eviction — would
+  make revoking a leaked link something an admin hesitates to do, which is the
+  opposite of what it is for.
+
+Every rejected redemption answers the same `invalid-invite` error. Telling
+"expired" apart from "unknown" would let anyone holding a guess find out
+whether it named a real invite; the reason is in the server log instead.

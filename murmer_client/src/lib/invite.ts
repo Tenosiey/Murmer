@@ -6,6 +6,12 @@ export interface InviteData {
   url: string;
   name?: string;
   password?: string;
+  /**
+   * A server-issued invite code, minted in the dashboard's Invites tab. Unlike
+   * a password it can expire, run out of uses and be revoked, which is what
+   * makes a leaked link recoverable — see the server's `db/invites.rs`.
+   */
+  code?: string;
 }
 
 /** Path the invite landing route (`src/routes/invite/`) is served under. */
@@ -19,19 +25,30 @@ const INVITE_PATH = '/invite';
  * parsed by `parseInviteLink` — one link works for both.
  *
  * The server details live in the URL **fragment**, not the query string: a
- * fragment is never sent to the web server, so an invite carrying a server
- * password does not end up in access logs, proxy logs or a `Referer` header.
+ * fragment is never sent to the web server, so an invite carrying a
+ * credential does not end up in access logs, proxy logs or a `Referer`
+ * header.
+ *
+ * `code` is a server-issued invite code and takes the place of the password:
+ * when one is given the password is deliberately left out, because handing
+ * over a revocable code and the password it replaces defeats the point.
  *
  * `appOrigin` is where the web client is hosted (`location.origin` when we are
  * one). Without it the link points at the server's own origin, which is where
  * a server that hosts the web client itself serves it from.
  */
-export function createInviteLink(server: ServerEntry, appOrigin?: string): string {
+export function createInviteLink(
+  server: ServerEntry,
+  appOrigin?: string,
+  code?: string
+): string {
   const params = new URLSearchParams({ url: server.url });
   if (server.name && server.name !== server.url) {
     params.set('name', server.name);
   }
-  if (server.password) {
+  if (code) {
+    params.set('invite', code);
+  } else if (server.password) {
     params.set('password', server.password);
   }
   const base = appOrigin?.replace(/\/$/, '') || httpBaseFromWs(server.url);
@@ -89,6 +106,9 @@ export function parseInviteLink(link: string): InviteData | null {
 
     const password = params.get('password');
     if (password) data.password = password;
+
+    const code = params.get('invite')?.trim();
+    if (code) data.code = code;
 
     return data;
   } catch (err) {

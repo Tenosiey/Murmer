@@ -9,18 +9,22 @@
 //! `channel_id`.
 //!
 //! Submodules group queries by domain:
+//! - [`audit`] – the audit log of moderation and dashboard actions
+//! - [`automod`] – auto-moderation rules applied to every chat message
 //! - [`channel_keys`] – wrapped per-channel keys of encrypted channels
 //! - [`channels`] – text channels, voice channels and categories
 //! - [`chat_settings`] – slow mode, message length cap and profanity filter
 //! - [`direct_messages`] – private messages between two users
 //! - [`emojis`] – custom server emoji registrations
 //! - [`identity`] – server name, description, welcome message and icon
+//! - [`invites`] – server-issued invite codes and the memberships they grant
 //! - [`maintenance`] – destructive purge/reset actions (Danger Zone)
 //! - [`messages`] – message CRUD and history retrieval
 //! - [`moderation`] – ban and mute persistence
 //! - [`pins`] – persisted message pins per channel
 //! - [`reactions`] – emoji reaction operations
 //! - [`roles`] – user role persistence
+//! - [`scheduled`] – reminders and scheduled messages
 //! - [`screenshare`] – server-wide screen share bitrate cap
 //! - [`soundboard`] – the server's shared soundboard sound library
 //! - [`stats`] – lifetime user statistics (double opt-in gated)
@@ -29,6 +33,8 @@
 //! - [`voice_defaults`] – quality/bitrate new voice channels start with
 //! - [`wiki`] – per-channel Markdown wiki pages with revision history
 
+mod audit;
+mod automod;
 mod channel_keys;
 mod channel_overrides;
 mod channels;
@@ -36,12 +42,14 @@ mod chat_settings;
 mod direct_messages;
 mod emojis;
 mod identity;
+mod invites;
 mod maintenance;
 mod messages;
 mod moderation;
 mod pins;
 mod reactions;
 mod roles;
+mod scheduled;
 mod screenshare;
 mod soundboard;
 mod stats;
@@ -50,6 +58,8 @@ mod users;
 mod voice_defaults;
 mod wiki;
 
+pub use audit::*;
+pub use automod::*;
 pub use channel_keys::*;
 pub use channel_overrides::*;
 pub use channels::*;
@@ -57,12 +67,14 @@ pub use chat_settings::*;
 pub use direct_messages::*;
 pub use emojis::*;
 pub use identity::*;
+pub use invites::*;
 pub use maintenance::*;
 pub use messages::*;
 pub use moderation::*;
 pub use pins::*;
 pub use reactions::*;
 pub use roles::*;
+pub use scheduled::*;
 pub use screenshare::*;
 pub use soundboard::*;
 pub use stats::*;
@@ -96,7 +108,15 @@ impl DbCall for Db {
         F: FnOnce(&mut rusqlite::Connection) -> rusqlite::Result<R> + Send + 'static,
         R: Send + 'static,
     {
-        self.call(f).await
+        // Every query in the process funnels through here, so this is the
+        // one place database latency can be measured without a timer at
+        // every call site. What is timed is the wait a caller actually
+        // experiences, the queue for the connection thread included — see
+        // [`crate::metrics::db_call`].
+        let started = std::time::Instant::now();
+        let result = self.call(f).await;
+        crate::metrics::db_call(started.elapsed());
+        result
     }
 }
 
@@ -197,13 +217,17 @@ CREATE TABLE IF NOT EXISTS channels (
     position INTEGER NOT NULL DEFAULT 0,
     e2ee INTEGER NOT NULL DEFAULT 0
 );
+-- `breakout_parent` is the voice channel a breakout room was split off
+-- from, and NULL for every ordinary channel. Rooms are ephemeral: the sweep
+-- further down deletes them on every startup.
 CREATE TABLE IF NOT EXISTS voice_channels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     quality TEXT NOT NULL DEFAULT 'standard',
     bitrate INTEGER,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
-    position INTEGER NOT NULL DEFAULT 0
+    position INTEGER NOT NULL DEFAULT 0,
+    breakout_parent INTEGER
 );
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -326,9 +350,15 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
 "#
         ))?;
 
+        conn.execute_batch(&invites::invites_schema())?;
         conn.execute_batch(&stats::stats_schema())?;
+        conn.execute_batch(&audit::audit_schema())?;
+        conn.execute_batch(&automod::automod_schema())?;
         conn.execute_batch(&wiki::wiki_schema())?;
         conn.execute_batch(&soundboard::soundboard_schema())?;
+        // Depends on `channels`, created above: a scheduled message references
+        // the channel it is bound for.
+        conn.execute_batch(&scheduled::scheduled_schema())?;
 
         // Seed built-in roles and migrate any legacy single-role assignments
         // into role_definitions/user_roles. Runs once (marker-guarded); depends
@@ -341,6 +371,13 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         // an existing server's moderators keep the capability set they had
         // when nicknames shipped. Marker-guarded, runs once.
         roles::migrate_nickname_permissions(conn)?;
+        // Give the audit log to roles that already administer the server, so
+        // an existing server can read it without an owner hand-editing every
+        // role first. Marker-guarded, runs once.
+        roles::migrate_audit_log_permissions(conn)?;
+        // And the same for the invite flag, which shipped with server-issued
+        // invite codes. Marker-guarded, runs once.
+        roles::migrate_invite_permissions(conn)?;
 
         // Columns added after a table first shipped; CREATE TABLE IF NOT
         // EXISTS does not extend existing tables.
@@ -367,6 +404,22 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
             "user_stats",
             "sounds_played",
             "INTEGER NOT NULL DEFAULT 0",
+        )?;
+        // Nullable on purpose: NULL is "not a breakout room", which is what
+        // every existing row is.
+        ensure_column(conn, "voice_channels", "breakout_parent", "INTEGER")?;
+
+        // Breakout rooms exist only for as long as the session that opened
+        // them. Nobody is in one after a restart, and an empty room nobody
+        // remembers opening would linger in the sidebar forever, so they are
+        // swept here rather than being closed by whoever notices. Their
+        // overrides go first: they are keyed by channel id, and an id SQLite
+        // will hand out again would otherwise resurrect them on a channel
+        // that has nothing to do with the room.
+        conn.execute_batch(
+            r#"DELETE FROM channel_overrides WHERE channel_kind = 'voice' AND channel_id IN
+    (SELECT id FROM voice_channels WHERE breakout_parent IS NOT NULL);
+DELETE FROM voice_channels WHERE breakout_parent IS NOT NULL;"#,
         )?;
 
         // One-time wipe of pre-E2EE plaintext direct messages: DMs are

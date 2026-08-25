@@ -56,7 +56,13 @@ small team can deploy a private chat space quickly.
   numbers only — no IPs or device details, kept in memory and dropped on
   disconnect)
 - Slash commands (`/help`, `/me`, `/shrug`, `/topic`, `/status`,
-  `/ephemeral`, `/search`)
+  `/ephemeral`, `/search`, `/remind`, `/schedule`, `/reminders`)
+- Reminders and scheduled messages: `/remind 15m stretch` (or "Remind me about
+  this" on any message) sets a private note the server hands back at the time
+  you asked for, even if you were offline when it came due; `/schedule 2h …`
+  queues a message to post into the channel later. Both live in the Reminders
+  panel in the channel header, and a scheduled message for an end-to-end
+  encrypted channel is sealed before it is queued
 - Link previews with server-side OpenGraph fetching (client IPs stay hidden from linked sites)
 - Configurable input volume, noise suppression, echo cancellation and automatic
   gain control, with a live input level meter and a record-and-play-back
@@ -78,8 +84,17 @@ small team can deploy a private chat space quickly.
 - Ephemeral messaging, search across messages and wiki pages, server-synced
   pinned messages and message editing
 - Message replies with quoted previews and lightweight threads
+- Message forwarding to another channel or a direct message, keeping the
+  original author and the channel it came from. A forward into a channel is
+  copied by the server, so the attribution is not something the sender can
+  write; encrypted channels are excluded at both ends, because the server has
+  no copy to make there
 - Typing indicators and per-channel unread badges with new-message markers
-- Moderation tools: role-gated kick, ban and timed mutes
+- Per-conversation drafts: unsent text stays with the channel, thread or DM
+  it was typed in, so switching away mid-sentence and coming back keeps it.
+  Drafts are held for the session only and never written to disk
+- Moderation tools: role-gated kick, ban and timed mutes, recorded in a
+  server-side audit log
 - End-to-end encrypted direct messages with persistent history and unread
   badges: message text is encrypted on-device (NaCl box over the users'
   identity keys), so the server only ever stores and relays ciphertext
@@ -110,6 +125,13 @@ small team can deploy a private chat space quickly.
   summary, and a member with their camera on is marked in the channel list.
   The video travels over the same peer-to-peer connections as the voice, so
   the server never sees it
+- Breakout rooms: split a voice channel into two to six temporary rooms
+  (right-click the channel → *Split into Breakout Rooms*). Everyone in the
+  call is dealt out evenly and moved into a room, which appears indented under
+  the channel it came from; *Close Breakout Rooms* sends everybody back and
+  deletes the rooms again. A private channel's rooms are private too, and
+  rooms never outlive the split — a server restart clears any left behind.
+  Opening and closing a split needs *Manage channels*
 - Soundboard: a shared library of short clips anyone in a voice channel can
   play for everyone present. Uploading is gated by *Manage sounds*, playing by
   *Use soundboard*, and a server-side cooldown keeps it from becoming a spam
@@ -138,10 +160,11 @@ small team can deploy a private chat space quickly.
   description and icon shown to every member, plus a welcome message delivered
   to first-time members
 - Server Dashboard beyond identity: a chat policy (slow mode, message length
-  cap, profanity filter), the ban list, the upload policy with a storage-usage
-  breakdown, voice defaults for new channels, the screen-share bitrate cap,
-  who is online right now, and a Danger Zone that purges all messages or
-  resets the server's structure
+  cap, profanity filter), the ban list, an audit log of moderation and
+  permission changes, the upload policy with a storage-usage breakdown, voice
+  defaults for new channels, the screen-share bitrate cap, who is online right
+  now, and a Danger Zone that purges all messages or resets the server's
+  structure
 - REST API for bots (see [`murmer_server/BOT_API.md`](murmer_server/BOT_API.md))
 
 ## Repository layout
@@ -259,9 +282,8 @@ cargo clippy -- -D warnings
 ## Quality checks
 
 `.github/workflows/ci.yml` runs these on every push to `main`/`dev` and on
-every pull request (two parallel jobs, client and server). `cargo audit` and
-`bun audit` are not part of it — run them locally. Run the rest before pushing
-so you find breakage before CI does:
+every pull request (two parallel jobs, client and server). Run them before
+pushing so you find breakage before CI does:
 
 ```bash
 cd murmer_server
@@ -275,6 +297,13 @@ bun run check
 bun run test
 bun audit
 ```
+
+The two `audit` lines are the only ones you do not have to remember:
+`.github/workflows/audit.yml` runs them every Monday against every committed
+lockfile — the Tauri shell's included — and fails on nothing else. It is a separate weekly job because an
+advisory is published against code that has not changed, so there is no push
+to hang the check on. Run them by hand when you change a dependency rather
+than waiting for the sweep.
 
 Client unit tests use [Vitest](https://vitest.dev) and live next to the module
 they cover (`src/lib/**/*.test.ts`); server tests are integration tests under
@@ -300,6 +329,7 @@ Environment variables recognised by the server:
 | `MAX_AUTH_ATTEMPTS_PER_MINUTE` | No | Per-IP auth rate limit (default: 5) |
 | `MAX_UPLOADS_PER_MINUTE` | No | Per-IP file upload rate limit (default: 20) |
 | `NONCE_EXPIRY_SECONDS` | No | Replay protection window (default: 300) |
+| `MAX_VOICE_CHANNEL_USERS` | No | People allowed in one voice channel (default: 10, `0` for no limit) |
 
 Without `ADMIN_TOKEN` configured, channel and wiki management stay open to
 everyone so a small unadministered server remains usable; every other
@@ -359,22 +389,41 @@ An invite link is an ordinary URL pointing at the invite route of a web client:
 https://chat.example.com/invite#url=wss%3A%2F%2Fchat.example.com%2Fws&name=Example
 ```
 
-The **Copy invite link** button on the server hub builds one for a saved
-server. It uses the origin of the web client you are on, or — in the desktop
-app, which has no origin of its own — the server's own, which is where a
-server started with `WEB_CLIENT_DIR` serves its client from.
+There are two ways to make one, and on a password-protected server they are
+not equivalent.
 
-Clicking such a link opens the web client, which shows the invite on the server
+**Server-issued invite codes** (Server Dashboard → **Invites**) are the ones
+to hand out. Pick a lifetime and a number of uses, and the server mints a code
+the link carries in place of the password. **Revoke** withdraws it: the link
+stops working immediately, without changing `SERVER_PASSWORD` for everybody.
+Minting and revoking need the **Create invites** permission, which the
+built-in Mod role and above have.
+
+Redeeming a code records the joining member's key, so their later
+reconnections are admitted on that membership — they neither spend another of
+the invite's uses nor stop working when it expires or is revoked. Revoking
+therefore stops *future* joins; someone who already joined is removed with a
+ban, which is bound to the same key.
+
+The **Copy invite link** button on the server hub builds the other kind: a
+link for a saved server, carrying whatever password you stored for it. It
+works without being connected, which is its point, but such a link is valid
+forever and can only be withdrawn by changing the password. It uses the origin
+of the web client you are on, or — in the desktop app, which has no origin of
+its own — the server's own, which is where a server started with
+`WEB_CLIENT_DIR` serves its client from.
+
+Clicking either link opens the web client, which shows the invite on the server
 hub for confirmation before anything is saved; signed-out visitors go through
 the login screen first and the invite is still waiting afterwards. The same
 link pasted into the hub's **Address** field is recognised there, so one link
 serves web and desktop users alike.
 
 The server details live in the URL **fragment** rather than the query string
-because an invite may carry the server password: a fragment is never sent to
-the web server, so it stays out of access logs, proxy logs and `Referer`
-headers. It is still a secret in a shared link — treat an invite with a
-password like the password itself.
+because an invite carries a credential: a fragment is never sent to the web
+server, so it stays out of access logs, proxy logs and `Referer` headers. It
+is still a secret in a shared link — treat an invite like the credential it
+carries.
 
 ## Profiles, display names and nicknames
 
@@ -472,9 +521,13 @@ The trade-offs are real and worth knowing before switching it on:
 - **Uploaded files are not encrypted.** Their bytes go through `/upload` as
   usual; only the attachment's name and URL travel sealed, so who shared what is
   hidden but the file itself is not.
-- **Link previews, the profanity filter and content-derived stats stop.** All
-  three are server-side and see nothing. Slow mode and the message length cap
-  still apply.
+- **Link previews, the profanity filter, the auto-moderation rules and
+  content-derived stats stop.** All of them are server-side and see nothing.
+  Slow mode and the message length cap still apply.
+- **Messages cannot be forwarded into or out of the channel.** Forwarding is a
+  copy the server makes so that the original author's name on it is not
+  something the sender wrote, and there is nothing for it to copy here.
+  Forwarding into a direct message still works.
 - **The server is still the directory.** It decides who is on the member roster
   and hands out the identity keys the key is wrapped for, so a malicious server
   could put a key it controls on the roster. Clients pin every member's identity
@@ -525,8 +578,10 @@ show.
 | Tab | Permission | What it holds |
 | --- | --- | --- |
 | Overview | Manage server | Server name, description, welcome message and icon, plus who is online right now |
+| Health | Manage server | Live connection count, frames per second, database latency and rate-limit rejections |
 | Emojis | Manage emojis | The server's custom emoji library |
-| Moderation | Ban members | The ban list (lift a ban from here); with Manage server also slow mode, the message length cap and the profanity filter |
+| Moderation | Ban members | The ban list (lift a ban from here); with Manage server also slow mode, the message length cap, the profanity filter and the auto-moderation rules |
+| Audit Log | View audit log | Who kicked, banned or muted a member, changed a role or a channel's permissions, or ran a Danger Zone action |
 | Stats | Manage server | The server-wide half of the double opt-in stat tracking |
 | Files & Uploads | Manage server | Per-file size cap, which file categories are accepted, and how much disk the uploads directory is using per category |
 | Voice | Manage server | Quality preset and bitrate new voice channels start with |
@@ -543,8 +598,32 @@ A few details worth knowing before you use them:
   before a message is stored or broadcast, and applies to edits too. Matching
   is per whole word and case-insensitive, so filtering `ass` leaves `class`
   alone.
+- **Auto-moderation rules** are the same idea with more to say about it. Each
+  rule is a pattern — a whole word, a substring, or a regular expression —
+  plus what to do with a message that matches: **warn** the sender and let it
+  through, **delete** it so nobody else ever sees it, or delete it and
+  **mute** the sender for a set time. Rules are checked on new messages and on
+  edits, before anything is stored, and when several match the most severe one
+  wins. Members who can manage messages are exempt, so a rule cannot silence
+  the people who would have to lift it. A rule's pattern is only ever visible
+  in this dashboard; someone the rule warns is told its *name*, nothing more.
+- **The audit log** records each of those actions as it succeeds — a refused
+  action leaves no entry. It is not granted to the Mod role by default,
+  because it is the record *of* the moderators; give the **View audit log**
+  permission to any role that should read it. A server reset deliberately
+  does not clear it, and the oldest entries drop off once the log fills up.
 - **Voice defaults** apply to newly created voice channels; existing channels
   keep whatever they were created with.
+- **Health** is the one live readout: it re-asks the server every few seconds
+  while the tab is open. The counters live in the server's memory and start
+  again from zero at every restart, so they describe the current run and
+  nothing before it. Database latency is measured from the caller's side and
+  includes the wait for the single connection thread every query shares —
+  which is the number that climbs first when a server starts struggling. The
+  rejection counts are the four rate limits under
+  [Configuration](#configuration); a climbing authentication count is
+  somebody guessing keys, while climbing messages or uploads is either a
+  member flooding or a limit set too low for the room.
 - **Storage used** is measured when the tab is opened rather than counted as
   files arrive, so it covers uploads, emojis, avatars and soundboard clips
   alike. Deleting a message or an emoji does not delete its file.
@@ -684,10 +763,11 @@ must not be marked as pre-release — the updater endpoint
   bot posting and no forward secrecy within an epoch.
 - IP-based rate limiting protects authentication, chat message throughput and
   file uploads. On top of it, **Server Dashboard → Moderation** adds a per-user
-  slow mode, a message length cap and a profanity filter. All three are
-  enforced server-side: the filter masks matched words before a message is
-  stored or broadcast (edits included), so the original never reaches another
-  client, and the length cap can only narrow the built-in 4000-character limit.
+  slow mode, a message length cap, a profanity filter and auto-moderation
+  rules. All of them are enforced server-side: the filter masks matched words
+  and a rule refuses or mutes before a message is stored or broadcast (edits
+  included), so the original never reaches another client, and the length cap
+  can only narrow the built-in 4000-character limit.
 - Uploading requires the same Ed25519 proof as connecting: the `/upload`
   endpoint accepts only a freshly signed, single-use timestamp from a key that
   already has an account on that server, so a stranger who can merely reach the

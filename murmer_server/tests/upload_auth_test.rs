@@ -73,7 +73,9 @@ async fn make_app(upload_dir: PathBuf, rate_limiter: RateLimiter) -> (Router, Ar
         rate_limiter,
         stats_enabled: std::sync::atomic::AtomicBool::new(false),
         chat_settings: Arc::new(Mutex::new(murmer_server::db::ChatSettings::default())),
+        automod: Arc::new(Mutex::new(murmer_server::automod::RuleSet::default())),
         slow_mode_sends: Arc::new(Mutex::new(HashMap::new())),
+        visibility_epoch: std::sync::atomic::AtomicU64::new(0),
     });
     let router = Router::new()
         .route(

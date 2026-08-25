@@ -12,8 +12,8 @@ Every frame is a JSON object with a `type` field naming it. The dispatch loop
 lives in `murmer_server/src/ws/handlers/mod.rs` and routes on that field to a
 handler in `ws/handlers/`, split by domain — auth, messages, channels,
 channel overrides, channel keys, chat settings, DMs, emojis, identity,
-maintenance, moderation, pins, profile, screenshare, soundboard, stats,
-uploads, voice defaults and wiki.
+maintenance, moderation, pins, profile, scheduled messages and reminders,
+screenshare, soundboard, stats, uploads, voice defaults and wiki.
 
 On the client, `stores/chat.ts` owns the `WebSocketManager`. Handlers
 register with `chat.on(type, cb)` and must be cleaned up with `chat.off`.
@@ -28,6 +28,12 @@ is the first decision when adding a frame.
 | Server-wide broadcast | `AppState.tx` | Events every connected client needs: profile updates, role changes, emoji edits. |
 | Channel-scoped broadcast | the per-channel sender | Anything that belongs to one channel: messages, reactions, pins, `screenshare-start`/`-stop`, `webcam-start`/`-stop`, `soundboard-play`. |
 | Direct | `AppState.direct` | Anything addressed to a single user. |
+
+Frames that concern one account and nobody else take the direct route even
+when nothing about them is secret: the ban list, the storage report, and the
+`scheduled-messages`/`reminders`/`reminder-due` frames. A broadcast would cost
+every connected client a socket write and a parse for a list that is not
+theirs, and — for the queues — would hand them somebody else's.
 
 `AppState.direct` is a registry of per-connection mailboxes keyed by user
 name, then by a unique connection id, so one account signed in twice keeps
@@ -56,6 +62,24 @@ The `global_rx` loop in `ws/handlers/mod.rs` filters per recipient:
 marks the frame types that need the check at all, and `can_view_channel`
 decides per connection. Channel-list senders are viewer-aware for the same
 reason. See [`permissions.md`](permissions.md).
+
+Resolving that answer is not cheap — it locks `channel_overrides`,
+`role_defs`, `user_roles` and `user_keys` and re-applies the override set —
+and it was being redone for every recipient of every channel-scoped frame,
+so each connection memoises its own answers in a `VisibilityCache`
+(`ws/helpers.rs`).
+
+The memo is only as safe as its invalidation, and a stale one is invisible:
+frames a demoted member should no longer receive simply keep arriving until
+the connection drops. So `AppState::visibility_epoch` is bumped inside the
+three broadcasts that announce a change to the inputs —
+`broadcast_channels_refresh`, `broadcast_role_definitions` and
+`broadcast_user_roles` — plus `cleanup_channel`, which deletes a channel's
+overrides while announcing only `channel-remove`. Keeping the bump next to
+the broadcast is the point: a future mutation that reaches clients cannot
+skip the invalidation without also failing to tell them. A connection that
+changes account (anonymous → named) drops its memo too, since the two
+resolve differently and nothing is broadcast for it.
 
 ## Inbound validation
 

@@ -6,6 +6,25 @@
 /// Maximum number of custom emojis a server may register.
 pub const MAX_CUSTOM_EMOJIS: i64 = 200;
 
+/// Number of random bytes behind an invite code. Base64url-encoded these
+/// become 16 characters, which is short enough to read out over voice and far
+/// too much to guess: an invite is a credential on a password-protected
+/// server, and nothing rate-limits a redemption beyond the auth limiter.
+pub const INVITE_CODE_BYTES: usize = 12;
+
+/// Maximum number of invites a server may hold at once. Revoking is a row
+/// delete, so this is a cap on live invites rather than on invites ever made.
+pub const MAX_INVITES: i64 = 100;
+
+/// Largest use limit an invite may be created with. Beyond this the sensible
+/// answer is an unlimited invite (`maxUses` of 0), not a bigger number.
+pub const MAX_INVITE_USES: i64 = 1_000;
+
+/// Longest lifetime an invite may be created with (30 days). An invite that
+/// should outlive a month is one that never expires, and saying so is more
+/// honest than a date three years out.
+pub const MAX_INVITE_TTL_SECONDS: i64 = 30 * 24 * 60 * 60;
+
 /// Maximum number of role definitions a server may hold (including built-ins).
 pub const MAX_ROLES: usize = 100;
 
@@ -96,16 +115,24 @@ pub const MAX_FAVORITE_SOUNDS: i64 = 5;
 /// Upper bound accepted for reported latency/jitter values in milliseconds.
 pub const MAX_REPORTED_STAT_MS: f64 = 60_000.0;
 
-/// Maximum duration in seconds for a timed mute (30 days).
-pub const MAX_MUTE_SECONDS: i64 = 30 * 24 * 60 * 60;
-
-/// Minimum duration in seconds for a timed mute.
-pub const MIN_MUTE_SECONDS: i64 = 10;
+/// Bounds for a timed mute. Defined next to the rows they bound
+/// (`db::moderation`) because the auto-moderation rules reach for the same
+/// pair — a rule may not mute for longer than a moderator could by hand.
+pub use crate::db::{MAX_MUTE_SECONDS, MIN_MUTE_SECONDS};
 
 /// Bound for a voice channel's bitrate. Defined next to the configurable
 /// defaults it limits (`db::voice_defaults`) so the two can never disagree;
 /// the defaults themselves are read from that setting, not from a constant.
 pub use crate::db::MAX_ALLOWED_VOICE_BITRATE;
+
+/// Fewest breakout rooms a voice channel can be split into. One room is not
+/// a split, it is the channel everybody is already in.
+pub const MIN_BREAKOUT_ROOMS: usize = 2;
+
+/// Most breakout rooms one split may open. Each room is a real voice channel
+/// in everybody's sidebar for as long as the split lasts, so the cap is about
+/// what stays legible there rather than about server cost.
+pub const MAX_BREAKOUT_ROOMS: usize = 8;
 
 /// Maximum number of ids accepted in a single reorder request (channels of
 /// one category, or all categories).
@@ -192,3 +219,31 @@ pub const MAX_WIKI_SEARCH_RESULTS: i64 = 20;
 
 /// Maximum number of links accepted in a single wiki-resolve request.
 pub const MAX_WIKI_RESOLVE_LINKS: usize = 50;
+
+/// Shortest lead time in seconds for a reminder or a scheduled message. The
+/// scheduler ticks every [`SCHEDULER_TICK_SECONDS`], so anything shorter than
+/// a tick would arrive late by more than it was asked to wait — the lead time
+/// is what makes the tick invisible.
+pub const MIN_SCHEDULE_LEAD_SECONDS: i64 = 30;
+
+/// Furthest ahead a reminder or scheduled message may be set: one year. A
+/// bound exists so a typo in a year field cannot park a row in the queue
+/// forever.
+pub const MAX_SCHEDULE_AHEAD_SECONDS: i64 = 365 * 24 * 60 * 60;
+
+/// Maximum number of scheduled messages one user may have queued, failed ones
+/// included. Each holds a full message body, so this is a storage bound as
+/// much as a fairness one.
+pub const MAX_SCHEDULED_MESSAGES_PER_USER: i64 = 25;
+
+/// Maximum number of reminders one user may hold, undismissed due ones
+/// included.
+pub const MAX_REMINDERS_PER_USER: i64 = 50;
+
+/// Maximum length in bytes for a reminder's note to self.
+pub const MAX_REMINDER_TEXT_LENGTH: usize = 500;
+
+/// How often the scheduler looks for due reminders and scheduled messages.
+/// Two indexed queries against small tables, so the cost is negligible; the
+/// interval is what bounds how late a delivery can be.
+pub const SCHEDULER_TICK_SECONDS: u64 = 10;

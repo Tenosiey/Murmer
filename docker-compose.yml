@@ -14,6 +14,8 @@ services:
       MAX_MESSAGES_PER_MINUTE: 300
       MAX_AUTH_ATTEMPTS_PER_MINUTE: 5
       NONCE_EXPIRY_SECONDS: 300
+      # People allowed in one voice channel; 0 removes the cap
+      MAX_VOICE_CHANNEL_USERS: 10
       # Allow the desktop client dev server to access the HTTP endpoints during development
       CORS_ALLOW_ORIGINS: http://localhost:1420
       # Serve the web client at / on this same origin (no CORS needed). Build

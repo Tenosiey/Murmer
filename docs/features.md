@@ -67,6 +67,61 @@ pruned on disconnect. The client's cooldown is a cosmetic mirror.
 `db::migrate_soundboard_permissions` grants the two flags to pre-soundboard
 databases once, marker-guarded, so an existing server matches a fresh one.
 
+## Message forwarding
+
+Server: `ws/handlers/messages.rs::handle_forward_message`,
+`ws/helpers.rs::prepare_forward` / `forwarded_body`. Client:
+`src/lib/chat/forward.ts`.
+
+**A forward into a channel is a copy the server makes.** The client sends a
+message id and a destination and nothing else; the words and the
+`forwardedFrom` stamp are both read out of the stored row. The author of the
+new message stays the forwarder — the stamp is what says whose words these
+are. Letting the client name that author would let anyone make any member
+appear to have said anything, in front of a room with no way to check; it is
+the same reason a reply's quoted snippet is rebuilt rather than trusted.
+
+The copy carries `text`, `image` and `attachment` and **nothing else** from
+the source. Reactions, the thread id, the reply, the edit marker and the id
+all describe the original posting and would be false on a copy.
+
+Forwarding a forward keeps the *first* attribution rather than nesting one
+inside the other. The words are still the first author's, and a chain of
+"forwarded from a forward of…" tells the reader nothing.
+
+Three refusals carry the design:
+
+- **The source is view-checked, and the refusal is deliberately ambiguous.**
+  Message ids are small integers, so without the check a member could guess
+  one, forward it into a channel they can post in, and read a private
+  channel's contents out of the result. "You cannot see it" and "it does not
+  exist" answer with the same code, so guessing cannot even confirm that a
+  hidden message is there.
+- **An encrypted channel at either end refuses.** The server holds no
+  plaintext of a sealed message and no key to seal a copy with, so the only
+  way across that boundary would be to let the client supply the words under
+  a server-stamped attribution — the forgery the frame exists to prevent.
+- **An ephemeral message refuses.** It was posted on the promise that it
+  disappears; a copy without the expiry breaks that promise, and a copy
+  carrying it would start a second countdown nobody asked for.
+
+**A forward cannot be edited.** Editing is normally the author's own right,
+never a moderator's, precisely because it rewrites somebody's words — but a
+forward is the one message whose author did not write it, so that rule stops
+protecting anyone there. `may_edit_message` refuses, or forwarding and then
+editing would put arbitrary words under somebody else's name with the
+server's own attribution still on top of them. Deleting a forward stays
+allowed: withdrawing it claims nothing.
+
+**Forwarding into a DM is the client's copy, not the server's.** A DM is
+end-to-end encrypted, so the server can read neither the message being
+forwarded nor the copy, and there is no field for it to stamp — the
+attribution travels inside the ciphertext as text, because a DM's plaintext
+*is* its text. A forwarded DM is therefore a claim by its sender. That is the
+honest shape for it and not a weakening: in a two-person conversation the
+sender could type the same words anyway, so there is nothing a stamp would
+protect. See [`security.md`](security.md).
+
 ## Profiles, display names and nicknames
 
 Server: `ws/handlers/profile.rs`, `db/users.rs`. Client:
@@ -108,6 +163,77 @@ own frame for the same reason: the two are authorized differently.
 a freshly seeded one. `@everyone` never gains it.
 
 Rendering rules for the client are in [`client-state.md`](client-state.md).
+
+## Reminders and scheduled messages
+
+Two features over one background timer
+(`ws/handlers/scheduled.rs`, `db/scheduled.rs`). A **reminder** is a private
+note the server hands back to its owner at a chosen time; a **scheduled
+message** is an ordinary channel message written now and posted later, as its
+author. Both are reachable from `/remind`, `/schedule` and the Reminders panel
+in the header, and a reminder can also be set on a specific message.
+
+### Why one scheduler, and why it polls
+
+One task drains both queues every `SCHEDULER_TICK_SECONDS`, rather than a
+`tokio::spawn` sleeping per row the way ephemeral deletion does. A per-row
+timer lives only in memory, which is why ephemeral messages need
+`resume_ephemeral_deletions` to re-arm after a restart; a poll over an indexed
+column needs no such sweep, because the database *is* the queue. The minimum
+lead time is at least one tick, so the polling interval is never visible as
+lateness.
+
+### Screened when written, authorized when posted
+
+A scheduled message clears `authorize_send` and `prepare_chat_body` — the same
+two steps `handle_chat` runs — at the moment it is composed. Screening belongs
+there because that is the only moment its author is present to hear a refusal;
+a message the auto-moderator would block should not sit in a queue for a week
+first.
+
+Authorization is then re-checked at delivery, and this is the part that is
+easy to leave out: between writing and posting, the author can lose
+`SEND_MESSAGES`, lose sight of the channel, be muted, or watch the channel
+switch to end-to-end encryption. The last one matters most — a plaintext
+message queued before the switch would make the *server* the thing putting
+plaintext into an encrypted channel. A message that fails any of these is kept
+and marked failed, so its author finds out; it is never posted, and never
+silently dropped.
+
+### Exactly-once, and what happens when it is not
+
+Delivery costs are asymmetric: a reminder that fires twice is a nuisance, a
+message that posts twice says something once and shows it twice. So:
+
+- A **reminder** is claimed by stamping `fired_at`, and the row is *kept*
+  until its owner dismisses it. An owner who was offline when it fired finds
+  it waiting, already marked due, at their next `presence`.
+- A **scheduled message** is claimed by stamping `claimed_at`, which takes it
+  out of reach of every later tick before anything is published. Only a
+  delivery that happened deletes the row.
+
+A process that dies between the claim and the post leaves a claimed row that
+may or may not have been sent. `fail_claimed_scheduled_messages` runs at
+startup and turns those into a visible failure rather than a second post —
+telling the author is recoverable, posting twice is not.
+
+### Encrypted channels
+
+A scheduled message for an encrypted channel is sealed on the client at compose
+time, under the epoch that is current then, and the server stores the envelope
+exactly as it stores a live one. That is the same epoch a message sent at that
+moment would have used, so who can read it does not depend on when the queue
+drains. Reminders are *not* encrypted — see
+[`security.md`](security.md).
+
+### Bounds
+
+Per-user caps (`MAX_SCHEDULED_MESSAGES_PER_USER`, `MAX_REMINDERS_PER_USER`)
+count failed and fired rows too, because those still occupy storage until they
+are cleared. The Danger Zone reset drops queued messages — they are addressed
+to channels, and a reset is exactly the moment those channels stop meaning what
+they meant — but keeps reminders, which are personal notes rather than server
+structure.
 
 ## Stats
 

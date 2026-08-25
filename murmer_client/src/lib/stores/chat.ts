@@ -13,7 +13,9 @@ import { typing } from './typing';
 import { unread } from './unread';
 import { threadData } from './thread';
 import { dm } from './dm';
+import { drafts } from './drafts';
 import { pinned } from './pins';
+import { scheduled } from './scheduled';
 import { peerKeys } from './peerKeys';
 import { channelKeys } from './channelKeys';
 import { decryptDm, encryptDm } from '../dm-crypto';
@@ -54,6 +56,10 @@ function createChatStore() {
   /** Last pin snapshot per channel, kept so sealed previews can be re-opened
    *  once the channel key arrives. */
   const rawPins = new Map<number, unknown[]>();
+  /** Last scheduled-message snapshot, kept for the same reason as `rawPins`:
+   *  a message written for an encrypted channel is sealed, and its preview can
+   *  only be opened once that channel's key has arrived. */
+  let rawScheduled: unknown[] = [];
 
   /** In-flight and resolved peer key lookups, cached per connection. */
   const peerKeyRequests = new Map<string, Promise<string | null>>();
@@ -192,6 +198,30 @@ function createChatStore() {
   }
 
   /**
+   * Hand the scheduled-message list to its store, opening the sealed preview
+   * of anything written for an encrypted channel. A row whose key has not
+   * arrived keeps a null `text` and renders as "encrypted" rather than as
+   * something that failed.
+   */
+  function applyScheduled(raw: unknown[]): void {
+    rawScheduled = raw;
+    scheduled.setMessages(
+      raw.map((item) => {
+        if (!item || typeof item !== 'object') return item;
+        const row = item as Record<string, unknown>;
+        const sealed = parseSealedMessage(row.enc);
+        if (!sealed) return item;
+        const key = channelKeys.keyFor(
+          typeof row.channelId === 'number' ? row.channelId : joinedChannelId,
+          sealed.epoch
+        );
+        const payload = key ? decryptChannelMessage(sealed, key) : null;
+        return { ...row, text: payload?.text ?? null };
+      })
+    );
+  }
+
+  /**
    * Re-open every message that was waiting on a key. Runs whenever the key
    * store changes, which is how a message that arrived before its epoch did
    * stops being a placeholder without the user reloading anything.
@@ -209,6 +239,7 @@ function createChatStore() {
       return changed ? next : messages;
     });
     for (const [channelId, raw] of rawPins) applyPins(channelId, raw);
+    if (rawScheduled.length > 0) applyScheduled(rawScheduled);
     const thread = get(threadData);
     if (thread && thread.messages.some((item) => item.decryptPending === true)) {
       threadData.set({
@@ -372,6 +403,26 @@ function createChatStore() {
         if (typeof channelId === 'number') {
           applyPins(channelId, Array.isArray(msg.pins) ? (msg.pins as unknown[]) : []);
         }
+        break;
+      }
+
+      case 'scheduled-messages': {
+        applyScheduled(Array.isArray(msg.items) ? (msg.items as unknown[]) : []);
+        break;
+      }
+
+      case 'reminders': {
+        scheduled.setReminders(Array.isArray(msg.items) ? (msg.items as unknown[]) : []);
+        break;
+      }
+
+      case 'reminder-due': {
+        // The live announcement, which only reaches a client that is connected
+        // when it fires. It exists for the notification alone: the list is
+        // refreshed by the snapshot that follows it, and anybody who was
+        // offline finds the reminder already marked due at their next
+        // `presence`.
+        if (typeof msg.text === 'string' && msg.text) void notify('Reminder', msg.text);
         break;
       }
 
@@ -544,6 +595,9 @@ function createChatStore() {
     screenShareWindows.setServer(url);
     // Key pins persist per server; in-flight lookups belong to the old one.
     peerKeys.setServer(url);
+    // Unsent composer text is parked per server too, so a reconnect gives
+    // back what was half-typed instead of discarding it.
+    drafts.setServer(url);
     clearPeerKeyRequests();
     // Channel keys are held in memory only — the server keeps the wraps, and
     // they are re-fetched from the channel list this connection sends us.
@@ -551,6 +605,8 @@ function createChatStore() {
     encryptedChannels = new Set();
     joinedChannelId = 0;
     rawPins.clear();
+    rawScheduled = [];
+    scheduled.reset();
     unread.reset();
     threadData.set(null);
     dm.reset();
@@ -662,6 +718,25 @@ function createChatStore() {
   }
 
   /**
+   * Forward an existing message into another channel.
+   *
+   * Only the two ids travel. The server copies the words out of the message it
+   * stored and stamps the attribution itself, so a forward cannot claim
+   * somebody said something they did not — see
+   * `murmer_server/src/ws/handlers/messages.rs`.
+   *
+   * Forwarding into a DM is not this: that copy is composed and sealed by the
+   * client, because the server can read neither end of it. See
+   * `src/lib/chat/forward.ts`.
+   * @returns null on success, or an error message for the caller to surface
+   */
+  function forward(messageId: number, channelId: number): string | null {
+    if (!wsManager.isConnected()) return 'Not connected to the server.';
+    wsManager.send({ type: 'forward-message', messageId, channelId });
+    return null;
+  }
+
+  /**
    * Switch the connection to a channel.
    * @param channelId - Channel to join
    * @param announce - False records the channel the server already placed us
@@ -739,6 +814,69 @@ function createChatStore() {
    */
   function sendEphemeral(user: string, text: string, expiresAt: string): string | null {
     return sendMessage(user, { text }, { ephemeral: true, expiresAt });
+  }
+
+  /**
+   * Queue a message to be posted into the joined channel later.
+   *
+   * Sealed here, not at delivery: the server never holds the key to an
+   * encrypted channel, so a message written for one has to leave this client
+   * already sealed and sit in the queue that way. It is sealed under the epoch
+   * that is current *now*, which is the same epoch a message sent now would
+   * use — a member removed before it goes out still cannot read it, and one
+   * added after can read it exactly as they can read every other message from
+   * that epoch.
+   * @returns null on success, or an error message for the caller to surface
+   */
+  function scheduleMessage(
+    channelId: number,
+    text: string,
+    scheduledFor: string
+  ): string | null {
+    if (!wsManager.isConnected()) return 'Not connected to the server.';
+    const payload: Record<string, unknown> = {
+      type: 'schedule-message',
+      channelId,
+      scheduledFor
+    };
+    const sealed = sealForJoinedChannel({ text });
+    if (sealed === 'locked') {
+      return 'This channel is encrypted and your copy of its key has not arrived yet.';
+    }
+    if (sealed) {
+      payload.enc = sealed;
+    } else {
+      payload.text = text;
+    }
+    wsManager.send(payload);
+    return null;
+  }
+
+  /** Cancel one of this account's scheduled messages. */
+  function cancelScheduledMessage(id: number): void {
+    sendRaw({ type: 'cancel-scheduled-message', id });
+  }
+
+  /**
+   * Set a private reminder, optionally anchored to a message.
+   *
+   * Only the message id travels: the server resolves the channel from the row
+   * it stored, so a reminder cannot claim to point into a channel its owner
+   * cannot see.
+   */
+  function setReminder(text: string, remindAt: string, messageId?: number): void {
+    sendRaw({ type: 'set-reminder', text, remindAt, messageId });
+  }
+
+  /** Dismiss a reminder, due or not. */
+  function cancelReminder(id: number): void {
+    sendRaw({ type: 'cancel-reminder', id });
+  }
+
+  /** Re-ask for both queues; the panel does this when it opens. */
+  function refreshScheduled(): void {
+    sendRaw({ type: 'get-reminders' });
+    sendRaw({ type: 'get-scheduled-messages' });
   }
 
   /**
@@ -866,6 +1004,8 @@ function createChatStore() {
     encryptedChannels = new Set();
     joinedChannelId = 0;
     rawPins.clear();
+    rawScheduled = [];
+    scheduled.reset();
     clearPendingSearches('Disconnected');
     clearPeerKeyRequests();
     connection.set('idle');
@@ -900,8 +1040,14 @@ function createChatStore() {
     join,
     send,
     sendUpload,
+    forward,
     sendDm,
     sendEphemeral,
+    scheduleMessage,
+    cancelScheduledMessage,
+    setReminder,
+    cancelReminder,
+    refreshScheduled,
     sendTyping,
     sendRaw,
     loadHistory,

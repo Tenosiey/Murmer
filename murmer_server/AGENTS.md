@@ -36,8 +36,10 @@ the SQLite database on a named volume.
 | `roles.rs` | Role definitions and default role colors |
 | `link_preview.rs` | `/link-preview`, returning OpenGraph metadata |
 | `security.rs` | Rate limiting, replay protection, validation utilities |
+| `metrics.rs` | Process-global operator counters behind the dashboard's Health tab |
 | `permissions.rs` | The permission bitmask — the authority the client mirrors |
 | `profanity.rs` | The word-list filter applied to chat messages |
+| `automod.rs` | Auto-moderation rules: patterns, actions and the matcher |
 
 Each module opens with a doc comment describing its responsibilities. Extend
 it when you add behaviour.

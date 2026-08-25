@@ -15,8 +15,14 @@ most here — what deliberately is **not** tested. To write a test, follow
 | `cargo clippy --all-targets -- -D warnings` | both Rust crates | Lint, as a gate |
 
 `.github/workflows/ci.yml` runs all of them in two parallel jobs on every
-push to `main`/`dev` and every pull request. `cargo audit` and `bun audit`
-are **not** part of CI — run them locally.
+push to `main`/`dev` and every pull request.
+
+Dependency advisories are a **separate weekly job**,
+`.github/workflows/audit.yml`, which runs `bun audit` and `cargo audit` over
+the committed lockfiles and fails on nothing else. It is scheduled rather
+than push-triggered because an advisory lands against code that has not
+changed: tied to a push it would either fail a build no commit caused or,
+most weeks, never run.
 
 ## The testing philosophy
 
@@ -79,7 +85,7 @@ the exact opposite of the truth.
 
 `test/server-mirror.test.ts` parses `murmer_server/src/` as **text** and
 fails when the client's copies of the server's tables drift — permissions,
-upload categories, chat-settings bounds, voice defaults.
+upload categories, chat-settings bounds, voice defaults, audit actions.
 
 Reading the Rust as text rather than executing it keeps this a plain Vitest
 run with no toolchain of its own. The cost is that it is coupled to the

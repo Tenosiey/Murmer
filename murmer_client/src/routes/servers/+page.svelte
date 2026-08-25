@@ -47,7 +47,7 @@
 
   /**
    * An invite the user opened but has not accepted. Nothing is written to the
-   * server list until they say yes: an invite carries a password and arrives
+   * server list until they say yes: an invite carries a credential and arrives
    * from whoever sent the link, so adding it unasked would let a link change
    * a saved server's credentials behind the user's back.
    */
@@ -64,6 +64,11 @@
     };
     const password = invite.password ?? inviteKnown?.password;
     if (password) entry.password = password;
+    // The invite code is only worth keeping until the server has recorded us
+    // as a member, but keeping it costs nothing and covers a first connect
+    // that failed part-way through.
+    const code = invite.code ?? inviteKnown?.invite;
+    if (code) entry.invite = code;
     servers.upsert(entry);
     pendingInvite.set(null);
     join(entry);
@@ -119,6 +124,9 @@
       const password = trimmedPassword || parsed.password;
       if (password) {
         entry.password = password;
+      }
+      if (parsed.code) {
+        entry.invite = parsed.code;
       }
     } else {
       entry = {
@@ -263,7 +271,12 @@
             details from the invite.
           </p>
         {/if}
-        {#if invite.password}
+        {#if invite.code}
+          <p class="body-muted">
+            The invite carries a one-time code, which stays on this device. It may expire or be
+            withdrawn, so join while it is fresh.
+          </p>
+        {:else if invite.password}
           <p class="body-muted">The invite carries a server password, which stays on this device.</p>
         {/if}
         {#if warning}

@@ -4,10 +4,37 @@ import {
   containsMention,
   escapeRegex,
   normalizeAttachment,
+  normalizeForwardedFrom,
   normalizeReactions,
   normalizeReplyTo,
   prepareMessage
 } from './message-utils';
+
+describe('normalizeForwardedFrom', () => {
+  it('keeps a complete stamp', () => {
+    expect(
+      normalizeForwardedFrom({ id: 7, user: 'alice', channel: 'general', channelId: 2 })
+    ).toEqual({ id: 7, user: 'alice', channel: 'general', channelId: 2 });
+  });
+
+  it('drops a stamp that cannot name an author or a source', () => {
+    // Half a stamp is worse than none: a chip with an empty author under real
+    // text reads as an attribution failure, and text with no chip reads as the
+    // forwarder's own words.
+    for (const raw of [
+      undefined,
+      null,
+      'forwarded',
+      { user: 'alice', channel: 'general', channelId: 2 },
+      { id: 7, channel: 'general', channelId: 2 },
+      { id: 7, user: '', channel: 'general', channelId: 2 },
+      { id: 7, user: 'alice', channel: 'general' },
+      { id: Number.NaN, user: 'alice', channel: 'general', channelId: 2 }
+    ]) {
+      expect(normalizeForwardedFrom(raw)).toBeUndefined();
+    }
+  });
+});
 
 describe('normalizeAttachment', () => {
   it('accepts http and https attachments', () => {

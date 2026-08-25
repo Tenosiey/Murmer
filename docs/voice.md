@@ -205,11 +205,61 @@ five with cameras on already costs each machine four encodes and four
 decodes. Senders use `maintain-framerate`: a face reads fine soft and badly
 stuttering, the opposite trade-off from a screen share.
 
+## Breakout rooms
+
+A manager splits a voice channel into temporary rooms and folds them back
+together again — `ws/handlers/breakout.rs`, gated on `MANAGE_CHANNELS`, the
+same permission that creates and deletes the channels a split is made of.
+
+A room is an ordinary voice channel row carrying `breakout_parent`. Three
+consequences follow from that, and each is the reason a piece of the code
+looks the way it does:
+
+- **The server cannot move anybody.** Audio is peer-to-peer, so relocating a
+  call is something only the client can do. The server addresses a
+  `breakout-move` frame to each member and the client leaves and joins the
+  way it would from a click. A client that ignores it stays where it is,
+  which is exactly what happens to somebody who was not in the channel.
+- **A room inherits the parent's permission overrides**, written *before* the
+  room is announced. `voice-channel-add` is filtered per recipient against
+  those rows, so a room announced first would be announced to everybody —
+  splitting a private channel would make it public for as long as the split
+  lasted.
+- **Rooms are deleted, never archived.** Closing the split removes them;
+  anything that survives a crash is swept by `db::run_schema` on the next
+  startup, together with its overrides. Nobody is in a room after a restart
+  and nobody remembers opening it, so a sweep that quietly stopped running
+  would show up only as a sidebar that slowly fills with dead rooms.
+
+Room names are `<parent> Room <n>`, truncated to fit the channel name limit.
+Voice channel names are unique, so a name already taken is skipped rather
+than renumbered — `Room 3` means the same thing on the second split of a
+channel as it did on the first — and a split that ends up with fewer than two
+rooms is rolled back before anything is announced.
+
 ## Soundboard playback
 
 Soundboard sounds are never mixed into a microphone stream. The server
 authorizes `play-sound` and fans out a `soundboard-play` frame; each client
 fetches and plays the file itself. See [`features.md`](features.md).
+
+## Room size
+
+The mesh is one connection per pair, so a channel of *n* people carries
+*n(n-1)/2* connections and each client encodes and uploads its microphone
+*n-1* times. Nothing about that degrades gracefully: the first symptom of a
+crowded channel is everyone's CPU and uplink, not an error anybody can point
+at.
+
+So the server refuses a join past `MAX_VOICE_CHANNEL_USERS`
+(`security::voice_channel_has_room`, default 10) with a `voice-channel-full`
+error. Capacity is checked *before* the joiner is removed from their current
+channel, so bouncing off a full room leaves them where they were. Someone
+already in the channel is never refused, or a re-sent `voice-join` would lock
+a client out of the room it is sitting in.
+
+The cap is a bound on the symptom, not a fix for the cause — an SFU is, and
+that is a plan rather than code today.
 
 ## Relay support
 

@@ -53,11 +53,22 @@ each:
 The Server Dashboard edits them by sending a `set-*` frame and waiting for
 the broadcast to confirm. It never writes the store itself.
 
-Two of these are answers to a request rather than broadcasts, because they
+Some of these are answers to a request rather than broadcasts, because they
 are manager-only: the profanity word list (`chat-settings` in reply to
-`get-chat-settings`) and `stores/bans.ts` / `stores/storageUsage.ts`. Their
-"not disclosed yet" state is `null`, which is deliberately **not** the same
-as "empty" — an editor must not offer to save an empty list over a real one.
+`get-chat-settings`), `stores/automod.ts`, `stores/bans.ts`,
+`stores/storageUsage.ts`, `stores/auditLog.ts` and
+`stores/serverMetrics.ts`. Their "not disclosed yet" state is `null`, which
+is deliberately **not** the same as "empty" — an editor must not offer to
+save an empty list over a real one, and a health readout must not show a
+server it was refused as one doing nothing.
+
+`stores/scheduled.ts` is one of these too, and takes the same route
+`stores/pins.ts` does: the chat store feeds it rather than the store
+subscribing to frames itself, because a scheduled message written for an
+encrypted channel is sealed and its preview can only be opened once that
+channel's key has arrived — knowledge the chat store owns. Nothing there is
+written optimistically; a cancel or a dismiss sends the frame and waits for
+the snapshot that comes back.
 
 ### 3. Trust state
 
@@ -79,6 +90,24 @@ render the name the server was overriding.
 `UserProfileModal` shows both and is where a user edits their own display
 name, nickname, about text and avatar. The user context menu is where a
 moderator changes somebody else's nickname.
+
+## Composer drafts
+
+`stores/drafts.ts` parks unsent composer text per conversation —
+`channel:<id>`, `thread:<rootId>`, `dm:<account>` — so switching away
+mid-sentence and back keeps the sentence. One composer serves every channel
+and one panel every thread and DM, so the text has to be moved deliberately:
+the leaving side calls `park`, the arriving side `take`. `take` removes the
+entry, which is what keeps the store describing only the conversations the
+user is *not* looking at, and means a send has nothing to clean up.
+
+It is namespaced per server URL like the other per-channel state, but is
+**session-local and never persisted**, which is the one thing to preserve if
+this is ever extended. Channel keys are held in memory precisely so an
+encrypted channel leaves nothing on disk; writing its draft to
+`localStorage` would put that message's plaintext exactly where its
+ciphertext never goes. Namespacing per server is still what makes a
+reconnect restore drafts instead of dropping them.
 
 ## Encrypted-channel keys
 
