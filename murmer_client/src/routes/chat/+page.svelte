@@ -576,6 +576,18 @@
   };
   chat.on('messages-purged', handleMessagesPurged);
 
+  /* A breakout split moves people between voice channels, and the server can
+     only ask: the audio is peer-to-peer, so the client is what tears down the
+     old peer connections and joins the room. Ignored while not in voice —
+     being asked to move is not a reason to open a microphone. */
+  const handleBreakoutMove = (msg: Message) => {
+    const target = (msg as { channelId?: unknown }).channelId;
+    if (typeof target !== 'number' || !inVoice) return;
+    if (currentVoiceChannelId === target) return;
+    void joinVoiceChannel(target);
+  };
+  chat.on('breakout-move', handleBreakoutMove);
+
   const handleServerReset = (msg: Message) => {
     const by = typeof msg.by === 'string' && msg.by ? ` by ${msg.by}` : '';
     // The channel this client was viewing may be gone. The server re-sends
@@ -621,6 +633,7 @@
     chat.off('user-unbanned', handleUserUnbanned);
     chat.off('messages-purged', handleMessagesPurged);
     chat.off('server-reset', handleServerReset);
+    chat.off('breakout-move', handleBreakoutMove);
     chat.disconnect();
     if (currentVoiceChannelId !== null) {
       voice.leave(currentVoiceChannelId);
@@ -1656,6 +1669,39 @@
     return targets.length ? [{ label: 'Move to', children: targets }] : [];
   }
 
+  /* Room counts offered when splitting a call. Not a mirror of the server's
+     cap — that one is the authority and validates every request; this is the
+     handful of splits worth one click. */
+  const BREAKOUT_ROOM_CHOICES = [2, 3, 4, 5, 6];
+
+  /**
+   * Builds the breakout entry for a voice channel: either splitting it, or
+   * closing the split it is part of. A channel is never both.
+   */
+  function buildBreakoutItems(channelId: number): ContextMenuItem[] {
+    const channel = $voiceChannels.find((c) => c.id === channelId);
+    if (!channel) return [];
+    const openOn = channel.breakoutParent ?? channelId;
+    const splitIsOpen =
+      channel.breakoutParent != null || $voiceChannels.some((c) => c.breakoutParent === channelId);
+    if (splitIsOpen) {
+      return [
+        {
+          label: 'Close Breakout Rooms',
+          action: () => voiceChannels.closeBreakouts(openOn)
+        }
+      ];
+    }
+    return [
+      {
+        label: 'Split into Breakout Rooms',
+        children: BREAKOUT_ROOM_CHOICES.map((rooms) => ({
+          label: `${rooms} rooms`,
+          action: () => voiceChannels.openBreakouts(channelId, rooms)
+        }))
+      }
+    ];
+  }
 
   let messagesContainer: HTMLDivElement | undefined = $state();
   async function scrollBottom() {
@@ -2044,6 +2090,7 @@
                 })
             }))
           },
+          ...buildBreakoutItems(menuVoiceChannelId),
           { label: 'Rename Voice Channel', action: () => renameVoiceChannelPrompt(menuVoiceChannelId!) },
           ...buildMoveToItems(menuVoiceChannelId, true),
           { label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannelId!), danger: true }

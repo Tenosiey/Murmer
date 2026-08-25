@@ -35,6 +35,10 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'unknown-voice-channel': 'That voice channel no longer exists.',
   'voice-channel-full': 'That voice channel is full. Try again once somebody leaves.',
   'voice-channel-update-failed': 'The server could not update the voice channel.',
+  'invalid-breakout-rooms': 'That is not a valid number of breakout rooms.',
+  'breakout-already-open': 'That channel already has breakout rooms open.',
+  'breakout-create-failed':
+    'The server could not open the breakout rooms. A channel of that name may already exist.',
   'role-permission-denied': 'You do not have permission to manage roles on this server.',
   'role-target-not-found': 'That user is not connected to the server.',
   'role-update-failed': 'The server could not update the role. Please try again.',

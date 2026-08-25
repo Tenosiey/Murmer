@@ -177,6 +177,9 @@ export interface VoiceChannelInfo {
   position: number;
   /** True when the channel restricts View for @everyone (shows a lock). */
   private?: boolean;
+  /** Set on a breakout room: the voice channel it was split off from. The
+   *  room disappears again when the split is closed. */
+  breakoutParent?: number | null;
 }
 
 /** One per-channel permission override target, as sent to managers. */

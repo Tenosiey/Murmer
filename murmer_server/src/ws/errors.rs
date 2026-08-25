@@ -99,6 +99,15 @@ pub const VOICE_CHANNEL_FULL: &str = r#"{"type":"error","message":"voice-channel
 pub const VOICE_CHANNEL_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"voice-channel-update-failed"}"#;
 
+/// Requested breakout room count is outside the accepted range.
+pub const INVALID_BREAKOUT_ROOMS: &str = r#"{"type":"error","message":"invalid-breakout-rooms"}"#;
+
+/// The channel already has breakout rooms open, or is itself a breakout room.
+pub const BREAKOUT_ALREADY_OPEN: &str = r#"{"type":"error","message":"breakout-already-open"}"#;
+
+/// The server could not create the breakout rooms.
+pub const BREAKOUT_CREATE_FAILED: &str = r#"{"type":"error","message":"breakout-create-failed"}"#;
+
 /// User lacks permission to manage roles.
 pub const ROLE_PERMISSION_DENIED: &str = r#"{"type":"error","message":"role-permission-denied"}"#;
 

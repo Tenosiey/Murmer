@@ -365,7 +365,14 @@ pub struct VoiceChannelRecord {
     pub bitrate: Option<i32>,
     pub category_id: Option<i32>,
     pub position: i32,
+    /// The channel this room was split off from, for a breakout room; `None`
+    /// for an ordinary voice channel.
+    pub breakout_parent: Option<i32>,
 }
+
+/// Columns of `voice_channels` in the order [`row_to_voice_channel`] expects.
+const VOICE_CHANNEL_COLUMNS: &str =
+    "id, name, quality, bitrate, category_id, position, breakout_parent";
 
 fn row_to_voice_channel(row: &rusqlite::Row) -> rusqlite::Result<VoiceChannelRecord> {
     Ok(VoiceChannelRecord {
@@ -375,16 +382,16 @@ fn row_to_voice_channel(row: &rusqlite::Row) -> rusqlite::Result<VoiceChannelRec
         bitrate: row.get(3)?,
         category_id: row.get(4)?,
         position: row.get(5)?,
+        breakout_parent: row.get(6)?,
     })
 }
 
 /// Retrieve all voice channels ordered by their custom position then name.
 pub async fn get_voice_channels(db: &Db) -> Vec<VoiceChannelRecord> {
     db.call_db(|conn| {
-        let mut stmt = conn.prepare_cached(
-            "SELECT id, name, quality, bitrate, category_id, position FROM voice_channels \
-             ORDER BY position, name",
-        )?;
+        let mut stmt = conn.prepare_cached(&format!(
+            "SELECT {VOICE_CHANNEL_COLUMNS} FROM voice_channels ORDER BY position, name"
+        ))?;
         let rows = stmt
             .query_map([], row_to_voice_channel)?
             .collect::<Result<Vec<_>, _>>()?;
@@ -399,8 +406,7 @@ pub async fn get_voice_channel_by_id(db: &Db, id: i32) -> Option<VoiceChannelRec
     db.call_db(move |conn| {
         let record = conn
             .query_row(
-                "SELECT id, name, quality, bitrate, category_id, position FROM voice_channels \
-                 WHERE id = ?1",
+                &format!("SELECT {VOICE_CHANNEL_COLUMNS} FROM voice_channels WHERE id = ?1"),
                 params![id],
                 row_to_voice_channel,
             )
@@ -413,25 +419,29 @@ pub async fn get_voice_channel_by_id(db: &Db, id: i32) -> Option<VoiceChannelRec
 }
 
 /// Insert a new voice channel at the end of its category and return its
-/// record. Returns `None` if the name already exists.
+/// record. Returns `None` if the name already exists. `breakout_parent` marks
+/// the row as an ephemeral breakout room of that channel.
 pub async fn add_voice_channel(
     db: &Db,
     name: &str,
     quality: &str,
     bitrate: Option<i32>,
     category_id: Option<i32>,
+    breakout_parent: Option<i32>,
 ) -> Result<Option<VoiceChannelRecord>, DbError> {
     let name = name.to_owned();
     let quality = quality.to_owned();
     db.call_db(move |conn| {
-        let mut stmt = conn.prepare_cached(
-            "INSERT INTO voice_channels (name, quality, bitrate, category_id, position) \
+        let mut stmt = conn.prepare_cached(&format!(
+            "INSERT INTO voice_channels \
+                (name, quality, bitrate, category_id, position, breakout_parent) \
              VALUES (?1, ?2, ?3, ?4, \
-                (SELECT COALESCE(MAX(position) + 1, 0) FROM voice_channels WHERE category_id IS ?4)) \
+                (SELECT COALESCE(MAX(position) + 1, 0) FROM voice_channels WHERE category_id IS ?4), \
+                ?5) \
              ON CONFLICT (name) DO NOTHING \
-             RETURNING id, name, quality, bitrate, category_id, position",
-        )?;
-        let mut rows = stmt.query(params![name, quality, bitrate, category_id])?;
+             RETURNING {VOICE_CHANNEL_COLUMNS}"
+        ))?;
+        let mut rows = stmt.query(params![name, quality, bitrate, category_id, breakout_parent])?;
         match rows.next()? {
             Some(row) => Ok(Some(row_to_voice_channel(row)?)),
             None => Ok(None),
@@ -480,10 +490,9 @@ pub async fn rename_voice_channel(
         if taken {
             return Ok(RenameResult::NameTaken);
         }
-        let mut stmt = conn.prepare_cached(
-            "UPDATE voice_channels SET name = ?2 WHERE id = ?1 \
-             RETURNING id, name, quality, bitrate, category_id, position",
-        )?;
+        let mut stmt = conn.prepare_cached(&format!(
+            "UPDATE voice_channels SET name = ?2 WHERE id = ?1 RETURNING {VOICE_CHANNEL_COLUMNS}"
+        ))?;
         let mut rows = stmt.query(params![id, name])?;
         match rows.next()? {
             Some(row) => Ok(RenameResult::Renamed(row_to_voice_channel(row)?)),

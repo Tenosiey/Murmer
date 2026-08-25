@@ -6,7 +6,7 @@
  * message that really is about to disappear.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Message } from '../types';
+import type { Message, VoiceChannelInfo } from '../types';
 import {
   buildMessageBlocks,
   describeDuration,
@@ -14,6 +14,7 @@ import {
   formatExpiry,
   formatFileSize,
   formatShortTime,
+  orderVoiceChannels,
   pingToStrength,
   parseTimestampValue,
   reactionEntries,
@@ -379,5 +380,47 @@ describe('pingToStrength', () => {
     expect(pingToStrength(200)).toBe(2);
     expect(pingToStrength(400)).toBe(1);
     expect(pingToStrength(5000)).toBe(1);
+  });
+});
+
+describe('orderVoiceChannels', () => {
+  function voice(
+    id: number,
+    name: string,
+    position: number,
+    breakoutParent: number | null = null
+  ): VoiceChannelInfo {
+    return { id, name, quality: 'standard', bitrate: null, categoryId: null, position, breakoutParent };
+  }
+
+  it('places breakout rooms under the channel they were split off from', () => {
+    // Rooms are created last, so on position alone they sort behind Games —
+    // which is where the split stops looking like a split.
+    const rows = orderVoiceChannels([
+      voice(1, 'Lounge', 0),
+      voice(2, 'Games', 1),
+      voice(4, 'Lounge Room 2', 3, 1),
+      voice(3, 'Lounge Room 1', 2, 1)
+    ]);
+    expect(rows.map((row) => row.channel.name)).toEqual([
+      'Lounge',
+      'Lounge Room 1',
+      'Lounge Room 2',
+      'Games'
+    ]);
+    expect(rows.map((row) => row.room)).toEqual([false, true, true, false]);
+  });
+
+  it('keeps a room whose parent it cannot see rather than dropping it', () => {
+    // The parent may be in another category or hidden from this viewer; a
+    // channel somebody is sitting in must never vanish from their sidebar.
+    const rows = orderVoiceChannels([voice(9, 'Lounge Room 1', 4, 1)]);
+    expect(rows).toEqual([{ channel: expect.objectContaining({ id: 9 }), room: true }]);
+  });
+
+  it('leaves an ordinary list alone', () => {
+    const rows = orderVoiceChannels([voice(2, 'Games', 1), voice(1, 'Lounge', 0)]);
+    expect(rows.map((row) => row.channel.id)).toEqual([1, 2]);
+    expect(rows.every((row) => !row.room)).toBe(true);
   });
 });

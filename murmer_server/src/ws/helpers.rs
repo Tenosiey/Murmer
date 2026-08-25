@@ -97,6 +97,7 @@ pub fn voice_channel_descriptor(id: i32, info: &VoiceChannelState) -> Value {
         "bitrate": info.bitrate,
         "categoryId": info.category_id,
         "position": info.position,
+        "breakoutParent": info.breakout_parent,
     })
 }
 
@@ -263,6 +264,7 @@ pub async fn broadcast_new_voice_channel(state: &Arc<AppState>, id: i32, info: &
         "bitrate": info.bitrate,
         "categoryId": info.category_id,
         "position": info.position,
+        "breakoutParent": info.breakout_parent,
     })) {
         let _ = state.tx.send(msg.into());
     }

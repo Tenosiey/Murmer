@@ -386,15 +386,18 @@ fn validate_name(name: &str, max_length: usize) -> bool {
         .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ' ')
 }
 
-/// Validate channel name for security (max 50 characters).
+/// Maximum length in bytes of a text, voice or category channel name.
+pub const MAX_CHANNEL_NAME_LENGTH: usize = 50;
+
+/// Validate channel name for security (max [`MAX_CHANNEL_NAME_LENGTH`] bytes).
 ///
 /// Channel names must:
-/// - Be non-empty and no longer than 50 characters
+/// - Be non-empty and no longer than [`MAX_CHANNEL_NAME_LENGTH`] bytes
 /// - Contain only alphanumeric characters, dashes, underscores, and spaces
 /// - Not have leading or trailing whitespace
 /// - Not be composed entirely of whitespace
 pub fn validate_channel_name(name: &str) -> bool {
-    validate_name(name, 50)
+    validate_name(name, MAX_CHANNEL_NAME_LENGTH)
 }
 
 /// Validate user name for security (max 32 characters).

@@ -252,6 +252,53 @@ export function formatSearchTimestamp(message: Message): string {
   return '';
 }
 
+/** A voice channel in sidebar order, with its breakout rooms folded in. */
+export interface VoiceChannelRow {
+  channel: VoiceChannelInfo;
+  /** True for a breakout room, which renders indented under its parent. */
+  room: boolean;
+}
+
+/** Custom sort order: position first, name and id as tie-breakers. */
+function byPosition(a: VoiceChannelInfo, b: VoiceChannelInfo): number {
+  return a.position - b.position || a.name.localeCompare(b.name) || a.id - b.id;
+}
+
+/**
+ * Order voice channels for the sidebar, placing each breakout room directly
+ * under the channel it was split off from.
+ *
+ * Rooms are created after their parent and so sort to the *end* of the
+ * category on position alone, which is exactly where they must not be: a room
+ * only makes sense next to the call it came from. A room whose parent is not
+ * in the list — the parent is in another category, or the viewer cannot see
+ * it — is kept at the end rather than dropped, so a channel somebody is in
+ * can never vanish from their sidebar.
+ */
+export function orderVoiceChannels(channels: VoiceChannelInfo[]): VoiceChannelRow[] {
+  const sorted = [...channels].sort(byPosition);
+  const ids = new Set(sorted.map((c) => c.id));
+  const roomsByParent = new Map<number, VoiceChannelInfo[]>();
+  for (const channel of sorted) {
+    const parent = channel.breakoutParent;
+    if (parent == null || !ids.has(parent)) continue;
+    const list = roomsByParent.get(parent);
+    if (list) list.push(channel);
+    else roomsByParent.set(parent, [channel]);
+  }
+
+  const rows: VoiceChannelRow[] = [];
+  for (const channel of sorted) {
+    const parent = channel.breakoutParent;
+    if (parent != null && ids.has(parent)) continue;
+    rows.push({ channel, room: parent != null });
+    for (const room of roomsByParent.get(channel.id) ?? []) {
+      rows.push({ channel: room, room: true });
+    }
+  }
+  return rows;
+}
+
 export function formatVoiceQuality(info: VoiceChannelInfo): string {
   const preset = VOICE_QUALITY_PRESETS.find((p) => p.quality === info.quality);
   const bitrate = info.bitrate ?? preset?.bitrate ?? null;

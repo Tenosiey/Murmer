@@ -125,6 +125,15 @@ pub use crate::db::{MAX_MUTE_SECONDS, MIN_MUTE_SECONDS};
 /// the defaults themselves are read from that setting, not from a constant.
 pub use crate::db::MAX_ALLOWED_VOICE_BITRATE;
 
+/// Fewest breakout rooms a voice channel can be split into. One room is not
+/// a split, it is the channel everybody is already in.
+pub const MIN_BREAKOUT_ROOMS: usize = 2;
+
+/// Most breakout rooms one split may open. Each room is a real voice channel
+/// in everybody's sidebar for as long as the split lasts, so the cap is about
+/// what stays legible there rather than about server cost.
+pub const MAX_BREAKOUT_ROOMS: usize = 8;
+
 /// Maximum number of ids accepted in a single reorder request (channels of
 /// one category, or all categories).
 pub const MAX_REORDER_IDS: usize = 200;
