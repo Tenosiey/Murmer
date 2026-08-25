@@ -878,11 +878,13 @@
                     onclick={() => captureHotkey(action.id)}
                     title="Click, then press the new key combination"
                   >
-                    {#if capturingHotkeyId === action.id}
-                      Press keys…
-                    {:else}
-                      {formatCombo($hotkeys[action.id])}
-                    {/if}
+                    <span class="hotkey-combo">
+                      {#if capturingHotkeyId === action.id}
+                        Press keys…
+                      {:else}
+                        {formatCombo($hotkeys[action.id])}
+                      {/if}
+                    </span>
                   </button>
                   <button
                     class="icon-btn hotkey-clear"
@@ -1506,11 +1508,21 @@
     flex-shrink: 0;
   }
 
+  /* A fixed width, not a minimum: the combos differ in length ("F1" against
+     "Ctrl + Shift + M") and a shrink-to-fit button leaves every row a
+     different size. Anything longer ellipsises instead of widening. */
   .hotkey-btn {
-    min-width: 9.5rem;
+    width: 10.5rem;
+    flex-shrink: 0;
     justify-content: center;
     font-family: var(--font-mono);
     font-size: var(--text-sm);
+  }
+
+  .hotkey-combo {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .hotkey-btn.capturing {
