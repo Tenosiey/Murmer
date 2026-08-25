@@ -376,22 +376,41 @@ An invite link is an ordinary URL pointing at the invite route of a web client:
 https://chat.example.com/invite#url=wss%3A%2F%2Fchat.example.com%2Fws&name=Example
 ```
 
-The **Copy invite link** button on the server hub builds one for a saved
-server. It uses the origin of the web client you are on, or — in the desktop
-app, which has no origin of its own — the server's own, which is where a
-server started with `WEB_CLIENT_DIR` serves its client from.
+There are two ways to make one, and on a password-protected server they are
+not equivalent.
 
-Clicking such a link opens the web client, which shows the invite on the server
+**Server-issued invite codes** (Server Dashboard → **Invites**) are the ones
+to hand out. Pick a lifetime and a number of uses, and the server mints a code
+the link carries in place of the password. **Revoke** withdraws it: the link
+stops working immediately, without changing `SERVER_PASSWORD` for everybody.
+Minting and revoking need the **Create invites** permission, which the
+built-in Mod role and above have.
+
+Redeeming a code records the joining member's key, so their later
+reconnections are admitted on that membership — they neither spend another of
+the invite's uses nor stop working when it expires or is revoked. Revoking
+therefore stops *future* joins; someone who already joined is removed with a
+ban, which is bound to the same key.
+
+The **Copy invite link** button on the server hub builds the other kind: a
+link for a saved server, carrying whatever password you stored for it. It
+works without being connected, which is its point, but such a link is valid
+forever and can only be withdrawn by changing the password. It uses the origin
+of the web client you are on, or — in the desktop app, which has no origin of
+its own — the server's own, which is where a server started with
+`WEB_CLIENT_DIR` serves its client from.
+
+Clicking either link opens the web client, which shows the invite on the server
 hub for confirmation before anything is saved; signed-out visitors go through
 the login screen first and the invite is still waiting afterwards. The same
 link pasted into the hub's **Address** field is recognised there, so one link
 serves web and desktop users alike.
 
 The server details live in the URL **fragment** rather than the query string
-because an invite may carry the server password: a fragment is never sent to
-the web server, so it stays out of access logs, proxy logs and `Referer`
-headers. It is still a secret in a shared link — treat an invite with a
-password like the password itself.
+because an invite carries a credential: a fragment is never sent to the web
+server, so it stays out of access logs, proxy logs and `Referer` headers. It
+is still a secret in a shared link — treat an invite like the credential it
+carries.
 
 ## Profiles, display names and nicknames
 

@@ -51,8 +51,10 @@ Two module-level rules that are easy to miss:
   latter only exists with `withGlobalTauri`, which this app does not set, so
   it reports "browser" inside the desktop app.
 - `invite.ts` puts the server details in the **fragment** because an invite
-  may carry the server password, and a fragment never reaches a web server —
-  no access logs, no `Referer`.
+  carries a credential — a server-issued code, or on a hub-built link the
+  server password — and a fragment never reaches a web server: no access
+  logs, no `Referer`. A link built for a code deliberately omits the
+  password; shipping both would let a revoked invite keep working.
 
 ## Working here
 

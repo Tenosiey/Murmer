@@ -454,3 +454,36 @@ pub fn migrate_audit_log_permissions(conn: &rusqlite::Connection) -> rusqlite::R
     )?;
     Ok(())
 }
+
+/// Grant [`CREATE_INVITES`](crate::permissions::CREATE_INVITES) to every role
+/// that already moderates members, matching where the flag sits in
+/// `DEFAULT_MOD` on a freshly seeded server. `KICK_MEMBERS` is again what
+/// marks a moderating role, and again `@everyone` must not gain the flag: on
+/// a password-protected server anyone who can mint an invite can admit a new
+/// member without the password ever being shared.
+///
+/// Marker-guarded, so an owner who takes the flag away again keeps it away.
+pub fn migrate_invite_permissions(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    let already: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM server_settings WHERE key = 'invite_perms'",
+        [],
+        |row| row.get(0),
+    )?;
+    if already > 0 {
+        return Ok(());
+    }
+
+    conn.execute(
+        "UPDATE role_definitions SET permissions = permissions | ?1 WHERE permissions & ?2 != 0",
+        params![
+            crate::permissions::CREATE_INVITES as i64,
+            crate::permissions::KICK_MEMBERS as i64,
+        ],
+    )?;
+
+    conn.execute(
+        "INSERT OR IGNORE INTO server_settings (key, value) VALUES ('invite_perms', '1')",
+        [],
+    )?;
+    Ok(())
+}

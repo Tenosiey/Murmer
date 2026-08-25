@@ -41,11 +41,6 @@ not a description of the fix.
       `nosniff`, `referrer-policy` and `x-frame-options` and nothing else. Two
       shipped targets, the same `{@html}` markdown boundary, two different
       security postures — and the browser one is the weaker
-- [ ] Expiring, revocable invite links. An invite is a plain URL carrying the
-      server address and password in its fragment, valid forever with no use
-      limit; the only way to withdraw one is to change `SERVER_PASSWORD` for
-      everybody. Server-issued invite tokens with an expiry and a use count
-      would make a leaked link recoverable
 - [ ] Lagged broadcast receivers are dropped silently. Both
       `RecvError::Lagged` arms in `ws/handlers/mod.rs` are empty, so a client
       that falls behind the 100-frame channel loses frames with no log, no
