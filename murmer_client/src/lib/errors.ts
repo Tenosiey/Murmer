@@ -189,7 +189,18 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-invite-options': 'That invite expiry or use limit is out of range.',
   'invite-limit-reached': 'This server has reached its invite limit. Revoke one first.',
   'invite-not-found': 'That invite no longer exists.',
-  'invite-update-failed': 'The server could not update the invite. Please try again.'
+  'invite-update-failed': 'The server could not update the invite. Please try again.',
+  'invalid-schedule-time':
+    'Pick a time between 30 seconds and a year from now.',
+  'schedule-limit-reached':
+    'You already have the maximum number of scheduled messages. Cancel one first.',
+  'scheduled-message-not-found': 'That scheduled message no longer exists.',
+  'schedule-failed': 'The server could not schedule that message. Please try again.',
+  'invalid-reminder': 'A reminder needs a note of up to 500 characters.',
+  'reminder-limit-reached':
+    'You already have the maximum number of reminders. Dismiss one first.',
+  'reminder-not-found': 'That reminder no longer exists.',
+  'reminder-failed': 'The server could not save that reminder. Please try again.'
 };
 
 /**

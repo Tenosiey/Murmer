@@ -46,7 +46,12 @@ import {
   MAX_SOUND_FILE_BYTES,
   MAX_SOUNDBOARD_SOUNDS,
   SOUND_EXTENSIONS,
-  SOUNDBOARD_COOLDOWN_MS
+  SOUNDBOARD_COOLDOWN_MS,
+  MIN_SCHEDULE_LEAD_SECONDS,
+  MAX_SCHEDULE_AHEAD_SECONDS,
+  MAX_SCHEDULED_MESSAGES_PER_USER,
+  MAX_REMINDERS_PER_USER,
+  MAX_REMINDER_TEXT_LENGTH
 } from '../src/lib/chat/constants';
 
 function readServerSource(relative: string): string {
@@ -286,6 +291,40 @@ describe('soundboard mirror', () => {
     expect(serverNumberConstant(wsConstantsRs, 'SOUNDBOARD_COOLDOWN_MS', 'u64')).toBe(
       SOUNDBOARD_COOLDOWN_MS
     );
+  });
+});
+
+describe('scheduling mirror', () => {
+  // The server refuses a time outside these bounds rather than clamping it, so
+  // a client that thinks the window is wider offers a "when" that can only
+  // bounce — and one that thinks it is narrower hides times that would work.
+  it('agrees on the scheduling window', () => {
+    expect(serverNumberConstant(wsConstantsRs, 'MIN_SCHEDULE_LEAD_SECONDS', 'i64')).toBe(
+      MIN_SCHEDULE_LEAD_SECONDS
+    );
+    expect(serverNumberConstant(wsConstantsRs, 'MAX_SCHEDULE_AHEAD_SECONDS', 'i64')).toBe(
+      MAX_SCHEDULE_AHEAD_SECONDS
+    );
+  });
+
+  it('agrees on the per-user caps and the reminder length', () => {
+    expect(serverNumberConstant(wsConstantsRs, 'MAX_SCHEDULED_MESSAGES_PER_USER', 'i64')).toBe(
+      MAX_SCHEDULED_MESSAGES_PER_USER
+    );
+    expect(serverNumberConstant(wsConstantsRs, 'MAX_REMINDERS_PER_USER', 'i64')).toBe(
+      MAX_REMINDERS_PER_USER
+    );
+    expect(serverNumberConstant(wsConstantsRs, 'MAX_REMINDER_TEXT_LENGTH', 'usize')).toBe(
+      MAX_REMINDER_TEXT_LENGTH
+    );
+  });
+
+  it('leaves the scheduler enough room to be on time', () => {
+    // A lead time shorter than a tick would deliver late by more than the user
+    // asked to wait, which is the one thing a scheduler must not do.
+    const tick = serverNumberConstant(wsConstantsRs, 'SCHEDULER_TICK_SECONDS', 'u64');
+    expect(tick).toBeGreaterThan(0);
+    expect(MIN_SCHEDULE_LEAD_SECONDS).toBeGreaterThanOrEqual(tick);
   });
 });
 

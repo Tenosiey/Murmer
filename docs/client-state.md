@@ -62,6 +62,14 @@ is deliberately **not** the same as "empty" — an editor must not offer to
 save an empty list over a real one, and a health readout must not show a
 server it was refused as one doing nothing.
 
+`stores/scheduled.ts` is one of these too, and takes the same route
+`stores/pins.ts` does: the chat store feeds it rather than the store
+subscribing to frames itself, because a scheduled message written for an
+encrypted channel is sealed and its preview can only be opened once that
+channel's key has arrived — knowledge the chat store owns. Nothing there is
+written optimistically; a cancel or a dismiss sends the frame and waits for
+the snapshot that comes back.
+
 ### 3. Trust state
 
 `stores/peerKeys.ts` pins each peer's identity key per server URL and is

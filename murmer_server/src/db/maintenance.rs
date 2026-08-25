@@ -4,9 +4,9 @@
 //! Both are Danger Zone actions from the Server Dashboard, gated on
 //! `ADMINISTRATOR` by the caller. They run in a single transaction so a
 //! failure half-way leaves the server as it was, and they are deliberately
-//! narrow about what they touch: identities, bans, mutes, emojis, sounds and
-//! recorded stats survive a reset, because losing those is never what
-//! "start over" is asked to mean.
+//! narrow about what they touch: identities, bans, mutes, emojis, sounds,
+//! recorded stats and personal reminders survive a reset, because losing those
+//! is never what "start over" is asked to mean.
 //!
 //! The **audit log survives too**, and that one is not a convenience: an
 //! action that erased the record of itself would make the log worth nothing
@@ -46,7 +46,12 @@ pub async fn purge_all_messages(db: &Db) -> Result<usize, DbError> {
 
 /// Reset the server's structure: every message, pin, reaction and wiki page,
 /// every channel except `general`, every voice channel, category, per-channel
-/// permission override and every custom role.
+/// permission override, every custom role and every queued scheduled message.
+///
+/// Scheduled messages go because they are addressed to channels: those of a
+/// deleted channel would cascade away anyway, and one still aimed at `general`
+/// would post into a server that no longer resembles the one it was written
+/// for. Reminders stay — they are personal notes, not server structure.
 ///
 /// The built-in `@everyone` and Owner roles are kept on purpose — deleting
 /// them would strip the administrator running the reset of the very
@@ -63,6 +68,7 @@ pub async fn reset_server(db: &Db) -> Result<ResetSummary, DbError> {
         // wiki_revisions cascade from wiki_pages; wiki_fts follows its trigger.
         tx.execute("DELETE FROM wiki_pages", [])?;
         tx.execute("DELETE FROM channel_overrides", [])?;
+        tx.execute("DELETE FROM scheduled_messages", [])?;
 
         let channels = tx.execute("DELETE FROM channels WHERE name <> 'general'", [])?;
         // The surviving channel goes back to how a fresh server seeds it —

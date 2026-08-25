@@ -29,6 +29,9 @@
     statusMap: Record<string, UserStatus>;
     onEditTopic: () => void;
     onOpenSearch: () => void;
+    onOpenReminders: () => void;
+    /** Reminders that have fired plus scheduled messages the server refused. */
+    reminderAttention?: number;
     onOpenSettings: () => void;
     wikiOpen?: boolean;
     onToggleWiki?: () => void;
@@ -49,6 +52,8 @@
     statusMap,
     onEditTopic,
     onOpenSearch,
+    onOpenReminders,
+    reminderAttention = 0,
     onOpenSettings,
     wikiOpen = false,
     onToggleWiki = () => {},
@@ -427,6 +432,36 @@
       </svg>
       <span class="sr-only">Toggle channel wiki</span>
     </button>
+    <button
+      class="icon-btn reminder-btn"
+      onclick={onOpenReminders}
+      title="Reminders and scheduled messages"
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="13" r="8" />
+        <path d="M12 9v4l2.5 2" />
+        <path d="M5 3 2.5 5.5" />
+        <path d="m19 3 2.5 2.5" />
+      </svg>
+      {#if reminderAttention > 0}
+        <span class="attention" aria-hidden="true"></span>
+      {/if}
+      <span class="sr-only">
+        Reminders and scheduled messages{reminderAttention > 0
+          ? ` (${reminderAttention} need attention)`
+          : ''}
+      </span>
+    </button>
     <button class="icon-btn" onclick={onOpenSearch} title="Search messages">
       <svg
         width="20"
@@ -524,6 +559,23 @@
 </div>
 
 <style>
+  /* A count would not fit in an icon button, and the number is not the point:
+     the dot says "something in there is waiting for you". */
+  .reminder-btn {
+    position: relative;
+  }
+
+  .reminder-btn .attention {
+    position: absolute;
+    top: var(--space-1);
+    right: var(--space-1);
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--color-primary);
+    border: 2px solid var(--color-surface);
+  }
+
   /* Compact toolbar: channel identity left, grouped actions right. */
   .header {
     display: flex;

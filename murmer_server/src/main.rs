@@ -174,6 +174,12 @@ async fn main() -> Result<()> {
     // lost to a restart (expired ones are deleted immediately).
     ws::helpers::resume_ephemeral_deletions(&state).await;
 
+    // A scheduled message left claimed by a process that stopped mid-delivery
+    // may or may not have been posted, so it is reported to its author as a
+    // failure rather than retried. Must run before the scheduler starts.
+    ws::recover_claimed_scheduled_messages(&state).await;
+    ws::spawn_scheduler(Arc::clone(&state));
+
     let mut router = Router::new()
         .route(
             "/ws",

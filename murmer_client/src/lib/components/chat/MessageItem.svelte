@@ -2,7 +2,7 @@
   A single chat message row. Group heads render an avatar, username, role and
   timestamp; continuation messages (same author within the grouping window)
   render compactly and reveal their timestamp in the gutter on hover.
-  A floating action toolbar (react/reply/forward/edit/pin/delete) appears on
+  A floating action toolbar (react/reply/forward/remind/edit/pin/delete) appears on
   hover or keyboard focus. A forwarded message keeps the forwarder as its
   author and carries the original's attribution above it.
 -->
@@ -45,6 +45,7 @@
     onFocusForwarded: (origin: ForwardInfo) => void;
     onReply: (msg: Message) => void;
     onForward: (msg: Message) => void;
+    onRemind: (msg: Message) => void;
     onEdit: (msg: Message) => void;
     onTogglePin: (msg: Message) => void;
     onDelete: (msg: Message) => void;
@@ -69,6 +70,7 @@
     onFocusForwarded,
     onReply,
     onForward,
+    onRemind,
     onEdit,
     onTogglePin,
     onDelete,
@@ -299,6 +301,15 @@
       <button type="button" class="message-action" onclick={() => onForward(message)} title="Forward">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
         <span class="sr-only">Forward</span>
+      </button>
+      <button
+        type="button"
+        class="message-action"
+        onclick={() => onRemind(message)}
+        title="Remind me about this"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M5 3 2.5 5.5"/><path d="m19 3 2.5 2.5"/></svg>
+        <span class="sr-only">Remind me about this</span>
       </button>
       {#if canEdit}
         <button type="button" class="message-action" onclick={() => onEdit(message)} title="Edit message">

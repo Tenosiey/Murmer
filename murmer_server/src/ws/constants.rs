@@ -219,3 +219,31 @@ pub const MAX_WIKI_SEARCH_RESULTS: i64 = 20;
 
 /// Maximum number of links accepted in a single wiki-resolve request.
 pub const MAX_WIKI_RESOLVE_LINKS: usize = 50;
+
+/// Shortest lead time in seconds for a reminder or a scheduled message. The
+/// scheduler ticks every [`SCHEDULER_TICK_SECONDS`], so anything shorter than
+/// a tick would arrive late by more than it was asked to wait — the lead time
+/// is what makes the tick invisible.
+pub const MIN_SCHEDULE_LEAD_SECONDS: i64 = 30;
+
+/// Furthest ahead a reminder or scheduled message may be set: one year. A
+/// bound exists so a typo in a year field cannot park a row in the queue
+/// forever.
+pub const MAX_SCHEDULE_AHEAD_SECONDS: i64 = 365 * 24 * 60 * 60;
+
+/// Maximum number of scheduled messages one user may have queued, failed ones
+/// included. Each holds a full message body, so this is a storage bound as
+/// much as a fairness one.
+pub const MAX_SCHEDULED_MESSAGES_PER_USER: i64 = 25;
+
+/// Maximum number of reminders one user may hold, undismissed due ones
+/// included.
+pub const MAX_REMINDERS_PER_USER: i64 = 50;
+
+/// Maximum length in bytes for a reminder's note to self.
+pub const MAX_REMINDER_TEXT_LENGTH: usize = 500;
+
+/// How often the scheduler looks for due reminders and scheduled messages.
+/// Two indexed queries against small tables, so the cost is negligible; the
+/// interval is what bounds how late a delivery can be.
+pub const SCHEDULER_TICK_SECONDS: u64 = 10;

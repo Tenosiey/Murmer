@@ -19,6 +19,7 @@
 //! - [`messages`] – chat, history, threads, typing, search and reactions
 //! - [`moderation`] – kick, ban, mute and the ban list
 //! - [`pins`] – shared, persisted message pins
+//! - [`scheduled`] – reminders, scheduled messages and the scheduler
 //! - [`screenshare`] – server-wide screen share configuration (bitrate cap)
 //! - [`soundboard`] – shared sound library and voice-channel playback
 //! - [`stats`] – lifetime user statistics (double opt-in gated)
@@ -44,12 +45,15 @@ mod moderation;
 mod pins;
 mod profile;
 mod roles;
+mod scheduled;
 mod screenshare;
 mod soundboard;
 mod stats;
 mod uploads;
 mod voice_defaults;
 mod wiki;
+
+pub use scheduled::{recover_claimed_scheduled_messages, spawn_scheduler};
 
 use super::{errors, helpers::*, validation::*};
 use crate::channel_overrides::ChannelKind;
@@ -520,6 +524,24 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "revoke-invite" => {
                                 invites::handle_revoke_invite(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "schedule-message" => {
+                                scheduled::handle_schedule_message(&state, &mut sender, &mut v, &user_name).await;
+                            }
+                            "cancel-scheduled-message" => {
+                                scheduled::handle_cancel_scheduled_message(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "get-scheduled-messages" => {
+                                scheduled::handle_get_scheduled_messages(&state, &mut sender, &user_name).await;
+                            }
+                            "set-reminder" => {
+                                scheduled::handle_set_reminder(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "cancel-reminder" => {
+                                scheduled::handle_cancel_reminder(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "get-reminders" => {
+                                scheduled::handle_get_reminders(&state, &mut sender, &user_name).await;
                             }
                             _ => {
                                 error!("unknown message type: {t}");

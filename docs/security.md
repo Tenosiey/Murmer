@@ -142,6 +142,18 @@ All of this is deliberate, and is also stated in `README.md` for operators:
   inside the ciphertext as text, which makes it the sender's claim rather
   than the server's — see [`features.md`](features.md).
 - **Forward secrecy within an epoch.**
+- **Reminders.** A reminder's note is written by its owner and stored in
+  plaintext, like a channel topic — a reminder set on a message in an
+  encrypted channel therefore only ever holds what its owner typed, never a
+  copy of the message. The client deliberately does not pre-fill it from the
+  decrypted text, because a rule that applies only in some channels is one
+  somebody eventually forgets.
+
+A **scheduled message** is the exception that proves the shape: it is sealed
+by the client at compose time and the server stores the envelope opaquely,
+exactly as it stores a live one. It goes out under the epoch that was current
+when it was written, which is the same epoch a message sent then would have
+used — see [`features.md`](features.md).
 
 `handle_chat` and `handle_edit_message` branch on `channel_is_e2ee` and
 **reject** a `text`, `image` or `attachment` field there rather than
