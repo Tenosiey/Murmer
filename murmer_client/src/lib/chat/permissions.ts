@@ -24,7 +24,8 @@ export const PERMISSIONS = {
   ADMINISTRATOR: 1 << 13,
   USE_SOUNDBOARD: 1 << 14,
   MANAGE_SOUNDS: 1 << 15,
-  MANAGE_NICKNAMES: 1 << 16
+  MANAGE_NICKNAMES: 1 << 16,
+  CREATE_INVITES: 1 << 17
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;
@@ -175,6 +176,12 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         flag: PERMISSIONS.MANAGE_NICKNAMES,
         label: 'Manage nicknames',
         description: "Set or clear other members' nicknames on this server."
+      },
+      {
+        key: 'CREATE_INVITES',
+        flag: PERMISSIONS.CREATE_INVITES,
+        label: 'Create invites',
+        description: 'Mint and revoke invite links, which let someone join without the server password.'
       }
     ]
   },

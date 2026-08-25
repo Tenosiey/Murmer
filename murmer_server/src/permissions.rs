@@ -49,6 +49,11 @@ pub const MANAGE_SOUNDS: Permissions = 1 << 15;
 /// their own; this flag is what lets a moderator relabel somebody else, and it
 /// is hierarchy-checked like the other member actions.
 pub const MANAGE_NICKNAMES: Permissions = 1 << 16;
+/// Mint and revoke server invite codes. Separate from [`MANAGE_SERVER`]
+/// because handing out invites is a moderator's job, while the settings
+/// behind it are not; on a password-protected server this flag is what lets
+/// somebody admit a new member without the password being passed around.
+pub const CREATE_INVITES: Permissions = 1 << 17;
 
 /// Union of every defined permission flag. Used to reject unknown bits from
 /// clients and to expand [`ADMINISTRATOR`] into a concrete mask.
@@ -68,7 +73,8 @@ pub const ALL: Permissions = VIEW_CHANNELS
     | ADMINISTRATOR
     | USE_SOUNDBOARD
     | MANAGE_SOUNDS
-    | MANAGE_NICKNAMES;
+    | MANAGE_NICKNAMES
+    | CREATE_INVITES;
 
 /// Baseline permissions granted to every user through the `@everyone` role.
 /// Keeps a fresh or unadministered server usable: everyone can read, chat and
@@ -87,7 +93,8 @@ pub const DEFAULT_MOD: Permissions = DEFAULT_EVERYONE
     | KICK_MEMBERS
     | BAN_MEMBERS
     | MUTE_MEMBERS
-    | MANAGE_NICKNAMES;
+    | MANAGE_NICKNAMES
+    | CREATE_INVITES;
 
 /// Default permissions seeded for the built-in `Admin` role: everything a Mod
 /// can do plus server settings and read-only server/connection insight.

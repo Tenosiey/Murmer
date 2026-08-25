@@ -474,7 +474,8 @@
           publicKey: kp.publicKey,
           timestamp: ts,
           signature: sign(ts, kp.secretKey),
-          password: entry?.password
+          password: entry?.password,
+          invite: entry?.invite
         });
       }
       // Presence response already loads history for the default channel,

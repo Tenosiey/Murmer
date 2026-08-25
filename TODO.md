@@ -53,11 +53,6 @@ not a description of the fix.
 - [ ] Dependency advisories in CI. `cargo audit` and `bun audit` are
       documented as "run locally", which in practice means never. A weekly
       scheduled workflow that fails only on advisories costs one job
-- [ ] Expiring, revocable invite links. An invite is a plain URL carrying the
-      server address and password in its fragment, valid forever with no use
-      limit; the only way to withdraw one is to change `SERVER_PASSWORD` for
-      everybody. Server-issued invite tokens with an expiry and a use count
-      would make a leaked link recoverable
 - [ ] Lagged broadcast receivers are dropped silently. Both
       `RecvError::Lagged` arms in `ws/handlers/mod.rs` are empty, so a client
       that falls behind the 100-frame channel loses frames with no log, no

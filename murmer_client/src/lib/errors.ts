@@ -6,6 +6,8 @@
 const SERVER_ERROR_MESSAGES: Record<string, string> = {
   unauthenticated: 'You are not authenticated with this server.',
   'invalid-password': 'The server password is incorrect.',
+  'invalid-invite':
+    'That invite is no longer valid — it expired, ran out of uses or was withdrawn. Ask for a fresh one.',
   'auth-rate-limit': 'Too many connection attempts. Please wait a moment and try again.',
   'invalid-timestamp': 'Authentication failed: your system clock appears to be wrong.',
   'replay-attack': 'Authentication failed. Please try connecting again.',
@@ -161,7 +163,12 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'wiki-page-not-found': 'That wiki page no longer exists.',
   'wiki-revision-not-found': 'That revision is no longer stored.',
   'wiki-page-limit-reached': 'This channel has reached its wiki page limit.',
-  'wiki-save-failed': 'The server could not update the wiki. Please try again.'
+  'wiki-save-failed': 'The server could not update the wiki. Please try again.',
+  'invite-permission-denied': 'You do not have permission to manage invites on this server.',
+  'invalid-invite-options': 'That invite expiry or use limit is out of range.',
+  'invite-limit-reached': 'This server has reached its invite limit. Revoke one first.',
+  'invite-not-found': 'That invite no longer exists.',
+  'invite-update-failed': 'The server could not update the invite. Please try again.'
 };
 
 /**
@@ -171,6 +178,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
 const FATAL_CONNECTION_ERRORS = new Set([
   'unauthenticated',
   'invalid-password',
+  'invalid-invite',
   'auth-rate-limit',
   'invalid-timestamp',
   'replay-attack',

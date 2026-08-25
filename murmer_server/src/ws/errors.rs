@@ -11,6 +11,11 @@ pub const UNAUTHENTICATED: &str = r#"{"type":"error","message":"unauthenticated"
 /// The provided server password did not match.
 pub const INVALID_PASSWORD: &str = r#"{"type":"error","message":"invalid-password"}"#;
 
+/// The presented invite code is unknown, expired or out of uses. One code
+/// covers all three on purpose: telling them apart would let anyone holding a
+/// guess find out whether it named a real invite.
+pub const INVALID_INVITE: &str = r#"{"type":"error","message":"invalid-invite"}"#;
+
 /// Authentication rate limit exceeded.
 pub const AUTH_RATE_LIMIT: &str = r#"{"type":"error","message":"auth-rate-limit"}"#;
 
@@ -345,6 +350,22 @@ pub const EMOJI_UPDATE_FAILED: &str = r#"{"type":"error","message":"emoji-update
 
 /// The referenced custom emoji does not exist.
 pub const EMOJI_NOT_FOUND: &str = r#"{"type":"error","message":"emoji-not-found"}"#;
+
+/// User lacks permission to mint, list or revoke invites.
+pub const INVITE_PERMISSION_DENIED: &str =
+    r#"{"type":"error","message":"invite-permission-denied"}"#;
+
+/// The requested expiry or use limit is outside the accepted range.
+pub const INVALID_INVITE_OPTIONS: &str = r#"{"type":"error","message":"invalid-invite-options"}"#;
+
+/// The server already holds as many invites as it allows.
+pub const INVITE_LIMIT_REACHED: &str = r#"{"type":"error","message":"invite-limit-reached"}"#;
+
+/// The invite named for revocation does not exist (any more).
+pub const INVITE_NOT_FOUND: &str = r#"{"type":"error","message":"invite-not-found"}"#;
+
+/// Failed to persist an invite change.
+pub const INVITE_UPDATE_FAILED: &str = r#"{"type":"error","message":"invite-update-failed"}"#;
 
 /// User lacks permission to manage soundboard sounds.
 pub const SOUND_PERMISSION_DENIED: &str = r#"{"type":"error","message":"sound-permission-denied"}"#;

@@ -10,6 +10,7 @@
 //! - [`dms`] – direct messages between two users
 //! - [`emojis`] – custom server emoji management
 //! - [`identity`] – server name, description, welcome message and icon
+//! - [`invites`] – minting, listing and revoking server invite codes
 //! - [`maintenance`] – Danger Zone purge/reset actions
 //! - [`messages`] – chat, history, threads, typing, search and reactions
 //! - [`moderation`] – kick, ban, mute and the ban list
@@ -29,6 +30,7 @@ mod chat_settings;
 mod dms;
 mod emojis;
 mod identity;
+mod invites;
 mod maintenance;
 mod messages;
 mod moderation;
@@ -476,6 +478,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "set-server-identity" => {
                                 identity::handle_set_server_identity(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "get-invites" => {
+                                invites::handle_get_invites(&state, &mut sender, &user_name).await;
+                            }
+                            "create-invite" => {
+                                invites::handle_create_invite(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "revoke-invite" => {
+                                invites::handle_revoke_invite(&state, &mut sender, &v, &user_name).await;
                             }
                             _ => {
                                 error!("unknown message type: {t}");

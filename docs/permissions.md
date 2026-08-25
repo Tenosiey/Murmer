@@ -126,14 +126,17 @@ Some data is an answer to a request, never a broadcast, because it is
 manager information:
 
 - the **ban list** (`BAN_MEMBERS`) — its rows carry public keys;
+- the **invite list** (`CREATE_INVITES`) — its rows *are* credentials, so it
+  is never broadcast, and a create or revoke is answered with the refreshed
+  list to the requester alone;
 - the **storage usage** report (`MANAGE_SERVER`);
 - the **profanity word list** — the public `chat-settings` broadcast
   deliberately omits it, and it is answered only to `get-chat-settings`.
 
-On the client these live in `stores/bans.ts`, `stores/storageUsage.ts` and
-`stores/chatSettings.ts`, where "not disclosed yet" is `null` — deliberately
-not the same as "empty", so an editor cannot offer to save an empty list over
-a real one.
+On the client these live in `stores/bans.ts`, `stores/invites.ts`,
+`stores/storageUsage.ts` and `stores/chatSettings.ts`, where "not disclosed
+yet" is `null` — deliberately not the same as "empty", so an editor cannot
+offer to save an empty list over a real one.
 
 ## Danger Zone
 

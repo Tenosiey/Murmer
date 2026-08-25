@@ -15,6 +15,7 @@
 //! - [`direct_messages`] – private messages between two users
 //! - [`emojis`] – custom server emoji registrations
 //! - [`identity`] – server name, description, welcome message and icon
+//! - [`invites`] – server-issued invite codes and the memberships they grant
 //! - [`maintenance`] – destructive purge/reset actions (Danger Zone)
 //! - [`messages`] – message CRUD and history retrieval
 //! - [`moderation`] – ban and mute persistence
@@ -36,6 +37,7 @@ mod chat_settings;
 mod direct_messages;
 mod emojis;
 mod identity;
+mod invites;
 mod maintenance;
 mod messages;
 mod moderation;
@@ -57,6 +59,7 @@ pub use chat_settings::*;
 pub use direct_messages::*;
 pub use emojis::*;
 pub use identity::*;
+pub use invites::*;
 pub use maintenance::*;
 pub use messages::*;
 pub use moderation::*;
@@ -326,6 +329,7 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
 "#
         ))?;
 
+        conn.execute_batch(&invites::invites_schema())?;
         conn.execute_batch(&stats::stats_schema())?;
         conn.execute_batch(&wiki::wiki_schema())?;
         conn.execute_batch(&soundboard::soundboard_schema())?;
@@ -341,6 +345,9 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         // an existing server's moderators keep the capability set they had
         // when nicknames shipped. Marker-guarded, runs once.
         roles::migrate_nickname_permissions(conn)?;
+        // And the same for the invite flag, which shipped with server-issued
+        // invite codes. Marker-guarded, runs once.
+        roles::migrate_invite_permissions(conn)?;
 
         // Columns added after a table first shipped; CREATE TABLE IF NOT
         // EXISTS does not extend existing tables.
