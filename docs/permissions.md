@@ -70,7 +70,8 @@ existence or content:
 
 - channel-list senders are viewer-aware;
 - channel-scoped broadcasts are filtered per recipient in the `global_rx`
-  loop (`ws/handlers/mod.rs`);
+  loop (`ws/handlers/mod.rs`), from a per-connection memo whose invalidation
+  is [`protocol.md`](protocol.md);
 - join, history, search, send, react, pin, `voice-join` and every wiki read
   and write are channel-gated.
 
@@ -164,6 +165,9 @@ Some data is an answer to a request, never a broadcast, because it is
 manager information:
 
 - the **ban list** (`BAN_MEMBERS`) — its rows carry public keys;
+- the **invite list** (`CREATE_INVITES`) — its rows *are* credentials, so it
+  is never broadcast, and a create or revoke is answered with the refreshed
+  list to the requester alone;
 - the **storage usage** report (`MANAGE_SERVER`);
 - the **profanity word list** — the public `chat-settings` broadcast
   deliberately omits it, and it is answered only to `get-chat-settings`;
@@ -172,10 +176,11 @@ manager information:
   rule's *name* is ever disclosed, to the person who tripped it;
 - the **audit log** (`VIEW_AUDIT_LOG`) — see below.
 
-On the client these live in `stores/bans.ts`, `stores/storageUsage.ts`,
-`stores/chatSettings.ts`, `stores/automod.ts` and `stores/auditLog.ts`, where
-"not disclosed yet" is `null` — deliberately not the same as "empty", so an
-editor cannot offer to save an empty list over a real one.
+On the client these live in `stores/bans.ts`, `stores/invites.ts`,
+`stores/storageUsage.ts`, `stores/chatSettings.ts`, `stores/automod.ts` and
+`stores/auditLog.ts`, where "not disclosed yet" is `null` — deliberately not
+the same as "empty", so an editor cannot offer to save an empty list over a
+real one.
 
 ## The audit log
 

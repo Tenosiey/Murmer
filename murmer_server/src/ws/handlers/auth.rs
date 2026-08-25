@@ -1,13 +1,22 @@
 //! Authentication handlers for user and bot presence.
+//!
+//! On a password-protected server a connection is admitted by one of three
+//! credentials, tried in that order: the server password, an existing
+//! invite-granted membership bound to the connecting public key, or a live
+//! invite code. Membership is checked *before* the code so a member's
+//! reconnect neither spends one of the invite's uses nor depends on the
+//! invite still existing — which is what lets an invite be revoked without
+//! evicting the people who joined through it. See `db::invites`.
 
 use crate::ws::{constants::*, errors, helpers::*};
 use crate::{AppState, bot, db, security};
 use axum::extract::ws::{Message, WebSocket};
+use chrono::Utc;
 use futures::stream::SplitSink;
 use serde_json::Value;
 use std::sync::Arc;
 use subtle::ConstantTimeEq;
-use tracing::error;
+use tracing::{error, info, warn};
 
 /// Verify that the presence frame proves ownership of its claimed public key:
 /// the timestamp must be fresh and unused (replay protection) and the Ed25519
@@ -66,6 +75,83 @@ async fn verify_key_proof(
     Ok(())
 }
 
+/// Which credential admitted a connection to a password-protected server.
+enum Admission {
+    /// The server password matched, or the key is already an invite member.
+    /// Nothing further is owed.
+    Granted,
+    /// A currently redeemable invite code, to be spent once the account name
+    /// and the ban list have also been checked — a rejected connection must
+    /// not cost the invite one of its uses.
+    PendingInvite(String),
+}
+
+/// Decide whether a presence frame may connect to a password-protected
+/// server. Sends the matching error and returns `Err` when it may not.
+async fn admit(
+    sender: &mut SplitSink<WebSocket, Message>,
+    state: &Arc<AppState>,
+    v: &Value,
+    required: &str,
+    verified_key: Option<&str>,
+) -> Result<Admission, ()> {
+    let provided = v.get("password").and_then(|p| p.as_str()).unwrap_or("");
+    let password_ok = bool::from(provided.as_bytes().ct_eq(required.as_bytes()));
+
+    // A password-protected server has always required a proven key, and all
+    // three credentials below are bound to one, so a keyless connection stops
+    // here whether or not it knew the password.
+    let Some(key) = verified_key else {
+        let reason = if password_ok {
+            errors::INVALID_SIGNATURE
+        } else {
+            errors::INVALID_PASSWORD
+        };
+        send_error(sender, reason).await;
+        return Err(());
+    };
+
+    if password_ok {
+        return Ok(Admission::Granted);
+    }
+
+    match db::is_invite_member(&state.db, key).await {
+        Ok(true) => return Ok(Admission::Granted),
+        Ok(false) => {}
+        Err(e) => {
+            // Failing open here would hand out membership on a database
+            // hiccup; a member can retry, an outsider cannot get in.
+            error!("Failed to check invite membership: {e}");
+            send_error(sender, errors::INVALID_PASSWORD).await;
+            return Err(());
+        }
+    }
+
+    let code = v
+        .get("invite")
+        .and_then(|i| i.as_str())
+        .map(str::trim)
+        .unwrap_or("");
+    if code.is_empty() {
+        send_error(sender, errors::INVALID_PASSWORD).await;
+        return Err(());
+    }
+
+    match db::check_invite(&state.db, code, Utc::now()).await {
+        Ok(db::Redemption::Granted) => Ok(Admission::PendingInvite(code.to_string())),
+        Ok(reason) => {
+            warn!("Rejected invite: {reason:?}");
+            send_error(sender, errors::INVALID_INVITE).await;
+            Err(())
+        }
+        Err(e) => {
+            error!("Failed to check an invite code: {e}");
+            send_error(sender, errors::INVALID_INVITE).await;
+            Err(())
+        }
+    }
+}
+
 /// Handle user presence (authentication) message.
 pub(super) async fn handle_presence(
     sender: &mut SplitSink<WebSocket, Message>,
@@ -76,31 +162,35 @@ pub(super) async fn handle_presence(
     client_ip: &str,
     default_channel_id: i32,
 ) -> Result<(), ()> {
-    if !*authenticated && let Some(required) = &state.password {
-        let provided = v.get("password").and_then(|p| p.as_str()).unwrap_or("");
-        if !bool::from(provided.as_bytes().ct_eq(required.as_bytes())) {
-            send_error(sender, errors::INVALID_PASSWORD).await;
-            return Err(());
-        }
-    }
-
     // A claimed public key must always be proven, even on an open server or a
     // repeated presence frame: roles, bans and moderation identity attach to
-    // the key, so accepting it unverified would allow impersonation.
+    // the key, so accepting it unverified would allow impersonation. It is
+    // proven before the credential check because two of the three credentials
+    // — an invite membership and an invite code — are bound to the key.
     let verified_key = if v.get("publicKey").is_some() {
         verify_key_proof(sender, state, v, client_ip).await?;
-        *authenticated = true;
         v.get("publicKey")
             .and_then(|p| p.as_str())
             .map(str::to_string)
     } else {
-        // Without a key there is nothing to verify; servers without a
-        // password accept the connection as an anonymous (role-less) user.
-        if state.password.is_none() {
-            *authenticated = true;
-        }
         None
     };
+
+    let mut pending_invite: Option<String> = None;
+    if !*authenticated {
+        match &state.password {
+            // Without a password there is nothing to present; a keyless
+            // connection joins as an anonymous (role-less) user.
+            None => *authenticated = true,
+            Some(required) => {
+                match admit(sender, state, v, required, verified_key.as_deref()).await? {
+                    Admission::Granted => {}
+                    Admission::PendingInvite(code) => pending_invite = Some(code),
+                }
+                *authenticated = true;
+            }
+        }
+    }
 
     if *authenticated {
         if let Some(u) = v.get("user").and_then(|u| u.as_str()) {
@@ -139,6 +229,28 @@ pub(super) async fn handle_presence(
                 Ok(false) => {}
                 Err(e) => {
                     error!("Failed to check ban state for {u}: {e}");
+                }
+            }
+
+            // The name and the ban list have now had their say, so an invite
+            // that got this connection in can finally be spent. Doing it here
+            // rather than at the credential check is what keeps a rejected
+            // presence from costing the invite a use. It is re-validated
+            // inside the same transaction that increments the counter, so two
+            // clients racing for the last use cannot both be admitted.
+            if let (Some(code), Some(pk)) = (pending_invite.as_deref(), verified_key.as_deref()) {
+                match db::redeem_invite(&state.db, code, pk, Utc::now()).await {
+                    Ok(db::Redemption::Granted) => info!(user = u, "Invite redeemed"),
+                    Ok(reason) => {
+                        warn!("Invite became unredeemable for {u}: {reason:?}");
+                        send_error(sender, errors::INVALID_INVITE).await;
+                        return Err(());
+                    }
+                    Err(e) => {
+                        error!("Failed to redeem an invite for {u}: {e}");
+                        send_error(sender, errors::INVALID_INVITE).await;
+                        return Err(());
+                    }
                 }
             }
 

@@ -6,6 +6,25 @@
 /// Maximum number of custom emojis a server may register.
 pub const MAX_CUSTOM_EMOJIS: i64 = 200;
 
+/// Number of random bytes behind an invite code. Base64url-encoded these
+/// become 16 characters, which is short enough to read out over voice and far
+/// too much to guess: an invite is a credential on a password-protected
+/// server, and nothing rate-limits a redemption beyond the auth limiter.
+pub const INVITE_CODE_BYTES: usize = 12;
+
+/// Maximum number of invites a server may hold at once. Revoking is a row
+/// delete, so this is a cap on live invites rather than on invites ever made.
+pub const MAX_INVITES: i64 = 100;
+
+/// Largest use limit an invite may be created with. Beyond this the sensible
+/// answer is an unlimited invite (`maxUses` of 0), not a bigger number.
+pub const MAX_INVITE_USES: i64 = 1_000;
+
+/// Longest lifetime an invite may be created with (30 days). An invite that
+/// should outlive a month is one that never expires, and saying so is more
+/// honest than a date three years out.
+pub const MAX_INVITE_TTL_SECONDS: i64 = 30 * 24 * 60 * 60;
+
 /// Maximum number of role definitions a server may hold (including built-ins).
 pub const MAX_ROLES: usize = 100;
 

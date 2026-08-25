@@ -1,10 +1,16 @@
 /**
- * An invite link carries a server password, so both halves matter: the
- * encoding has to survive characters a password may contain and keep the
- * password out of the query string (a fragment never reaches a web server),
- * and the parser has to refuse anything that is not one of our own links —
- * it is handed whatever URL the browser was opened with, or whatever the user
- * pasted into the add-server field.
+ * An invite link carries a credential — a server-issued invite code, or on an
+ * older link the server password itself — so both halves matter: the encoding
+ * has to survive characters a password may contain and keep the credential out
+ * of the query string (a fragment never reaches a web server), and the parser
+ * has to refuse anything that is not one of our own links — it is handed
+ * whatever URL the browser was opened with, or whatever the user pasted into
+ * the add-server field.
+ *
+ * The one rule that is a security property rather than a convenience: a link
+ * built for an invite code must not also carry the password. A code expires,
+ * runs out and can be revoked; a password shipped alongside it would survive
+ * all three and quietly undo the revocation.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { createInviteLink, looksLikeInviteLink, parseInviteLink } from './invite';
@@ -56,6 +62,35 @@ describe('createInviteLink', () => {
       password: 'p@ss word&name=evil#frag'
     };
     expect(parseInviteLink(createInviteLink(server))).toEqual(server);
+  });
+
+  it('carries a server-issued code instead of the password, never both', () => {
+    const link = createInviteLink(
+      { url: 'wss://example.com/ws', name: 'Example', password: 'hunter2' },
+      undefined,
+      'aGVsbG8td29ybGQ'
+    );
+    const params = new URLSearchParams(new URL(link).hash.slice(1));
+    expect(params.get('invite')).toBe('aGVsbG8td29ybGQ');
+    // Shipping the password too would let a revoked invite keep working.
+    expect(params.has('password')).toBe(false);
+  });
+
+  it('falls back to the password when no code is given', () => {
+    const link = createInviteLink(
+      { url: 'wss://example.com/ws', name: 'Example', password: 'hunter2' },
+      undefined,
+      ''
+    );
+    const params = new URLSearchParams(new URL(link).hash.slice(1));
+    expect(params.get('password')).toBe('hunter2');
+    expect(params.has('invite')).toBe(false);
+  });
+
+  it('round-trips a code through the parser', () => {
+    const server = { url: 'wss://example.com/ws', name: 'Example' };
+    const link = createInviteLink(server, undefined, 'x-Y_09');
+    expect(parseInviteLink(link)).toEqual({ ...server, code: 'x-Y_09' });
   });
 
   it('does not double the slash when the origin carries a trailing one', () => {
@@ -133,6 +168,28 @@ describe('parseInviteLink', () => {
     const parsed = parseInviteLink('https://a/invite#url=example.com&password=');
     expect(parsed).toEqual({ url: 'ws://example.com/ws' });
     expect(parsed && 'password' in parsed).toBe(false);
+  });
+
+  it('keeps a code out of the parsed entry when the link carries none', () => {
+    for (const link of [
+      'https://a/invite#url=example.com',
+      'https://a/invite#url=example.com&invite=',
+      'https://a/invite#url=example.com&invite=%20%20'
+    ]) {
+      const parsed = parseInviteLink(link);
+      expect(parsed, link).toEqual({ url: 'ws://example.com/ws' });
+      expect(parsed && 'code' in parsed, link).toBe(false);
+    }
+  });
+
+  it('accepts a link that carries both, which an older server still needs', () => {
+    // `createInviteLink` never builds one, but a hand-written or hand-edited
+    // link may; dropping either half would strand whoever was sent it.
+    expect(parseInviteLink('https://a/invite#url=example.com&password=pw&invite=code')).toEqual({
+      url: 'ws://example.com/ws',
+      password: 'pw',
+      code: 'code'
+    });
   });
 });
 

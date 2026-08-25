@@ -13,6 +13,7 @@
 //! - [`dms`] – direct messages between two users
 //! - [`emojis`] – custom server emoji management
 //! - [`identity`] – server name, description, welcome message and icon
+//! - [`invites`] – minting, listing and revoking server invite codes
 //! - [`maintenance`] – Danger Zone purge/reset actions
 //! - [`messages`] – chat, history, threads, typing, search and reactions
 //! - [`moderation`] – kick, ban, mute and the ban list
@@ -35,6 +36,7 @@ mod chat_settings;
 mod dms;
 mod emojis;
 mod identity;
+mod invites;
 mod maintenance;
 mod messages;
 mod moderation;
@@ -148,6 +150,8 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
     let mut voice_channel: Option<i32> = None;
     let mut authenticated = state.password.is_none();
     let mut last_typing_broadcast: Option<std::time::Instant> = None;
+    // This connection's memo of which channels it may receive frames for.
+    let mut visibility = VisibilityCache::default();
 
     loop {
         tokio::select! {
@@ -504,6 +508,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "set-server-identity" => {
                                 identity::handle_set_server_identity(&state, &mut sender, &v, &user_name).await;
                             }
+                            "get-invites" => {
+                                invites::handle_get_invites(&state, &mut sender, &user_name).await;
+                            }
+                            "create-invite" => {
+                                invites::handle_create_invite(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "revoke-invite" => {
+                                invites::handle_revoke_invite(&state, &mut sender, &v, &user_name).await;
+                            }
                             "schedule-message" => {
                                 scheduled::handle_schedule_message(&state, &mut sender, &mut v, &user_name).await;
                             }
@@ -578,19 +591,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 continue;
                             }
                             // Channel-scoped frames must not reach a user who
-                            // cannot see the channel. Channels with no overrides
-                            // are visible to everyone (fast path).
-                            if let Some((kind, id)) = channel_scope(v) {
-                                let restricted = state
-                                    .channel_overrides
-                                    .lock()
-                                    .await
-                                    .contains_key(&(kind, id));
-                                if restricted
-                                    && !user_can_see_channel(&state, user_name.as_deref(), kind, id).await
-                                {
-                                    continue;
-                                }
+                            // cannot see the channel. Resolved once per
+                            // channel and memoised until the permissions that
+                            // decide it change.
+                            if let Some((kind, id)) = channel_scope(v)
+                                && !visibility.can_receive(&state, user_name.as_deref(), kind, id).await
+                            {
+                                continue;
                             }
                         }
 

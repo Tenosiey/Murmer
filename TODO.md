@@ -41,14 +41,6 @@ not a description of the fix.
       `nosniff`, `referrer-policy` and `x-frame-options` and nothing else. Two
       shipped targets, the same `{@html}` markdown boundary, two different
       security postures — and the browser one is the weaker
-- [ ] Dependency advisories in CI. `cargo audit` and `bun audit` are
-      documented as "run locally", which in practice means never. A weekly
-      scheduled workflow that fails only on advisories costs one job
-- [ ] Expiring, revocable invite links. An invite is a plain URL carrying the
-      server address and password in its fragment, valid forever with no use
-      limit; the only way to withdraw one is to change `SERVER_PASSWORD` for
-      everybody. Server-issued invite tokens with an expiry and a use count
-      would make a leaked link recoverable
 - [ ] Lagged broadcast receivers are dropped silently. Both
       `RecvError::Lagged` arms in `ws/handlers/mod.rs` are empty, so a client
       that falls behind the 100-frame channel loses frames with no log, no
@@ -99,12 +91,6 @@ not a description of the fix.
 
 ## ⚡ Performance
 
-- [ ] Cache each connection's channel visibility instead of resolving it per
-      frame. Every frame scoped to a restricted channel locks
-      `channel_overrides` and re-resolves the recipient's permissions, once
-      per recipient. The answer only changes on `channels-refresh`, which is
-      already broadcast — so it can be computed once per connection and
-      invalidated there
 - [ ] One array holds every message from every channel. `$chat` is flat and
       unbounded: each update re-filters it for the open channel and rebuilds
       every block, and every message ever scrolled into view stays in the DOM.

@@ -443,4 +443,8 @@ pub(super) async fn cleanup_channel(state: &Arc<AppState>, kind: ChannelKind, ch
         .lock()
         .await
         .remove(&(kind, channel_id));
+    // Deletion announces `channel-remove`, not `channels-refresh`, so the
+    // stamp is bumped by hand here. Channel ids are rowids and get reused, so
+    // a memo left behind would answer for a different channel later.
+    invalidate_channel_visibility(state);
 }

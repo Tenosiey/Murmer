@@ -5,6 +5,14 @@ export interface ServerEntry {
   url: string;
   name: string;
   password?: string;
+  /**
+   * A server-issued invite code, kept alongside the password because it is the
+   * credential the first connection presents. The server records the redeeming
+   * key as a member, so later connections are admitted on that membership and
+   * a stale code here costs nothing — it is sent, ignored, and never spends
+   * another of the invite's uses.
+   */
+  invite?: string;
 }
 
 const STORAGE_KEY = 'murmer_servers';

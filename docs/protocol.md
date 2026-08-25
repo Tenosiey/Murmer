@@ -63,6 +63,24 @@ marks the frame types that need the check at all, and `can_view_channel`
 decides per connection. Channel-list senders are viewer-aware for the same
 reason. See [`permissions.md`](permissions.md).
 
+Resolving that answer is not cheap — it locks `channel_overrides`,
+`role_defs`, `user_roles` and `user_keys` and re-applies the override set —
+and it was being redone for every recipient of every channel-scoped frame,
+so each connection memoises its own answers in a `VisibilityCache`
+(`ws/helpers.rs`).
+
+The memo is only as safe as its invalidation, and a stale one is invisible:
+frames a demoted member should no longer receive simply keep arriving until
+the connection drops. So `AppState::visibility_epoch` is bumped inside the
+three broadcasts that announce a change to the inputs —
+`broadcast_channels_refresh`, `broadcast_role_definitions` and
+`broadcast_user_roles` — plus `cleanup_channel`, which deletes a channel's
+overrides while announcing only `channel-remove`. Keeping the bump next to
+the broadcast is the point: a future mutation that reaches clients cannot
+skip the invalidation without also failing to tell them. A connection that
+changes account (anonymous → named) drops its memo too, since the two
+resolve differently and nothing is broadcast for it.
+
 ## Inbound validation
 
 Three checks matter, in `ws/helpers.rs` and `ws/handlers/mod.rs`:
