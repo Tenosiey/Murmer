@@ -49,6 +49,7 @@ async fn make_state() -> Arc<AppState> {
         chat_settings: Arc::new(Mutex::new(murmer_server::db::ChatSettings::default())),
         automod: Arc::new(Mutex::new(murmer_server::automod::RuleSet::default())),
         slow_mode_sends: Arc::new(Mutex::new(HashMap::new())),
+        visibility_epoch: std::sync::atomic::AtomicU64::new(0),
     })
 }
 

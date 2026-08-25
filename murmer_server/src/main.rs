@@ -166,6 +166,7 @@ async fn main() -> Result<()> {
         chat_settings: Arc::new(Mutex::new(chat_settings)),
         automod: Arc::new(Mutex::new(automod::RuleSet::compile(automod_rules))),
         slow_mode_sends: Arc::new(Mutex::new(HashMap::new())),
+        visibility_epoch: std::sync::atomic::AtomicU64::new(0),
     });
 
     // Ephemeral deletion timers only live in memory; re-arm any that were
