@@ -121,6 +121,16 @@ export const PIN_PREVIEW_LIMIT = 120;
 export const MIN_EPHEMERAL_SECONDS = 5;
 export const MAX_EPHEMERAL_SECONDS = 86_400;
 
+/* Reminder and scheduling bounds, mirrored from
+   `murmer_server/src/ws/constants.rs`. The server refuses a time outside them
+   outright rather than clamping — "when" is the whole request — so these exist
+   to keep the picker from offering a time that would only bounce back. */
+export const MIN_SCHEDULE_LEAD_SECONDS = 30;
+export const MAX_SCHEDULE_AHEAD_SECONDS = 365 * 24 * 60 * 60;
+export const MAX_SCHEDULED_MESSAGES_PER_USER = 25;
+export const MAX_REMINDERS_PER_USER = 50;
+export const MAX_REMINDER_TEXT_LENGTH = 500;
+
 export const VOICE_QUALITY_PRESETS: Array<{
   quality: string;
   bitrate: number | null;
@@ -188,6 +198,23 @@ export const HELP_COMMANDS: Array<{
   {
     usage: '/search [query]',
     description: 'Open the search overlay and optionally pre-fill it with a query.'
+  },
+  {
+    usage: '/remind <when> <note>',
+    description:
+      'Set a private reminder. “When” is a duration such as 90s, 15m, 2h or 3d, ' +
+      'or a clock time like 17:30.',
+    aliases: ['/remindme <when> <note>']
+  },
+  {
+    usage: '/schedule <when> <message>',
+    description:
+      'Post a message to this channel later. Same “when” as /remind; the queue ' +
+      'is in the Reminders panel.'
+  },
+  {
+    usage: '/reminders',
+    description: 'Open the panel listing your reminders and scheduled messages.'
   }
 ];
 

@@ -45,11 +45,19 @@
   import { categories } from '$lib/stores/categories';
   import type { CategoryInfo, ChannelInfo, ContextMenuItem, ForwardInfo } from '$lib/types';
   import { forwardOptions, forwardedDmText, parseForwardTarget } from '$lib/chat/forward';
+  import {
+    parseWhen,
+    splitWhen,
+    scheduleBoundsError,
+    reminderTextError,
+    describeWhen
+  } from '$lib/chat/schedule';
   import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
   import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
   import { pinned } from '$lib/stores/pins';
   import type { PinnedEntry } from '$lib/stores/pins';
+  import { scheduledAttention } from '$lib/stores/scheduled';
   import { typing } from '$lib/stores/typing';
   import { unread } from '$lib/stores/unread';
   import { threadData } from '$lib/stores/thread';
@@ -115,11 +123,13 @@
     VOICE_QUALITY_PRESETS,
     DEFAULT_VOICE_PRESET,
     DEFAULT_CHANNEL_NAME,
-    MAX_NICKNAME_LENGTH
+    MAX_NICKNAME_LENGTH,
+    MAX_REMINDER_TEXT_LENGTH
   } from '$lib/chat/constants';
   import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
   import ChannelPermissionsModal from '$lib/components/ChannelPermissionsModal.svelte';
   import UserStatsModal from '$lib/components/UserStatsModal.svelte';
+  import SchedulePanel from '$lib/components/SchedulePanel.svelte';
   import UserProfileModal from '$lib/components/UserProfileModal.svelte';
   import WikiView from '$lib/components/wiki/WikiView.svelte';
   import { wikilinks } from '$lib/wiki/links';
@@ -152,6 +162,8 @@
 
   let helpOpen = $state(false);
   let helpOverlay: HelpOverlay | undefined = $state();
+
+  let remindersOpen = $state(false);
 
   let now = $state(Date.now());
   let expiryTicker: number | null = null;
@@ -194,6 +206,80 @@
 
   function closeHelp() {
     helpOpen = false;
+  }
+
+  function openReminders() {
+    clearCommandFeedback();
+    remindersOpen = true;
+  }
+
+  function closeReminders() {
+    remindersOpen = false;
+  }
+
+  /**
+   * Ask for a "when" and a note, then set a reminder anchored to a message.
+   *
+   * The note is never pre-filled from the message: in an encrypted channel the
+   * server would then be holding a plaintext copy of something it is not
+   * supposed to be able to read, and a rule that only sometimes applies is a
+   * rule somebody eventually forgets. What the user types is what is stored.
+   */
+  async function remindAboutMessage(msg: Message) {
+    const messageId = typeof msg.id === 'number' ? msg.id : undefined;
+    const when = await dialogs.prompt({
+      title: 'Remind me about this',
+      label: 'When',
+      placeholder: '15m, 2h, 3d, or 17:30',
+      initial: '1h'
+    });
+    if (when === null) return;
+    const preview = parseWhen(when);
+    if (!preview) {
+      void dialogs.alert({
+        title: 'Remind me about this',
+        message: `“${when}” is not a time. Try 15m, 2h, 3d or 17:30.`
+      });
+      return;
+    }
+    const previewBounds = scheduleBoundsError(preview);
+    if (previewBounds) {
+      void dialogs.alert({ title: 'Remind me about this', message: previewBounds });
+      return;
+    }
+    const note = await dialogs.prompt({
+      title: `Reminder ${describeWhen(preview.toISOString())}`,
+      label: 'Note',
+      maxLength: MAX_REMINDER_TEXT_LENGTH,
+      placeholder: 'What is this about?'
+    });
+    if (note === null) return;
+    const invalid = reminderTextError(note);
+    if (invalid) {
+      void dialogs.alert({ title: 'Remind me about this', message: invalid });
+      return;
+    }
+    // Re-read the "when" now rather than reusing what it meant two dialogs
+    // ago. A "45s" typed while the note prompt was still open would otherwise
+    // be sent as a time already in the past, and the server would answer with
+    // a message about bounds rather than about anything the user did. Both
+    // readings are what was meant: a duration counts from finishing, an
+    // absolute time is the same instant either way.
+    const at = parseWhen(when);
+    const bounds = at ? scheduleBoundsError(at) : 'That is not a time.';
+    if (!at || bounds) {
+      void dialogs.alert({ title: 'Remind me about this', message: bounds ?? '' });
+      return;
+    }
+    chat.setReminder(note.trim(), at.toISOString(), messageId);
+    setCommandFeedback(`Reminder set for ${describeWhen(at.toISOString())}.`);
+  }
+
+  /** Jump to the message a reminder was set on, switching channels if needed. */
+  function openReminderTarget(channelId: number, messageId: number) {
+    if (!$channels.some((channel) => channel.id === channelId)) return;
+    joinChannel(channelId);
+    focusMessage(messageId);
   }
 
   function setPendingFile(file: File | null) {
@@ -853,6 +939,69 @@
         if (rest) {
           tick().then(() => searchOverlay?.triggerSearch());
         }
+        return true;
+      }
+      case 'reminders': {
+        openReminders();
+        return true;
+      }
+      case 'remind':
+      case 'remindme': {
+        const { when, text } = splitWhen(rest);
+        if (!when || !text) {
+          setCommandFeedback('Usage: /remind <when> <note> — e.g. /remind 15m stretch', 'error');
+          return true;
+        }
+        const at = parseWhen(when);
+        if (!at) {
+          setCommandFeedback(`“${when}” is not a time. Try 15m, 2h, 3d or 17:30.`, 'error');
+          return true;
+        }
+        const bounds = scheduleBoundsError(at);
+        if (bounds) {
+          setCommandFeedback(bounds, 'error');
+          return true;
+        }
+        const invalid = reminderTextError(text);
+        if (invalid) {
+          setCommandFeedback(invalid, 'error');
+          return true;
+        }
+        chat.setReminder(text, at.toISOString());
+        setCommandFeedback(`Reminder set for ${describeWhen(at.toISOString())}.`);
+        return true;
+      }
+      case 'schedule': {
+        const { when, text } = splitWhen(rest);
+        if (!when || !text) {
+          setCommandFeedback(
+            'Usage: /schedule <when> <message> — e.g. /schedule 2h notes are up',
+            'error'
+          );
+          return true;
+        }
+        const at = parseWhen(when);
+        if (!at) {
+          setCommandFeedback(`“${when}” is not a time. Try 15m, 2h, 3d or 17:30.`, 'error');
+          return true;
+        }
+        const bounds = scheduleBoundsError(at);
+        if (bounds) {
+          setCommandFeedback(bounds, 'error');
+          return true;
+        }
+        // Sealed here for an encrypted channel, which is why this goes through
+        // the chat store rather than a raw frame.
+        const scheduleError = chat.scheduleMessage(
+          currentChatChannelId,
+          text,
+          at.toISOString()
+        );
+        if (scheduleError) {
+          setCommandFeedback(scheduleError, 'error');
+          return true;
+        }
+        setCommandFeedback(`Message queued for ${describeWhen(at.toISOString())}.`);
         return true;
       }
       default: {
@@ -2099,6 +2248,8 @@
         {statusMap}
         onEditTopic={editTopic}
         onOpenSearch={() => openSearch()}
+        onOpenReminders={openReminders}
+        reminderAttention={$scheduledAttention}
         onOpenSettings={openSettings}
         {wikiOpen}
         onToggleWiki={toggleWiki}
@@ -2122,6 +2273,11 @@
         channelName={channelPermsName}
       />
       <UserStatsModal open={statsUser !== null} user={statsUser} close={closeUserStats} />
+      <SchedulePanel
+        open={remindersOpen}
+        close={closeReminders}
+        onOpenMessage={openReminderTarget}
+      />
       <UserProfileModal
         open={profileUser !== null}
         user={profileUser}
@@ -2198,6 +2354,7 @@
                 onFocusForwarded={focusForwardedSource}
                 onReply={startReply}
                 onForward={forwardMessage}
+                onRemind={remindAboutMessage}
                 onEdit={editChatMessage}
                 onTogglePin={togglePinMessage}
                 onDelete={deleteChatMessage}

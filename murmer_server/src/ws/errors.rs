@@ -545,3 +545,30 @@ pub const AUDIT_LOG_PERMISSION_DENIED: &str =
 
 /// Failed to load the audit log.
 pub const AUDIT_LOG_FAILED: &str = r#"{"type":"error","message":"audit-log-failed"}"#;
+
+/// A reminder or scheduled message named a time that is unparseable, already
+/// past, inside the minimum lead time or beyond the maximum horizon.
+pub const INVALID_SCHEDULE_TIME: &str = r#"{"type":"error","message":"invalid-schedule-time"}"#;
+
+/// The user already holds the maximum number of scheduled messages.
+pub const SCHEDULE_LIMIT_REACHED: &str = r#"{"type":"error","message":"schedule-limit-reached"}"#;
+
+/// The named scheduled message does not exist, or belongs to somebody else.
+/// One code for both, so probing ids cannot tell the two apart.
+pub const SCHEDULED_MESSAGE_NOT_FOUND: &str =
+    r#"{"type":"error","message":"scheduled-message-not-found"}"#;
+
+/// Failed to persist or load a scheduled message.
+pub const SCHEDULE_FAILED: &str = r#"{"type":"error","message":"schedule-failed"}"#;
+
+/// A reminder carried no note, or one longer than the limit.
+pub const INVALID_REMINDER: &str = r#"{"type":"error","message":"invalid-reminder"}"#;
+
+/// The user already holds the maximum number of reminders.
+pub const REMINDER_LIMIT_REACHED: &str = r#"{"type":"error","message":"reminder-limit-reached"}"#;
+
+/// The named reminder does not exist, or belongs to somebody else.
+pub const REMINDER_NOT_FOUND: &str = r#"{"type":"error","message":"reminder-not-found"}"#;
+
+/// Failed to persist or load a reminder.
+pub const REMINDER_FAILED: &str = r#"{"type":"error","message":"reminder-failed"}"#;

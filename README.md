@@ -56,7 +56,13 @@ small team can deploy a private chat space quickly.
   numbers only — no IPs or device details, kept in memory and dropped on
   disconnect)
 - Slash commands (`/help`, `/me`, `/shrug`, `/topic`, `/status`,
-  `/ephemeral`, `/search`)
+  `/ephemeral`, `/search`, `/remind`, `/schedule`, `/reminders`)
+- Reminders and scheduled messages: `/remind 15m stretch` (or "Remind me about
+  this" on any message) sets a private note the server hands back at the time
+  you asked for, even if you were offline when it came due; `/schedule 2h …`
+  queues a message to post into the channel later. Both live in the Reminders
+  panel in the channel header, and a scheduled message for an end-to-end
+  encrypted channel is sealed before it is queued
 - Link previews with server-side OpenGraph fetching (client IPs stay hidden from linked sites)
 - Configurable input volume, noise suppression, echo cancellation and automatic
   gain control, with a live input level meter and a record-and-play-back

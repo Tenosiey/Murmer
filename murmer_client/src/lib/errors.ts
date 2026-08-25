@@ -178,7 +178,18 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'wiki-page-not-found': 'That wiki page no longer exists.',
   'wiki-revision-not-found': 'That revision is no longer stored.',
   'wiki-page-limit-reached': 'This channel has reached its wiki page limit.',
-  'wiki-save-failed': 'The server could not update the wiki. Please try again.'
+  'wiki-save-failed': 'The server could not update the wiki. Please try again.',
+  'invalid-schedule-time':
+    'Pick a time between 30 seconds and a year from now.',
+  'schedule-limit-reached':
+    'You already have the maximum number of scheduled messages. Cancel one first.',
+  'scheduled-message-not-found': 'That scheduled message no longer exists.',
+  'schedule-failed': 'The server could not schedule that message. Please try again.',
+  'invalid-reminder': 'A reminder needs a note of up to 500 characters.',
+  'reminder-limit-reached':
+    'You already have the maximum number of reminders. Dismiss one first.',
+  'reminder-not-found': 'That reminder no longer exists.',
+  'reminder-failed': 'The server could not save that reminder. Please try again.'
 };
 
 /**

@@ -275,20 +275,18 @@ pub(super) async fn handle_search_history(
     }
 }
 
-/// Handle chat message: persist, broadcast, and schedule ephemeral deletion.
-#[tracing::instrument(skip(state, sender, v), fields(channel_id = %channel_id, user = ?user_name))]
-pub(super) async fn handle_chat(
+/// Whether `user` may put a message into `channel_id` at all: the channel's
+/// rules, the message rate limit and the mute list. Replies to the client with
+/// the reason and returns `false` when they may not.
+///
+/// Shared with [`super::scheduled`], so writing a message for later clears
+/// exactly the gate that writing one now does.
+pub(super) async fn authorize_send(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
-    v: &mut Value,
     channel_id: i32,
-    user_name: &Option<String>,
-) {
-    let user = match user_name {
-        Some(u) => u,
-        None => return,
-    };
-
+    user: &str,
+) -> bool {
     // Sending requires seeing the channel and holding SEND_MESSAGES within it
     // (per-channel overrides included). Enforced server-side so a client whose
     // permission was revoked cannot post by ignoring the disabled composer.
@@ -303,27 +301,40 @@ pub(super) async fn handle_chat(
         .await
     {
         send_error(sender, errors::SEND_PERMISSION_DENIED).await;
-        return;
+        return false;
     }
 
     if !security::check_message_rate_limit(&state.rate_limiter, user).await {
         send_error(sender, errors::MESSAGE_RATE_LIMIT).await;
-        return;
+        return false;
     }
 
     if super::moderation::is_muted(state, user).await {
         send_error(sender, errors::MUTED).await;
-        return;
+        return false;
     }
 
-    // Slow mode is checked before anything is written, and only recorded once
-    // the message is actually on its way (see the end of this function), so a
-    // rejected message never costs the sender their turn.
-    if !super::chat_settings::slow_mode_allows(state, user).await {
-        send_error(sender, errors::SLOW_MODE).await;
-        return;
-    }
+    true
+}
 
+/// Turn a client `chat` frame into the body the server stores: the encryption
+/// shape the channel demands, auto-moderation, the profanity mask, the stamped
+/// author and channel, and the reply rebuilt from the message it quotes.
+/// Returns the message's timestamp, or `Err(())` once the client has been told
+/// why the frame was refused.
+///
+/// Everything here is *content* policy, which is why [`super::scheduled`]
+/// applies it at compose time: the author is present to hear the refusal, and
+/// a message that would be blocked should not sit in a queue for a week first.
+/// The caller is still responsible for authorization —
+/// [`authorize_send`] — and for anything about *when* the message is posted.
+pub(super) async fn prepare_chat_body(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &mut Value,
+    channel_id: i32,
+    user: &str,
+) -> Result<DateTime<Utc>, ()> {
     // An encrypted channel takes sealed envelopes and nothing else; a
     // plaintext one takes plaintext and no `enc`. Deciding this from the
     // channel's stored flag rather than from the frame is what keeps a client
@@ -336,13 +347,13 @@ pub(super) async fn handle_chat(
             .any(|field| v.get(field).is_some_and(|value| !value.is_null()))
         {
             send_error(sender, errors::CHANNEL_REQUIRES_ENCRYPTION).await;
-            return;
+            return Err(());
         }
         match sealed_message(v, max_length) {
             Ok(enc) => v["enc"] = enc,
             Err(code) => {
                 send_error(sender, code).await;
-                return;
+                return Err(());
             }
         }
     } else {
@@ -350,7 +361,7 @@ pub(super) async fn handle_chat(
             && text.len() > max_length
         {
             send_error(sender, errors::MESSAGE_TOO_LONG).await;
-            return;
+            return Err(());
         }
         if let Some(map) = v.as_object_mut() {
             map.remove("enc");
@@ -366,7 +377,7 @@ pub(super) async fn handle_chat(
         && super::automod::screen(state, sender, user, text).await
             == super::automod::Screen::Blocked
     {
-        return;
+        return Err(());
     }
 
     // Masking happens before the message is stored or broadcast, so the
@@ -375,7 +386,7 @@ pub(super) async fn handle_chat(
     // which is a limit of the profanity filter rather than a way around it.
     super::chat_settings::apply_profanity_filter(state, v).await;
 
-    v["user"] = Value::String(user.clone());
+    v["user"] = Value::String(user.to_string());
     v["channelId"] = Value::from(channel_id);
     if let Some(map) = v.as_object_mut() {
         map.remove("channel");
@@ -436,13 +447,46 @@ pub(super) async fn handle_chat(
             }
             Ok(_) => {
                 send_error(sender, errors::REPLY_TARGET_NOT_FOUND).await;
-                return;
+                return Err(());
             }
             Err(error) => {
                 error!("failed to load reply target {target_id}: {error}");
             }
         }
     }
+
+    Ok(timestamp)
+}
+
+/// Handle chat message: persist, broadcast, and schedule ephemeral deletion.
+#[tracing::instrument(skip(state, sender, v), fields(channel_id = %channel_id, user = ?user_name))]
+pub(super) async fn handle_chat(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &mut Value,
+    channel_id: i32,
+    user_name: &Option<String>,
+) {
+    let user = match user_name {
+        Some(u) => u,
+        None => return,
+    };
+
+    if !authorize_send(state, sender, channel_id, user).await {
+        return;
+    }
+
+    // Slow mode is checked before anything is written, and only recorded once
+    // the message is actually on its way (in `publish_message`), so a rejected
+    // message never costs the sender their turn.
+    if !super::chat_settings::slow_mode_allows(state, user).await {
+        send_error(sender, errors::SLOW_MODE).await;
+        return;
+    }
+
+    let Ok(timestamp) = prepare_chat_body(state, sender, v, channel_id, user).await else {
+        return;
+    };
 
     let mut ephemeral_expiry: Option<DateTime<Utc>> = None;
     if let Some(raw_expiry) = v.get("expiresAt").and_then(|value| value.as_str()) {
@@ -478,7 +522,7 @@ pub(super) async fn handle_chat(
 /// message by the time the frame is built, and both have to land on every one
 /// of these steps — a copy that skipped the notify would simply never raise
 /// anyone's unread badge.
-async fn publish_message(
+pub(super) async fn publish_message(
     state: &Arc<AppState>,
     v: &mut Value,
     channel_id: i32,

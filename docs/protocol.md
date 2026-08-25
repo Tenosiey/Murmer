@@ -12,8 +12,8 @@ Every frame is a JSON object with a `type` field naming it. The dispatch loop
 lives in `murmer_server/src/ws/handlers/mod.rs` and routes on that field to a
 handler in `ws/handlers/`, split by domain — auth, messages, channels,
 channel overrides, channel keys, chat settings, DMs, emojis, identity,
-maintenance, moderation, pins, profile, screenshare, soundboard, stats,
-uploads, voice defaults and wiki.
+maintenance, moderation, pins, profile, scheduled messages and reminders,
+screenshare, soundboard, stats, uploads, voice defaults and wiki.
 
 On the client, `stores/chat.ts` owns the `WebSocketManager`. Handlers
 register with `chat.on(type, cb)` and must be cleaned up with `chat.off`.
@@ -28,6 +28,12 @@ is the first decision when adding a frame.
 | Server-wide broadcast | `AppState.tx` | Events every connected client needs: profile updates, role changes, emoji edits. |
 | Channel-scoped broadcast | the per-channel sender | Anything that belongs to one channel: messages, reactions, pins, `screenshare-start`/`-stop`, `webcam-start`/`-stop`, `soundboard-play`. |
 | Direct | `AppState.direct` | Anything addressed to a single user. |
+
+Frames that concern one account and nobody else take the direct route even
+when nothing about them is secret: the ban list, the storage report, and the
+`scheduled-messages`/`reminders`/`reminder-due` frames. A broadcast would cost
+every connected client a socket write and a parse for a list that is not
+theirs, and — for the queues — would hand them somebody else's.
 
 `AppState.direct` is a registry of per-connection mailboxes keyed by user
 name, then by a unique connection id, so one account signed in twice keeps

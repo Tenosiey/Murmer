@@ -23,6 +23,7 @@
 //! - [`pins`] – persisted message pins per channel
 //! - [`reactions`] – emoji reaction operations
 //! - [`roles`] – user role persistence
+//! - [`scheduled`] – reminders and scheduled messages
 //! - [`screenshare`] – server-wide screen share bitrate cap
 //! - [`soundboard`] – the server's shared soundboard sound library
 //! - [`stats`] – lifetime user statistics (double opt-in gated)
@@ -46,6 +47,7 @@ mod moderation;
 mod pins;
 mod reactions;
 mod roles;
+mod scheduled;
 mod screenshare;
 mod soundboard;
 mod stats;
@@ -69,6 +71,7 @@ pub use moderation::*;
 pub use pins::*;
 pub use reactions::*;
 pub use roles::*;
+pub use scheduled::*;
 pub use screenshare::*;
 pub use soundboard::*;
 pub use stats::*;
@@ -345,6 +348,9 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         conn.execute_batch(&automod::automod_schema())?;
         conn.execute_batch(&wiki::wiki_schema())?;
         conn.execute_batch(&soundboard::soundboard_schema())?;
+        // Depends on `channels`, created above: a scheduled message references
+        // the channel it is bound for.
+        conn.execute_batch(&scheduled::scheduled_schema())?;
 
         // Seed built-in roles and migrate any legacy single-role assignments
         // into role_definitions/user_roles. Runs once (marker-guarded); depends

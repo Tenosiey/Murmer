@@ -126,7 +126,6 @@ not a description of the fix.
 - [ ] Outbound webhooks. The bot REST API covers "something else drives
       Murmer"; there is no way round for Murmer to notify something else when
       a message arrives
-- [ ] Reminders and scheduled messages
 - [ ] Saved messages — a personal bookmark list, separate from the
       server-wide pins
 - [ ] Text-to-speech
