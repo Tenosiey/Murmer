@@ -1593,7 +1593,7 @@
       setScrollTop(messagesContainer.scrollHeight);
     }
   }
-  let lastLength = 0;
+  let lastNewestId: number | null = null;
   let loadingHistory = $state(false);
   let prevHeight = 0;
   let programmaticScroll = false;
@@ -1660,7 +1660,9 @@
   chat.on('message-deleted', handleMessageDeleted);
 
   /* Post-render scroll maintenance: honour a pending scroll-to-message and
-     stick to the bottom when new messages arrive in the current channel. */
+     stick to the bottom when new messages arrive in the current channel.
+     Keyed on the newest message, not the count: the store caps the list, so
+     once it is full a new message leaves the count unchanged. */
   $effect(() => {
     const handledPending =
       pendingScrollToMessage !== null && highlightMessageById(pendingScrollToMessage);
@@ -1668,9 +1670,9 @@
       pendingScrollToMessage = null;
     }
     if (messagesContainer) {
-      const filteredLength = $chat.filter((m) => m.channelId === currentChatChannelId).length;
-      if (filteredLength !== lastLength) {
-        lastLength = filteredLength;
+      const newest = channelMessages.at(-1)?.id ?? null;
+      if (newest !== lastNewestId) {
+        lastNewestId = newest;
         if (!loadingHistory && !handledPending) {
           setScrollTop(messagesContainer.scrollHeight);
         }
