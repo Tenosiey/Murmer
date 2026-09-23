@@ -16,7 +16,10 @@ maintenance, moderation, pins, profile, scheduled messages and reminders,
 screenshare, soundboard, stats, uploads, voice defaults and wiki.
 
 On the client, `stores/chat.ts` owns the `WebSocketManager`. Handlers
-register with `chat.on(type, cb)` and must be cleaned up with `chat.off`.
+register with `chat.on(type, cb)` and must be cleaned up with
+`chat.off(type, cb)`, passing the same callback. There is deliberately no
+"remove every handler of a type": the stores and the call managers listen to
+some of the same frames, and one tearing down must not silence the other.
 
 ## The three routes out
 
@@ -37,7 +40,9 @@ theirs, and — for the queues — would hand them somebody else's.
 
 `AppState.direct` is a registry of per-connection mailboxes keyed by user
 name, then by a unique connection id, so one account signed in twice keeps
-both sessions. Mailboxes are bounded (`DIRECT_MAILBOX_CAPACITY`) and **drop
+both sessions. The same split decides cleanup on disconnect: presence
+belongs to the account and ends with its last connection, while a voice
+session belongs to the connection that joined it. Mailboxes are bounded (`DIRECT_MAILBOX_CAPACITY`) and **drop
 rather than block**, mirroring what the broadcast channels already do to a
 receiver that falls behind.
 
@@ -49,8 +54,9 @@ therefore load-bearing: a signaling frame without one is dropped and its
 session never connects.
 
 `screenshare-start` and `-stop` stay on the channel broadcast, because they
-announce to a channel rather than to one peer. `webcam-start` and `-stop` do
-the same, and are the *only* frames a camera needs: camera video travels on
+announce to a channel rather than to one peer. A start must name the voice
+channel the connection is in; otherwise anyone could post a share into any
+channel. `webcam-start` and `-stop` do the same, and are the *only* frames a camera needs: camera video travels on
 the voice peer connections rather than a mesh of its own, so it has no
 signaling of its own to relay. See [`voice.md`](voice.md).
 

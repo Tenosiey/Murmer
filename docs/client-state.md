@@ -19,7 +19,8 @@ component.
 ## The connection
 
 `stores/chat.ts` owns the `WebSocketManager`. Register frame handlers with
-`chat.on(type, cb)` and clean them up with `chat.off`.
+`chat.on(type, cb)` and clean them up with `chat.off(type, cb)` — see
+[`protocol.md`](protocol.md) for why the callback is required.
 
 Leaf modules that need to *send* — `channelKeys.ts` is the example — get
 their transport injected (`setTransport`) rather than importing `chat` back.
