@@ -51,12 +51,6 @@ not a description of the fix.
       per-channel "delete messages older than N days", cascading through
       reactions, pins and the FTS index, is the counterpart to the upload
       sweep above
-- [ ] Serve `/files` as inert content. Uploads come back from the app's own
-      origin with no `Content-Disposition` and no sandbox policy, which leaves
-      the extension safe-list as the only thing between an upload and script
-      execution in that origin. `Content-Disposition: attachment` plus a
-      `sandbox` CSP on the route makes the safe-list defence in depth rather
-      than the whole defence
 - [ ] Split the three files that have outgrown being read end to end:
       `routes/chat/+page.svelte` (2.4k lines), `ServerDashboardModal.svelte`
       (2.3k) and `SettingsModal.svelte` (1.6k). "Keep it simple" cuts both

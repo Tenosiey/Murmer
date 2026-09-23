@@ -21,15 +21,22 @@
 //! are server-wide settings managed from the Server Dashboard and persisted by
 //! [`crate::db::upload_config`]; the extension safe-list itself is fixed in
 //! code, so no setting can ever admit active content.
+//!
+//! [`files_router`] serves the stored files back. The safe-list is the first
+//! defence there, not the only one: every response carries a `sandbox` CSP,
+//! so even a file that somehow rendered as a document would get an opaque
+//! origin and no scripts, and anything but images, audio and video is sent as
+//! a download rather than displayed.
 
 use axum::{
-    Json,
+    Json, Router,
     extract::{ConnectInfo, Multipart, State, multipart::Field},
-    http::StatusCode,
+    http::{HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use sanitize_filename::sanitize;
 use std::{net::SocketAddr, sync::Arc};
+use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 use tracing::{error, info, warn};
 
 use crate::{AppState, db, security};
@@ -433,4 +440,40 @@ pub async fn upload(
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
+}
+
+/// `Content-Disposition` for a stored file: media the client embeds stays
+/// inline, everything else downloads.
+///
+/// The client already marks attachments `download`, but browsers ignore that
+/// attribute across origins — and the desktop app is always on another origin
+/// than the server — so without this header a text file or PDF opens in the
+/// server's own origin instead of saving.
+fn disposition<B>(response: &Response<B>) -> Option<HeaderValue> {
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)?
+        .to_str()
+        .ok()?;
+    let media = ["image/", "audio/", "video/"]
+        .iter()
+        .any(|prefix| content_type.starts_with(prefix));
+    (!media).then(|| HeaderValue::from_static("attachment"))
+}
+
+/// The `/files` service: uploads served back as inert content.
+pub fn files_router(dir: &std::path::Path) -> Router {
+    let files = ServeDir::new(dir).append_index_html_on_directories(false);
+    Router::new().fallback_service(
+        tower::ServiceBuilder::new()
+            .layer(SetResponseHeaderLayer::overriding(
+                header::CONTENT_SECURITY_POLICY,
+                HeaderValue::from_static("sandbox"),
+            ))
+            .layer(SetResponseHeaderLayer::overriding(
+                header::CONTENT_DISPOSITION,
+                disposition,
+            ))
+            .service(files),
+    )
 }

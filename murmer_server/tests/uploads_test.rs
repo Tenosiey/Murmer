@@ -1,10 +1,11 @@
 //! Tests for the server-wide upload policy: defaults, persistence and the
-//! fixed extension safe-list that no setting may widen.
+//! fixed extension safe-list that no setting may widen — plus the headers
+//! `/files` serves uploads back with.
 
 use murmer_server::db::{self, UploadConfig};
 use murmer_server::upload::{
     DEFAULT_MAX_FILE_SIZE, UPLOAD_CATEGORIES, classify_extension, default_category_ids,
-    is_known_category,
+    files_router, is_known_category,
 };
 
 async fn setup() -> db::Db {
@@ -106,4 +107,55 @@ async fn every_category_id_is_unique_and_known() {
     ids.sort();
     ids.dedup();
     assert_eq!(ids.len(), total, "category ids must be unique");
+}
+
+/// Fetch `/<name>` from a `/files` router over `dir` and return the CSP and
+/// `Content-Disposition` it answered with.
+async fn served_headers(dir: &std::path::Path, name: &str) -> (Option<String>, Option<String>) {
+    use axum::{body::Body, http::Request};
+    use tower::ServiceExt;
+
+    let response = files_router(dir)
+        .oneshot(
+            Request::get(format!("/{name}"))
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert!(response.status().is_success(), "{name} was not served");
+    let header = |key| {
+        response
+            .headers()
+            .get(key)
+            .map(|v: &axum::http::HeaderValue| v.to_str().expect("ascii").to_string())
+    };
+    (
+        header(axum::http::header::CONTENT_SECURITY_POLICY),
+        header(axum::http::header::CONTENT_DISPOSITION),
+    )
+}
+
+#[tokio::test]
+async fn files_are_sandboxed_and_only_media_is_served_inline() {
+    let dir = std::env::temp_dir().join(format!("murmer-files-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("create dir");
+    for name in ["cat.png", "horn.mp3", "clip.mp4", "notes.txt", "report.pdf"] {
+        std::fs::write(dir.join(name), b"x").expect("write");
+    }
+
+    // Media stays inline: the client embeds it, and a sandbox does not stop
+    // an <img> or <audio> element from loading it.
+    for name in ["cat.png", "horn.mp3", "clip.mp4"] {
+        let (csp, disposition) = served_headers(&dir, name).await;
+        assert_eq!(csp.as_deref(), Some("sandbox"), "{name}");
+        assert_eq!(disposition, None, "{name}");
+    }
+    // Everything else downloads instead of rendering in the server's origin.
+    for name in ["notes.txt", "report.pdf"] {
+        let (csp, disposition) = served_headers(&dir, name).await;
+        assert_eq!(csp.as_deref(), Some("sandbox"), "{name}");
+        assert_eq!(disposition.as_deref(), Some("attachment"), "{name}");
+    }
+    std::fs::remove_dir_all(&dir).ok();
 }

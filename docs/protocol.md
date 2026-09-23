@@ -115,7 +115,7 @@ a 24-byte nonce, a bounded size. The server never sees inside them. See
 | Endpoint | Module | Auth |
 | --- | --- | --- |
 | `/upload` | `upload.rs` | Ed25519 proof over `upload:<timestamp>` as multipart fields ahead of the file, plus per-IP rate limit |
-| `/files/<key>` | `main.rs` | none (unguessable key) |
+| `/files/<key>` | `upload.rs` | none (unguessable key) |
 | `/link-preview` | `link_preview.rs` | none |
 | `/role` | `admin.rs` | `ADMIN_TOKEN` bearer, constant-time compared |
 | `/api/…` | `bot/` | bot token — [`../murmer_server/BOT_API.md`](../murmer_server/BOT_API.md) |

@@ -179,10 +179,7 @@ async fn main() -> Result<()> {
         .route("/link-preview", get(link_preview::link_preview))
         .route("/role", post(admin::set_role))
         .merge(bot::routes::router())
-        .nest_service(
-            "/files",
-            ServeDir::new(&config.upload_dir).append_index_html_on_directories(false),
-        )
+        .nest_service("/files", upload::files_router(&config.upload_dir))
         .with_state(state);
 
     // Everything the API does not claim: the web client when one is
