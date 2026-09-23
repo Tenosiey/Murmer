@@ -14,13 +14,6 @@ export const STATUS_LABELS: Record<UserStatus, string> = {
   offline: 'Offline'
 };
 
-export const STATUS_EMOJIS: Record<UserStatus, string> = {
-  online: '🟢',
-  away: '🌙',
-  busy: '⛔',
-  offline: '⚫'
-};
-
 function normalizeStatus(value: unknown): UserStatus | null {
   if (typeof value !== 'string') return null;
   const lowered = value.toLowerCase() as UserStatus;

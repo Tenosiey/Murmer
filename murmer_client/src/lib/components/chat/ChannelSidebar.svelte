@@ -19,7 +19,7 @@
   import { roles } from '$lib/stores/roles';
   import { displayNames } from '$lib/stores/profiles';
   import { leftSidebarWidth } from '$lib/stores/layout';
-  import { microphoneMuted, outputMuted, voiceMode, voiceActivity, isPttActive } from '$lib/stores/settings';
+  import { microphoneMuted, outputMuted, voiceMode, isPttActive } from '$lib/stores/settings';
   import { canSpeak } from '$lib/stores/voicePermissions';
   import { speakingUsers } from '$lib/stores/voiceSpeaking';
   import { voiceMuteStates } from '$lib/stores/voiceMute';

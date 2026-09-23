@@ -303,11 +303,6 @@ export class ScreenShareManager {
     this.emit(this.getPeersList());
   }
 
-  updateSettings(settings: Partial<ScreenShareSettings>): void {
-    this.settings = { ...this.settings, ...settings };
-    this.applyBitrateLimit();
-  }
-
   /** Update the server-enforced bitrate cap and re-apply it to live senders. */
   setServerMaxBitrate(limit: number | null): void {
     this.serverMaxBitrate = limit;
@@ -638,10 +633,6 @@ export class ScreenShareManager {
 
   isSharing(): boolean {
     return this.localStream !== null;
-  }
-
-  getSettings(): ScreenShareSettings {
-    return { ...this.settings };
   }
 
   destroy(): void {

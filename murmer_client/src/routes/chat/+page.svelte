@@ -6,12 +6,12 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
   import { chat } from '$lib/stores/chat';
-  import { roles, userRoleIds } from '$lib/stores/roles';
+  import { userRoleIds } from '$lib/stores/roles';
   import { roleDefinitions } from '$lib/stores/roleDefinitions';
   import { channelOverrides } from '$lib/stores/channelOverrides';
   import { canSpeak, resetVoicePermissions } from '$lib/stores/voicePermissions';
   import { can, myTopPosition, myPermissions } from '$lib/stores/permissions';
-  import { PERMISSIONS, hasPermission, computeTopPosition } from '$lib/chat/permissions';
+  import { PERMISSIONS, computeTopPosition } from '$lib/chat/permissions';
   import { session } from '$lib/stores/session';
   import { uploadForm, uploadErrorMessage } from '$lib/upload';
   import { displayNames, profiles } from '$lib/stores/profiles';
@@ -26,7 +26,6 @@
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
-  import LinkPreview from '$lib/components/LinkPreview.svelte';
   import ContextMenu from '$lib/components/ContextMenu.svelte';
   import SearchOverlay from '$lib/components/SearchOverlay.svelte';
   import HelpOverlay from '$lib/components/HelpOverlay.svelte';
@@ -56,7 +55,6 @@
   import { channelTopics } from '$lib/stores/channelTopics';
   import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
   import { pinned } from '$lib/stores/pins';
-  import type { PinnedEntry } from '$lib/stores/pins';
   import { scheduledAttention } from '$lib/stores/scheduled';
   import { typing } from '$lib/stores/typing';
   import { unread } from '$lib/stores/unread';
@@ -100,8 +98,7 @@
   import {
     pingToStrength,
     buildMessageBlocks,
-    describeDuration,
-    type MessageBlock
+    describeDuration
   } from '$lib/chat/helpers';
   import { dialogs } from '$lib/stores/dialogs';
   import {

@@ -1,4 +1,4 @@
-import { derived, get, writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 import type { Message } from '../types';
 
 /** peer username -> conversation messages, oldest first */
@@ -88,8 +88,3 @@ function createDmStore() {
 }
 
 export const dm = createDmStore();
-
-/** Total number of unread direct messages across all conversations. */
-export const dmUnreadTotal = derived(dm.unread, (counts) =>
-  Object.values(counts).reduce((sum, count) => sum + count, 0)
-);

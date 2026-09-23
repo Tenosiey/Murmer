@@ -176,12 +176,6 @@ export function setUserVolume(userId: string, volume: number) {
   }));
 }
 
-export function getUserVolume(userId: string): number {
-  let currentVolumes: Record<string, number> = {};
-  userVolumes.subscribe(volumes => currentVolumes = volumes)();
-  return currentVolumes[userId] ?? 1.0;
-}
-
 // Microphone processing (applied as getUserMedia constraints)
 const ECHO_CANCEL_KEY = 'murmer_echo_cancellation';
 const NOISE_SUPPRESS_MODE_KEY = 'murmer_noise_suppression_mode';

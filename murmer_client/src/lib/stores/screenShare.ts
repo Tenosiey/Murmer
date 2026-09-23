@@ -9,7 +9,6 @@ import { browser } from '$app/environment';
 import { ScreenShareManager } from '../screenshare/manager';
 import type {
   ScreenSharePeer,
-  ScreenShareActive,
   ScreenShareAudio,
   ScreenShareSettings
 } from '../types';
@@ -285,14 +284,6 @@ export function closeAllScreenShares(): void {
 export function leaveScreenShareAsViewer(): void {
   closeAllScreenShares();
   screenShareManager.leaveAsViewer();
-}
-
-/**
- * Update screen share quality settings
- */
-export function updateScreenShareSettings(settings: Partial<ScreenShareSettings>): void {
-  screenShareSettings.update((current) => ({ ...current, ...settings }));
-  screenShareManager.updateSettings(settings);
 }
 
 /**

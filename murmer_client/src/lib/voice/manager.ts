@@ -31,7 +31,7 @@ import {
 import { resetSpeaking, setSpeaking, SPEAKING_RMS_THRESHOLD } from '../stores/voiceSpeaking';
 import { captureStream } from '../stores/voiceCapture';
 import { get } from 'svelte/store';
-import type { Message, RemotePeer, ConnectionStats, VoiceChannelInfo } from '../types';
+import type { Message, RemotePeer, VoiceChannelInfo } from '../types';
 import { VoiceActivityDetector, type VadConfig } from './vad';
 import { PushToTalkManager } from './ptt';
 import { getAudioContext, resumeAudioContext } from './audioContext';

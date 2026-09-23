@@ -5,7 +5,6 @@
   import { onlineUsers } from '$lib/stores/online';
   import { offlineUsers } from '$lib/stores/users';
   import { roles } from '$lib/stores/roles';
-  import { session } from '$lib/stores/session';
   import { displayNames } from '$lib/stores/profiles';
   import { dm } from '$lib/stores/dm';
   import { rightSidebarWidth } from '$lib/stores/layout';

@@ -232,7 +232,7 @@ describe('bans — the dashboard ban list', () => {
   });
 
   it('re-asks the server whenever a ban is issued or lifted elsewhere', async () => {
-    const { bans } = await load();
+    await load();
 
     bus.emit('user-unbanned', { user: 'spammer' });
     bus.emit('force-disconnect', { user: 'raider', action: 'banned' });
