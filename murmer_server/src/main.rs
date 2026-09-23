@@ -29,19 +29,14 @@ use axum::{
 };
 use dotenvy::dotenv;
 use murmer_server::{
-    AppState, RateLimiter, VoiceChannelState, admin, automod, bot, config::Config, db,
-    link_preview, upload, ws,
+    AppState, VoiceChannelState, admin, automod, bot, config::Config, db, link_preview, upload, ws,
 };
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     net::SocketAddr,
     sync::{Arc, OnceLock},
 };
-use tokio::{
-    net::TcpListener,
-    signal,
-    sync::{Mutex, broadcast},
-};
+use tokio::{net::TcpListener, signal, sync::Mutex};
 use tower::ServiceBuilder;
 use tower_http::{
     compression::CompressionLayer,
@@ -83,8 +78,6 @@ async fn main() -> Result<()> {
 
     let config = Config::from_env()?;
 
-    let (tx, _rx) = broadcast::channel::<murmer_server::Frame>(100);
-
     let db_client = db::init(&config.database_path)
         .await
         .context("failed to initialise database connection")?;
@@ -125,58 +118,38 @@ async fn main() -> Result<()> {
             )
         })?;
 
+    let voice_channels = existing_voice
+        .iter()
+        .map(|record| {
+            let info = VoiceChannelState {
+                name: record.name.clone(),
+                users: HashSet::new(),
+                quality: record.quality.clone(),
+                bitrate: record.bitrate,
+                category_id: record.category_id,
+                position: record.position,
+                breakout_parent: record.breakout_parent,
+            };
+            (record.id, info)
+        })
+        .collect();
     let state = Arc::new(AppState {
-        tx: tx.clone(),
-        channels: Arc::new(Mutex::new(HashMap::new())),
-        direct: Arc::new(Mutex::new(HashMap::new())),
-        db: db_client,
-        users: Arc::new(Mutex::new(HashSet::new())),
-        known_users: Arc::new(Mutex::new(HashSet::new())),
-        voice_channels: Arc::new(Mutex::new({
-            let mut map = HashMap::new();
-            for record in &existing_voice {
-                map.insert(
-                    record.id,
-                    VoiceChannelState {
-                        name: record.name.clone(),
-                        users: HashSet::new(),
-                        quality: record.quality.clone(),
-                        bitrate: record.bitrate,
-                        category_id: record.category_id,
-                        position: record.position,
-                        breakout_parent: record.breakout_parent,
-                    },
-                );
-            }
-            map
-        })),
-        role_defs: Arc::new(Mutex::new(
+        voice_channels: Mutex::new(voice_channels),
+        role_defs: Mutex::new(
             existing_role_defs
                 .into_iter()
                 .map(|def| (def.id, def))
                 .collect(),
-        )),
-        user_roles: Arc::new(Mutex::new(HashMap::new())),
-        channel_overrides: Arc::new(Mutex::new(existing_overrides)),
-        statuses: Arc::new(Mutex::new(HashMap::new())),
-        user_keys: Arc::new(Mutex::new(HashMap::new())),
-        mutes: Arc::new(Mutex::new(existing_mutes.into_iter().collect())),
-        active_screen_shares: Arc::new(Mutex::new(HashMap::new())),
-        active_webcams: Arc::new(Mutex::new(HashMap::new())),
-        voice_mutes: Arc::new(Mutex::new(HashMap::new())),
-        connection_stats: Arc::new(Mutex::new(HashMap::new())),
-        voice_session_starts: Arc::new(Mutex::new(HashMap::new())),
-        screenshare_session_starts: Arc::new(Mutex::new(HashMap::new())),
-        soundboard_cooldowns: Arc::new(Mutex::new(HashMap::new())),
+        ),
+        channel_overrides: Mutex::new(existing_overrides),
+        mutes: Mutex::new(existing_mutes.into_iter().collect()),
         upload_dir: config.upload_dir.clone(),
         password: config.password.clone(),
         admin_token: config.admin_token.clone(),
-        rate_limiter: RateLimiter::default(),
         stats_enabled: std::sync::atomic::AtomicBool::new(stats_enabled),
-        chat_settings: Arc::new(Mutex::new(chat_settings)),
-        automod: Arc::new(Mutex::new(automod::RuleSet::compile(automod_rules))),
-        slow_mode_sends: Arc::new(Mutex::new(HashMap::new())),
-        visibility_epoch: std::sync::atomic::AtomicU64::new(0),
+        chat_settings: Mutex::new(chat_settings),
+        automod: Mutex::new(automod::RuleSet::compile(automod_rules)),
+        ..AppState::new(db_client)
     });
 
     // Ephemeral deletion timers only live in memory; re-arm any that were

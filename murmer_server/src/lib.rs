@@ -23,7 +23,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::Instant,
 };
@@ -58,6 +58,11 @@ pub const DIRECT_MAILBOX_CAPACITY: usize = 256;
 /// more than one client — so connections are keyed by a unique id within the
 /// user's entry, which is also what lets a disconnect remove exactly its own
 /// mailbox and not a newer one belonging to the same name.
+/// Capacity of the server-wide and per-channel broadcast channels. A
+/// receiver that falls further behind skips what it missed
+/// (`RecvError::Lagged`) rather than holding the sender up.
+pub const BROADCAST_CAPACITY: usize = 100;
+
 pub type DirectRegistry = HashMap<String, HashMap<u64, mpsc::Sender<Frame>>>;
 
 /// Where the rate limiter reads "now" from.
@@ -143,13 +148,13 @@ impl<T> SlidingWindows<T> {
 /// each time it is called.
 pub struct RateLimiter {
     /// Message timestamps per user (user -> timestamps).
-    pub message_times: Arc<Mutex<SlidingWindows<VecDeque<Instant>>>>,
+    pub message_times: Mutex<SlidingWindows<VecDeque<Instant>>>,
     /// Authentication attempt timestamps per IP (ip -> timestamps).
-    pub auth_attempts: Arc<Mutex<SlidingWindows<VecDeque<Instant>>>>,
+    pub auth_attempts: Mutex<SlidingWindows<VecDeque<Instant>>>,
     /// Upload attempt timestamps per IP (ip -> timestamps).
-    pub upload_attempts: Arc<Mutex<SlidingWindows<VecDeque<Instant>>>>,
+    pub upload_attempts: Mutex<SlidingWindows<VecDeque<Instant>>>,
     /// Used nonces to prevent replay attacks (nonce -> first seen time).
-    pub used_nonces: Arc<Mutex<SlidingWindows<Instant>>>,
+    pub used_nonces: Mutex<SlidingWindows<Instant>>,
     /// Messages one user may send per minute.
     pub max_messages_per_minute: usize,
     /// Authentication attempts one IP may make per minute.
@@ -172,10 +177,10 @@ impl RateLimiter {
     pub fn with_clock(clock: Clock) -> Self {
         let now = clock.now();
         Self {
-            message_times: Arc::new(Mutex::new(SlidingWindows::new(now))),
-            auth_attempts: Arc::new(Mutex::new(SlidingWindows::new(now))),
-            upload_attempts: Arc::new(Mutex::new(SlidingWindows::new(now))),
-            used_nonces: Arc::new(Mutex::new(SlidingWindows::new(now))),
+            message_times: Mutex::new(SlidingWindows::new(now)),
+            auth_attempts: Mutex::new(SlidingWindows::new(now)),
+            upload_attempts: Mutex::new(SlidingWindows::new(now)),
+            used_nonces: Mutex::new(SlidingWindows::new(now)),
             max_messages_per_minute: security::get_max_messages_per_minute(),
             max_auth_attempts_per_minute: security::get_max_auth_attempts_per_minute(),
             max_uploads_per_minute: security::get_max_uploads_per_minute(),
@@ -227,49 +232,49 @@ pub struct VoiceChannelState {
 pub struct AppState {
     pub tx: broadcast::Sender<Frame>,
     /// Per-text-channel broadcast senders, keyed by channel ID.
-    pub channels: Arc<Mutex<HashMap<i32, broadcast::Sender<Frame>>>>,
+    pub channels: Mutex<HashMap<i32, broadcast::Sender<Frame>>>,
     /// Mailboxes for frames addressed to a single user (see [`DirectRegistry`]).
     /// WebRTC signaling goes here: an offer, answer or ICE candidate concerns
     /// exactly two peers, so broadcasting it made every client parse and
     /// discard a frame that was never theirs.
-    pub direct: Arc<Mutex<DirectRegistry>>,
+    pub direct: Mutex<DirectRegistry>,
     pub db: db::Db,
-    pub users: Arc<Mutex<HashSet<String>>>,
-    pub known_users: Arc<Mutex<HashSet<String>>>,
+    pub users: Mutex<HashSet<String>>,
+    pub known_users: Mutex<HashSet<String>>,
     /// Voice channel state, keyed by voice channel ID.
-    pub voice_channels: Arc<Mutex<HashMap<i32, VoiceChannelState>>>,
+    pub voice_channels: Mutex<HashMap<i32, VoiceChannelState>>,
     /// All role definitions, keyed by role id. Loaded at startup and mutated
     /// as roles are created/edited/deleted.
-    pub role_defs: Arc<Mutex<HashMap<i64, RoleDef>>>,
+    pub role_defs: Mutex<HashMap<i64, RoleDef>>,
     /// Roles assigned to each connected user (username → role ids). Populated
     /// at authentication from the `user_roles` table.
-    pub user_roles: Arc<Mutex<HashMap<String, Vec<i64>>>>,
+    pub user_roles: Mutex<HashMap<String, Vec<i64>>>,
     /// Per-channel permission overrides, keyed by (kind, channel id). Loaded at
     /// startup and mutated as channel permissions change.
     pub channel_overrides:
-        Arc<Mutex<HashMap<(channel_overrides::ChannelKind, i32), channel_overrides::OverrideSet>>>,
-    pub statuses: Arc<Mutex<HashMap<String, String>>>,
-    pub user_keys: Arc<Mutex<HashMap<String, String>>>,
+        Mutex<HashMap<(channel_overrides::ChannelKind, i32), channel_overrides::OverrideSet>>,
+    pub statuses: Mutex<HashMap<String, String>>,
+    pub user_keys: Mutex<HashMap<String, String>>,
     /// Active mutes keyed by public key; `None` means muted indefinitely.
-    pub mutes: Arc<Mutex<HashMap<String, Option<chrono::DateTime<chrono::Utc>>>>>,
+    pub mutes: Mutex<HashMap<String, Option<chrono::DateTime<chrono::Utc>>>>,
     /// Active screen shares per voice channel: channel_id -> set of usernames sharing.
-    pub active_screen_shares: Arc<Mutex<HashMap<i32, HashSet<String>>>>,
+    pub active_screen_shares: Mutex<HashMap<i32, HashSet<String>>>,
     /// Cameras currently on per voice channel: channel_id -> set of usernames.
     /// The video itself rides the existing voice peer connections; this is only
     /// the announcement, so a client joining later learns whose camera is on.
-    pub active_webcams: Arc<Mutex<HashMap<i32, HashSet<String>>>>,
+    pub active_webcams: Mutex<HashMap<i32, HashSet<String>>>,
     /// Voice mute state per user: username -> (microphone_muted, output_muted).
-    pub voice_mutes: Arc<Mutex<HashMap<String, (bool, bool)>>>,
+    pub voice_mutes: Mutex<HashMap<String, (bool, bool)>>,
     /// Latest self-reported connection stats per user (in-memory only).
-    pub connection_stats: Arc<Mutex<HashMap<String, ConnectionStatsEntry>>>,
+    pub connection_stats: Mutex<HashMap<String, ConnectionStatsEntry>>,
     /// When each user joined a voice channel; used to accumulate lifetime
     /// voice minutes when they leave (only if stat tracking is enabled).
-    pub voice_session_starts: Arc<Mutex<HashMap<String, Instant>>>,
+    pub voice_session_starts: Mutex<HashMap<String, Instant>>,
     /// When each user started screen sharing; mirrors `voice_session_starts`.
-    pub screenshare_session_starts: Arc<Mutex<HashMap<String, Instant>>>,
+    pub screenshare_session_starts: Mutex<HashMap<String, Instant>>,
     /// When each user last played a soundboard sound, for the server-side
     /// playback cooldown. Entries are dropped on disconnect.
-    pub soundboard_cooldowns: Arc<Mutex<HashMap<String, Instant>>>,
+    pub soundboard_cooldowns: Mutex<HashMap<String, Instant>>,
     pub upload_dir: PathBuf,
     pub password: Option<String>,
     pub admin_token: Option<String>,
@@ -283,21 +288,21 @@ pub struct AppState {
     /// double opt-in gate stays inside `db::record_user_stats`, in the same
     /// database call that performs the increments. A stale value here can only
     /// cost a wasted query, never record a counter the gate would refuse.
-    pub stats_enabled: std::sync::atomic::AtomicBool,
+    pub stats_enabled: AtomicBool,
     /// Cached chat policy (`server_settings`: slow mode, message length cap,
     /// profanity filter). Every chat message consults all three, so they are
     /// held in memory rather than read back per message; the handler that
     /// writes them refreshes this in the same step.
-    pub chat_settings: Arc<Mutex<db::ChatSettings>>,
+    pub chat_settings: Mutex<db::ChatSettings>,
     /// The compiled auto-moderation rules (`automod_rules`). Every chat
     /// message and every edit is checked against all of them, so they are
     /// compiled once here rather than per message; the handler that writes
     /// the rows rebuilds this in the same step.
-    pub automod: Arc<Mutex<automod::RuleSet>>,
+    pub automod: Mutex<automod::RuleSet>,
     /// When each user last had a message accepted, for the slow mode gate.
     /// In-memory only and pruned on disconnect: slow mode is a pacing tool,
     /// not a punishment to be remembered across sessions.
-    pub slow_mode_sends: Arc<Mutex<HashMap<String, Instant>>>,
+    pub slow_mode_sends: Mutex<HashMap<String, Instant>>,
     /// Stamp bumped whenever an input to a channel visibility decision moves:
     /// channel overrides, role definitions or role assignments. Each
     /// connection memoises its own answers in a
@@ -312,5 +317,44 @@ pub struct AppState {
     /// announce those changes (`channels-refresh`, `role-definitions`,
     /// `user-roles`) plus `cleanup_channel`. A mutation that reaches clients
     /// therefore cannot skip the invalidation.
-    pub visibility_epoch: std::sync::atomic::AtomicU64,
+    pub visibility_epoch: AtomicU64,
+}
+
+impl AppState {
+    /// State around an open database, with every in-memory map empty and no
+    /// password or admin token. `main` overrides the mirrors it loads at
+    /// startup with struct-update syntax; tests override what they exercise.
+    pub fn new(db: db::Db) -> Self {
+        Self {
+            tx: broadcast::channel(BROADCAST_CAPACITY).0,
+            channels: Mutex::default(),
+            direct: Mutex::default(),
+            db,
+            users: Mutex::default(),
+            known_users: Mutex::default(),
+            voice_channels: Mutex::default(),
+            role_defs: Mutex::default(),
+            user_roles: Mutex::default(),
+            channel_overrides: Mutex::default(),
+            statuses: Mutex::default(),
+            user_keys: Mutex::default(),
+            mutes: Mutex::default(),
+            active_screen_shares: Mutex::default(),
+            active_webcams: Mutex::default(),
+            voice_mutes: Mutex::default(),
+            connection_stats: Mutex::default(),
+            voice_session_starts: Mutex::default(),
+            screenshare_session_starts: Mutex::default(),
+            soundboard_cooldowns: Mutex::default(),
+            upload_dir: PathBuf::from("uploads"),
+            password: None,
+            admin_token: None,
+            rate_limiter: RateLimiter::new(),
+            stats_enabled: AtomicBool::new(false),
+            chat_settings: Mutex::default(),
+            automod: Mutex::default(),
+            slow_mode_sends: Mutex::default(),
+            visibility_epoch: AtomicU64::new(0),
+        }
+    }
 }

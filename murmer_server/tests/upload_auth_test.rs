@@ -6,7 +6,6 @@
 //! many of those per minute per IP.
 
 use std::{
-    collections::HashMap,
     net::SocketAddr,
     path::{Path, PathBuf},
     sync::Arc,
@@ -23,7 +22,6 @@ use axum::{
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{Signer, SigningKey};
 use murmer_server::{AppState, RateLimiter, db, upload};
-use tokio::sync::{Mutex, broadcast};
 use tower::ServiceExt;
 
 const BOUNDARY: &str = "murmertestboundary";
@@ -45,37 +43,10 @@ fn temp_upload_dir(label: &str) -> PathBuf {
 
 async fn make_app(upload_dir: PathBuf, rate_limiter: RateLimiter) -> (Router, Arc<AppState>) {
     let database = db::init(":memory:").await.expect("in-memory db");
-    let (tx, _) = broadcast::channel(64);
     let state = Arc::new(AppState {
-        tx,
-        channels: Arc::new(Mutex::new(HashMap::new())),
-        direct: Arc::new(Mutex::new(HashMap::new())),
-        db: database,
-        users: Arc::new(Mutex::new(Default::default())),
-        known_users: Arc::new(Mutex::new(Default::default())),
-        voice_channels: Arc::new(Mutex::new(HashMap::new())),
-        role_defs: Arc::new(Mutex::new(HashMap::new())),
-        user_roles: Arc::new(Mutex::new(HashMap::new())),
-        channel_overrides: Arc::new(Mutex::new(HashMap::new())),
-        statuses: Arc::new(Mutex::new(HashMap::new())),
-        user_keys: Arc::new(Mutex::new(HashMap::new())),
-        mutes: Arc::new(Mutex::new(HashMap::new())),
-        active_screen_shares: Arc::new(Mutex::new(HashMap::new())),
-        active_webcams: Arc::new(Mutex::new(HashMap::new())),
-        voice_mutes: Arc::new(Mutex::new(HashMap::new())),
-        connection_stats: Arc::new(Mutex::new(HashMap::new())),
-        voice_session_starts: Arc::new(Mutex::new(HashMap::new())),
-        screenshare_session_starts: Arc::new(Mutex::new(HashMap::new())),
-        soundboard_cooldowns: Arc::new(Mutex::new(HashMap::new())),
         upload_dir,
-        password: None,
-        admin_token: None,
         rate_limiter,
-        stats_enabled: std::sync::atomic::AtomicBool::new(false),
-        chat_settings: Arc::new(Mutex::new(murmer_server::db::ChatSettings::default())),
-        automod: Arc::new(Mutex::new(murmer_server::automod::RuleSet::default())),
-        slow_mode_sends: Arc::new(Mutex::new(HashMap::new())),
-        visibility_epoch: std::sync::atomic::AtomicU64::new(0),
+        ..AppState::new(database)
     });
     let router = Router::new()
         .route(

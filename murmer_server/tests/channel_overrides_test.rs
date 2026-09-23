@@ -1,49 +1,20 @@
 //! Integration tests for per-channel override resolution: private channels,
 //! role/user allows, deny of Write, and the manager/administrator bypass.
 
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use murmer_server::channel_overrides::{ChannelKind, OverridePair, OverrideSet};
 use murmer_server::permissions::{
     ADMINISTRATOR, DEFAULT_EVERYONE, MANAGE_CHANNELS, SEND_MESSAGES, VIEW_CHANNELS,
 };
 use murmer_server::ws::helpers::{can_view_channel, has_channel_permission};
-use murmer_server::{AppState, RateLimiter, RoleDef, db};
-use tokio::sync::{Mutex, broadcast};
+use murmer_server::{AppState, RoleDef, db};
 
 async fn make_state() -> Arc<AppState> {
     let database = db::init(":memory:").await.expect("in-memory db");
-    let (tx, _) = broadcast::channel(64);
     Arc::new(AppState {
-        tx,
-        channels: Arc::new(Mutex::new(HashMap::new())),
-        direct: Arc::new(Mutex::new(HashMap::new())),
-        db: database,
-        users: Arc::new(Mutex::new(Default::default())),
-        known_users: Arc::new(Mutex::new(Default::default())),
-        voice_channels: Arc::new(Mutex::new(HashMap::new())),
-        role_defs: Arc::new(Mutex::new(HashMap::new())),
-        user_roles: Arc::new(Mutex::new(HashMap::new())),
-        channel_overrides: Arc::new(Mutex::new(HashMap::new())),
-        statuses: Arc::new(Mutex::new(HashMap::new())),
-        user_keys: Arc::new(Mutex::new(HashMap::new())),
-        mutes: Arc::new(Mutex::new(HashMap::new())),
-        active_screen_shares: Arc::new(Mutex::new(HashMap::new())),
-        active_webcams: Arc::new(Mutex::new(HashMap::new())),
-        voice_mutes: Arc::new(Mutex::new(HashMap::new())),
-        connection_stats: Arc::new(Mutex::new(HashMap::new())),
-        voice_session_starts: Arc::new(Mutex::new(HashMap::new())),
-        screenshare_session_starts: Arc::new(Mutex::new(HashMap::new())),
-        soundboard_cooldowns: Arc::new(Mutex::new(HashMap::new())),
-        upload_dir: PathBuf::from("uploads"),
-        password: None,
         admin_token: Some("token".to_string()),
-        rate_limiter: RateLimiter::new(),
-        stats_enabled: std::sync::atomic::AtomicBool::new(false),
-        chat_settings: Arc::new(Mutex::new(murmer_server::db::ChatSettings::default())),
-        automod: Arc::new(Mutex::new(murmer_server::automod::RuleSet::default())),
-        slow_mode_sends: Arc::new(Mutex::new(HashMap::new())),
-        visibility_epoch: std::sync::atomic::AtomicU64::new(0),
+        ..AppState::new(database)
     })
 }
 

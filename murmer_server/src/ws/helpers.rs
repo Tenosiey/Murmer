@@ -1069,7 +1069,9 @@ pub async fn get_or_create_channel(
     let mut channels = state.channels.lock().await;
     channels
         .entry(channel_id)
-        .or_insert_with(|| tokio::sync::broadcast::channel::<crate::Frame>(100).0)
+        .or_insert_with(|| {
+            tokio::sync::broadcast::channel::<crate::Frame>(crate::BROADCAST_CAPACITY).0
+        })
         .clone()
 }
 
