@@ -58,13 +58,12 @@
   // Debounce the preview so typing stays responsive on large pages.
   // svelte-ignore state_referenced_locally
   let previewBody = $state(page.body);
-  let previewTimer: ReturnType<typeof setTimeout> | null = null;
   $effect(() => {
-    void body;
-    if (previewTimer !== null) clearTimeout(previewTimer);
-    previewTimer = setTimeout(() => {
-      previewBody = body;
+    const next = body;
+    const timer = setTimeout(() => {
+      previewBody = next;
     }, PREVIEW_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
   });
   let previewHtml = $derived(emojifyHtml(renderMarkdown(previewBody), $customEmojis, httpBase));
 

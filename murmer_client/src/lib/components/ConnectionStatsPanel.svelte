@@ -4,7 +4,6 @@
   every user's self-reported stats, refreshed while the panel is open.
 -->
 <script lang="ts">
-  import { onDestroy } from 'svelte';
   import { ping } from '$lib/stores/ping';
   import { voiceStats } from '$lib/stores/voice';
   import {
@@ -15,25 +14,13 @@
   /** How often the admin list refreshes while the panel is open. */
   const REFRESH_INTERVAL_MS = 5000;
 
-  let refreshInterval: number | null = null;
-
   // Poll the server for everyone's stats while an authorised user has the
-  // panel open; the interval dies with the component.
+  // panel open.
   $effect(() => {
-    if ($canViewAllConnectionStats && refreshInterval === null) {
-      allConnectionStats.request();
-      refreshInterval = window.setInterval(
-        () => allConnectionStats.request(),
-        REFRESH_INTERVAL_MS
-      );
-    } else if (!$canViewAllConnectionStats && refreshInterval !== null) {
-      clearInterval(refreshInterval);
-      refreshInterval = null;
-    }
-  });
-
-  onDestroy(() => {
-    if (refreshInterval !== null) clearInterval(refreshInterval);
+    if (!$canViewAllConnectionStats) return;
+    allConnectionStats.request();
+    const timer = setInterval(() => allConnectionStats.request(), REFRESH_INTERVAL_MS);
+    return () => clearInterval(timer);
   });
 
   function fmtMs(value: number | null): string {

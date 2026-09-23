@@ -11,7 +11,6 @@
   import { chat } from '$lib/stores/chat';
   import { scheduled } from '$lib/stores/scheduled';
   import { channels } from '$lib/stores/channels';
-  import { onDestroy } from 'svelte';
   import { describeWhen, describeScheduleFailure } from '$lib/chat/schedule';
 
   interface Props {
@@ -28,28 +27,16 @@
      as fine-grained as any label here gets. */
   const TICK_MS = 30_000;
   let now = $state(new Date());
-  let ticker: ReturnType<typeof setInterval> | null = null;
-
-  function stopTicking() {
-    if (ticker !== null) {
-      clearInterval(ticker);
-      ticker = null;
-    }
-  }
 
   $effect(() => {
-    if (!open) {
-      stopTicking();
-      return;
-    }
+    if (!open) return;
     chat.refreshScheduled();
     now = new Date();
-    ticker ??= setInterval(() => {
+    const ticker = setInterval(() => {
       now = new Date();
     }, TICK_MS);
+    return () => clearInterval(ticker);
   });
-
-  onDestroy(stopTicking);
 
   let reminders = $derived($scheduled.reminders);
   let messages = $derived($scheduled.messages);
