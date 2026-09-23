@@ -1,11 +1,12 @@
 //! Validation helpers for WebSocket message parameters.
 
 use super::constants::{
-    MAX_ABOUT_LENGTH, MAX_ALLOWED_VOICE_BITRATE, MAX_BREAKOUT_ROOMS, MAX_DISPLAY_NAME_LENGTH,
-    MAX_EMOJI_NAME_LEN, MAX_NICKNAME_LENGTH, MAX_ROLE_NAME_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH,
-    MAX_SERVER_NAME_LENGTH, MAX_SOUND_NAME_LEN, MAX_TOPIC_LENGTH, MAX_WELCOME_MESSAGE_LENGTH,
-    MAX_WIKI_SLUG_LENGTH, MAX_WIKI_TITLE_LENGTH, MIN_BREAKOUT_ROOMS, MIN_EMOJI_NAME_LEN,
-    MIN_SOUND_NAME_LEN, UPLOAD_IMAGE_EXTENSIONS, UPLOAD_SOUND_EXTENSIONS, USER_STATUSES,
+    DEFAULT_HISTORY_LIMIT, MAX_ABOUT_LENGTH, MAX_ALLOWED_VOICE_BITRATE, MAX_BREAKOUT_ROOMS,
+    MAX_DISPLAY_NAME_LENGTH, MAX_EMOJI_NAME_LEN, MAX_HISTORY_LIMIT, MAX_NICKNAME_LENGTH,
+    MAX_ROLE_NAME_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH,
+    MAX_SOUND_NAME_LEN, MAX_TOPIC_LENGTH, MAX_WELCOME_MESSAGE_LENGTH, MAX_WIKI_SLUG_LENGTH,
+    MAX_WIKI_TITLE_LENGTH, MIN_BREAKOUT_ROOMS, MIN_EMOJI_NAME_LEN, MIN_SOUND_NAME_LEN,
+    UPLOAD_IMAGE_EXTENSIONS, UPLOAD_SOUND_EXTENSIONS, USER_STATUSES,
 };
 use crate::security::MAX_CHANNEL_NAME_LENGTH;
 
@@ -30,6 +31,17 @@ pub fn validate_voice_quality(value: &str) -> bool {
         && trimmed
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ' ')
+}
+
+/// The page size for a history request, defaulted and clamped.
+///
+/// The floor matters as much as the ceiling: SQLite reads a negative `LIMIT`
+/// as "no limit", so `-1` would pull a channel's entire history into one
+/// frame.
+pub fn history_limit(requested: Option<i64>) -> i64 {
+    requested
+        .unwrap_or(DEFAULT_HISTORY_LIMIT)
+        .clamp(1, MAX_HISTORY_LIMIT)
 }
 
 /// Validate a channel topic/description.
@@ -341,5 +353,17 @@ mod tests {
         assert!(!validate_wiki_title("   "));
         assert!(!validate_wiki_title("bad\u{7}title"));
         assert!(!validate_wiki_title(&"x".repeat(MAX_WIKI_TITLE_LENGTH + 1)));
+    }
+
+    #[test]
+    fn history_limit_is_clamped_on_both_sides() {
+        assert_eq!(history_limit(None), DEFAULT_HISTORY_LIMIT);
+        assert_eq!(history_limit(Some(10)), 10);
+        assert_eq!(
+            history_limit(Some(MAX_HISTORY_LIMIT + 1)),
+            MAX_HISTORY_LIMIT
+        );
+        assert_eq!(history_limit(Some(0)), 1);
+        assert_eq!(history_limit(Some(-1)), 1);
     }
 }

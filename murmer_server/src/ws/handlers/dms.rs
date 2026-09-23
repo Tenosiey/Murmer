@@ -11,7 +11,7 @@
 //! [`crate::ws::helpers::dm_involves`]), so other clients never receive the
 //! content over the wire.
 
-use crate::ws::{constants::*, errors, helpers::*};
+use crate::ws::{constants::*, errors, helpers::*, validation::history_limit};
 use crate::{AppState, db, security};
 use axum::extract::ws::{Message, WebSocket};
 use futures::{SinkExt, stream::SplitSink};
@@ -132,11 +132,7 @@ pub(super) async fn handle_load_dm_history(
     };
 
     let before = v.get("before").and_then(|b| b.as_i64());
-    let limit = v
-        .get("limit")
-        .and_then(|l| l.as_i64())
-        .unwrap_or(DEFAULT_HISTORY_LIMIT)
-        .clamp(1, MAX_HISTORY_LIMIT);
+    let limit = history_limit(v.get("limit").and_then(|l| l.as_i64()));
 
     match db::fetch_dm_history(&state.db, &user, &peer, before, limit).await {
         Ok(rows) => {

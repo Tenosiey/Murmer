@@ -8,7 +8,12 @@
 //! why each refusal exists.
 
 use crate::channel_overrides::ChannelKind;
-use crate::ws::{constants::*, errors, helpers::*, validation::is_emoji_shortcode};
+use crate::ws::{
+    constants::*,
+    errors,
+    helpers::*,
+    validation::{history_limit, is_emoji_shortcode},
+};
 use crate::{AppState, db, security};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -101,19 +106,7 @@ pub(super) async fn handle_load_history(
         return;
     }
     let before = v.get("before").and_then(|b| b.as_i64());
-    let mut limit = v
-        .get("limit")
-        .and_then(|l| l.as_i64())
-        .unwrap_or(DEFAULT_HISTORY_LIMIT);
-
-    if limit > MAX_HISTORY_LIMIT {
-        limit = MAX_HISTORY_LIMIT;
-        tracing::warn!(
-            "History request limit capped at {} for request",
-            MAX_HISTORY_LIMIT
-        );
-    }
-
+    let limit = history_limit(v.get("limit").and_then(|l| l.as_i64()));
     db::send_history(&state.db, sender, channel_id, before, limit).await;
 }
 
