@@ -328,6 +328,7 @@ pub(super) async fn handle_presence(
             super::scheduled::send_scheduled_messages(state, sender, u).await;
             super::scheduled::send_reminders(state, sender, u).await;
             super::screenshare::send_screenshare_config(state, sender).await;
+            super::send_ice_config(state, sender).await;
             super::uploads::send_upload_config(state, sender).await;
             super::chat_settings::send_chat_settings(state, sender).await;
             super::voice_defaults::send_voice_defaults(state, sender).await;

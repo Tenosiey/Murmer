@@ -16,6 +16,8 @@
 //! - `WEB_CLIENT_DIR`: directory with the built web client (`murmer_client/build`).
 //!   When set, the client is served at `/`, on the same origin as `/ws` and
 //!   `/upload` -- which is what lets a browser use it with CORS disabled.
+//! - `STUN_SERVERS`: comma separated STUN URLs handed to clients for WebRTC
+//!   (default: Google's public server; empty for none).
 //! - `MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
 //!   `MAX_UPLOADS_PER_MINUTE`, `NONCE_EXPIRY_SECONDS`: rate limiting overrides.
 //!
@@ -146,6 +148,7 @@ async fn main() -> Result<()> {
         upload_dir: config.upload_dir.clone(),
         password: config.password.clone(),
         admin_token: config.admin_token.clone(),
+        stun_servers: config.stun_servers.clone(),
         stats_enabled: std::sync::atomic::AtomicBool::new(stats_enabled),
         chat_settings: Mutex::new(chat_settings),
         automod: Mutex::new(automod::RuleSet::compile(automod_rules)),
