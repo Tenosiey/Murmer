@@ -1009,21 +1009,11 @@ function createChatStore() {
     connection.set('idle');
   }
 
-  /**
-   * Register a handler for a specific message type.
-   * @param type - Message type
-   * @param callback - Handler function
-   */
   function on(type: string, callback: (msg: Message) => void): void {
     wsManager.on(type, callback);
   }
 
-  /**
-   * Unregister a handler for a specific message type.
-   * @param type - Message type
-   * @param callback - Optional specific callback to remove
-   */
-  function off(type: string, callback?: (msg: Message) => void): void {
+  function off(type: string, callback: (msg: Message) => void): void {
     wsManager.off(type, callback);
   }
 

@@ -110,6 +110,9 @@ export class VoiceManager {
     }
   > = {};
   private localStream: MediaStream | null = null;
+  /** The signaling handlers of the current call, so leaving removes exactly
+   *  these and not a store's listener for the same frame type. */
+  private signaling: [string, (msg: Message) => void][] = [];
   private userName: string | null = null;
   private channelId: number | null = null;
   private listeners: Array<(peers: RemotePeer[]) => void> = [];
@@ -1057,11 +1060,14 @@ export class VoiceManager {
           position: 0
         };
     resetSpeaking();
-    chat.on('voice-join', (m) => this.handleJoin(m, peersList));
-    chat.on('voice-offer', (m) => this.handleOffer(m, peersList));
-    chat.on('voice-answer', (m) => this.handleAnswer(m));
-    chat.on('voice-candidate', (m) => this.handleCandidate(m));
-    chat.on('voice-leave', (m) => this.handleLeave(m, peersList));
+    this.signaling = [
+      ['voice-join', (m) => this.handleJoin(m, peersList)],
+      ['voice-offer', (m) => this.handleOffer(m, peersList)],
+      ['voice-answer', (m) => this.handleAnswer(m)],
+      ['voice-candidate', (m) => this.handleCandidate(m)],
+      ['voice-leave', (m) => this.handleLeave(m, peersList)]
+    ];
+    for (const [type, handler] of this.signaling) chat.on(type, handler);
 
     this.updateTransmissionMode();
     this.syncGlobalPushToTalk();
@@ -1097,11 +1103,8 @@ export class VoiceManager {
     voiceActivity.set(false);
     isPttActive.set(false);
 
-    chat.off('voice-join');
-    chat.off('voice-offer');
-    chat.off('voice-answer');
-    chat.off('voice-candidate');
-    chat.off('voice-leave');
+    for (const [type, handler] of this.signaling) chat.off(type, handler);
+    this.signaling = [];
     this.userName = null;
     this.channelId = null;
     this.channelConfig = null;

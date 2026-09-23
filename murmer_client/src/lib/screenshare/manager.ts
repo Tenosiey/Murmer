@@ -103,11 +103,17 @@ export class ScreenShareManager {
     this.setupSignaling();
   }
 
+  /** Kept so `destroy` removes exactly these and not the screen-share
+   *  store's own listener for `screenshare-stop`. */
+  private signaling: [string, (msg: Message) => void][] = [
+    ['screenshare-offer', (msg) => this.handleOffer(msg)],
+    ['screenshare-answer', (msg) => this.handleAnswer(msg)],
+    ['screenshare-candidate', (msg) => this.handleCandidate(msg)],
+    ['screenshare-stop', (msg) => this.handleRemoteStop(msg)]
+  ];
+
   private setupSignaling() {
-    chat.on('screenshare-offer', (msg) => this.handleOffer(msg));
-    chat.on('screenshare-answer', (msg) => this.handleAnswer(msg));
-    chat.on('screenshare-candidate', (msg) => this.handleCandidate(msg));
-    chat.on('screenshare-stop', (msg) => this.handleRemoteStop(msg));
+    for (const [type, handler] of this.signaling) chat.on(type, handler);
   }
 
   subscribe(cb: (peers: ScreenSharePeer[]) => void) {
@@ -640,9 +646,6 @@ export class ScreenShareManager {
     for (const userId of this.watchedSharers()) {
       this.closeIncoming(userId);
     }
-    chat.off('screenshare-offer');
-    chat.off('screenshare-answer');
-    chat.off('screenshare-candidate');
-    chat.off('screenshare-stop');
+    for (const [type, handler] of this.signaling) chat.off(type, handler);
   }
 }

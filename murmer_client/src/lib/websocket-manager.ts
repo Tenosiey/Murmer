@@ -1,14 +1,11 @@
 /**
- * WebSocket connection management with automatic reconnection and message handling.
+ * One WebSocket connection plus the per-type handlers the stores register.
+ * Reconnecting is the caller's job (see `stores/chat.ts`).
  */
 
 import type { Message } from './types';
 
-/** Callback type for message handlers */
 type MessageHandler = (msg: Message) => void;
-
-/** Callback type for connection open event */
-type OpenCallback = () => void;
 
 /** Details about why and how a connection closed. */
 export interface CloseInfo {
@@ -21,9 +18,6 @@ export interface CloseInfo {
 /** Abort connection attempts that have not opened within this window. */
 const CONNECT_TIMEOUT_MS = 10_000;
 
-/**
- * Manages a WebSocket connection with event handlers and lifecycle management.
- */
 export class WebSocketManager {
   private socket: WebSocket | null = null;
   private currentUrl: string | null = null;
@@ -31,22 +25,14 @@ export class WebSocketManager {
   /** Sockets closed locally via disconnect(), so their close events can be told apart. */
   private intentionallyClosed = new WeakSet<WebSocket>();
 
-  /**
-   * Connect to a WebSocket URL.
-   * @param url - WebSocket URL to connect to
-   * @param onOpen - Optional callback when connection opens
-   * @param onMessage - Callback to handle incoming messages
-   * @param onClose - Optional callback when connection closes
-   * @param onError - Optional callback when an error occurs
-   */
+  /** Connect to `url`; a no-op while already connected to it. */
   connect(
     url: string,
     onMessage: (msg: Message) => void,
-    onOpen?: OpenCallback,
+    onOpen?: () => void,
     onClose?: (info: CloseInfo) => void,
     onError?: (error: Event) => void
   ): void {
-    // Close existing connection if URL changed
     if (this.socket && this.currentUrl === url) {
       return;
     }
@@ -78,18 +64,21 @@ export class WebSocketManager {
 
     this.socket.addEventListener('message', (ev) => {
       if (import.meta.env.DEV) console.log('Received:', ev.data);
+      let msg: Message;
       try {
-        const msg: Message = JSON.parse(ev.data);
-        onMessage(msg);
-
-        // Trigger registered handlers
-        if (msg.type && this.handlers[msg.type]) {
-          for (const handler of this.handlers[msg.type]) {
-            handler(msg);
-          }
-        }
+        msg = JSON.parse(ev.data);
       } catch (error) {
         console.error('Failed to parse WebSocket message:', error);
+        return;
+      }
+      // Each handler is isolated: one store throwing on a malformed frame
+      // must not stop the handlers registered after it from seeing it.
+      for (const handler of [onMessage, ...(this.handlers[msg.type] ?? [])]) {
+        try {
+          handler(msg);
+        } catch (error) {
+          console.error(`Handler for '${msg.type}' failed:`, error);
+        }
       }
     });
 
@@ -111,12 +100,8 @@ export class WebSocketManager {
     });
   }
 
-  /**
-   * Send a JSON message over the WebSocket connection.
-   * @param data - Data to serialize and send
-   * @returns True if sent successfully, false otherwise
-   */
-  send(data: any): boolean {
+  /** Serialize and send `data`; false when the socket is not open. */
+  send(data: unknown): boolean {
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
       if (import.meta.env.DEV) console.log('Sending:', data);
       this.socket.send(JSON.stringify(data));
@@ -125,18 +110,10 @@ export class WebSocketManager {
     return false;
   }
 
-  /**
-   * Check if the WebSocket is currently connected.
-   */
   isConnected(): boolean {
     return this.socket !== null && this.socket.readyState === WebSocket.OPEN;
   }
 
-  /**
-   * Register a handler for a specific message type.
-   * @param type - Message type to listen for
-   * @param callback - Handler function
-   */
   on(type: string, callback: MessageHandler): void {
     if (!this.handlers[type]) {
       this.handlers[type] = [];
@@ -144,26 +121,17 @@ export class WebSocketManager {
     this.handlers[type].push(callback);
   }
 
-  /**
-   * Unregister a handler for a specific message type.
-   * @param type - Message type
-   * @param callback - Optional specific callback to remove (removes all if omitted)
-   */
-  off(type: string, callback?: MessageHandler): void {
-    if (!this.handlers[type]) return;
-    if (callback) {
-      this.handlers[type] = this.handlers[type].filter((h) => h !== callback);
-      if (this.handlers[type].length === 0) {
-        delete this.handlers[type];
-      }
+  /** Remove one handler. Deliberately never "all handlers of a type": the
+   *  stores and the call managers listen to some of the same frames. */
+  off(type: string, callback: MessageHandler): void {
+    const remaining = (this.handlers[type] ?? []).filter((h) => h !== callback);
+    if (remaining.length > 0) {
+      this.handlers[type] = remaining;
     } else {
       delete this.handlers[type];
     }
   }
 
-  /**
-   * Disconnect and clean up the WebSocket connection.
-   */
   disconnect(): void {
     if (this.socket) {
       this.intentionallyClosed.add(this.socket);

@@ -61,7 +61,7 @@ function createPingStore() {
       clearInterval(interval);
       interval = null;
     }
-    chat.off('pong');
+    chat.off('pong', handlePong);
     currentId = null;
     lastSentAt = null;
     unansweredSince = null;
