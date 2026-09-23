@@ -23,14 +23,6 @@ not a description of the fix.
       whether anything remains mid-speech
 - [ ] Screen share: after the streamer stops sharing, the overlay controls
       stop responding — the viewer-side state is never reset
-- [ ] Soundboard: uploading a new sound fails. Not reproduced from reading the
-      code; two leads to rule out first. `validate_sound_name` bounds the name
-      in **bytes** while `SoundboardPanel.svelte` bounds it in UTF-16 units,
-      so a long name carrying non-ASCII characters passes the client and is
-      rejected by the server. Separately, an extension on the `/upload` audio
-      list but not on `UPLOAD_SOUND_EXTENSIONS` — `.flac` is the only one —
-      uploads fine and is then refused by `add-sound`, leaving the file
-      orphaned on disk; the picker's `accept` hides that, "All files" does not
 
 ---
 
@@ -41,34 +33,24 @@ not a description of the fix.
       `nosniff`, `referrer-policy` and `x-frame-options` and nothing else. Two
       shipped targets, the same `{@html}` markdown boundary, two different
       security postures — and the browser one is the weaker
-- [ ] Lagged broadcast receivers are dropped silently. Both
-      `RecvError::Lagged` arms in `ws/handlers/mod.rs` are empty, so a client
-      that falls behind the 100-frame channel loses frames with no log, no
-      warning and no resync — the message simply never appears for that one
-      person. Log the skipped count at minimum; better, tell the client to
-      re-request the affected state
-- [ ] Mirror-test the soundboard constants. `SOUND_EXTENSIONS`,
-      `MAX_SOUND_FILE_BYTES`, `MAX_SOUNDBOARD_SOUNDS`, the name-length bounds
-      and the cooldown are all defined on both sides, and
-      `test/server-mirror.test.ts` covers permissions, the upload safe-list
-      and the chat policy but not these. Drift shows up as an upload that
-      fails after the file has already been stored
 - [ ] Reclaim orphaned uploads. Deleting an emoji, avatar, server icon or
       sound removes its file; deleting a *message* does not, and neither does
       the Danger Zone purge or reset. The dashboard's storage breakdown can
       only ever grow. Needs a sweep reconciling `uploads/` against the rows
       that reference it
+- [ ] Resync a connection that lagged its broadcast channel. Both
+      `RecvError::Lagged` arms in `ws/handlers/mod.rs` now log the skipped
+      count, but the frames are still gone — the message simply never
+      appears for that one person. Closing the socket is not the fix: the
+      client does not reconnect on its own, so it would show "Connection
+      lost" and drop a voice call. Needs a frame telling the client to
+      re-request state, and a history merge that sorts, since `history`
+      currently prepends
 - [ ] Retention policy for message history. The database grows without bound
       and an operator has only the all-or-nothing purge. A server-wide or
       per-channel "delete messages older than N days", cascading through
       reactions, pins and the FTS index, is the counterpart to the upload
       sweep above
-- [ ] Serve `/files` as inert content. Uploads come back from the app's own
-      origin with no `Content-Disposition` and no sandbox policy, which leaves
-      the extension safe-list as the only thing between an upload and script
-      execution in that origin. `Content-Disposition: attachment` plus a
-      `sandbox` CSP on the route makes the safe-list defence in depth rather
-      than the whole defence
 - [ ] Split the three files that have outgrown being read end to end:
       `routes/chat/+page.svelte` (2.4k lines), `ServerDashboardModal.svelte`
       (2.3k) and `SettingsModal.svelte` (1.6k). "Keep it simple" cuts both

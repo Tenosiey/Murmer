@@ -83,7 +83,7 @@ validation helpers and the walkthrough for adding a frame are in
 | Endpoint | Module | Notes |
 | --- | --- | --- |
 | `/upload` | `upload.rs` | Multipart. Ed25519-authenticated *ahead of* the file bytes; per-IP rate limited. |
-| `/files/<key>` | `main.rs` | Serves uploaded files. |
+| `/files/<key>` | `upload.rs` | Serves uploaded files back, sandboxed. |
 | `/link-preview` | `link_preview.rs` | OpenGraph metadata for pasted URLs. |
 | `/role` | `admin.rs` | Bearer-token bootstrap for the first Owner. |
 | `/api/…` | `bot/` | The bot REST API — [`../murmer_server/BOT_API.md`](../murmer_server/BOT_API.md). |

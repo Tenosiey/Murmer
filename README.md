@@ -773,7 +773,7 @@ must not be marked as pre-release — the updater endpoint
   already has an account on that server, so a stranger who can merely reach the
   port cannot write files to the operator's disk (and on a password-protected
   server has no account to upload under at all).
-- Filenames are sanitised, uploads are limited to a safe-list of extensions and image contents are inspected before saving. Owners narrow that further in **Server Dashboard → Files & Uploads** (per-file size cap, plus which of the image/document/archive/audio/video categories are accepted); active content such as HTML, SVG or scripts is never on the safe-list and cannot be enabled.
+- Filenames are sanitised, uploads are limited to a safe-list of extensions and image contents are inspected before saving. Owners narrow that further in **Server Dashboard → Files & Uploads** (per-file size cap, plus which of the image/document/archive/audio/video categories are accepted); active content such as HTML, SVG or scripts is never on the safe-list and cannot be enabled. Files are served back sandboxed, and anything but images, audio and video downloads instead of opening.
 - Admin token and server password checks use constant-time comparisons to
   mitigate timing attacks.
 - Every capability is gated by a server-side permission check against the

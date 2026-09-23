@@ -158,6 +158,42 @@ async fn a_signed_upload_from_a_bound_key_is_stored() {
 }
 
 #[tokio::test]
+async fn a_filename_with_a_dot_run_is_stored_under_a_registrable_key() {
+    let dir = temp_upload_dir("dot-run");
+    let (app, state) = make_app(dir.clone(), RateLimiter::new()).await;
+
+    let key = SigningKey::from_bytes(&[19u8; 32]);
+    let timestamp = now_ms();
+    let (public, signature) = credentials(&key, &timestamp);
+    db::bind_user_key(&state.db, "dora", &public)
+        .await
+        .expect("bind");
+
+    let status = post_upload(
+        &app,
+        body(
+            &[
+                ("publicKey", &public),
+                ("timestamp", &timestamp),
+                ("signature", &signature),
+            ],
+            "wow...png",
+            PNG,
+        ),
+    )
+    .await;
+
+    // Every `/files/<key>` validator refuses "..", so a key stored with one
+    // could be uploaded but never registered as an emoji, avatar or sound.
+    assert_eq!(status, StatusCode::OK);
+    let stored = stored_files(&dir);
+    assert_eq!(stored.len(), 1);
+    let url = format!("/files/{}", stored[0]);
+    assert!(murmer_server::ws::validation::upload_key_from_url(&url).is_some());
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[tokio::test]
 async fn an_upload_without_credentials_writes_nothing() {
     let dir = temp_upload_dir("anonymous");
     let (app, _state) = make_app(dir.clone(), RateLimiter::new()).await;

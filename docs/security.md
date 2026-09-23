@@ -206,6 +206,18 @@ asserts neither copy ever admits active content. See
 
 Files are streamed to disk after validating type, size and filename.
 
+### Serving files back
+
+`/files` answers from the app's own origin, so the safe-list is not allowed
+to be the only thing between an upload and script execution there. Every
+response carries `Content-Security-Policy: sandbox` — a file that somehow
+rendered as a document would get an opaque origin and no scripts — and
+anything that is not an image, audio or video is sent with
+`Content-Disposition: attachment`. That second header is also what makes an
+attachment download at all: the client marks the link `download`, but
+browsers ignore that attribute across origins, and the desktop app is always
+on a different origin than the server.
+
 ## Rate limiting
 
 Authentication, chat traffic and uploads are all rate limited per IP, so the
