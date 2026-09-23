@@ -33,7 +33,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "^1.0.0"
 
       # Ships the prebuilt binary; `cargo install cargo-audit` would spend
       # several minutes compiling it on every run.

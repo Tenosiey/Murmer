@@ -13,6 +13,9 @@ on:
 
 jobs:
   release:
+    # A manual run publishes whatever branch it was started on; only main
+    # carries a finished release.
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
     permissions:
       contents: write
@@ -21,7 +24,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "^1.0.0"
 
       - uses: actions/cache@v6
         with:
@@ -29,7 +32,10 @@ jobs:
           key: ${{ runner.os }}-bun-${{ hashFiles('murmer_client/bun.lock') }}
           restore-keys: ${{ runner.os }}-bun-
 
-      - uses: dtolnay/rust-toolchain@stable
+      # The toolchain pinned in rust-toolchain.toml, which cargo would switch
+      # to anyway; installing `stable` first only downloaded a second one.
+      - name: Install pinned Rust toolchain
+        run: rustup show
 
       - uses: swatinem/rust-cache@v2
         with:

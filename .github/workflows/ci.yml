@@ -26,9 +26,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Bun 1.x is a hard constraint (AGENTS.md); `latest` would move to 2.0
+      # on the day it ships. A caret range, not `1.x`: setup-bun's matcher
+      # reads `1.x` as an older release.
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "^1.0.0"
 
       - uses: actions/cache@v6
         with:
