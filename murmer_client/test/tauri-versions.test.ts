@@ -15,7 +15,7 @@ const root = (relative: string) => fileURLToPath(new URL(`../${relative}`, impor
 function lockedCrates(): Map<string, string> {
   const lock = readFileSync(root('src-tauri/Cargo.lock'), 'utf8');
   const crates = new Map<string, string>();
-  for (const m of lock.matchAll(/name = "(tauri(?:-plugin-[\w-]+)?)"\nversion = "([^"]+)"/g)) {
+  for (const m of lock.matchAll(/name = "(tauri(?:-plugin-[\w-]+)?)"\r?\nversion = "([^"]+)"/g)) {
     crates.set(m[1], m[2]);
   }
   return crates;
