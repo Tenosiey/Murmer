@@ -544,7 +544,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                         // refcounted clone, not a copy of the payload.
                         if sender.send(Message::Text(msg)).await.is_err() { break; }
                     }
-                    Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                        lagged(user_name.as_deref(), "channel", skipped);
+                    }
                     Err(_) => break,
                 }
             }
@@ -602,7 +604,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             break;
                         }
                     }
-                    Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                        lagged(user_name.as_deref(), "global", skipped);
+                    }
                     Err(_) => break,
                 }
             }
@@ -614,6 +618,20 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
     }
     handle_disconnect(&state, user_name, voice_channel).await;
     info!(%client_ip, "Client disconnected");
+}
+
+/// Record that a connection fell behind a broadcast channel and lost frames.
+///
+/// The frames are gone for this one connection — nothing re-sends them, so a
+/// message can simply never appear for one person. The warning is the only
+/// trace of that, and the only way to tell a slow client from a missing
+/// message when somebody reports one. The socket handler's span already
+/// carries the client IP.
+fn lagged(user: Option<&str>, receiver: &str, skipped: u64) {
+    warn!(
+        user = user.unwrap_or("-"),
+        receiver, skipped, "Connection fell behind the broadcast; frames were dropped"
+    );
 }
 
 /// Cheap substring pre-check: does this frame's type look channel-scoped and

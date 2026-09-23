@@ -33,17 +33,19 @@ not a description of the fix.
       `nosniff`, `referrer-policy` and `x-frame-options` and nothing else. Two
       shipped targets, the same `{@html}` markdown boundary, two different
       security postures — and the browser one is the weaker
-- [ ] Lagged broadcast receivers are dropped silently. Both
-      `RecvError::Lagged` arms in `ws/handlers/mod.rs` are empty, so a client
-      that falls behind the 100-frame channel loses frames with no log, no
-      warning and no resync — the message simply never appears for that one
-      person. Log the skipped count at minimum; better, tell the client to
-      re-request the affected state
 - [ ] Reclaim orphaned uploads. Deleting an emoji, avatar, server icon or
       sound removes its file; deleting a *message* does not, and neither does
       the Danger Zone purge or reset. The dashboard's storage breakdown can
       only ever grow. Needs a sweep reconciling `uploads/` against the rows
       that reference it
+- [ ] Resync a connection that lagged its broadcast channel. Both
+      `RecvError::Lagged` arms in `ws/handlers/mod.rs` now log the skipped
+      count, but the frames are still gone — the message simply never
+      appears for that one person. Closing the socket is not the fix: the
+      client does not reconnect on its own, so it would show "Connection
+      lost" and drop a voice call. Needs a frame telling the client to
+      re-request state, and a history merge that sorts, since `history`
+      currently prepends
 - [ ] Retention policy for message history. The database grows without bound
       and an operator has only the all-or-nothing purge. A server-wide or
       per-channel "delete messages older than N days", cascading through
