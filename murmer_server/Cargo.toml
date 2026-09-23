@@ -32,6 +32,7 @@ rusqlite = { version = "0.37", features = ["bundled", "chrono"] }
 [dev-dependencies]
 serial_test = "4"
 temp-env = "0.3"
+tokio-tungstenite = "0.29"
 
 # Debug info dominates both link time and the size of `target/`: the crate
 # builds one test binary per file in `tests/`, and full DWARF made each of them

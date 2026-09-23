@@ -40,12 +40,6 @@ not a description of the fix.
       `routes/chat/+page.svelte` (2.4k lines), `ServerDashboardModal.svelte`
       (2.3k) and `SettingsModal.svelte` (1.6k). "Keep it simple" cuts both
       ways — past a point the flat file is the complicated option
-- [ ] Test the per-recipient frame filter over a real WebSocket. Nothing in
-      `murmer_server/tests/` opens `/ws`, so the auth handshake and the
-      filtering in the `global_rx` arm — the code deciding whether a private
-      channel's messages reach a given connection — are only ever exercised by
-      hand. `direct_routing_test.rs` calls the helpers directly and stops
-      short of the dispatch loop
 - [ ] TURN support — voice does not connect at all behind symmetric NAT or a
       network that blocks UDP. The ICE configuration already comes from the
       server (`STUN_SERVERS`, the `ice-config` frame); what is missing is the
