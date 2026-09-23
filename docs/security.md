@@ -246,6 +246,15 @@ limiter** — which is why it is worth a test at all.
   DOMPurify needs a DOM). Not happy-dom: it mis-drives DOMPurify's tree walk
   and lets `<script>` through, so the tests would pass on broken output.
 - **Avoid `{@html …}`** unless the content is explicitly sanitised.
+- **A Content-Security-Policy is the second line behind DOMPurify.** The
+  desktop shell's is in `tauri.conf.json`; a web client served through
+  `WEB_CLIENT_DIR` gets the same policy from `web_client.rs`, held equal by
+  `server-mirror.test.ts`. SvelteKit boots each page from an inline script,
+  so the server hashes every HTML response as it serves it rather than once
+  at startup — a startup hash goes stale when the client is rebuilt under a
+  running server, and the symptom is a blank page. A 304 passes untouched:
+  its headers replace the cached ones, and a policy computed from its empty
+  body would block the cached page's script.
 - **Validate server responses before mutating client state.**
 
 ## Operational notes

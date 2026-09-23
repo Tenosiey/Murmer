@@ -16,6 +16,7 @@ pub mod profanity;
 pub mod roles;
 pub mod security;
 pub mod upload;
+pub mod web_client;
 pub mod ws;
 
 use std::{

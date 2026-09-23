@@ -378,9 +378,10 @@ should answer with `build/200.html` rather than a 404, which is what makes a
 deep link like `/invite#…` resolve. `WEB_CLIENT_DIR` does this; for nginx it
 is `try_files $uri $uri.html /200.html;`.
 
-Unlike the desktop shell, a hosted page carries no Content-Security-Policy of
-its own (the one in `tauri.conf.json` applies to the packaged app only). Add
-one at your reverse proxy if you want it.
+Served through `WEB_CLIENT_DIR`, every page carries the same
+Content-Security-Policy as the desktop app. Another host serves the files
+without one; copying the policy is not enough there, because each page boots
+from an inline script whose hash changes with every build.
 
 ### Invite links
 
