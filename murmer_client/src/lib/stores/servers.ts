@@ -24,13 +24,14 @@ function loadServers(): ServerEntry[] {
   try {
     if (!data) return [];
     const parsed = JSON.parse(data);
-    if (Array.isArray(parsed)) {
-      if (parsed.length && typeof parsed[0] === 'string') {
-        return (parsed as string[]).map((url) => ({ url, name: url }));
-      }
-      return parsed as ServerEntry[];
-    }
-    return [];
+    // Entries in any other shape, such as the old plain-URL format, are
+    // dropped rather than rendered as servers without an address.
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (entry): entry is ServerEntry =>
+            typeof entry === 'object' && entry !== null && typeof entry.url === 'string'
+        )
+      : [];
   } catch {
     return [];
   }
