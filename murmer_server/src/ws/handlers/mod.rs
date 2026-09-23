@@ -351,7 +351,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             // Start/stop are announcements to the whole channel rather
                             // than one peer, so they stay on the broadcast.
                             "screenshare-start" => {
-                                if claims_own_user(&v, &user_name) {
+                                if claims_own_user(&v, &user_name) && names_own_voice_channel(&v, voice_channel) {
                                     handle_screenshare_start(&state, &v).await;
                                     if let Some(u) = user_name.as_deref() {
                                         stats::note_screenshare_start(&state, u).await;
@@ -372,7 +372,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             // carries no signaling of its own: the video rides the
                             // voice peer connections that already exist.
                             "webcam-start" => {
-                                if claims_own_user(&v, &user_name) {
+                                if claims_own_user(&v, &user_name) && names_own_voice_channel(&v, voice_channel) {
                                     handle_webcam_start(&state, &v).await;
                                     let _ = state.tx.send(text);
                                 }
@@ -670,6 +670,14 @@ fn claims_own_user(v: &Value, user_name: &Option<String>) -> bool {
         Some(name) => v.get("user").and_then(|u| u.as_str()) == Some(name),
         None => false,
     }
+}
+
+/// Whether a frame's `channelId` is the voice channel this connection is in.
+/// A screen share or camera is announced to that channel's members, so
+/// without this anyone could post one into any channel, private ones
+/// included, where it would sit as a tile that never connects.
+fn names_own_voice_channel(v: &Value, voice_channel: Option<i32>) -> bool {
+    voice_channel.is_some() && i32_field(v, "channelId") == voice_channel
 }
 
 async fn handle_status_update(
