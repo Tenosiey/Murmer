@@ -2,7 +2,7 @@
 # The Rust version is spelled out in the tag, not passed as an ARG: Dependabot
 # cannot update an image named through a variable. It must match the channel
 # in the repo-root rust-toolchain.toml, which CI checks.
-FROM docker.io/library/rust:1.97.1-slim-trixie@sha256:754a8924e308fb20a327febeda1a07053a2b0fd7474b5ac1cc460a6d33ab18f3 AS builder
+FROM docker.io/library/rust:1.98.0-slim-trixie@sha256:17d1ba895198f9934c6314ec5346a0d5115372f3243390c3d731e242f35c2f27 AS builder
 WORKDIR /app
 
 # Cache dependencies
