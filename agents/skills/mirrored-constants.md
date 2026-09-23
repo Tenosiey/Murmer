@@ -3,14 +3,14 @@
 Read this before changing anything defined in both the Rust server and the
 TypeScript client.
 
-Seven tables exist twice. The server's copy is the authority and the client's
+Eight tables exist twice. The server's copy is the authority and the client's
 copy is cosmetic — a picker's `accept` attribute, a composer's `maxlength`, a
 greyed-out button. But a drift between them does not fail loudly where it
 happens: the symptom shows up far away, as a permission bit that means one
 thing to the client and another to the server, or a file picker offering an
 extension `/upload` rejects.
 
-## The seven pairs
+## The eight pairs
 
 | Authority (Rust) | Mirror (TypeScript) |
 | --- | --- |
@@ -21,6 +21,7 @@ extension `/upload` rejects.
 | `murmer_server/src/automod.rs` (bounds, kind/action names) plus the mute bounds in `db/moderation.rs` | `murmer_client/src/lib/chat/constants.ts` |
 | `murmer_server/src/db/audit.rs` (action names, the `/role` actor sentinel) | `murmer_client/src/lib/chat/audit.ts` |
 | `murmer_server/src/ws/constants.rs` (soundboard limits) | `murmer_client/src/lib/chat/constants.ts` |
+| `murmer_server/src/ws/errors.rs` (error codes) | `murmer_client/src/lib/errors.ts` (their prose) |
 
 ## The guard
 

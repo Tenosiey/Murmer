@@ -2,8 +2,8 @@
 //!
 //! Pre-serialized `{"type":"error","message":"<code>"}` frames, sent to a
 //! single client via [`crate::ws::helpers::send_error`]. The client maps each
-//! code to user-facing text in `murmer_client/src/lib/errors.ts` — keep the
-//! two files in sync when adding codes.
+//! code to user-facing text in `murmer_client/src/lib/errors.ts`;
+//! `server-mirror.test.ts` fails when a code here has no text there.
 
 /// Client attempted to send a message without authenticating first.
 pub const UNAUTHENTICATED: &str = r#"{"type":"error","message":"unauthenticated"}"#;
@@ -44,7 +44,7 @@ pub const INVALID_ENCODING: &str = r#"{"type":"error","message":"invalid-encodin
 /// Username validation failed.
 pub const INVALID_USERNAME: &str = r#"{"type":"error","message":"invalid-username"}"#;
 
-/// Username is bound to a different public key for this server session.
+/// The name is already bound to a different public key on this server.
 pub const USERNAME_TAKEN: &str = r#"{"type":"error","message":"username-taken"}"#;
 
 /// Channel name validation failed.

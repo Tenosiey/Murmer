@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PERMISSIONS, ALL_PERMISSIONS } from '../src/lib/chat/permissions';
+import { describeServerError } from '../src/lib/errors';
 import {
   AUDIT_ACTIONS,
   AUDIT_ACTOR_ADMIN_TOKEN,
@@ -443,5 +444,28 @@ describe('audit action mirror', () => {
     expect(actor).not.toBeNull();
     expect(actor![1]).toBe(AUDIT_ACTOR_ADMIN_TOKEN);
     expect(AUDIT_ACTOR_ADMIN_TOKEN).not.toMatch(/^[A-Za-z0-9_ -]+$/);
+  });
+});
+
+describe('error code mirror', () => {
+  const errorsRs = readServerSource('ws/errors.rs');
+  /** Codes only a bot connection can receive; bots read the code itself. */
+  const BOT_ONLY = new Set(['missing-bot-token', 'invalid-bot-token']);
+
+  function serverErrorCodes(): string[] {
+    return [...errorsRs.matchAll(/"message":"([a-z0-9-]+)"/g)].map((m) => m[1]);
+  }
+
+  it('parsed the server codes at all', () => {
+    expect(serverErrorCodes().length).toBeGreaterThan(100);
+  });
+
+  it('has prose for every code a person can be sent', () => {
+    // Without an entry the user sees the raw identifier, prefixed with
+    // "The server reported an error:", which reads like a crash.
+    const untranslated = serverErrorCodes().filter(
+      (code) => !BOT_ONLY.has(code) && describeServerError(code).startsWith('The server reported an error:')
+    );
+    expect(untranslated).toEqual([]);
   });
 });
