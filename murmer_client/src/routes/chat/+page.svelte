@@ -19,10 +19,8 @@
   import { selectedServer, servers } from '$lib/stores/servers';
   import { onlineUsers } from '$lib/stores/online';
   import { offlineUsers } from '$lib/stores/users';
-  import { volume, outputDeviceId, outputMuted, microphoneMuted, userVolumes } from '$lib/stores/settings';
-  import { setSpeaking, SPEAKING_RMS_THRESHOLD } from '$lib/stores/voiceSpeaking';
-  import { getAudioContext, resumeAudioContext } from '$lib/voice/audioContext';
-  import { subscribeTick } from '$lib/voice/ticker';
+  import { outputMuted, microphoneMuted } from '$lib/stores/settings';
+  import { remoteAudio } from '$lib/voice/remoteAudio';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
@@ -395,154 +393,6 @@
 
 
 
-
-  function stream(node: HTMLAudioElement, data: { stream: MediaStream, userId: string }) {
-    let currentUserId = data.userId;
-
-    let analyser: AnalyserNode | null = null;
-    let sourceNode: MediaStreamAudioSourceNode | null = null;
-    let gainNode: GainNode | null = null;
-    let stopTicks: (() => void) | null = null;
-    let buffer: Uint8Array<ArrayBuffer> | null = null;
-
-    // The per-user volume is applied by a gain node rather than the audio
-    // element, because `HTMLMediaElement.volume` is clamped to 1 and quiet
-    // members need to be boosted beyond 100%. The element still carries the
-    // global volume and the output mute, and keeps `setSinkId` working.
-    // If the graph could not be built we fall back to the element alone,
-    // where any boost is clamped back down to 100%.
-    const updateVolume = () => {
-      const userVol = $userVolumes[currentUserId] ?? 1.0;
-      if ($outputMuted) {
-        node.volume = 0;
-      } else {
-        // Anything outside [0, 1] throws on assignment, so clamp rather than
-        // trusting the stored values.
-        const elementVol = $volume * (gainNode ? 1 : Math.min(userVol, 1));
-        node.volume = Math.max(0, Math.min(1, elementVol));
-      }
-      if (gainNode) gainNode.gain.value = userVol;
-    };
-
-    const unsubVol = volume.subscribe(() => updateVolume());
-    const unsubMute = outputMuted.subscribe(() => updateVolume());
-    const unsubUserVol = userVolumes.subscribe(() => updateVolume());
-    
-    const applySink = async (id: string | null) => {
-      if ((node as any).setSinkId) {
-        try {
-          await (node as any).setSinkId(id || '');
-        } catch (e) {
-          console.error('Failed to set output device', e);
-        }
-      }
-    };
-    const unsubOut = outputDeviceId.subscribe((id) => {
-      applySink(id);
-    });
-    applySink($outputDeviceId);
-    updateVolume(); // Initial volume setting
-
-    const disconnectNode = (audioNode: AudioNode | null, label: string) => {
-      if (!audioNode) return;
-      try {
-        audioNode.disconnect();
-      } catch (err) {
-        if (import.meta.env.DEV) console.warn(`Failed to disconnect ${label}`, err);
-      }
-    };
-
-    const teardownAudio = () => {
-      if (stopTicks) {
-        stopTicks();
-        stopTicks = null;
-      }
-      disconnectNode(sourceNode, 'source node');
-      sourceNode = null;
-      disconnectNode(analyser, 'analyser');
-      analyser = null;
-      disconnectNode(gainNode, 'gain node');
-      gainNode = null;
-      buffer = null;
-      setSpeaking(currentUserId, false);
-    };
-
-    const setupAudio = (stream: MediaStream | null | undefined) => {
-      teardownAudio();
-      node.srcObject = stream ?? null;
-      if (!stream) return;
-
-      try {
-        // The context is shared with every other graph in the app: browsers
-        // cap concurrent contexts at a handful, and one per peer used to
-        // exhaust that budget in a busy channel — after which this whole
-        // block threw and the per-user boost silently stopped working.
-        const audioContext = getAudioContext();
-        if (!audioContext) throw new Error('no audio context');
-        resumeAudioContext();
-
-        sourceNode = audioContext.createMediaStreamSource(stream);
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 512;
-        buffer = new Uint8Array(new ArrayBuffer(analyser.fftSize)) as Uint8Array<ArrayBuffer>;
-
-        sourceNode.connect(analyser);
-
-        // source -> gain -> destination stream, which the element then plays.
-        // Playing the gained stream back through the element (instead of
-        // sending it to the context destination) keeps `setSinkId` output
-        // device selection and the global volume/mute working as before.
-        gainNode = audioContext.createGain();
-        const destination = audioContext.createMediaStreamDestination();
-        sourceNode.connect(gainNode);
-        gainNode.connect(destination);
-        node.srcObject = destination.stream;
-        updateVolume();
-
-        stopTicks = subscribeTick(() => {
-          if (!analyser || !buffer) return;
-          analyser.getByteTimeDomainData(buffer);
-          let sum = 0;
-          for (let i = 0; i < buffer.length; i++) {
-            const value = (buffer[i] - 128) / 128;
-            sum += value * value;
-          }
-          const rms = Math.sqrt(sum / buffer.length);
-          const speaking = rms > SPEAKING_RMS_THRESHOLD;
-          setSpeaking(currentUserId, speaking);
-        });
-      } catch (error) {
-        if (import.meta.env.DEV) {
-          console.warn('Failed to build the remote audio graph', error);
-        }
-        // Never let a broken graph silence a peer: drop it and play the
-        // stream straight from the element (no boost beyond 100%).
-        teardownAudio();
-        node.srcObject = stream;
-        updateVolume();
-      }
-    };
-
-    setupAudio(data.stream);
-
-    return {
-      update(newData: { stream: MediaStream, userId: string }) {
-        if (currentUserId !== newData.userId) {
-          setSpeaking(currentUserId, false);
-          currentUserId = newData.userId;
-        }
-        setupAudio(newData.stream);
-        updateVolume();
-      },
-      destroy() {
-        unsubVol();
-        unsubMute();
-        unsubUserVol();
-        unsubOut();
-        teardownAudio();
-      }
-    };
-  }
 
   function connectToServer() {
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
@@ -2353,7 +2203,7 @@
       {/if}
 
       {#each $voice as peer (peer.id)}
-        <audio autoplay use:stream={{ stream: peer.stream, userId: peer.id }}></audio>
+        <audio autoplay use:remoteAudio={{ stream: peer.stream, userId: peer.id }}></audio>
       {/each}
     </div>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
