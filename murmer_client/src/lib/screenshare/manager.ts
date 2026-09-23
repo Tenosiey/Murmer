@@ -6,6 +6,8 @@
  * Uses the same signaling infrastructure as voice chat.
  */
 import { chat } from '../stores/chat';
+import { get } from 'svelte/store';
+import { iceServers } from '../stores/iceConfig';
 import { remoteFingerprint } from '../webrtc/fingerprint';
 import { PeerRecovery } from '../webrtc/recovery';
 import type { Message, ScreenShareSettings, ScreenSharePeer } from '../types';
@@ -82,10 +84,6 @@ export class ScreenShareManager {
 
   /** Rebuilds spent on each share we are watching, keyed by the sharer. */
   private rebuilds: Record<string, number> = {};
-
-  private config: RTCConfiguration = {
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-  };
 
   /**
    * Repairs connections that break mid-share instead of closing them. Both
@@ -455,7 +453,7 @@ export class ScreenShareManager {
   private async openIncoming(sharer: string): Promise<void> {
     if (this.incoming[sharer]) return;
 
-    const pc = new RTCPeerConnection(this.config);
+    const pc = new RTCPeerConnection({ iceServers: get(iceServers) });
     this.incoming[sharer] = pc;
 
     pc.addTransceiver('video', { direction: 'recvonly' });
@@ -522,7 +520,7 @@ export class ScreenShareManager {
 
     let pc = this.outgoing[viewer];
     if (!pc) {
-      pc = new RTCPeerConnection(this.config);
+      pc = new RTCPeerConnection({ iceServers: get(iceServers) });
       this.outgoing[viewer] = pc;
       for (const track of this.localStream.getTracks()) {
         pc.addTrack(track, this.localStream);

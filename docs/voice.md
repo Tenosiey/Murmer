@@ -265,3 +265,11 @@ that is a plan rather than code today.
 
 Murmer has no TURN/relay support today, so two peers behind symmetric NATs
 cannot connect. The design note is [`../plans/turn-support.md`](../plans/turn-support.md).
+
+What exists is its first step: the STUN servers come from the server
+(`STUN_SERVERS`) in an `ice-config` frame after authentication, and both
+managers build every peer connection from that store. The client carries no
+default of its own on purpose — a compiled-in URL would be contacted on every
+call whatever the operator chose. The store only admits `stun:`/`stuns:`,
+because `RTCPeerConnection` throws on a `turn:` entry without credentials,
+and that would break every call rather than just the relayed ones.

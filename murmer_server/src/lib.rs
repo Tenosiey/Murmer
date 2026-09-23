@@ -278,6 +278,9 @@ pub struct AppState {
     pub upload_dir: PathBuf,
     pub password: Option<String>,
     pub admin_token: Option<String>,
+    /// STUN URLs sent to each client in its `ice-config` frame
+    /// (`STUN_SERVERS`, see `config.rs`).
+    pub stun_servers: Vec<String>,
     pub rate_limiter: RateLimiter,
     /// Mirror of the server-wide stat tracking toggle (`server_settings` key
     /// `stats_enabled`), kept in memory so the recording hooks that fire on
@@ -349,6 +352,7 @@ impl AppState {
             upload_dir: PathBuf::from("uploads"),
             password: None,
             admin_token: None,
+            stun_servers: Vec::new(),
             rate_limiter: RateLimiter::new(),
             stats_enabled: AtomicBool::new(false),
             chat_settings: Mutex::default(),

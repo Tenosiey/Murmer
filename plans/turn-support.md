@@ -1,7 +1,9 @@
 # TURN support — design note
 
-**Status:** not implemented, not scheduled. Written 2026-07-29 as a reference
-for deciding later.
+**Status:** §1 shipped as STUN only (`STUN_SERVERS`, the `ice-config` frame,
+`stores/iceConfig.ts`; see [`../docs/voice.md`](../docs/voice.md)). §2–§5 are
+not implemented and not scheduled. Written 2026-07-29 as a reference for
+deciding later; "The problem" below describes the code before §1.
 
 This note exists so the problem does not have to be re-derived from scratch.
 Nothing here is committed to; the "Open questions" section at the end lists what
@@ -252,9 +254,9 @@ Rough shape, assuming ephemeral credentials and self-hosted coturn:
 - **Who gets relay credentials?** Currently assumed: every authenticated user.
   Could be gated on a permission bit if bandwidth becomes a problem, but that
   makes voice work for some members and not others, which is hard to explain.
-- **Ship §1 alone now?** It has standalone value (removes the Google STUN
-  dependency, unblocks operators who already run a TURN server) and no
-  dependency on the rest.
-- **Default STUN when nothing is configured** — keep Google's, drop to no ICE
-  servers at all (LAN-only), or ship a different default? Dropping it would
-  break direct connections for existing installs that currently work.
+- **Default STUN when nothing is configured** — decided with §1: Google's
+  stays the default, and `STUN_SERVERS=` (empty) opts out to LAN-only.
+- **TURN entries in `ice-config`** — §1 admits `stun:`/`stuns:` only, on the
+  server and in the client store. §2 has to widen both, and must ship the
+  credentials in the same frame: a `turn:` entry without them makes
+  `RTCPeerConnection` throw.

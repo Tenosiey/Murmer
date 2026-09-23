@@ -9,6 +9,7 @@
  * is not a mesh of its own.
  */
 import { chat } from '../stores/chat';
+import { iceServers } from '../stores/iceConfig';
 import {
   appSoundVolume,
   inputDeviceId,
@@ -177,10 +178,6 @@ export class VoiceManager {
   private leaveSound = new Audio('/sounds/user_leave_voice_sound.mp3');
   private muteSound = new Audio('/sounds/mute_sound.wav');
   private unmuteSound = new Audio('/sounds/unmute_sound.wav');
-
-  private config: RTCConfiguration = {
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-  };
 
   private channelConfig: VoiceChannelInfo | null = null;
 
@@ -941,7 +938,7 @@ export class VoiceManager {
     peersList: RemotePeer[]
   ): Promise<RTCPeerConnection> {
     if (this.peers[id]) return this.peers[id];
-    const pc = new RTCPeerConnection(this.config);
+    const pc = new RTCPeerConnection({ iceServers: get(iceServers) });
     this.peers[id] = pc;
     if (this.localStream) {
       for (const track of this.localStream.getTracks()) {

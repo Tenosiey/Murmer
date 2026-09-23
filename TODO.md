@@ -62,12 +62,12 @@ not a description of the fix.
       hand. `direct_routing_test.rs` calls the helpers directly and stops
       short of the dispatch loop
 - [ ] TURN support — voice does not connect at all behind symmetric NAT or a
-      network that blocks UDP, and both managers hardcode one public STUN
-      server with no way for an operator to change it. Designed but not
-      scheduled: see [`plans/turn-support.md`](plans/turn-support.md) for the
-      work breakdown, the ephemeral-credential scheme, the interaction with
-      `webrtc/recovery.ts` and the open questions. The first step (making the
-      ICE configuration configurable at all) is small and independently useful
+      network that blocks UDP. The ICE configuration already comes from the
+      server (`STUN_SERVERS`, the `ice-config` frame); what is missing is the
+      relay itself. Designed but not scheduled: see
+      [`plans/turn-support.md`](plans/turn-support.md) for the work breakdown,
+      the ephemeral-credential scheme, the interaction with
+      `webrtc/recovery.ts` and the open questions
 
 ---
 

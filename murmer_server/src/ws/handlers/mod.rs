@@ -1,8 +1,9 @@
 //! WebSocket message handlers.
 //!
 //! The socket loop and dispatch live here, along with the small voice,
-//! screen-share and camera handlers, the server-info and operator-metrics
-//! answers, and the rest of what is not worth a file of its own. Each
+//! screen-share and camera handlers, the ICE server announcement, the
+//! server-info and operator-metrics answers, and the rest of what is not
+//! worth a file of its own. Each
 //! submodule handles one domain and documents itself.
 
 mod audit;
@@ -1174,6 +1175,24 @@ async fn send_voice_mutes(
             "channelId": channel_id,
             "states": states,
         }),
+    )
+    .await;
+}
+
+/// Send the ICE servers for WebRTC to a single client, right after
+/// authentication. Voice and screen share build every peer connection from
+/// this, so the operator — not a URL compiled into the client — decides whom
+/// a call contacts. The shape is `RTCConfiguration.iceServers`, so the client
+/// can pass it through.
+async fn send_ice_config(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+    let ice_servers: Vec<Value> = state
+        .stun_servers
+        .iter()
+        .map(|url| serde_json::json!({ "urls": url }))
+        .collect();
+    send_json(
+        sender,
+        &serde_json::json!({ "type": "ice-config", "iceServers": ice_servers }),
     )
     .await;
 }
