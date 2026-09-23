@@ -31,6 +31,7 @@ bun run test         # Vitest (bun run test:watch while iterating)
 | `src/lib/components/` | Reusable UI components (overlays, menus, indicators) |
 | `src/lib/components/chat/` | Sections of the chat page (sidebar, header, …) |
 | `src/lib/components/dashboard/` | One component per Server Dashboard tab |
+| `src/lib/components/settings/` | One component per Settings tab |
 | `src/lib/stores/` | Svelte stores holding client state — [`../docs/client-state.md`](../docs/client-state.md) |
 | `src/lib/chat/` | Constants and helpers for the chat page |
 | `src/lib/voice/` | WebRTC voice, camera video, push-to-talk, RNNoise, mic tooling — [`../docs/voice.md`](../docs/voice.md) |
