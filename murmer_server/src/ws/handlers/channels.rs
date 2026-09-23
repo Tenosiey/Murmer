@@ -617,12 +617,11 @@ pub(super) async fn handle_update_voice_channel(
         None
     };
 
-    let current = state.voice_channels.lock().await;
-    let Some(existing) = current.get(&ch_id).cloned() else {
+    let existing = state.voice_channels.lock().await.get(&ch_id).cloned();
+    let Some(existing) = existing else {
         send_error(sender, errors::UNKNOWN_VOICE_CHANNEL).await;
         return;
     };
-    drop(current);
 
     let next_quality = quality_override.unwrap_or_else(|| existing.quality.clone());
     let next_bitrate = match bitrate_override {

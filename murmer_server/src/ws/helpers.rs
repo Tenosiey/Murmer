@@ -143,8 +143,10 @@ pub async fn send_role_definitions(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
 ) {
-    let defs = state.role_defs.lock().await;
-    if let Some(msg) = role_definitions_frame(&defs) {
+    // Built before sending: every permission check needs `role_defs`, so the
+    // lock must not wait on this one client's socket.
+    let frame = role_definitions_frame(&*state.role_defs.lock().await);
+    if let Some(msg) = frame {
         let _ = sender.send(Message::Text(msg.into())).await;
     }
 }
