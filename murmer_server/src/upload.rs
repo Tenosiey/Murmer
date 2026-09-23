@@ -342,6 +342,12 @@ pub async fn upload(
         .file_name()
         .map(sanitize)
         .unwrap_or_else(|| "upload".to_string());
+    // Every `/files/<key>` validator refuses a key containing "..", so a key
+    // stored with one ("wow...mp3") could never be registered as a sound,
+    // emoji or avatar. Collapse the dots here instead of loosening that check.
+    while filename.contains("..") {
+        filename = filename.replace("..", ".");
+    }
 
     if filename.is_empty() {
         filename = "upload".to_string();

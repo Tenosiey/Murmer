@@ -23,14 +23,6 @@ not a description of the fix.
       whether anything remains mid-speech
 - [ ] Screen share: after the streamer stops sharing, the overlay controls
       stop responding — the viewer-side state is never reset
-- [ ] Soundboard: uploading a new sound fails. Not reproduced from reading the
-      code; two leads to rule out first. `validate_sound_name` bounds the name
-      in **bytes** while `SoundboardPanel.svelte` bounds it in UTF-16 units,
-      so a long name carrying non-ASCII characters passes the client and is
-      rejected by the server. Separately, an extension on the `/upload` audio
-      list but not on `UPLOAD_SOUND_EXTENSIONS` — `.flac` is the only one —
-      uploads fine and is then refused by `add-sound`, leaving the file
-      orphaned on disk; the picker's `accept` hides that, "All files" does not
 
 ---
 
@@ -47,12 +39,6 @@ not a description of the fix.
       warning and no resync — the message simply never appears for that one
       person. Log the skipped count at minimum; better, tell the client to
       re-request the affected state
-- [ ] Mirror-test the soundboard constants. `SOUND_EXTENSIONS`,
-      `MAX_SOUND_FILE_BYTES`, `MAX_SOUNDBOARD_SOUNDS`, the name-length bounds
-      and the cooldown are all defined on both sides, and
-      `test/server-mirror.test.ts` covers permissions, the upload safe-list
-      and the chat policy but not these. Drift shows up as an upload that
-      fails after the file has already been stored
 - [ ] Reclaim orphaned uploads. Deleting an emoji, avatar, server icon or
       sound removes its file; deleting a *message* does not, and neither does
       the Danger Zone purge or reset. The dashboard's storage breakdown can

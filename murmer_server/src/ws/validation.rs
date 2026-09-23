@@ -129,9 +129,13 @@ pub fn validate_about(value: &str) -> bool {
 /// Validate a soundboard sound's display name. Unlike emoji shortcodes these
 /// are shown as plain text, so spaces and mixed case are fine; control
 /// characters are not, and the name must already be trimmed.
+///
+/// The bounds count characters, not bytes, like the display name's: a byte
+/// bound let a 20-character name with umlauts pass the client's check and
+/// fail here, after the file had already been uploaded.
 pub fn validate_sound_name(value: &str) -> bool {
-    value.len() >= MIN_SOUND_NAME_LEN
-        && value.len() <= MAX_SOUND_NAME_LEN
+    let len = value.chars().count();
+    (MIN_SOUND_NAME_LEN..=MAX_SOUND_NAME_LEN).contains(&len)
         && value == value.trim()
         && !value.chars().any(char::is_control)
 }
@@ -352,6 +356,7 @@ mod tests {
         assert!(!validate_sound_name(" padded "));
         assert!(!validate_sound_name("bad\u{7}name"));
         assert!(!validate_sound_name(&"x".repeat(MAX_SOUND_NAME_LEN + 1)));
+        assert!(validate_sound_name(&"ä".repeat(MAX_SOUND_NAME_LEN)));
     }
 
     #[test]

@@ -28,7 +28,8 @@
     MAX_SOUND_NAME_LEN,
     MIN_SOUND_NAME_LEN,
     SOUNDBOARD_COOLDOWN_MS,
-    SOUND_ACCEPT
+    SOUND_ACCEPT,
+    SOUND_EXTENSIONS
   } from '$lib/chat/constants';
   import type { Message, SoundboardSound } from '$lib/types';
 
@@ -140,6 +141,18 @@
     const file = input.files?.[0];
     input.value = '';
     if (!file || !httpBase) return;
+
+    // The picker's filter is only a default — "All files" gets past it. `/upload`
+    // takes any audio (.flac included) and `add-sound` would then refuse it,
+    // leaving the file stored with nothing pointing at it.
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+    if (!SOUND_EXTENSIONS.includes(ext)) {
+      feedback = {
+        text: `Sounds must be one of: ${SOUND_EXTENSIONS.join(', ')}.`,
+        kind: 'error'
+      };
+      return;
+    }
 
     if (file.size > MAX_SOUND_FILE_BYTES) {
       feedback = {
