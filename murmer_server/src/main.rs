@@ -31,7 +31,8 @@ use axum::{
 };
 use dotenvy::dotenv;
 use murmer_server::{
-    AppState, VoiceChannelState, admin, automod, bot, config::Config, db, link_preview, upload, ws,
+    AppState, VoiceChannelState, admin, automod, bot, config::Config, db, link_preview, upload,
+    web_client, ws,
 };
 use std::{
     collections::HashSet,
@@ -41,10 +42,7 @@ use std::{
 use tokio::{net::TcpListener, signal, sync::Mutex};
 use tower::ServiceBuilder;
 use tower_http::{
-    compression::CompressionLayer,
-    services::{ServeDir, ServeFile},
-    set_header::SetResponseHeaderLayer,
-    trace::TraceLayer,
+    compression::CompressionLayer, set_header::SetResponseHeaderLayer, trace::TraceLayer,
 };
 use tracing::info;
 
@@ -191,11 +189,7 @@ async fn main() -> Result<()> {
     router = match &config.web_client_dir {
         Some(dir) => {
             info!(path = %dir.display(), "serving web client");
-            // The client is a prerendered single-page app: a deep link such as
-            // `/invite` has no file of its own, so anything unmatched falls
-            // back to the SPA shell, which routes it in the browser.
-            let spa = ServeDir::new(dir).fallback(ServeFile::new(dir.join("200.html")));
-            router.fallback_service(spa)
+            router.fallback_service(web_client::router(dir))
         }
         None => router.route(
             "/",

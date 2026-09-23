@@ -61,9 +61,10 @@ Three things RNNoise needs, all of which fail quietly if forgotten:
 
 1. The WASM binary is fetched on the main thread and passed in as an
    `ArrayBuffer` — an `AudioWorkletGlobalScope` has no `fetch`.
-2. The CSP in `tauri.conf.json` must keep `'wasm-unsafe-eval'` in
-   `script-src`. The dev server sends no CSP, so a mistake here only surfaces
-   in a packaged build.
+2. The CSP in `tauri.conf.json` (mirrored for the web client in the
+   server's `web_client.rs`) must keep `'wasm-unsafe-eval'` in `script-src`.
+   The dev server sends no CSP, so a mistake here only surfaces in a
+   packaged build or a served web client.
 3. The shared `AudioContext` must run at 48 kHz.
 
 Every failure path drops the node and keeps the microphone working.

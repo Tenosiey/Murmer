@@ -28,11 +28,6 @@ not a description of the fix.
 
 ## 🔧 Tech debt / hardening
 
-- [ ] Content-Security-Policy for the web client. The desktop shell ships a
-      full policy in `tauri.conf.json`; the same bundle served over HTTP gets
-      `nosniff`, `referrer-policy` and `x-frame-options` and nothing else. Two
-      shipped targets, the same `{@html}` markdown boundary, two different
-      security postures — and the browser one is the weaker
 - [ ] Reclaim orphaned uploads. Deleting an emoji, avatar, server icon or
       sound removes its file; deleting a *message* does not, and neither does
       the Danger Zone purge or reset. The dashboard's storage breakdown can

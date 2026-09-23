@@ -469,3 +469,39 @@ describe('error code mirror', () => {
     expect(untranslated).toEqual([]);
   });
 });
+
+describe('content security policy mirror', () => {
+  // The web client served by the server and the desktop shell run the same
+  // bundle across the same `{@html}` boundary, so they get the same policy.
+  const webClientRs = readServerSource('web_client.rs');
+  const tauriConf = JSON.parse(
+    readFileSync(fileURLToPath(new URL('../src-tauri/tauri.conf.json', import.meta.url)), 'utf8')
+  );
+
+  /** Directive name to its sorted sources, so order does not matter. */
+  function directives(policy: string): Record<string, string[]> {
+    const entries = policy
+      .split(';')
+      .map((directive) => directive.trim().split(/\s+/))
+      .filter(([name]) => name)
+      .map(([name, ...sources]) => [name, sources.sort()]);
+    return Object.fromEntries(entries);
+  }
+
+  function serverPolicy(): string {
+    // A Rust string with `\` line continuations, which drop the newline and
+    // the next line's leading whitespace.
+    const literal = webClientRs.match(/const POLICY: &str = "([^"]+)";/);
+    expect(literal).not.toBeNull();
+    return literal![1].replace(/\\r?\n\s*/g, '');
+  }
+
+  it('parsed both policies at all', () => {
+    expect(Object.keys(directives(serverPolicy()))).toContain('script-src');
+    expect(Object.keys(directives(tauriConf.app.security.csp))).toContain('script-src');
+  });
+
+  it('gives the web client the desktop policy', () => {
+    expect(directives(serverPolicy())).toEqual(directives(tauriConf.app.security.csp));
+  });
+});

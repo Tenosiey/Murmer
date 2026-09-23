@@ -31,6 +31,7 @@ the SQLite database on a named volume.
 | `ws/helpers.rs` | `has_permission`, `top_position`, `can_view_channel` — the enforcement point |
 | `db/` | Connection, schema and queries, split by the same domains |
 | `bot/` | REST API for bots — [`BOT_API.md`](BOT_API.md) |
+| `web_client.rs` | Serving `WEB_CLIENT_DIR` under the desktop app's Content-Security-Policy |
 | `upload.rs` | `/upload`: the signed-proof gate, validation, the categorised safe-list |
 | `admin.rs` | `/role`, guarded by a bearer token |
 | `roles.rs` | Role definitions and default role colors |

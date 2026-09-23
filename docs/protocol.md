@@ -124,4 +124,5 @@ a 24-byte nonce, a bounded size. The server never sees inside them. See
 fallback, with unmatched paths falling back to `200.html` so the prerendered
 SPA routes its own deep links. Serving it there puts the client on the same
 origin as `/ws` and `/upload`, which is what lets a browser use it with CORS
-off.
+off. Its pages carry the desktop shell's Content-Security-Policy
+(`web_client.rs`, see [`security.md`](security.md)).
