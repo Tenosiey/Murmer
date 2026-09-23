@@ -108,8 +108,8 @@ And two things no command can do for you:
   channels must stay opaque to the server.
 - **A hand-edited version number.** Use `bun run bump` —
   [`agents/skills/releasing.md`](agents/skills/releasing.md).
-- **A TypeScript 7 upgrade**, including the Dependabot PR that proposes it.
-  `svelte-check` is the blocker; the client stays on major 6.
+- **A TypeScript 7 upgrade.** `svelte-check` is the blocker; the client
+  stays on major 6, and Dependabot is told not to propose it.
 - **A second copy of a list that already has an authority** — environment
   variables, permission flags, upload categories. Link to the authority, or
   add it to the mirror test

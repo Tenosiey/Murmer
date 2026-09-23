@@ -1,59 +1,93 @@
 version: 2
-updates:
-  # Client frontend (Bun — managed under the npm ecosystem via bun.lock)
-  - package-ecosystem: "npm"
-    directory: "/murmer_client"
+
+# Every update lands on `dev`, which CI checks; `main` only ever receives
+# `dev`. A new release is not proposed until it is seven days old: most
+# compromised package versions are pulled within days, and security updates
+# ignore the cooldown, so the wait costs nothing when it matters.
+
+# Groups whose members have to move in one pull request because a check
+# fails whenever they disagree. A multi-ecosystem group only has a
+# well-defined meaning with `patterns: ["*"]`, so each of these takes its
+# ecosystems whole.
+multi-ecosystem-groups:
+  # The desktop client: its Bun packages and the Tauri shell's crates. Tauri
+  # ships every plugin as a crate plus an npm package, and `tauri build`
+  # refuses a pair whose major or minor versions differ
+  # (`murmer_client/test/tauri-versions.test.ts` runs the same check). Split
+  # across two pull requests, each half would fail CI on its own.
+  desktop-client:
     schedule:
       interval: "weekly"
     target-branch: "dev"
-    groups:
-      npm-minor-patch:
-        update-types:
-          - "minor"
-          - "patch"
 
-  # Client Tauri backend (Cargo)
+  # The Rust toolchain in `rust-toolchain.toml` and the server's Docker build
+  # image name the same Rust release; CI fails when they drift apart.
+  rust-toolchain:
+    schedule:
+      interval: "weekly"
+    target-branch: "dev"
+
+updates:
+  - package-ecosystem: "bun"
+    directory: "/murmer_client"
+    patterns: ["*"]
+    multi-ecosystem-group: "desktop-client"
+    cooldown:
+      default-days: 7
+    ignore:
+      # svelte-check does not support TypeScript 7 (AGENTS.md).
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
   - package-ecosystem: "cargo"
     directory: "/murmer_client/src-tauri"
-    schedule:
-      interval: "weekly"
-    target-branch: "dev"
-    groups:
-      cargo-minor-patch:
-        update-types:
-          - "minor"
-          - "patch"
+    patterns: ["*"]
+    multi-ecosystem-group: "desktop-client"
+    cooldown:
+      default-days: 7
 
-  # Server (Cargo)
   - package-ecosystem: "cargo"
     directory: "/murmer_server"
     schedule:
       interval: "weekly"
     target-branch: "dev"
+    cooldown:
+      default-days: 7
     groups:
+      # tokio-rusqlite pins the rusqlite it links against, so the two can
+      # only move together. Listed first: a dependency joins the first group
+      # it matches.
+      sqlite:
+        patterns:
+          - "rusqlite"
+          - "tokio-rusqlite"
       cargo-minor-patch:
         update-types:
           - "minor"
           - "patch"
 
-  # Server Docker base image
+  - package-ecosystem: "rust-toolchain"
+    directory: "/"
+    patterns: ["*"]
+    multi-ecosystem-group: "rust-toolchain"
+    cooldown:
+      default-days: 7
+
+  # The builder image (the Rust toolchain) and the runtime base image.
   - package-ecosystem: "docker"
     directory: "/murmer_server"
-    schedule:
-      interval: "weekly"
-    target-branch: "dev"
-    groups:
-      docker-minor-patch:
-        update-types:
-          - "minor"
-          - "patch"
+    patterns: ["*"]
+    multi-ecosystem-group: "rust-toolchain"
+    cooldown:
+      default-days: 7
 
-  # GitHub Actions workflows
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
     target-branch: "dev"
+    cooldown:
+      default-days: 7
     groups:
       github-actions-minor-patch:
         update-types:
