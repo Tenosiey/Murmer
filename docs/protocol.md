@@ -87,6 +87,30 @@ skip the invalidation without also failing to tell them. A connection that
 changes account (anonymous → named) drops its memo too, since the two
 resolve differently and nothing is broadcast for it.
 
+### A receiver that falls behind
+
+Both broadcast channels hold `BROADCAST_CAPACITY` frames. A connection that
+cannot drain them in time (a slow client, a stalled socket) gets
+`RecvError::Lagged` and the skipped frames are gone. Closing the socket is
+not the answer: the client does not reconnect on its own, so the person
+would see "Connection lost" and drop out of a call over a burst of traffic.
+
+So the receive arm puts current state in the frames' place instead:
+
+- **Channel broadcast:** the channel's newest `history` page, sized to the
+  number of skipped frames (it cannot have missed more messages than that)
+  up to `MAX_HISTORY_LIMIT`. The client merges pages by id rather than
+  prepending — `mergeHistory` in `src/lib/message-utils.ts` — so the page
+  also delivers the edits, reactions and deletions that were missed.
+- **Server-wide broadcast:** `resync_global` re-sends the post-auth snapshot
+  (`send_state_snapshot` in `auth.rs`), the state of the voice channel the
+  connection is in, then a `resync` frame. Every snapshot replaces the
+  client's copy, which is what makes re-sending them safe. `resync` asks
+  the client for what only it knows is open: the active DM conversation.
+
+Notifications for other channels (`*-notify`) are not recovered; an unread
+badge can be missed, a message cannot.
+
 ## Inbound validation
 
 Three checks matter, in `ws/helpers.rs` and `ws/handlers/mod.rs`:

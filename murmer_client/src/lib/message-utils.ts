@@ -197,3 +197,39 @@ export function containsMention(
   return pattern.test(text);
 }
 
+
+/**
+ * Merge a `history` page into the flat message store.
+ *
+ * A page is not only ever older than what is held: rejoining a channel, or
+ * a connection that fell behind its channel broadcast (see
+ * `docs/protocol.md`), brings the *newest* page, which can hold messages
+ * newer than ones already here. So the result is sorted by id rather than
+ * the page being prepended.
+ *
+ * Pages are contiguous per channel, which decides the rest:
+ * - The page is the server's current answer, so it wins where both hold a
+ *   message — that is how a missed edit or reaction lands — and a held
+ *   message of that channel inside the page's id range but absent from it
+ *   was deleted meanwhile.
+ * - A page entirely newer than everything held for its channel may have
+ *   left a gap below it that scrolling up would never fill, since that
+ *   loads from the oldest held id. Those held messages are dropped, and
+ *   scrolling up loads them back contiguously.
+ */
+export function mergeHistory(existing: Message[], page: Message[]): Message[] {
+  const ids = page.map((m) => m.id).filter((id): id is number => typeof id === 'number');
+  if (ids.length === 0) return existing;
+  const channelId = page[0].channelId;
+  const low = Math.min(...ids);
+  const high = Math.max(...ids);
+  const fresh = new Set(ids);
+  const held = existing.filter((m) => m.channelId === channelId && typeof m.id === 'number');
+  const gap = held.length > 0 && held.every((m) => (m.id as number) < low);
+  const kept = existing.filter((m) => {
+    if (typeof m.id !== 'number' || m.channelId !== channelId) return true;
+    return !gap && !fresh.has(m.id) && (m.id < low || m.id > high);
+  });
+  const sortKey = (m: Message) => (typeof m.id === 'number' ? m.id : Number.MAX_SAFE_INTEGER);
+  return [...kept, ...page].sort((a, b) => sortKey(a) - sortKey(b));
+}
