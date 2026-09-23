@@ -60,9 +60,14 @@ pub struct PreviewQuery {
     url: String,
 }
 
-fn cache() -> &'static Mutex<HashMap<String, (Instant, Preview)>> {
+/// The cache holds nothing a panicking holder could leave half-updated, so
+/// a poisoned lock is taken over rather than failing every later request.
+fn lock_cache() -> std::sync::MutexGuard<'static, HashMap<String, (Instant, Preview)>> {
     static CACHE: OnceLock<Mutex<HashMap<String, (Instant, Preview)>>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+    CACHE
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 #[tracing::instrument(skip_all, fields(url = %q.url))]
@@ -77,7 +82,7 @@ pub async fn link_preview(Query(q): Query<PreviewQuery>) -> Response {
 
     let key = url.to_string();
     if let Some(hit) = {
-        let cache = cache().lock().unwrap();
+        let cache = lock_cache();
         cache
             .get(&key)
             .filter(|(at, _)| at.elapsed() < CACHE_TTL)
@@ -88,7 +93,7 @@ pub async fn link_preview(Query(q): Query<PreviewQuery>) -> Response {
 
     match fetch_preview(url).await {
         Ok(preview) => {
-            let mut cache = cache().lock().unwrap();
+            let mut cache = lock_cache();
             if cache.len() >= CACHE_MAX_ENTRIES {
                 cache.retain(|_, (at, _)| at.elapsed() < CACHE_TTL);
                 if cache.len() >= CACHE_MAX_ENTRIES {
