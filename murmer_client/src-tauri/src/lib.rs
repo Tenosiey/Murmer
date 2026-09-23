@@ -80,15 +80,16 @@ pub fn run() -> tauri::Result<()> {
 
     tauri::Builder::default()
         .plugin(WindowStateBuilder::default().build())
+        // Nothing imports the opener's JS API, but the plugin also makes
+        // `target="_blank"` links open in the system browser instead of
+        // doing nothing inside the webview.
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![set_tray_theme])
         .setup(|app| {
-            // create tray menu
             let open = MenuItemBuilder::with_id("open", "Open").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "Close").build(app)?;
             let tray_menu = MenuBuilder::new(app).item(&open).item(&quit).build()?;
