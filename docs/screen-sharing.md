@@ -33,6 +33,13 @@ under a `role:peer` key.
 Stopping your own share therefore only closes `outgoing`; the shares you are
 watching keep running.
 
+The name and voice channel the manager signs its frames with are released
+the moment nothing is shared or watched any more. They are adopted only while
+none is held, and one that outlived its last share addressed every later
+offer to the old channel — which the sharer drops as not meant for it, so the
+window sat on "Connecting…" for good. Switching voice channels closes every
+watched share for the same reason.
+
 Offers, answers and candidates must keep carrying `target`. The server routes
 them to that peer alone instead of broadcasting, so a frame without one is
 dropped and its session never connects. The client-side `target` checks stay

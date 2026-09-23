@@ -297,14 +297,23 @@ export class ScreenShareManager {
       this.closeOutgoing(userId);
     }
 
-    // `remoteStreams` counts too: a share being rebuilt has no connection for
-    // a moment, and dropping the identity then would leave its own repair
-    // signaling with no one to send as.
-    if (this.watchedSharers().length === 0) {
-      this.userName = null;
-      this.channelId = null;
-    }
+    this.releaseIdentity();
     this.emit(this.getPeersList());
+  }
+
+  /**
+   * Forget who and where we are once nothing is shared or watched any more.
+   * `viewScreenShare` only adopts a viewer identity while none is held, so
+   * one that outlived its last share pinned every later offer to the old
+   * channel — the sharer's `isForUs` then dropped them and the window hung on
+   * "Connecting…" for good. `remoteStreams` counts as watched: a share being
+   * rebuilt has no connection for a moment, and dropping the identity then
+   * would leave its own repair signaling with no one to send as.
+   */
+  private releaseIdentity(): void {
+    if (this.localStream || this.watchedSharers().length > 0) return;
+    this.userName = null;
+    this.channelId = null;
   }
 
   /** Update the server-enforced bitrate cap and re-apply it to live senders. */
@@ -596,6 +605,7 @@ export class ScreenShareManager {
       pc.close();
       delete this.incoming[sharer];
     }
+    this.releaseIdentity();
     this.emit(this.getPeersList());
   }
 

@@ -1098,8 +1098,10 @@
     if (!$session.user) return;
     if (inVoice && currentVoiceChannelId !== null) {
       // Switching channels ends the old voice session and with it any
-      // running screen share or camera (both are bound to the old channel).
+      // running screen share or camera and every share we were watching
+      // (all bound to the old channel).
       stopScreenShare();
+      leaveScreenShareAsViewer();
       void stopCamera();
       voice.leave(currentVoiceChannelId);
     }

@@ -21,8 +21,6 @@ not a description of the fix.
       the transmission gate now ramps instead of stepping, which removed the
       clicks at the start and end of each burst; needs a re-test to see
       whether anything remains mid-speech
-- [ ] Screen share: after the streamer stops sharing, the overlay controls
-      stop responding — the viewer-side state is never reset
 
 ---
 
