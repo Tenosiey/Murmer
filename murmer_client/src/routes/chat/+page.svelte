@@ -1627,7 +1627,10 @@
 
   const handleHistory = async () => {
     await tick();
-    if (messagesContainer) {
+    // Only a page we asked for by scrolling up keeps its reading position.
+    // Others (a channel join, a resync after lag) were placed by the
+    // stick-to-bottom effect, and `prevHeight` is stale for them.
+    if (messagesContainer && loadingHistory) {
       setScrollTop(messagesContainer.scrollHeight - prevHeight);
     }
     loadingHistory = false;

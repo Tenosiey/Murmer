@@ -3,6 +3,7 @@ import type { Message } from './types';
 import {
   containsMention,
   escapeRegex,
+  mergeHistory,
   normalizeAttachment,
   normalizeForwardedFrom,
   normalizeReactions,
@@ -227,5 +228,48 @@ describe('escapeRegex', () => {
 
   it('leaves ordinary text untouched', () => {
     expect(escapeRegex('alice_99')).toBe('alice_99');
+  });
+});
+
+describe('mergeHistory', () => {
+  const msg = (id: number, channelId = 1, text = `m${id}`): Message => ({
+    type: 'chat',
+    id,
+    channelId,
+    text
+  });
+
+  it('prepends an older page', () => {
+    const merged = mergeHistory([msg(5), msg(6)], [msg(3), msg(4)]);
+    expect(merged.map((m) => m.id)).toEqual([3, 4, 5, 6]);
+  });
+
+  it('slots a resync page in by id, not in front', () => {
+    // Held 1 and 2, then missed 3 and 4 while lagging; 5 arrived live.
+    const merged = mergeHistory([msg(1), msg(2), msg(5)], [msg(1), msg(2), msg(3), msg(4)]);
+    expect(merged.map((m) => m.id)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('takes the page copy of a message both hold', () => {
+    const merged = mergeHistory([msg(1, 1, 'before edit')], [msg(1, 1, 'after edit')]);
+    expect(merged).toEqual([msg(1, 1, 'after edit')]);
+  });
+
+  it('drops what was deleted inside the page range, in that channel only', () => {
+    const held = [msg(1), msg(2), msg(3), msg(25, 2), msg(9)];
+    const merged = mergeHistory(held, [msg(1), msg(3)]);
+    // 2 is gone; 25 lives in another channel and 9 is outside the range.
+    expect(merged.map((m) => m.id)).toEqual([1, 3, 9, 25]);
+  });
+
+  it('drops held messages a newer page may have left a gap below', () => {
+    // More was missed than one page holds: 3..9 are unknown.
+    const merged = mergeHistory([msg(1), msg(2), msg(4, 2)], [msg(10), msg(11)]);
+    expect(merged.map((m) => m.id)).toEqual([4, 10, 11]);
+  });
+
+  it('leaves the store alone for an empty page', () => {
+    const held = [msg(1)];
+    expect(mergeHistory(held, [])).toBe(held);
   });
 });

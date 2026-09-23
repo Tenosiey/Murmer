@@ -152,6 +152,34 @@ async fn admit(
     }
 }
 
+/// Send `user` the server-wide state that is otherwise kept current by
+/// global broadcasts: members, roles, statuses, channels, voice occupancy and
+/// the server settings. Every frame here is a whole snapshot the client
+/// replaces its copy with, which is what lets the same set be re-sent to a
+/// connection that fell behind the broadcast and lost some of those updates.
+pub(super) async fn send_state_snapshot(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    u: &str,
+) {
+    send_role_definitions(state, sender).await;
+    send_all_user_roles(state, sender).await;
+    send_all_statuses(state, sender).await;
+    super::profile::send_all_avatars(state, sender).await;
+    super::profile::send_all_profiles(state, sender).await;
+    send_categories(state, sender).await;
+    send_channels(state, sender, Some(u)).await;
+    send_emojis(state, sender).await;
+    send_sounds(state, sender).await;
+    send_voice_channels(state, sender, Some(u)).await;
+    send_users(state, sender).await;
+    send_all_voice(state, sender).await;
+    super::screenshare::send_screenshare_config(state, sender).await;
+    super::uploads::send_upload_config(state, sender).await;
+    super::chat_settings::send_chat_settings(state, sender).await;
+    super::voice_defaults::send_voice_defaults(state, sender).await;
+}
+
 /// Handle user presence (authentication) message.
 pub(super) async fn handle_presence(
     sender: &mut SplitSink<WebSocket, Message>,
@@ -308,18 +336,7 @@ pub(super) async fn handle_presence(
                 broadcast_user_roles(state, u, &role_ids);
             }
 
-            send_role_definitions(state, sender).await;
-            send_all_user_roles(state, sender).await;
-            send_all_statuses(state, sender).await;
-            super::profile::send_all_avatars(state, sender).await;
-            super::profile::send_all_profiles(state, sender).await;
-            send_categories(state, sender).await;
-            send_channels(state, sender, Some(u)).await;
-            send_emojis(state, sender).await;
-            send_sounds(state, sender).await;
-            send_voice_channels(state, sender, Some(u)).await;
-            send_users(state, sender).await;
-            send_all_voice(state, sender).await;
+            send_state_snapshot(state, sender, u).await;
             super::identity::send_server_identity(state, sender).await;
             if first_connection {
                 super::identity::send_welcome(state, sender).await;
@@ -327,11 +344,7 @@ pub(super) async fn handle_presence(
             super::stats::send_stats_config(state, sender, u).await;
             super::scheduled::send_scheduled_messages(state, sender, u).await;
             super::scheduled::send_reminders(state, sender, u).await;
-            super::screenshare::send_screenshare_config(state, sender).await;
             super::send_ice_config(state, sender).await;
-            super::uploads::send_upload_config(state, sender).await;
-            super::chat_settings::send_chat_settings(state, sender).await;
-            super::voice_defaults::send_voice_defaults(state, sender).await;
             db::send_history(
                 &state.db,
                 sender,

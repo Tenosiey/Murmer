@@ -493,7 +493,7 @@ describe('content security policy mirror', () => {
     // the next line's leading whitespace.
     const literal = webClientRs.match(/const POLICY: &str = "([^"]+)";/);
     expect(literal).not.toBeNull();
-    return literal![1].replace(/\\r?\n\s*/g, '');
+    return literal![1].replace(/\\\r?\n\s*/g, '');
   }
 
   it('parsed both policies at all', () => {

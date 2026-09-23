@@ -5,7 +5,12 @@ import { notify } from '../notify';
 import { channelNotifications } from './channelNotifications';
 import { soundboardPrefs } from './soundboardSettings';
 import { screenShareWindows } from './screenShareWindows';
-import { prepareMessage, containsMention, normalizeReactions } from '../message-utils';
+import {
+  prepareMessage,
+  containsMention,
+  normalizeReactions,
+  mergeHistory
+} from '../message-utils';
 import { parseWikiSearchHits } from '../chat/search';
 import { WebSocketManager } from '../websocket-manager';
 import { connection } from './connection';
@@ -303,13 +308,16 @@ function createChatStore() {
 
       case 'history': {
         const msgs = ((msg.messages as Message[]) || []).map((item) => decryptChannelFrame(item));
-        update((m) => {
-          // Drop messages already in the store so overlapping history
-          // responses (e.g. after a reconnect) don't duplicate entries.
-          const existing = new Set(m.map((item) => item.id).filter((id) => typeof id === 'number'));
-          const fresh = msgs.filter((item) => typeof item.id !== 'number' || !existing.has(item.id));
-          return [...fresh, ...m];
-        });
+        update((m) => mergeHistory(m, msgs));
+        break;
+      }
+
+      case 'resync': {
+        // The connection fell behind the server-wide broadcast and lost
+        // frames. The server has re-sent every snapshot it can; a DM
+        // conversation is the one thing only this client knows is open.
+        const peer = dm.getActive();
+        if (peer) loadDmHistory(peer);
         break;
       }
 

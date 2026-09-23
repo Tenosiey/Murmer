@@ -34,7 +34,12 @@ mod wiki;
 
 pub use scheduled::{recover_claimed_scheduled_messages, spawn_scheduler};
 
-use super::{errors, helpers::*, validation::*};
+use super::{
+    constants::{DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT},
+    errors,
+    helpers::*,
+    validation::*,
+};
 use crate::channel_overrides::ChannelKind;
 use crate::{AppState, db};
 use axum::{
@@ -547,6 +552,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                     }
                     Err(broadcast::error::RecvError::Lagged(skipped)) => {
                         lagged(user_name.as_deref(), "channel", skipped);
+                        // The newest page holds every message, edit, reaction
+                        // and deletion missed; the client merges it by id.
+                        // It cannot have missed more messages than frames.
+                        let limit = (skipped as i64)
+                            .saturating_add(DEFAULT_HISTORY_LIMIT)
+                            .min(MAX_HISTORY_LIMIT);
+                        db::send_history(&state.db, &mut sender, channel_id, None, limit).await;
                     }
                     Err(_) => break,
                 }
@@ -607,6 +619,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                     }
                     Err(broadcast::error::RecvError::Lagged(skipped)) => {
                         lagged(user_name.as_deref(), "global", skipped);
+                        if let Some(user) = user_name.as_deref() {
+                            resync_global(&state, &mut sender, user, voice_channel).await;
+                        }
                     }
                     Err(_) => break,
                 }
@@ -623,16 +638,42 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
 
 /// Record that a connection fell behind a broadcast channel and lost frames.
 ///
-/// The frames are gone for this one connection — nothing re-sends them, so a
-/// message can simply never appear for one person. The warning is the only
-/// trace of that, and the only way to tell a slow client from a missing
-/// message when somebody reports one. The socket handler's span already
-/// carries the client IP.
+/// The frames themselves are gone; the receive arms re-send current state in
+/// their place (the channel's newest history page, or [`resync_global`]). The
+/// warning is still the only way to tell a slow client from a server bug
+/// when somebody reports a message that appeared late. The socket handler's
+/// span already carries the client IP.
 fn lagged(user: Option<&str>, receiver: &str, skipped: u64) {
     warn!(
         user = user.unwrap_or("-"),
         receiver, skipped, "Connection fell behind the broadcast; frames were dropped"
     );
+}
+
+/// Bring a connection that fell behind the server-wide broadcast back to the
+/// current state, instead of closing it: the client does not reconnect on its
+/// own, so a closed socket would read as "Connection lost" and drop a call.
+///
+/// Snapshots cover everything the server can see this connection needs,
+/// including the voice channel it sits in. `resync` then tells the client to
+/// re-fetch what only it knows is open — an active DM conversation.
+///
+/// ponytail: a connection that keeps lagging gets a full snapshot per lag,
+/// which adds to the backlog it is already failing to drain. Coalesce into
+/// one pending resync if that ever shows up in the lag warnings.
+async fn resync_global(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    user: &str,
+    voice_channel: Option<i32>,
+) {
+    auth::send_state_snapshot(state, sender, user).await;
+    if let Some(ch_id) = voice_channel {
+        send_active_screen_shares(state, sender, ch_id).await;
+        send_active_webcams(state, sender, ch_id).await;
+        send_voice_mutes(state, sender, ch_id).await;
+    }
+    send_json(sender, &serde_json::json!({ "type": "resync" })).await;
 }
 
 /// Cheap substring pre-check: does this frame's type look channel-scoped and
