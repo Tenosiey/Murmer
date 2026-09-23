@@ -29,8 +29,13 @@ not a description of the fix.
 - [ ] Reclaim orphaned uploads. Deleting an emoji, avatar, server icon or
       sound removes its file; deleting a *message* does not, and neither does
       the Danger Zone purge or reset. The dashboard's storage breakdown can
-      only ever grow. Needs a sweep reconciling `uploads/` against the rows
-      that reference it
+      only ever grow. **Not** a sweep reconciling `uploads/` against the
+      database: an encrypted channel seals its attachment URLs into `enc`, a
+      forward into a DM seals them into the ciphertext, and the purge keeps
+      DMs — so the server can never prove a file unreferenced, and a sweep
+      would delete every attachment of every encrypted channel. The options
+      that remain are the author's client naming the files when it deletes
+      its own message, or an operator-chosen age limit for attachments
 - [ ] Retention policy for message history. The database grows without bound
       and an operator has only the all-or-nothing purge. A server-wide or
       per-channel "delete messages older than N days", cascading through
