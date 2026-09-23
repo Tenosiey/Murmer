@@ -547,12 +547,10 @@ pub fn broadcast_category_reorder(state: &Arc<AppState>, order: &[i32]) {
 }
 
 /// A user's effective permission mask: the union of the default `@everyone`
-/// role and every role assigned to them. Holding [`ADMINISTRATOR`] expands to
+/// role and every role assigned to them. Holding [`permissions::ADMINISTRATOR`] expands to
 /// the full permission set. Every authorization check funnels through this so
-/// the in-memory role state is the single source of truth.
-///
-/// Server-wide only for now; a future per-channel override phase will resolve
-/// against a channel id here without changing the call sites.
+/// the in-memory role state is the single source of truth; per-channel
+/// overrides are layered on top by [`channel_permissions`].
 pub async fn effective_permissions(state: &Arc<AppState>, user: &str) -> Permissions {
     // Lock order is always role_defs before user_roles; keep it consistent
     // with `top_position` to avoid deadlocks.
@@ -579,7 +577,7 @@ pub async fn effective_permissions(state: &Arc<AppState>, user: &str) -> Permiss
     }
 }
 
-/// Append one entry to the audit log (see [`crate::db::audit`]).
+/// Append one entry to the audit log (see `db::audit`).
 ///
 /// Call this **after** the action succeeded, never on a refusal: the log is a
 /// record of what happened, and a rejected frame did not happen. A failed

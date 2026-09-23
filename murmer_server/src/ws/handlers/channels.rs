@@ -10,7 +10,6 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::error;
 
-/// Handle create channel request.
 pub(super) async fn handle_create_channel(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -73,7 +72,6 @@ pub(super) async fn handle_create_channel(
     }
 }
 
-/// Handle rename channel request.
 pub(super) async fn handle_rename_channel(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -375,7 +373,6 @@ pub(super) async fn handle_reorder_categories(
     }
 }
 
-/// Handle set channel topic request.
 pub(super) async fn handle_set_channel_topic(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -423,7 +420,6 @@ pub(super) async fn handle_set_channel_topic(
     }
 }
 
-/// Handle create voice channel request.
 pub(super) async fn handle_create_voice_channel(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -533,7 +529,6 @@ pub(super) async fn handle_create_voice_channel(
     }
 }
 
-/// Handle update voice channel request.
 pub(super) async fn handle_update_voice_channel(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -619,7 +614,6 @@ pub(super) async fn handle_update_voice_channel(
     }
 }
 
-/// Handle rename voice channel request.
 pub(super) async fn handle_rename_voice_channel(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -674,7 +668,6 @@ pub(super) async fn handle_rename_voice_channel(
     }
 }
 
-/// Handle delete voice channel request.
 pub(super) async fn handle_delete_voice_channel(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -718,7 +711,6 @@ pub(super) async fn handle_delete_voice_channel(
     }
 }
 
-/// Handle create category request.
 pub(super) async fn handle_create_category(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -761,7 +753,6 @@ pub(super) async fn handle_create_category(
     }
 }
 
-/// Handle rename category request.
 pub(super) async fn handle_rename_category(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -807,7 +798,6 @@ pub(super) async fn handle_rename_category(
     }
 }
 
-/// Handle delete category request.
 pub(super) async fn handle_delete_category(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,

@@ -1,31 +1,9 @@
 //! WebSocket message handlers.
 //!
-//! The main socket loop lives here, along with the small voice, screen-share
-//! and camera handlers, the server-info and operator-metrics answers, and the
-//! rest of what is not worth a file of its own;
-//! domain-specific handlers are split into submodules to keep each file
-//! focused:
-//! - [`audit`] – reading the audit log of moderation and dashboard actions
-//! - [`auth`] – user and bot authentication
-//! - [`automod`] – auto-moderation rules and the screening of each message
-//! - [`breakout`] – splitting a voice channel into temporary rooms
-//! - [`channels`] – text/voice channel and category management
-//! - [`chat_settings`] – slow mode, message length cap and profanity filter
-//! - [`dms`] – direct messages between two users
-//! - [`emojis`] – custom server emoji management
-//! - [`identity`] – server name, description, welcome message and icon
-//! - [`invites`] – minting, listing and revoking server invite codes
-//! - [`maintenance`] – Danger Zone purge/reset actions
-//! - [`messages`] – chat, history, threads, typing, search and reactions
-//! - [`moderation`] – kick, ban, mute and the ban list
-//! - [`pins`] – shared, persisted message pins
-//! - [`scheduled`] – reminders, scheduled messages and the scheduler
-//! - [`screenshare`] – server-wide screen share configuration (bitrate cap)
-//! - [`soundboard`] – shared sound library and voice-channel playback
-//! - [`stats`] – lifetime user statistics (double opt-in gated)
-//! - [`uploads`] – server-wide upload policy (size cap, categories, usage)
-//! - [`voice_defaults`] – quality/bitrate new voice channels start with
-//! - [`wiki`] – per-channel Markdown wiki pages
+//! The socket loop and dispatch live here, along with the small voice,
+//! screen-share and camera handlers, the server-info and operator-metrics
+//! answers, and the rest of what is not worth a file of its own. Each
+//! submodule handles one domain and documents itself.
 
 mod audit;
 mod auth;
@@ -638,8 +616,6 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
     info!(%client_ip, "Client disconnected");
 }
 
-// ── Small handlers kept here to avoid creating very tiny files ──────────────
-
 /// Cheap substring pre-check: does this frame's type look channel-scoped and
 /// therefore warrant parsing for the visibility filter? Avoids parsing the bulk
 /// of global frames (roles, statuses, presence, …).
@@ -696,7 +672,6 @@ fn claims_own_user(v: &Value, user_name: &Option<String>) -> bool {
     }
 }
 
-/// Handle status update request.
 async fn handle_status_update(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -729,7 +704,6 @@ async fn handle_status_update(
     broadcast_status(state, &user, status);
 }
 
-/// Handle ping request.
 async fn handle_ping(sender: &mut SplitSink<WebSocket, Message>, v: &Value) {
     let id = v.get("id").cloned().unwrap_or(Value::Null);
     let msg = serde_json::json!({ "type": "pong", "id": id });
@@ -879,7 +853,6 @@ async fn handle_get_connection_stats(
     send_json(sender, &msg).await;
 }
 
-/// Handle voice join request.
 async fn handle_voice_join(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -949,7 +922,6 @@ async fn handle_voice_join(
     }
 }
 
-/// Handle voice leave request.
 async fn handle_voice_leave(
     state: &Arc<AppState>,
     v: &Value,

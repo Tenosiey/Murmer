@@ -93,7 +93,6 @@ pub(super) async fn handle_join(
     }
 }
 
-/// Handle history loading request.
 pub(super) async fn handle_load_history(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -657,7 +656,6 @@ pub(super) async fn handle_forward_message(
     publish_message(state, &mut out, target_id, &user, &timestamp, None).await;
 }
 
-/// Handle delete message request.
 pub(super) async fn handle_delete_message(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,

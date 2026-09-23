@@ -177,19 +177,6 @@ pub async fn set_user_roles(db: &Db, key: &str, role_ids: &[i64]) -> Result<(), 
     .await
 }
 
-/// Add a single role to a key (no-op if already assigned).
-pub async fn add_user_role(db: &Db, key: &str, role_id: i64) -> Result<(), DbError> {
-    let key = key.to_owned();
-    db.call_db(move |conn| {
-        conn.execute(
-            "INSERT OR IGNORE INTO user_roles (public_key, role_id) VALUES (?1, ?2)",
-            params![key, role_id],
-        )?;
-        Ok(())
-    })
-    .await
-}
-
 /// Find a role definition by name, creating a baseline custom role (positioned
 /// just below Owner) if none exists, then assign it to `key`. Returns the
 /// resolved definition so callers can update in-memory state and broadcast it.

@@ -1,11 +1,5 @@
-//! WebSocket handler and helper utilities.
-//!
-//! Submodules:
-//! - [`handlers`] – message dispatch and domain-specific handlers
-//! - [`helpers`] – broadcast, send and permission utilities
-//! - [`constants`] – tuning knobs (limits, allowed roles, defaults)
-//! - [`errors`] – pre-built JSON error response strings
-//! - [`validation`] – input validation for status, quality and bitrate
+//! The WebSocket endpoint: dispatch in `handlers`, the shared broadcast,
+//! permission and routing helpers in `helpers`.
 
 mod constants;
 pub mod errors;
