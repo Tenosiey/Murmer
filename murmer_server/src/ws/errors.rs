@@ -16,7 +16,6 @@ pub const INVALID_PASSWORD: &str = r#"{"type":"error","message":"invalid-passwor
 /// guess find out whether it named a real invite.
 pub const INVALID_INVITE: &str = r#"{"type":"error","message":"invalid-invite"}"#;
 
-/// Authentication rate limit exceeded.
 pub const AUTH_RATE_LIMIT: &str = r#"{"type":"error","message":"auth-rate-limit"}"#;
 
 /// Timestamp is outside the acceptable window.
@@ -25,42 +24,33 @@ pub const INVALID_TIMESTAMP: &str = r#"{"type":"error","message":"invalid-timest
 /// Nonce has already been used (replay attack detected).
 pub const REPLAY_ATTACK: &str = r#"{"type":"error","message":"replay-attack"}"#;
 
-/// Signature verification failed.
 pub const INVALID_SIGNATURE: &str = r#"{"type":"error","message":"invalid-signature"}"#;
 
-/// Signature format is invalid.
 pub const INVALID_SIGNATURE_FORMAT: &str =
     r#"{"type":"error","message":"invalid-signature-format"}"#;
 
-/// Public key format is invalid.
 pub const INVALID_PUBLIC_KEY: &str = r#"{"type":"error","message":"invalid-public-key"}"#;
 
-/// Public key has incorrect length.
 pub const INVALID_KEY_LENGTH: &str = r#"{"type":"error","message":"invalid-key-length"}"#;
 
 /// Base64 encoding is invalid.
 pub const INVALID_ENCODING: &str = r#"{"type":"error","message":"invalid-encoding"}"#;
 
-/// Username validation failed.
 pub const INVALID_USERNAME: &str = r#"{"type":"error","message":"invalid-username"}"#;
 
 /// The name is already bound to a different public key on this server.
 pub const USERNAME_TAKEN: &str = r#"{"type":"error","message":"username-taken"}"#;
 
-/// Channel name validation failed.
 pub const INVALID_CHANNEL_NAME: &str = r#"{"type":"error","message":"invalid-channel-name"}"#;
 
 /// User lacks permission to manage channels.
 pub const CHANNEL_PERMISSION_DENIED: &str =
     r#"{"type":"error","message":"channel-permission-denied"}"#;
 
-/// Failed to create channel in database.
 pub const CHANNEL_CREATION_FAILED: &str = r#"{"type":"error","message":"channel-creation-failed"}"#;
 
-/// Failed to delete channel from database.
 pub const CHANNEL_DELETION_FAILED: &str = r#"{"type":"error","message":"channel-deletion-failed"}"#;
 
-/// Cannot delete the general channel.
 pub const CANNOT_DELETE_GENERAL: &str = r#"{"type":"error","message":"cannot-delete-general"}"#;
 
 /// Cannot rename the general channel (it is re-seeded by name on startup).
@@ -69,10 +59,8 @@ pub const CANNOT_RENAME_GENERAL: &str = r#"{"type":"error","message":"cannot-ren
 /// Another channel already uses the requested name.
 pub const CHANNEL_NAME_TAKEN: &str = r#"{"type":"error","message":"channel-name-taken"}"#;
 
-/// Failed to rename channel in database.
 pub const CHANNEL_RENAME_FAILED: &str = r#"{"type":"error","message":"channel-rename-failed"}"#;
 
-/// Message rate limit exceeded.
 pub const MESSAGE_RATE_LIMIT: &str = r#"{"type":"error","message":"message-rate-limit"}"#;
 
 /// Sender's roles do not grant permission to send messages.
@@ -81,13 +69,10 @@ pub const SEND_PERMISSION_DENIED: &str = r#"{"type":"error","message":"send-perm
 /// Message content exceeds the maximum allowed length.
 pub const MESSAGE_TOO_LONG: &str = r#"{"type":"error","message":"message-too-long"}"#;
 
-/// Voice quality parameter is invalid.
 pub const INVALID_VOICE_QUALITY: &str = r#"{"type":"error","message":"invalid-voice-quality"}"#;
 
-/// Voice bitrate parameter is invalid.
 pub const INVALID_VOICE_BITRATE: &str = r#"{"type":"error","message":"invalid-voice-bitrate"}"#;
 
-/// Voice channel does not exist.
 pub const UNKNOWN_VOICE_CHANNEL: &str = r#"{"type":"error","message":"unknown-voice-channel"}"#;
 
 /// The voice channel is already at `MAX_VOICE_CHANNEL_USERS`. Mesh audio
@@ -95,7 +80,6 @@ pub const UNKNOWN_VOICE_CHANNEL: &str = r#"{"type":"error","message":"unknown-vo
 /// permission one — the same user is welcome once somebody leaves.
 pub const VOICE_CHANNEL_FULL: &str = r#"{"type":"error","message":"voice-channel-full"}"#;
 
-/// Failed to update voice channel configuration.
 pub const VOICE_CHANNEL_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"voice-channel-update-failed"}"#;
 
@@ -114,26 +98,21 @@ pub const ROLE_PERMISSION_DENIED: &str = r#"{"type":"error","message":"role-perm
 /// Target user for role change is not connected.
 pub const ROLE_TARGET_NOT_FOUND: &str = r#"{"type":"error","message":"role-target-not-found"}"#;
 
-/// Failed to update role in database.
 pub const ROLE_UPDATE_FAILED: &str = r#"{"type":"error","message":"role-update-failed"}"#;
 
 /// The referenced role definition does not exist.
 pub const ROLE_NOT_FOUND: &str = r#"{"type":"error","message":"role-not-found"}"#;
 
-/// A role with this name already exists.
 pub const ROLE_NAME_TAKEN: &str = r#"{"type":"error","message":"role-name-taken"}"#;
 
 /// The role is protected (the default `@everyone` or the Owner role) and
 /// cannot be deleted or reassigned.
 pub const ROLE_PROTECTED: &str = r#"{"type":"error","message":"role-protected"}"#;
 
-/// The server has reached its role limit.
 pub const ROLE_LIMIT_REACHED: &str = r#"{"type":"error","message":"role-limit-reached"}"#;
 
-/// Role name failed validation.
 pub const INVALID_ROLE_NAME: &str = r#"{"type":"error","message":"invalid-role-name"}"#;
 
-/// Role color failed validation.
 pub const INVALID_ROLE_COLOR: &str = r#"{"type":"error","message":"invalid-role-color"}"#;
 
 /// Role icon did not reference a stored upload within the size cap.
@@ -143,24 +122,18 @@ pub const INVALID_ROLE_ICON: &str = r#"{"type":"error","message":"invalid-role-i
 pub const INVALID_ROLE_PERMISSIONS: &str =
     r#"{"type":"error","message":"invalid-role-permissions"}"#;
 
-/// Category name validation failed.
 pub const INVALID_CATEGORY_NAME: &str = r#"{"type":"error","message":"invalid-category-name"}"#;
 
-/// Failed to create category in database.
 pub const CATEGORY_CREATION_FAILED: &str =
     r#"{"type":"error","message":"category-creation-failed"}"#;
 
-/// Failed to rename category in database.
 pub const CATEGORY_RENAME_FAILED: &str = r#"{"type":"error","message":"category-rename-failed"}"#;
 
-/// Failed to delete category from database.
 pub const CATEGORY_DELETION_FAILED: &str =
     r#"{"type":"error","message":"category-deletion-failed"}"#;
 
-/// The referenced category does not exist.
 pub const UNKNOWN_CATEGORY: &str = r#"{"type":"error","message":"unknown-category"}"#;
 
-/// Failed to move channel to category.
 pub const CHANNEL_MOVE_FAILED: &str = r#"{"type":"error","message":"channel-move-failed"}"#;
 
 /// Reorder request was malformed or referenced unknown channels/categories.
@@ -224,16 +197,12 @@ pub const INVALID_AVATAR: &str = r#"{"type":"error","message":"invalid-avatar"}"
 /// Failed to persist the avatar change.
 pub const AVATAR_UPDATE_FAILED: &str = r#"{"type":"error","message":"avatar-update-failed"}"#;
 
-/// Profile display name validation failed.
 pub const INVALID_DISPLAY_NAME: &str = r#"{"type":"error","message":"invalid-display-name"}"#;
 
-/// Profile about text validation failed.
 pub const INVALID_ABOUT: &str = r#"{"type":"error","message":"invalid-about"}"#;
 
-/// Failed to persist the profile change.
 pub const PROFILE_UPDATE_FAILED: &str = r#"{"type":"error","message":"profile-update-failed"}"#;
 
-/// Nickname validation failed.
 pub const INVALID_NICKNAME: &str = r#"{"type":"error","message":"invalid-nickname"}"#;
 
 /// User may not set this member's nickname (lacks the flag or does not
@@ -241,16 +210,12 @@ pub const INVALID_NICKNAME: &str = r#"{"type":"error","message":"invalid-nicknam
 pub const NICKNAME_PERMISSION_DENIED: &str =
     r#"{"type":"error","message":"nickname-permission-denied"}"#;
 
-/// Failed to persist the nickname change.
 pub const NICKNAME_UPDATE_FAILED: &str = r#"{"type":"error","message":"nickname-update-failed"}"#;
 
-/// Channel topic validation failed.
 pub const INVALID_CHANNEL_TOPIC: &str = r#"{"type":"error","message":"invalid-channel-topic"}"#;
 
-/// The referenced channel does not exist.
 pub const UNKNOWN_CHANNEL: &str = r#"{"type":"error","message":"unknown-channel"}"#;
 
-/// Failed to update the channel topic in the database.
 pub const TOPIC_UPDATE_FAILED: &str = r#"{"type":"error","message":"topic-update-failed"}"#;
 
 /// User lacks permission for moderation actions (kick, ban, mute).
@@ -268,7 +233,6 @@ pub const MODERATION_TARGET_PROTECTED: &str =
 /// Moderation actions cannot target the requester themselves.
 pub const CANNOT_MODERATE_SELF: &str = r#"{"type":"error","message":"cannot-moderate-self"}"#;
 
-/// Failed to persist a moderation action.
 pub const MODERATION_FAILED: &str = r#"{"type":"error","message":"moderation-failed"}"#;
 
 /// Connection rejected because the user is banned.
@@ -277,16 +241,13 @@ pub const BANNED: &str = r#"{"type":"error","message":"banned"}"#;
 /// Direct message target is not a known user on this server.
 pub const DM_TARGET_NOT_FOUND: &str = r#"{"type":"error","message":"dm-target-not-found"}"#;
 
-/// Direct messages cannot be sent to oneself.
 pub const CANNOT_DM_SELF: &str = r#"{"type":"error","message":"cannot-dm-self"}"#;
 
 /// Direct message frame is missing or carries malformed encryption fields.
 pub const INVALID_DM_PAYLOAD: &str = r#"{"type":"error","message":"invalid-dm-payload"}"#;
 
-/// Failed to persist a direct message.
 pub const DM_SEND_FAILED: &str = r#"{"type":"error","message":"dm-send-failed"}"#;
 
-/// Failed to load a direct message conversation.
 pub const DM_HISTORY_FAILED: &str = r#"{"type":"error","message":"dm-history-failed"}"#;
 
 /// Pin target does not exist (unknown or deleted message).
@@ -295,7 +256,6 @@ pub const PIN_TARGET_NOT_FOUND: &str = r#"{"type":"error","message":"pin-target-
 /// The channel already carries the maximum number of pins.
 pub const PIN_LIMIT_REACHED: &str = r#"{"type":"error","message":"pin-limit-reached"}"#;
 
-/// Failed to persist a pin change.
 pub const PIN_FAILED: &str = r#"{"type":"error","message":"pin-failed"}"#;
 
 /// Request requires an authenticated user name (presence not yet processed).
@@ -304,13 +264,11 @@ pub const NOT_AUTHENTICATED: &str = r#"{"type":"error","message":"not-authentica
 /// Status update carried a missing or unknown status value.
 pub const INVALID_STATUS: &str = r#"{"type":"error","message":"invalid-status"}"#;
 
-/// Sender is muted and may not send messages.
 pub const MUTED: &str = r#"{"type":"error","message":"muted"}"#;
 
 /// Message ID is missing, malformed or out of range.
 pub const INVALID_MESSAGE_ID: &str = r#"{"type":"error","message":"invalid-message-id"}"#;
 
-/// The referenced message does not exist.
 pub const MESSAGE_NOT_FOUND: &str = r#"{"type":"error","message":"message-not-found"}"#;
 
 /// The referenced message belongs to a different channel.
@@ -320,10 +278,8 @@ pub const MESSAGE_WRONG_CHANNEL: &str = r#"{"type":"error","message":"message-wr
 pub const MESSAGE_PERMISSION_DENIED: &str =
     r#"{"type":"error","message":"message-permission-denied"}"#;
 
-/// Failed to delete a message.
 pub const MESSAGE_DELETE_FAILED: &str = r#"{"type":"error","message":"message-delete-failed"}"#;
 
-/// Failed to edit a message.
 pub const MESSAGE_EDIT_FAILED: &str = r#"{"type":"error","message":"message-edit-failed"}"#;
 
 /// Replacement message text is missing or invalid.
@@ -335,7 +291,6 @@ pub const INVALID_REACTION_ACTION: &str = r#"{"type":"error","message":"invalid-
 /// Reaction emoji is missing or malformed.
 pub const INVALID_EMOJI: &str = r#"{"type":"error","message":"invalid-emoji"}"#;
 
-/// Failed to persist or load reactions.
 pub const REACTION_FAILED: &str = r#"{"type":"error","message":"reaction-failed"}"#;
 
 /// The message a reply targets no longer exists.
@@ -364,28 +319,22 @@ pub const NOTHING_TO_FORWARD: &str = r#"{"type":"error","message":"nothing-to-fo
 /// the forwarder — may delete it but never rewrite it.
 pub const CANNOT_EDIT_FORWARD: &str = r#"{"type":"error","message":"cannot-edit-forward"}"#;
 
-/// Failed to load a thread.
 pub const THREAD_LOAD_FAILED: &str = r#"{"type":"error","message":"thread-load-failed"}"#;
 
 /// User lacks permission to manage custom server emojis.
 pub const EMOJI_PERMISSION_DENIED: &str = r#"{"type":"error","message":"emoji-permission-denied"}"#;
 
-/// Custom emoji name failed validation.
 pub const INVALID_EMOJI_NAME: &str = r#"{"type":"error","message":"invalid-emoji-name"}"#;
 
 /// Custom emoji URL does not point at a valid uploaded image.
 pub const INVALID_EMOJI_URL: &str = r#"{"type":"error","message":"invalid-emoji-url"}"#;
 
-/// A custom emoji with this name already exists.
 pub const EMOJI_NAME_TAKEN: &str = r#"{"type":"error","message":"emoji-name-taken"}"#;
 
-/// The server has reached its custom emoji limit.
 pub const EMOJI_LIMIT_REACHED: &str = r#"{"type":"error","message":"emoji-limit-reached"}"#;
 
-/// Failed to persist a custom emoji change.
 pub const EMOJI_UPDATE_FAILED: &str = r#"{"type":"error","message":"emoji-update-failed"}"#;
 
-/// The referenced custom emoji does not exist.
 pub const EMOJI_NOT_FOUND: &str = r#"{"type":"error","message":"emoji-not-found"}"#;
 
 /// User lacks permission to mint, list or revoke invites.
@@ -401,7 +350,6 @@ pub const INVITE_LIMIT_REACHED: &str = r#"{"type":"error","message":"invite-limi
 /// The invite named for revocation does not exist (any more).
 pub const INVITE_NOT_FOUND: &str = r#"{"type":"error","message":"invite-not-found"}"#;
 
-/// Failed to persist an invite change.
 pub const INVITE_UPDATE_FAILED: &str = r#"{"type":"error","message":"invite-update-failed"}"#;
 
 /// User lacks permission to manage soundboard sounds.
@@ -411,22 +359,18 @@ pub const SOUND_PERMISSION_DENIED: &str = r#"{"type":"error","message":"sound-pe
 pub const SOUNDBOARD_PERMISSION_DENIED: &str =
     r#"{"type":"error","message":"soundboard-permission-denied"}"#;
 
-/// Sound display name failed validation.
 pub const INVALID_SOUND_NAME: &str = r#"{"type":"error","message":"invalid-sound-name"}"#;
 
 /// The referenced upload is not a usable sound file.
 pub const INVALID_SOUND_FILE: &str = r#"{"type":"error","message":"invalid-sound-file"}"#;
 
-/// Another sound already uses this name.
 pub const SOUND_NAME_TAKEN: &str = r#"{"type":"error","message":"sound-name-taken"}"#;
 
 /// The server's soundboard is full.
 pub const SOUND_LIMIT_REACHED: &str = r#"{"type":"error","message":"sound-limit-reached"}"#;
 
-/// Failed to persist a soundboard change.
 pub const SOUND_UPDATE_FAILED: &str = r#"{"type":"error","message":"sound-update-failed"}"#;
 
-/// The referenced sound does not exist.
 pub const SOUND_NOT_FOUND: &str = r#"{"type":"error","message":"sound-not-found"}"#;
 
 /// Sounds are being played too quickly by this user.
@@ -436,23 +380,18 @@ pub const SOUNDBOARD_COOLDOWN: &str = r#"{"type":"error","message":"soundboard-c
 pub const IDENTITY_PERMISSION_DENIED: &str =
     r#"{"type":"error","message":"identity-permission-denied"}"#;
 
-/// Server name failed validation.
 pub const INVALID_SERVER_NAME: &str = r#"{"type":"error","message":"invalid-server-name"}"#;
 
-/// Server description failed validation.
 pub const INVALID_SERVER_DESCRIPTION: &str =
     r#"{"type":"error","message":"invalid-server-description"}"#;
 
-/// Welcome message failed validation.
 pub const INVALID_WELCOME_MESSAGE: &str = r#"{"type":"error","message":"invalid-welcome-message"}"#;
 
 /// Server icon URL does not point at a valid uploaded image.
 pub const INVALID_SERVER_ICON: &str = r#"{"type":"error","message":"invalid-server-icon"}"#;
 
-/// Failed to persist a server identity change.
 pub const IDENTITY_UPDATE_FAILED: &str = r#"{"type":"error","message":"identity-update-failed"}"#;
 
-/// Bot presence frame did not include a token.
 pub const MISSING_BOT_TOKEN: &str = r#"{"type":"error","message":"missing-bot-token"}"#;
 
 /// Bot token is unknown or the bot is deactivated.
@@ -464,18 +403,15 @@ pub const STATS_PERMISSION_DENIED: &str = r#"{"type":"error","message":"stats-pe
 /// Requested stats are not available (tracking disabled or target not opted in).
 pub const STATS_NOT_AVAILABLE: &str = r#"{"type":"error","message":"stats-not-available"}"#;
 
-/// Failed to persist or load stat tracking data.
 pub const STATS_UPDATE_FAILED: &str = r#"{"type":"error","message":"stats-update-failed"}"#;
 
 /// User lacks permission to change the screen share bitrate cap.
 pub const SCREENSHARE_PERMISSION_DENIED: &str =
     r#"{"type":"error","message":"screenshare-permission-denied"}"#;
 
-/// Screen share bitrate cap failed validation.
 pub const INVALID_SCREENSHARE_BITRATE: &str =
     r#"{"type":"error","message":"invalid-screenshare-bitrate"}"#;
 
-/// Failed to persist or load the screen share configuration.
 pub const SCREENSHARE_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"screenshare-update-failed"}"#;
 
@@ -486,32 +422,25 @@ pub const UPLOAD_PERMISSION_DENIED: &str =
 /// Upload size cap or category list failed validation.
 pub const INVALID_UPLOAD_CONFIG: &str = r#"{"type":"error","message":"invalid-upload-config"}"#;
 
-/// Failed to persist or load the upload policy.
 pub const UPLOAD_CONFIG_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"upload-config-update-failed"}"#;
 
-/// Wiki page slug failed validation.
 pub const INVALID_WIKI_SLUG: &str = r#"{"type":"error","message":"invalid-wiki-slug"}"#;
 
-/// Wiki page title failed validation.
 pub const INVALID_WIKI_TITLE: &str = r#"{"type":"error","message":"invalid-wiki-title"}"#;
 
 /// Wiki page body exceeds the maximum allowed size.
 pub const WIKI_BODY_TOO_LARGE: &str = r#"{"type":"error","message":"wiki-body-too-large"}"#;
 
-/// A wiki page with this slug already exists in the channel.
 pub const WIKI_SLUG_TAKEN: &str = r#"{"type":"error","message":"wiki-slug-taken"}"#;
 
-/// The referenced wiki page does not exist.
 pub const WIKI_PAGE_NOT_FOUND: &str = r#"{"type":"error","message":"wiki-page-not-found"}"#;
 
-/// The channel has reached its wiki page limit.
 pub const WIKI_PAGE_LIMIT_REACHED: &str = r#"{"type":"error","message":"wiki-page-limit-reached"}"#;
 
 /// The referenced wiki revision has been pruned or never existed.
 pub const WIKI_REVISION_NOT_FOUND: &str = r#"{"type":"error","message":"wiki-revision-not-found"}"#;
 
-/// Failed to persist or load wiki data.
 pub const WIKI_SAVE_FAILED: &str = r#"{"type":"error","message":"wiki-save-failed"}"#;
 
 /// Sender must wait out the server's slow mode before posting again.
@@ -522,10 +451,8 @@ pub const SLOW_MODE: &str = r#"{"type":"error","message":"slow-mode"}"#;
 pub const CHAT_SETTINGS_PERMISSION_DENIED: &str =
     r#"{"type":"error","message":"chat-settings-permission-denied"}"#;
 
-/// Chat policy values failed validation.
 pub const INVALID_CHAT_SETTINGS: &str = r#"{"type":"error","message":"invalid-chat-settings"}"#;
 
-/// Failed to persist or load the chat policy.
 pub const CHAT_SETTINGS_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"chat-settings-update-failed"}"#;
 
@@ -547,14 +474,12 @@ pub const INVALID_AUTOMOD_RULES: &str = r#"{"type":"error","message":"invalid-au
 /// looking at what they typed.
 pub const INVALID_AUTOMOD_PATTERN: &str = r#"{"type":"error","message":"invalid-automod-pattern"}"#;
 
-/// Failed to persist or load the auto-moderation rules.
 pub const AUTOMOD_UPDATE_FAILED: &str = r#"{"type":"error","message":"automod-update-failed"}"#;
 
 /// User lacks permission to change the voice defaults.
 pub const VOICE_DEFAULTS_PERMISSION_DENIED: &str =
     r#"{"type":"error","message":"voice-defaults-permission-denied"}"#;
 
-/// Failed to persist or load the voice defaults.
 pub const VOICE_DEFAULTS_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"voice-defaults-update-failed"}"#;
 
@@ -573,7 +498,6 @@ pub const MAINTENANCE_FAILED: &str = r#"{"type":"error","message":"maintenance-f
 pub const AUDIT_LOG_PERMISSION_DENIED: &str =
     r#"{"type":"error","message":"audit-log-permission-denied"}"#;
 
-/// Failed to load the audit log.
 pub const AUDIT_LOG_FAILED: &str = r#"{"type":"error","message":"audit-log-failed"}"#;
 
 /// A reminder or scheduled message named a time that is unparseable, already
@@ -588,7 +512,6 @@ pub const SCHEDULE_LIMIT_REACHED: &str = r#"{"type":"error","message":"schedule-
 pub const SCHEDULED_MESSAGE_NOT_FOUND: &str =
     r#"{"type":"error","message":"scheduled-message-not-found"}"#;
 
-/// Failed to persist or load a scheduled message.
 pub const SCHEDULE_FAILED: &str = r#"{"type":"error","message":"schedule-failed"}"#;
 
 /// A reminder carried no note, or one longer than the limit.
@@ -600,5 +523,4 @@ pub const REMINDER_LIMIT_REACHED: &str = r#"{"type":"error","message":"reminder-
 /// The named reminder does not exist, or belongs to somebody else.
 pub const REMINDER_NOT_FOUND: &str = r#"{"type":"error","message":"reminder-not-found"}"#;
 
-/// Failed to persist or load a reminder.
 pub const REMINDER_FAILED: &str = r#"{"type":"error","message":"reminder-failed"}"#;

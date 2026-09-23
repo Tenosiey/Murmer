@@ -128,7 +128,6 @@ outputMuted.subscribe((value) => {
   }
 });
 
-// Individual user volumes
 const USER_VOLUMES_KEY = 'murmer_user_volumes';
 
 /** Upper bound for the per-user volume. Values above 1 are a real boost: the

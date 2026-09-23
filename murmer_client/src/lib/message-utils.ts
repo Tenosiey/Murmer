@@ -1,14 +1,12 @@
 /**
- * Utility functions for message processing and validation.
+ * Turning message frames from the server into what the UI renders. Every
+ * field is untrusted input, so each normalizer returns a checked shape or
+ * nothing at all.
  */
 
 import type { AttachmentInfo, ForwardInfo, Message, ReplyInfo } from './types';
 
-/**
- * Normalize reactions object to ensure consistent structure.
- * @param value - Raw reactions data
- * @returns Normalized reactions object with emoji keys and user arrays
- */
+/** Normalize reactions object to ensure consistent structure. */
 export function normalizeReactions(value: unknown): Record<string, string[]> {
   if (!value || typeof value !== 'object') return {};
   const result: Record<string, string[]> = {};
@@ -27,7 +25,6 @@ export function normalizeReactions(value: unknown): Record<string, string[]> {
 /**
  * Validate an attachment payload from the server. Only http(s) URLs pass so a
  * crafted message cannot smuggle javascript: or data: links into the UI.
- * @param value - Raw attachment data
  * @returns A safe attachment descriptor, or undefined if invalid
  */
 export function normalizeAttachment(value: unknown): AttachmentInfo | undefined {
@@ -49,7 +46,6 @@ export function normalizeAttachment(value: unknown): AttachmentInfo | undefined 
 
 /**
  * Validate the reply metadata attached to a message by the server.
- * @param value - Raw replyTo data
  * @returns A safe reply descriptor, or undefined if invalid
  */
 export function normalizeReplyTo(value: unknown): ReplyInfo | undefined {
@@ -69,7 +65,6 @@ export function normalizeReplyTo(value: unknown): ReplyInfo | undefined {
  * naming an empty author under real text reads as an attribution failure, and
  * an unattributed forward reads as the forwarder's own words. Both are worse
  * than showing the message plainly.
- * @param value - Raw forwardedFrom data
  * @returns A safe forwarding descriptor, or undefined if invalid
  */
 export function normalizeForwardedFrom(value: unknown): ForwardInfo | undefined {
@@ -84,8 +79,6 @@ export function normalizeForwardedFrom(value: unknown): ForwardInfo | undefined 
 
 /**
  * Prepare a raw message for display by normalizing timestamps, reactions, and ephemeral status.
- * @param raw - Raw message from server
- * @returns Prepared message ready for display
  */
 export function prepareMessage(raw: Message): Message {
   const msg: Message = { ...raw };
@@ -141,7 +134,6 @@ export function prepareMessage(raw: Message): Message {
     delete msg.forwardedFrom;
   }
 
-  // Normalize expiry
   let normalizedExpiry: string | undefined;
   if (typeof raw.expiresAt === 'string') {
     const parsed = Date.parse(raw.expiresAt);
@@ -186,11 +178,7 @@ const REGEX_SPECIALS = new Set([
   '-'
 ]);
 
-/**
- * Escape special characters in a string for use in a regular expression.
- * @param value - String to escape
- * @returns Escaped string safe for regex use
- */
+/** Escape special characters in a string for use in a regular expression. */
 export function escapeRegex(value: string): string {
   let escaped = '';
   for (const char of value) {
@@ -199,12 +187,7 @@ export function escapeRegex(value: string): string {
   return escaped;
 }
 
-/**
- * Check if a text contains a mention of the given username.
- * @param text - Text to search
- * @param username - Username to look for
- * @returns True if the text mentions the username
- */
+/** Check if a text contains a mention of the given username. */
 export function containsMention(
   text: string | undefined,
   username: string | null | undefined

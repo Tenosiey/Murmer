@@ -296,7 +296,6 @@ pub(super) async fn handle_set_channel_override(
     send_channel_overrides(state, sender, kind, channel_id).await;
 }
 
-/// Handle `remove-channel-override`.
 pub(super) async fn handle_remove_channel_override(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,

@@ -116,7 +116,6 @@ pub(super) async fn send_channel_keys(
     send_json(sender, &payload).await;
 }
 
-/// Handle `get-channel-keys`.
 pub(super) async fn handle_get_channel_keys(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,

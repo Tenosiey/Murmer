@@ -575,11 +575,7 @@ function createChatStore() {
     }
   }
 
-  /**
-   * Connect to a WebSocket server.
-   * @param url - WebSocket URL
-   * @param onOpen - Optional callback when connection opens
-   */
+  /** Connect to a WebSocket server. */
   function connect(url: string, onOpen?: () => void): void {
     set([]); // Clear previous history when connecting to a server
     typing.reset();
@@ -687,9 +683,6 @@ function createChatStore() {
 
   /**
    * Send a chat message.
-   * @param user - Username
-   * @param text - Message text
-   * @param replyTo - Optional ID of the message being replied to
    * @param replyText - Quoted snippet, needed only in encrypted channels where
    *   the server has no plaintext to quote from
    * @returns null on success, or an error message for the caller to surface
@@ -736,7 +729,6 @@ function createChatStore() {
 
   /**
    * Switch the connection to a channel.
-   * @param channelId - Channel to join
    * @param announce - False records the channel the server already placed us
    *   in (the default channel right after presence) without a redundant join.
    */
@@ -759,8 +751,6 @@ function createChatStore() {
 
   /**
    * Encrypt and send a direct message to another user.
-   * @param to - Recipient username
-   * @param text - Message text
    * @returns null on success, or an error message for the caller to surface
    */
   async function sendDm(to: string, text: string): Promise<string | null> {
@@ -786,30 +776,18 @@ function createChatStore() {
     return null;
   }
 
-  /**
-   * Load the direct message history with another user.
-   * @param peer - Username of the other participant
-   * @param before - Optional message ID to load messages before
-   */
+  /** Load the direct message history with another user. */
   function loadDmHistory(peer: string, before?: number): void {
     sendRaw({ type: 'load-dm-history', with: peer, before });
   }
 
-  /**
-   * Load all messages belonging to a thread.
-   * @param rootId - ID of the thread's root message
-   */
+  /** Load all messages belonging to a thread. */
   function loadThread(rootId: number): void {
     if (typeof rootId !== 'number' || Number.isNaN(rootId)) return;
     sendRaw({ type: 'load-thread', rootId });
   }
 
-  /**
-   * Send an ephemeral (self-destructing) chat message.
-   * @param user - Username
-   * @param text - Message text
-   * @param expiresAt - ISO 8601 expiry timestamp
-   */
+  /** Send a self-destructing chat message; `expiresAt` is ISO 8601. */
   function sendEphemeral(user: string, text: string, expiresAt: string): string | null {
     return sendMessage(user, { text }, { ephemeral: true, expiresAt });
   }
@@ -877,30 +855,17 @@ function createChatStore() {
     sendRaw({ type: 'get-scheduled-messages' });
   }
 
-  /**
-   * Send a raw message object.
-   * @param data - Message data to send
-   */
+  /** Send a raw message object. */
   function sendRaw(data: any): void {
     wsManager.send(data);
   }
 
-  /**
-   * Load message history for a channel.
-   * @param channelId - Channel ID
-   * @param before - Optional message ID to load messages before
-   * @param limit - Number of messages to load (default: 50)
-   */
+  /** Load message history for a channel. */
   function loadHistory(channelId: number, before?: number, limit = 50): void {
     sendRaw({ type: 'load-history', channelId, before, limit });
   }
 
-  /**
-   * React to a message with an emoji.
-   * @param messageId - Message ID
-   * @param emoji - Emoji to add/remove
-   * @param action - 'add' or 'remove'
-   */
+  /** React to a message with an emoji. */
   function react(messageId: number, emoji: string, action: 'add' | 'remove'): void {
     if (!wsManager.isConnected()) return;
     if (typeof messageId !== 'number' || Number.isNaN(messageId)) return;
@@ -915,10 +880,6 @@ function createChatStore() {
   /**
    * Search a channel: its message history and its wiki pages, which the
    * server answers on one frame from two full-text indexes.
-   * @param channelId - Channel ID to search
-   * @param query - Search query
-   * @param limit - Maximum results (default: 50, max: 200)
-   * @returns Promise resolving to the matching messages and wiki pages
    */
   function search(channelId: number, query: string, limit = 50): Promise<SearchResults> {
     if (!wsManager.isConnected()) {
@@ -953,11 +914,7 @@ function createChatStore() {
     });
   }
 
-  /**
-   * Edit a previously sent message.
-   * @param messageId - Message ID to edit
-   * @param text - Replacement message text
-   */
+  /** Edit a previously sent message. */
   function edit(messageId: number, text: string): string | null {
     if (!wsManager.isConnected()) return 'Not connected to the server.';
     if (typeof messageId !== 'number' || Number.isNaN(messageId)) return null;
@@ -975,10 +932,6 @@ function createChatStore() {
     return null;
   }
 
-  /**
-   * Delete a message.
-   * @param messageId - Message ID to delete
-   */
   function deleteMessage(messageId: number): void {
     if (!wsManager.isConnected()) return;
     if (typeof messageId !== 'number' || Number.isNaN(messageId)) return;
@@ -987,9 +940,7 @@ function createChatStore() {
     wsManager.send(payload);
   }
 
-  /**
-   * Disconnect from the WebSocket server.
-   */
+  /** Disconnect from the WebSocket server. */
   function disconnect(): void {
     wsManager.disconnect();
     set([]);

@@ -263,7 +263,6 @@ pub(super) async fn send_stats_config(
     }
 }
 
-/// Handle `get-stats-config`.
 pub(super) async fn handle_get_stats_config(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
