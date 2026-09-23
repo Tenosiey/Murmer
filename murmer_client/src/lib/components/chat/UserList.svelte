@@ -8,7 +8,7 @@
   import { displayNames } from '$lib/stores/profiles';
   import { dm } from '$lib/stores/dm';
   import { rightSidebarWidth } from '$lib/stores/layout';
-  import { STATUS_LABELS } from '$lib/stores/status';
+  import { STATUS_LABELS } from '$lib/chat/constants';
   import { ensureStatus } from '$lib/chat/helpers';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import RoleIcon from '$lib/components/RoleIcon.svelte';

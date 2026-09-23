@@ -1,4 +1,5 @@
 import type { ChannelNotificationPreference } from '../stores/channelNotifications';
+import type { UserStatus } from '../types';
 
 /* Custom server emoji naming rules; must match the server's validation. */
 export const EMOJI_NAME_RE = /^[a-z0-9_]{2,32}$/;
@@ -114,6 +115,15 @@ export const AUTOMOD_ACTIONS: Array<{ id: AutomodAction; label: string; descript
   { id: 'delete', label: 'Delete', description: 'Refuse it; nobody else ever sees it.' },
   { id: 'mute', label: 'Mute', description: 'Refuse it and mute the sender.' }
 ];
+
+export const USER_STATUS_VALUES = ['online', 'away', 'busy', 'offline'] as const;
+
+export const STATUS_LABELS: Record<UserStatus, string> = {
+  online: 'Online',
+  away: 'Away',
+  busy: 'Busy',
+  offline: 'Offline'
+};
 
 export const MESSAGE_INPUT_MAX_HEIGHT = 360;
 export const MAX_TOPIC_LENGTH = 256;

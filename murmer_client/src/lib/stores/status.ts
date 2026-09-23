@@ -2,17 +2,10 @@ import { get, writable } from 'svelte/store';
 import { chat } from './chat';
 import { session } from './session';
 import type { Message, UserStatus } from '../types';
-
-export const USER_STATUS_VALUES = ['online', 'away', 'busy', 'offline'] as const;
+import { USER_STATUS_VALUES } from '../chat/constants';
 
 const USER_STATUS_SET = new Set(USER_STATUS_VALUES);
 
-export const STATUS_LABELS: Record<UserStatus, string> = {
-  online: 'Online',
-  away: 'Away',
-  busy: 'Busy',
-  offline: 'Offline'
-};
 
 function normalizeStatus(value: unknown): UserStatus | null {
   if (typeof value !== 'string') return null;

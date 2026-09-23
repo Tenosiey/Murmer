@@ -46,14 +46,14 @@
   import { forwardOptions, forwardedDmText, parseForwardTarget } from '$lib/chat/forward';
   import {
     parseWhen,
-    splitWhen,
     scheduleBoundsError,
     reminderTextError,
     describeWhen
   } from '$lib/chat/schedule';
   import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
-  import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
+  import { statuses } from '$lib/stores/status';
+  import { parseSlashCommand } from '$lib/chat/commands';
   import { pinned } from '$lib/stores/pins';
   import { scheduledAttention } from '$lib/stores/scheduled';
   import { typing } from '$lib/stores/typing';
@@ -115,8 +115,7 @@
   import EmojiPicker from '$lib/components/EmojiPicker.svelte';
   import {
     MAX_TOPIC_LENGTH,
-    MIN_EPHEMERAL_SECONDS,
-    MAX_EPHEMERAL_SECONDS,
+    STATUS_LABELS,
     VOICE_QUALITY_PRESETS,
     DEFAULT_VOICE_PRESET,
     DEFAULT_CHANNEL_NAME,
@@ -745,10 +744,9 @@
     const trimmed = message.trim();
     if (trimmed === '') return;
     if (trimmed.startsWith('/')) {
-      if (handleSlashCommand(trimmed)) {
-        message = '';
-        return;
-      }
+      runSlashCommand(trimmed);
+      message = '';
+      return;
     }
     const replyTarget = typeof replyingTo?.id === 'number' ? replyingTo.id : undefined;
     // The quoted snippet is passed along because an encrypted channel gives
@@ -833,191 +831,78 @@
     if (hasMessage) sendText();
   }
 
-  function handleSlashCommand(raw: string): boolean {
+  function runSlashCommand(raw: string) {
     clearCommandFeedback();
-    const content = raw.slice(1).trim();
-    if (!content) {
-      return true;
-    }
-    const [command] = content.split(/\s+/);
-    const commandName = command.toLowerCase();
-    const rest = content.slice(command.length).trim();
+    const command = parseSlashCommand(raw);
     const currentUser = get(session).user;
-
-    switch (commandName) {
-      case 'help': {
+    switch (command.kind) {
+      case 'none':
+        return;
+      case 'error':
+        setCommandFeedback(command.message, 'error');
+        return;
+      case 'help':
         openHelp();
-        return true;
+        return;
+      case 'reminders':
+        openReminders();
+        return;
+      case 'send': {
+        const sendError = chat.send(currentUser ?? 'anon', command.text);
+        if (sendError) setCommandFeedback(sendError, 'error');
+        return;
       }
-      case 'me': {
-        if (!rest) {
-          setCommandFeedback('Usage: /me <action>', 'error');
-          return true;
-        }
-        const meError = chat.send(currentUser ?? 'anon', `_${rest}_`);
-        if (meError) setCommandFeedback(meError, 'error');
-        return true;
-      }
-      case 'shrug': {
-        // Backslash-escaped so markdown doesn't italicize the face.
-        const shrug = '¯\\\\\\_(ツ)\\_/¯';
-        const text = rest ? `${rest} ${shrug}` : shrug;
-        const shrugError = chat.send(currentUser ?? 'anon', text);
-        if (shrugError) setCommandFeedback(shrugError, 'error');
-        return true;
-      }
-      case 'topic': {
-        if (rest.length > MAX_TOPIC_LENGTH) {
-          setCommandFeedback(`Topics are limited to ${MAX_TOPIC_LENGTH} characters.`, 'error');
-          return true;
-        }
-        channelTopics.setTopic(currentChatChannelId, rest);
-        setCommandFeedback(rest ? 'Updated the channel topic.' : 'Cleared the channel topic.');
-        return true;
-      }
-      case 'status': {
-        if (!rest) {
-          setCommandFeedback('Usage: /status <online|away|busy|offline>', 'error');
-          return true;
-        }
-        const normalized = rest.toLowerCase();
-        const match = USER_STATUS_VALUES.find((value) => value === normalized);
-        if (match) {
-          statuses.setSelf(match);
-          setCommandFeedback(`Status set to ${STATUS_LABELS[match]}.`);
-        } else {
-          setCommandFeedback(
-            `Unknown status "${rest}". Options: ${USER_STATUS_VALUES.join(', ')}.`,
-            'error'
-          );
-        }
-        return true;
-      }
-      case 'ephemeral':
-      case 'temp': {
-        if (!rest) {
-          setCommandFeedback('Usage: /ephemeral <seconds> <message>', 'error');
-          return true;
-        }
-        const parts = rest.split(/\s+/);
-        const durationPart = parts.shift();
-        const contentText = parts.join(' ').trim();
-        if (!durationPart || contentText === '') {
-          setCommandFeedback('Usage: /ephemeral <seconds> <message>', 'error');
-          return true;
-        }
-        const parsedDuration = Number(durationPart);
-        if (!Number.isFinite(parsedDuration)) {
-          setCommandFeedback('Ephemeral duration must be a number of seconds.', 'error');
-          return true;
-        }
-        let durationSeconds = Math.round(parsedDuration);
-        if (durationSeconds <= 0) {
-          setCommandFeedback('Ephemeral duration must be positive.', 'error');
-          return true;
-        }
-        const belowMinimum = durationSeconds < MIN_EPHEMERAL_SECONDS;
-        const aboveMaximum = durationSeconds > MAX_EPHEMERAL_SECONDS;
-        durationSeconds = Math.min(
-          Math.max(durationSeconds, MIN_EPHEMERAL_SECONDS),
-          MAX_EPHEMERAL_SECONDS
+      case 'topic':
+        channelTopics.setTopic(currentChatChannelId, command.topic);
+        setCommandFeedback(
+          command.topic ? 'Updated the channel topic.' : 'Cleared the channel topic.'
         );
+        return;
+      case 'status':
+        statuses.setSelf(command.status);
+        setCommandFeedback(`Status set to ${STATUS_LABELS[command.status]}.`);
+        return;
+      case 'ephemeral': {
         if (!currentUser) {
           setCommandFeedback('You must be signed in to send messages.', 'error');
-          return true;
+          return;
         }
-        const expires = new Date(Date.now() + durationSeconds * 1000);
-        const ephemeralError = chat.sendEphemeral(
-          currentUser,
-          contentText,
-          expires.toISOString()
-        );
+        const expires = new Date(Date.now() + command.seconds * 1000);
+        const ephemeralError = chat.sendEphemeral(currentUser, command.text, expires.toISOString());
         if (ephemeralError) {
           setCommandFeedback(ephemeralError, 'error');
-          return true;
+          return;
         }
-        let feedback = `Ephemeral message will expire in ${describeDuration(durationSeconds)}.`;
-        if (belowMinimum) {
-          feedback += ` Minimum duration is ${describeDuration(MIN_EPHEMERAL_SECONDS)}.`;
-        } else if (aboveMaximum) {
-          feedback += ` Maximum duration is ${describeDuration(MAX_EPHEMERAL_SECONDS)}.`;
-        }
-        setCommandFeedback(feedback.trim());
-        return true;
+        const note = command.clampNote ? ` ${command.clampNote}` : '';
+        setCommandFeedback(
+          `Ephemeral message will expire in ${describeDuration(command.seconds)}.${note}`
+        );
+        return;
       }
-      case 'search': {
-        openSearch(rest);
-        if (rest) {
+      case 'search':
+        openSearch(command.query);
+        if (command.query) {
           tick().then(() => searchOverlay?.triggerSearch());
         }
-        return true;
-      }
-      case 'reminders': {
-        openReminders();
-        return true;
-      }
+        return;
       case 'remind':
-      case 'remindme': {
-        const { when, text } = splitWhen(rest);
-        if (!when || !text) {
-          setCommandFeedback('Usage: /remind <when> <note> — e.g. /remind 15m stretch', 'error');
-          return true;
-        }
-        const at = parseWhen(when);
-        if (!at) {
-          setCommandFeedback(`“${when}” is not a time. Try 15m, 2h, 3d or 17:30.`, 'error');
-          return true;
-        }
-        const bounds = scheduleBoundsError(at);
-        if (bounds) {
-          setCommandFeedback(bounds, 'error');
-          return true;
-        }
-        const invalid = reminderTextError(text);
-        if (invalid) {
-          setCommandFeedback(invalid, 'error');
-          return true;
-        }
-        chat.setReminder(text, at.toISOString());
-        setCommandFeedback(`Reminder set for ${describeWhen(at.toISOString())}.`);
-        return true;
-      }
+        chat.setReminder(command.text, command.at.toISOString());
+        setCommandFeedback(`Reminder set for ${describeWhen(command.at.toISOString())}.`);
+        return;
       case 'schedule': {
-        const { when, text } = splitWhen(rest);
-        if (!when || !text) {
-          setCommandFeedback(
-            'Usage: /schedule <when> <message> — e.g. /schedule 2h notes are up',
-            'error'
-          );
-          return true;
-        }
-        const at = parseWhen(when);
-        if (!at) {
-          setCommandFeedback(`“${when}” is not a time. Try 15m, 2h, 3d or 17:30.`, 'error');
-          return true;
-        }
-        const bounds = scheduleBoundsError(at);
-        if (bounds) {
-          setCommandFeedback(bounds, 'error');
-          return true;
-        }
-        // Sealed here for an encrypted channel, which is why this goes through
-        // the chat store rather than a raw frame.
+        // Sealed here for an encrypted channel, which is why this goes
+        // through the chat store rather than a raw frame.
         const scheduleError = chat.scheduleMessage(
           currentChatChannelId,
-          text,
-          at.toISOString()
+          command.text,
+          command.at.toISOString()
         );
         if (scheduleError) {
           setCommandFeedback(scheduleError, 'error');
-          return true;
+          return;
         }
-        setCommandFeedback(`Message queued for ${describeWhen(at.toISOString())}.`);
-        return true;
-      }
-      default: {
-        setCommandFeedback(`Unknown command: /${commandName}`, 'error');
-        return true;
+        setCommandFeedback(`Message queued for ${describeWhen(command.at.toISOString())}.`);
+        return;
       }
     }
   }

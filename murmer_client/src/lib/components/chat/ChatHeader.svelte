@@ -13,7 +13,8 @@
   import { serverIdentity } from '$lib/stores/serverIdentity';
   import { httpBaseFromWs } from '$lib/server-url';
   import { theme } from '$lib/stores/theme';
-  import { statuses, STATUS_LABELS, USER_STATUS_VALUES } from '$lib/stores/status';
+  import { statuses } from '$lib/stores/status';
+  import { STATUS_LABELS, USER_STATUS_VALUES } from '$lib/chat/constants';
   import { channelNotifications, type ChannelNotificationPreference } from '$lib/stores/channelNotifications';
   import { NOTIFICATION_OPTIONS } from '$lib/chat/constants';
   import { ensureStatus } from '$lib/chat/helpers';
