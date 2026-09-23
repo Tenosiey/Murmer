@@ -200,6 +200,15 @@ pub(super) async fn handle_presence(
                 return Err(());
             }
 
+            // A connection's identity is fixed once established. Switching
+            // names mid-socket would leave the first name registered as
+            // online, with its roles loaded, and nothing left to clean it up.
+            if user_name.as_deref().is_some_and(|current| current != u) {
+                error!("Rejected presence switching a connection to {u}");
+                send_error(sender, errors::INVALID_USERNAME).await;
+                return Err(());
+            }
+
             // A user name stays permanently bound to the first verified
             // public key that used it (persisted in the database).
             // Reconnecting with the same key is fine, but any other key — or
@@ -367,6 +376,14 @@ pub(super) async fn handle_bot_presence(
             return Err(());
         }
     };
+
+    if user_name
+        .as_deref()
+        .is_some_and(|current| current != record.name)
+    {
+        send_error(sender, errors::INVALID_BOT_TOKEN).await;
+        return Err(());
+    }
 
     *authenticated = true;
     let bot_name = record.name.clone();

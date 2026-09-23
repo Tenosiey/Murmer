@@ -632,7 +632,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
     if let Some(user) = registered_as.as_deref() {
         unregister_direct(&state, user, conn_id).await;
     }
-    handle_disconnect(&state, user_name).await;
+    handle_disconnect(&state, user_name, voice_channel).await;
     info!(%client_ip, "Client disconnected");
 }
 
@@ -1227,50 +1227,74 @@ async fn send_active_webcams(
     }
 }
 
-/// Handle client disconnect cleanup.
-async fn handle_disconnect(state: &Arc<AppState>, user_name: Option<String>) {
-    if let Some(name) = user_name {
-        state.users.lock().await.remove(&name);
-        broadcast_users(state).await;
+/// End `user`'s voice session: bank its time, take them out of their
+/// channel, and stop the screen shares and cameras that rode on it.
+async fn end_voice_session(state: &Arc<AppState>, user: &str) {
+    stats::flush_voice_session(state, user).await;
+    stats::flush_screenshare_session(state, user).await;
 
-        // Bank any running voice/screen-share session time before the
-        // in-memory session markers are dropped.
-        stats::flush_voice_session(state, &name).await;
-        stats::flush_screenshare_session(state, &name).await;
+    let left = state
+        .voice_channels
+        .lock()
+        .await
+        .iter_mut()
+        .find_map(|(id, info)| info.users.remove(user).then_some(*id));
+    if let Some(ch_id) = left {
+        broadcast_voice(state, ch_id).await;
+    }
 
-        let mut map = state.voice_channels.lock().await;
-        let mut ch_to_broadcast = None;
-        for (id, info) in map.iter_mut() {
-            if info.users.remove(&name) {
-                ch_to_broadcast = Some(*id);
-                break;
-            }
-        }
-        drop(map);
+    state.voice_mutes.lock().await.remove(user);
+    end_screen_shares_for_user(state, user).await;
+    end_webcams_for_user(state, user).await;
+}
 
-        if let Some(ch_id) = ch_to_broadcast {
-            broadcast_voice(state, ch_id).await;
-        }
-
-        state.voice_mutes.lock().await.remove(&name);
-        state.connection_stats.lock().await.remove(&name);
-        soundboard::clear_cooldown(state, &name).await;
-        // Slow mode paces a live conversation; a member who leaves and comes
-        // back is not made to wait out an interval they never spent typing.
-        state.slow_mode_sends.lock().await.remove(&name);
-
-        // Clean up any active screen shares and cameras owned by the
-        // disconnecting user.
-        end_screen_shares_for_user(state, &name).await;
-        end_webcams_for_user(state, &name).await;
-
-        state
-            .statuses
+/// Clean up after a closed connection. Its direct mailbox must already be
+/// unregistered, since that registry is how the other connections of the
+/// same account are found.
+///
+/// One account may be signed in from several clients at once. Presence
+/// belongs to the account, so the user only goes offline with their last
+/// connection. A voice session belongs to the connection that joined it, so
+/// closing a text-only tab must not pull the desktop app out of a call.
+async fn handle_disconnect(
+    state: &Arc<AppState>,
+    user_name: Option<String>,
+    voice_channel: Option<i32>,
+) {
+    let Some(name) = user_name else {
+        return;
+    };
+    let last_connection = !state.direct.lock().await.contains_key(&name);
+    let owns_voice_session = match voice_channel {
+        Some(ch_id) => state
+            .voice_channels
             .lock()
             .await
-            .insert(name.clone(), "offline".to_string());
-        broadcast_status(state, &name, "offline").await;
+            .get(&ch_id)
+            .is_some_and(|info| info.users.contains(&name)),
+        None => false,
+    };
+
+    if last_connection || owns_voice_session {
+        end_voice_session(state, &name).await;
     }
+    if !last_connection {
+        return;
+    }
+
+    state.users.lock().await.remove(&name);
+    broadcast_users(state).await;
+    state.connection_stats.lock().await.remove(&name);
+    soundboard::clear_cooldown(state, &name).await;
+    // Slow mode paces a live conversation; a member who leaves and comes
+    // back is not made to wait out an interval they never spent typing.
+    state.slow_mode_sends.lock().await.remove(&name);
+    state
+        .statuses
+        .lock()
+        .await
+        .insert(name.clone(), "offline".to_string());
+    broadcast_status(state, &name, "offline").await;
 }
 
 /// Axum handler that upgrades the HTTP connection to a WebSocket and spawns message processing.
