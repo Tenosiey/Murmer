@@ -91,26 +91,28 @@ function toNumber(value: unknown): number {
 }
 
 function parseSnapshot(msg: Message): UserStatsSnapshot | null {
-  const payload = msg as any;
-  if (typeof payload.user !== 'string') return null;
-  const raw = payload.stats ?? {};
+  if (typeof msg.user !== 'string') return null;
+  const raw: Record<string, unknown> =
+    typeof msg.stats === 'object' && msg.stats !== null
+      ? (msg.stats as Record<string, unknown>)
+      : {};
   const stats: UserStats = { ...EMPTY_STATS };
   for (const key of Object.keys(EMPTY_STATS) as (keyof UserStats)[]) {
     stats[key] = toNumber(raw[key]);
   }
-  const favorites: FavoriteReaction[] = Array.isArray(payload.favoriteReactions)
-    ? payload.favoriteReactions
+  const favorites: FavoriteReaction[] = Array.isArray(msg.favoriteReactions)
+    ? msg.favoriteReactions
         .filter((f: any) => f && typeof f.emoji === 'string')
         .map((f: any) => ({ emoji: f.emoji, count: toNumber(f.count) }))
     : [];
-  const favoriteSounds: FavoriteSound[] = Array.isArray(payload.favoriteSounds)
-    ? payload.favoriteSounds
+  const favoriteSounds: FavoriteSound[] = Array.isArray(msg.favoriteSounds)
+    ? msg.favoriteSounds
         .filter((s: any) => s && typeof s.name === 'string')
         .map((s: any) => ({ name: s.name, count: toNumber(s.count) }))
     : [];
   return {
-    user: payload.user,
-    trackedSince: typeof payload.trackedSince === 'string' ? payload.trackedSince : null,
+    user: msg.user,
+    trackedSince: typeof msg.trackedSince === 'string' ? msg.trackedSince : null,
     stats,
     favoriteReactions: favorites,
     favoriteSounds
@@ -124,15 +126,14 @@ function createStatsStores() {
   const snapshot = writable<UserStatsSnapshot | null>(null);
 
   chat.on('stats-config', (msg: Message) => {
-    const payload = msg as any;
     config.update((current) => ({
       // A broadcast toggle change omits `optedIn`; keep the known value then.
       serverEnabled:
-        typeof payload.serverEnabled === 'boolean'
-          ? payload.serverEnabled
+        typeof msg.serverEnabled === 'boolean'
+          ? msg.serverEnabled
           : (current?.serverEnabled ?? false),
       optedIn:
-        typeof payload.optedIn === 'boolean' ? payload.optedIn : (current?.optedIn ?? false)
+        typeof msg.optedIn === 'boolean' ? msg.optedIn : (current?.optedIn ?? false)
     }));
   });
 

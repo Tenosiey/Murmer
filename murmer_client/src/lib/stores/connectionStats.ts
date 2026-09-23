@@ -74,7 +74,7 @@ function createAllConnectionStatsStore() {
   }
 
   chat.on('connection-stats-list', (msg: Message) => {
-    const raw = (msg as any).stats;
+    const raw = msg.stats;
     if (!raw || typeof raw !== 'object') return;
     const parsed: Record<string, UserConnectionStats> = {};
     for (const [user, entry] of Object.entries(raw as Record<string, any>)) {

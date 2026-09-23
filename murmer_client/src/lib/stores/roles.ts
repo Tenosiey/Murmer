@@ -13,7 +13,7 @@ function createUserRoleIdsStore() {
 
   chat.on('user-roles', (msg: Message) => {
     const user = msg.user;
-    const raw = (msg as any).roleIds;
+    const raw = msg.roleIds;
     if (typeof user !== 'string' || !Array.isArray(raw)) return;
     const ids = raw.filter((id): id is number => typeof id === 'number');
     update((r) => ({ ...r, [user]: ids }));

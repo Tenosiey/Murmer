@@ -22,7 +22,7 @@ function createCustomEmojiStore() {
   const { subscribe, set } = writable<Record<string, CustomEmoji>>({});
 
   chat.on('emoji-list', (msg: Message) => {
-    const raw = (msg as any).emojis;
+    const raw = msg.emojis;
     if (!Array.isArray(raw)) return;
     const emojis: Record<string, CustomEmoji> = {};
     for (const entry of raw) {

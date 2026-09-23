@@ -485,7 +485,7 @@ export class ScreenShareManager {
     return (
       !!this.userName &&
       msg.target === this.userName &&
-      (msg as any).channelId === this.channelId
+      msg.channelId === this.channelId
     );
   }
 
@@ -562,7 +562,7 @@ export class ScreenShareManager {
     if (!this.isForUs(msg)) return;
 
     const remote = msg.user as string;
-    const pc = (msg as any).role === 'viewer' ? this.outgoing[remote] : this.incoming[remote];
+    const pc = msg.role === 'viewer' ? this.outgoing[remote] : this.incoming[remote];
     if (pc) {
       try {
         await pc.addIceCandidate(msg.candidate as any);
@@ -575,7 +575,7 @@ export class ScreenShareManager {
   private handleRemoteStop(msg: Message): void {
     // Their share ended, so the stream we were pulling from them is gone. Any
     // connection in the other direction is theirs to end, not ours.
-    if ((msg as any).channelId === this.channelId) {
+    if (msg.channelId === this.channelId) {
       this.closeIncoming(msg.user as string);
     }
   }

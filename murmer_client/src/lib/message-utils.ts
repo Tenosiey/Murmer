@@ -119,7 +119,7 @@ export function prepareMessage(raw: Message): Message {
   if (attachment) {
     msg.attachment = attachment;
   } else {
-    delete (msg as any).attachment;
+    delete msg.attachment;
   }
 
   // Normalize reply metadata
@@ -127,10 +127,10 @@ export function prepareMessage(raw: Message): Message {
   if (replyTo) {
     msg.replyTo = replyTo;
   } else {
-    delete (msg as any).replyTo;
+    delete msg.replyTo;
   }
   if (typeof raw.threadId !== 'number' || !Number.isFinite(raw.threadId)) {
-    delete (msg as any).threadId;
+    delete msg.threadId;
   }
 
   // Normalize forwarding metadata
@@ -138,7 +138,7 @@ export function prepareMessage(raw: Message): Message {
   if (forwardedFrom) {
     msg.forwardedFrom = forwardedFrom;
   } else {
-    delete (msg as any).forwardedFrom;
+    delete msg.forwardedFrom;
   }
 
   // Normalize expiry
@@ -153,14 +153,14 @@ export function prepareMessage(raw: Message): Message {
   if (normalizedExpiry) {
     msg.expiresAt = normalizedExpiry;
   } else {
-    delete (msg as any).expiresAt;
+    delete msg.expiresAt;
   }
 
   // Set ephemeral flag
   if (raw.ephemeral === true || Boolean(normalizedExpiry)) {
     msg.ephemeral = true;
   } else {
-    delete (msg as any).ephemeral;
+    delete msg.ephemeral;
   }
 
   return msg;

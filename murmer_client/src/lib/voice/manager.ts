@@ -260,17 +260,17 @@ export class VoiceManager {
     });
 
     chat.on('voice-channel-update', (msg) => {
-      const chId = (msg as any).channelId;
+      const chId = msg.channelId;
       if (typeof chId !== 'number' || this.channelId !== chId) return;
       const quality =
-        typeof (msg as any).quality === 'string' && (msg as any).quality.trim()
-          ? (msg as any).quality.trim()
+        typeof msg.quality === 'string' && msg.quality.trim()
+          ? msg.quality.trim()
           : (this.channelConfig?.quality ?? 'standard');
       let bitrate: number | null = this.channelConfig?.bitrate ?? DEFAULT_AUDIO_BITRATE;
-      if ((msg as any).bitrate === null) {
+      if (msg.bitrate === null) {
         bitrate = null;
-      } else if (typeof (msg as any).bitrate === 'number' && Number.isFinite((msg as any).bitrate)) {
-        bitrate = Math.max(0, Math.round((msg as any).bitrate));
+      } else if (typeof msg.bitrate === 'number' && Number.isFinite(msg.bitrate)) {
+        bitrate = Math.max(0, Math.round(msg.bitrate));
       }
       this.channelConfig = {
         id: chId,
@@ -1116,7 +1116,7 @@ export class VoiceManager {
     if (
       !this.userName ||
       msg.user === this.userName ||
-      (msg as any).channelId !== this.channelId
+      msg.channelId !== this.channelId
     )
       return;
     this.createPeer(msg.user as string, true, peersList);
@@ -1127,7 +1127,7 @@ export class VoiceManager {
     if (
       !this.userName ||
       msg.target !== this.userName ||
-      (msg as any).channelId !== this.channelId
+      msg.channelId !== this.channelId
     )
       return;
     const remote = msg.user as string;
@@ -1173,7 +1173,7 @@ export class VoiceManager {
     if (
       !this.userName ||
       msg.target !== this.userName ||
-      (msg as any).channelId !== this.channelId
+      msg.channelId !== this.channelId
     )
       return;
     const pc = this.peers[msg.user as string];
@@ -1192,7 +1192,7 @@ export class VoiceManager {
     if (
       !this.userName ||
       msg.target !== this.userName ||
-      (msg as any).channelId !== this.channelId
+      msg.channelId !== this.channelId
     )
       return;
     const pc = this.peers[msg.user as string];
@@ -1204,7 +1204,7 @@ export class VoiceManager {
   }
 
   private handleLeave(msg: Message, peersList: RemotePeer[]) {
-    if (!this.userName || (msg as any).channelId !== this.channelId) return;
+    if (!this.userName || msg.channelId !== this.channelId) return;
     this.cleanupPeer(msg.user as string, peersList);
     this.playPeerSound(this.leaveSound);
   }

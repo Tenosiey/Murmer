@@ -101,11 +101,11 @@ export class SoundboardPlayer {
   }
 
   private async handlePlay(msg: Message) {
-    const soundId = (msg as any).id;
-    const channelId = (msg as any).channelId;
-    const user = (msg as any).user;
-    const name = (msg as any).name;
-    const url = (msg as any).url;
+    const soundId = msg.id;
+    const channelId = msg.channelId;
+    const user = msg.user;
+    const name = msg.name;
+    const url = msg.url;
 
     // Validate the frame before acting on it; in particular a non-relative URL
     // must never be fetched.

@@ -371,19 +371,18 @@ function createChatStore() {
       }
 
       case 'search-results': {
-        const payload = msg as any;
-        const requestId = Number(payload.requestId);
+        const requestId = Number(msg.requestId);
         if (!Number.isNaN(requestId)) {
           const pending = pendingSearches.get(requestId);
           if (pending) {
             pendingSearches.delete(requestId);
             clearTimeout(pending.timeout);
-            const list: Message[] = Array.isArray(payload.messages)
-              ? (payload.messages as Message[])
+            const list: Message[] = Array.isArray(msg.messages)
+              ? (msg.messages as Message[])
               : [];
             const prepared = list.map((item) => decryptChannelFrame(item));
             // Wiki pages ride the same frame: one query, two indexes.
-            pending.resolve({ messages: prepared, pages: parseWikiSearchHits(payload.pages) });
+            pending.resolve({ messages: prepared, pages: parseWikiSearchHits(msg.pages) });
           }
         }
         break;
@@ -560,15 +559,14 @@ function createChatStore() {
       }
 
       case 'search-error': {
-        const payload = msg as any;
-        const requestId = Number(payload.requestId);
+        const requestId = Number(msg.requestId);
         if (!Number.isNaN(requestId)) {
           const pending = pendingSearches.get(requestId);
           if (pending) {
             pendingSearches.delete(requestId);
             clearTimeout(pending.timeout);
             const errorMessage =
-              typeof payload.message === 'string' ? payload.message : 'Search failed';
+              typeof msg.message === 'string' ? msg.message : 'Search failed';
             pending.reject(new Error(errorMessage));
           }
         }

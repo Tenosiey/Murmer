@@ -16,7 +16,7 @@ function createSoundboardStore() {
   const { subscribe, set } = writable<SoundboardSound[]>([]);
 
   chat.on('sound-list', (msg: Message) => {
-    const raw = (msg as any).sounds;
+    const raw = msg.sounds;
     if (!Array.isArray(raw)) return;
     const sounds: SoundboardSound[] = [];
     for (const entry of raw) {

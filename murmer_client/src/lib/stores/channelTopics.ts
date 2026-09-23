@@ -19,7 +19,7 @@ function createChannelTopicStore() {
   }
 
   chat.on('channel-list', (msg: Message) => {
-    const list = (msg as any).channels;
+    const list = msg.channels;
     if (!Array.isArray(list)) return;
     const topics: Record<number, string> = {};
     for (const item of list) {
@@ -37,13 +37,12 @@ function createChannelTopicStore() {
   });
 
   chat.on('channel-topic', (msg: Message) => {
-    const raw = msg as any;
-    if (typeof raw.channelId !== 'number' || typeof raw.topic !== 'string') return;
-    applyTopic(raw.channelId, raw.topic);
+    if (typeof msg.channelId !== 'number' || typeof msg.topic !== 'string') return;
+    applyTopic(msg.channelId, msg.topic);
   });
 
   chat.on('channel-remove', (msg: Message) => {
-    const id = (msg as any).channelId;
+    const id = msg.channelId;
     if (typeof id === 'number') {
       update((topics) => {
         if (!(id in topics)) return topics;

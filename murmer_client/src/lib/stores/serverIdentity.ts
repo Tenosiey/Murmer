@@ -43,15 +43,14 @@ function loadCache(): Record<string, CachedServerIdentity> {
 }
 
 function parseIdentity(msg: Message): ServerIdentity {
-  const payload = msg as any;
   return {
-    name: typeof payload.name === 'string' ? payload.name : '',
-    description: typeof payload.description === 'string' ? payload.description : '',
-    welcomeMessage: typeof payload.welcomeMessage === 'string' ? payload.welcomeMessage : '',
+    name: typeof msg.name === 'string' ? msg.name : '',
+    description: typeof msg.description === 'string' ? msg.description : '',
+    welcomeMessage: typeof msg.welcomeMessage === 'string' ? msg.welcomeMessage : '',
     // Only accept upload paths; anything else cannot be a valid icon and
     // must not end up concatenated onto the server's HTTP base URL.
     icon:
-      typeof payload.icon === 'string' && payload.icon.startsWith('/files/') ? payload.icon : null
+      typeof msg.icon === 'string' && msg.icon.startsWith('/files/') ? msg.icon : null
   };
 }
 
@@ -80,12 +79,11 @@ function createServerIdentityStores() {
   // The welcome message is delivered once, to members connecting to this
   // server for the very first time.
   chat.on('welcome', (msg: Message) => {
-    const payload = msg as any;
-    if (typeof payload.message !== 'string' || !payload.message.trim()) return;
-    const serverName = typeof payload.serverName === 'string' ? payload.serverName.trim() : '';
+    if (typeof msg.message !== 'string' || !msg.message.trim()) return;
+    const serverName = typeof msg.serverName === 'string' ? msg.serverName.trim() : '';
     dialogs.alert({
       title: serverName ? `Welcome to ${serverName}` : 'Welcome',
-      message: payload.message
+      message: msg.message
     });
   });
 

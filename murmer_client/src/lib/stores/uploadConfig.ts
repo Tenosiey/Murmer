@@ -32,8 +32,8 @@ function defaultPolicy(): UploadPolicy {
 export const uploadConfig = writable<UploadPolicy>(defaultPolicy());
 
 chat.on('upload-config', (msg: Message) => {
-  const rawMax = (msg as any).maxBytes;
-  const rawCategories = (msg as any).categories;
+  const rawMax = msg.maxBytes;
+  const rawCategories = msg.categories;
   // Validate before mutating client state: a malformed frame must not widen
   // the categories the picker offers or the size it accepts.
   const maxBytes =

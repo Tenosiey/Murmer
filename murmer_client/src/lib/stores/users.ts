@@ -6,8 +6,8 @@ import { onlineUsers } from './online';
 function createAllUserStore() {
   const { subscribe, set } = writable<string[]>([]);
   chat.on('online-users', (msg: Message) => {
-    if (Array.isArray((msg as any).all)) {
-      set((msg as any).all as string[]);
+    if (Array.isArray(msg.all)) {
+      set(msg.all as string[]);
     }
   });
   return { subscribe };

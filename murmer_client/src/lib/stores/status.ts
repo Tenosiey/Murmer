@@ -24,7 +24,7 @@ function createStatusStore() {
   const { subscribe, set, update } = writable<Record<string, UserStatus>>({});
 
   chat.on('status-snapshot', (msg: Message) => {
-    const raw = (msg as any).statuses;
+    const raw = msg.statuses;
     if (!raw || typeof raw !== 'object') return;
     const entries = raw as Record<string, unknown>;
     const normalized: Record<string, UserStatus> = {};
@@ -41,7 +41,7 @@ function createStatusStore() {
   chat.on('status-update', (msg: Message) => {
     const user = typeof msg.user === 'string' ? msg.user : null;
     if (!user) return;
-    const status = normalizeStatus((msg as any).status);
+    const status = normalizeStatus(msg.status);
     if (!status) return;
     update((map) => ({
       ...map,

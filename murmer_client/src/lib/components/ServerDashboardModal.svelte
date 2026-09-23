@@ -1015,7 +1015,7 @@
   ]);
 
   function handleServerError(msg: Message) {
-    const code = (msg as any).message;
+    const code = msg.message;
     if (!open || typeof code !== 'string') return;
     if (EMOJI_ERROR_CODES.has(code)) {
       emojiFeedback = { text: describeServerError(code), kind: 'error' };

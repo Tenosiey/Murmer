@@ -94,7 +94,7 @@
   ]);
 
   function handleServerError(msg: Message) {
-    const code = (msg as any).message;
+    const code = msg.message;
     if (!open || typeof code !== 'string' || !SOUND_ERROR_CODES.has(code)) return;
     feedback = { text: describeServerError(code), kind: 'error' };
   }

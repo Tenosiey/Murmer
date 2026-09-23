@@ -40,7 +40,7 @@ function createBansStore() {
   const { subscribe, set } = writable<BanEntry[] | null>(null);
 
   chat.on('ban-list', (msg: Message) => {
-    const raw = (msg as any).bans;
+    const raw = msg.bans;
     if (!Array.isArray(raw)) return;
     set(raw.map(parseBan).filter((ban): ban is BanEntry => ban !== null));
   });
@@ -51,7 +51,7 @@ function createBansStore() {
   // told apart rather than costing a round trip.
   chat.on('user-unbanned', () => refresh());
   chat.on('force-disconnect', (msg: Message) => {
-    if ((msg as any).action === 'banned') refresh();
+    if (msg.action === 'banned') refresh();
   });
 
   connection.subscribe((state) => {

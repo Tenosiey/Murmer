@@ -26,20 +26,19 @@ function defaults(): VoiceDefaults {
 export const voiceDefaults = writable<VoiceDefaults>(defaults());
 
 chat.on('voice-defaults', (msg: Message) => {
-  const payload = msg as any;
   const quality =
-    typeof payload.quality === 'string' && payload.quality.trim()
-      ? payload.quality.trim()
+    typeof msg.quality === 'string' && msg.quality.trim()
+      ? msg.quality.trim()
       : DEFAULT_VOICE_PRESET.quality;
   // `null` is a real value here (lossless), so it must survive the parse; a
   // nonsensical number falls back rather than being handed to the encoder.
   const bitrate =
-    payload.bitrate === null
+    msg.bitrate === null
       ? null
-      : typeof payload.bitrate === 'number' &&
-          Number.isFinite(payload.bitrate) &&
-          payload.bitrate > 0
-        ? Math.min(Math.round(payload.bitrate), MAX_VOICE_BITRATE)
+      : typeof msg.bitrate === 'number' &&
+          Number.isFinite(msg.bitrate) &&
+          msg.bitrate > 0
+        ? Math.min(Math.round(msg.bitrate), MAX_VOICE_BITRATE)
         : DEFAULT_VOICE_PRESET.bitrate;
   voiceDefaults.set({ quality, bitrate });
 });

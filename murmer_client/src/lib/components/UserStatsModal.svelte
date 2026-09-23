@@ -40,7 +40,7 @@
   let snapshot = $derived($statsSnapshot && user && $statsSnapshot.user === user ? $statsSnapshot : null);
 
   function handleServerError(msg: Message) {
-    if (open && (msg as any).message === 'stats-not-available') {
+    if (open && msg.message === 'stats-not-available') {
       unavailable = true;
     }
   }

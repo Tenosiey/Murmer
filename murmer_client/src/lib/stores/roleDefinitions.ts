@@ -48,7 +48,7 @@ function createRoleDefinitionsStore() {
   const { subscribe, set } = writable<RoleDef[]>([]);
 
   chat.on('role-definitions', (msg: Message) => {
-    const list = (msg as any).roles;
+    const list = msg.roles;
     if (!Array.isArray(list)) return;
     const defs = list.map(toRoleDef).filter((d): d is RoleDef => d !== null);
     defs.sort((a, b) => a.position - b.position || a.id - b.id);

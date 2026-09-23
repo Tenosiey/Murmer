@@ -6,7 +6,7 @@ function createCategoryStore() {
   const { subscribe, set, update } = writable<CategoryInfo[]>([]);
 
   chat.on('category-list', (msg: Message) => {
-    const list = (msg as any).categories;
+    const list = msg.categories;
     if (Array.isArray(list)) {
       const items = list
         .filter(
@@ -23,36 +23,33 @@ function createCategoryStore() {
   });
 
   chat.on('category-add', (msg: Message) => {
-    const raw = msg as any;
-    if (typeof raw.id === 'number' && typeof raw.name === 'string') {
+    if (typeof msg.id === 'number' && typeof msg.name === 'string') {
       const info: CategoryInfo = {
-        id: raw.id,
-        name: raw.name,
-        position: typeof raw.position === 'number' ? raw.position : 0
+        id: msg.id,
+        name: msg.name,
+        position: typeof msg.position === 'number' ? msg.position : 0
       };
       update((cats) => (cats.some((c) => c.id === info.id) ? cats : [...cats, info]));
     }
   });
 
   chat.on('category-update', (msg: Message) => {
-    const raw = msg as any;
-    if (typeof raw.id === 'number' && typeof raw.name === 'string') {
-      update((cats) => cats.map((c) => (c.id === raw.id ? { ...c, name: raw.name } : c)));
+    const { id, name } = msg;
+    if (typeof id === 'number' && typeof name === 'string') {
+      update((cats) => cats.map((c) => (c.id === id ? { ...c, name } : c)));
     }
   });
 
   chat.on('category-remove', (msg: Message) => {
-    const raw = msg as any;
-    if (typeof raw.id === 'number') {
-      update((cats) => cats.filter((c) => c.id !== raw.id));
+    if (typeof msg.id === 'number') {
+      update((cats) => cats.filter((c) => c.id !== msg.id));
     }
   });
 
   chat.on('category-reorder', (msg: Message) => {
-    const raw = msg as any;
-    if (!Array.isArray(raw.order)) return;
+    if (!Array.isArray(msg.order)) return;
     const positions = new Map<number, number>(
-      raw.order
+      msg.order
         .filter((id: any): id is number => typeof id === 'number')
         .map((id: number, index: number) => [id, index])
     );

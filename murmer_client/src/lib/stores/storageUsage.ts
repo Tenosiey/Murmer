@@ -36,19 +36,17 @@ function createStorageUsageStore() {
   const { subscribe, set } = writable<StorageUsage | null>(null);
 
   chat.on('storage-usage', (msg: Message) => {
-    const payload = msg as any;
     const rawCategories =
-      payload.categories && typeof payload.categories === 'object' ? payload.categories : {};
+      msg.categories && typeof msg.categories === 'object' ? msg.categories : {};
     const categories: StorageCategoryUsage[] = Object.entries(rawCategories)
-      .map(([id, entry]) => ({
-        id,
-        bytes: parseCount((entry as any)?.bytes),
-        files: parseCount((entry as any)?.files)
-      }))
+      .map(([id, value]) => {
+        const entry = value as { bytes?: unknown; files?: unknown } | null;
+        return { id, bytes: parseCount(entry?.bytes), files: parseCount(entry?.files) };
+      })
       .sort((a, b) => b.bytes - a.bytes);
     set({
-      totalBytes: parseCount(payload.totalBytes),
-      fileCount: parseCount(payload.fileCount),
+      totalBytes: parseCount(msg.totalBytes),
+      fileCount: parseCount(msg.fileCount),
       categories
     });
   });

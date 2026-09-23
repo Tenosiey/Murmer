@@ -143,7 +143,7 @@ export const screenShareSettings = writable<ScreenShareSettings>({
 export const screenShareServerMaxBitrate = writable<number | null>(null);
 
 chat.on('screenshare-config', (msg: Message) => {
-  const raw = (msg as any).maxBitrate;
+  const raw = msg.maxBitrate;
   const limit =
     typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.round(raw) : null;
   screenShareServerMaxBitrate.set(limit);
@@ -177,7 +177,7 @@ export function setServerScreenShareMaxBitrate(maxBitrate: number | null): void 
 
 chat.on('screenshare-start', (msg: Message) => {
   const user = msg.user as string;
-  const channelId = (msg as any).channelId as number;
+  const channelId = msg.channelId as number;
 
   if (user && typeof channelId === 'number') {
     activeScreenShares.update((shares) => {
@@ -194,8 +194,8 @@ chat.on('screenshare-start', (msg: Message) => {
 });
 
 chat.on('screenshare-active', (msg: Message) => {
-  const channelId = (msg as any).channelId as number;
-  const users = (msg as any).users as string[];
+  const channelId = msg.channelId as number;
+  const users = msg.users as string[];
 
   if (typeof channelId === 'number' && Array.isArray(users)) {
     activeScreenShares.update((shares) => {
@@ -208,7 +208,7 @@ chat.on('screenshare-active', (msg: Message) => {
 
 chat.on('screenshare-stop', (msg: Message) => {
   const user = msg.user as string;
-  const channelId = (msg as any).channelId as number;
+  const channelId = msg.channelId as number;
 
   if (user && typeof channelId === 'number') {
     activeScreenShares.update((shares) => {

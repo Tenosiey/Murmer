@@ -30,7 +30,7 @@ function createServerInfoStore() {
   }
 
   chat.on('server-info', (msg: Message) => {
-    const version = (msg as any).version;
+    const version = msg.version;
     if (typeof version === 'string' && version.trim()) {
       set({ version: version.trim() });
     }

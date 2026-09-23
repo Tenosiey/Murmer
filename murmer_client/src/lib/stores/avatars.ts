@@ -19,7 +19,7 @@ function createAvatarStore() {
   const { subscribe, set, update } = writable<Record<string, string>>({});
 
   chat.on('avatar-snapshot', (msg: Message) => {
-    const raw = (msg as any).avatars;
+    const raw = msg.avatars;
     if (!raw || typeof raw !== 'object') return;
     const normalized: Record<string, string> = {};
     for (const [user, url] of Object.entries(raw as Record<string, unknown>)) {
@@ -29,11 +29,10 @@ function createAvatarStore() {
   });
 
   chat.on('avatar-update', (msg: Message) => {
-    const raw = msg as any;
-    const user = typeof raw.user === 'string' ? raw.user : null;
+    const user = typeof msg.user === 'string' ? msg.user : null;
     if (!user) return;
     update((map) => {
-      if (isUploadUrl(raw.avatar)) return { ...map, [user]: raw.avatar };
+      if (isUploadUrl(msg.avatar)) return { ...map, [user]: msg.avatar };
       const { [user]: _removed, ...rest } = map;
       return rest;
     });

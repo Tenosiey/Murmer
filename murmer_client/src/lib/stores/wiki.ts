@@ -154,30 +154,28 @@ function createWikiStore() {
   }
 
   chat.on('wiki-index', (msg: Message) => {
-    const raw = msg as any;
-    if (typeof raw.channelId !== 'number' || !Array.isArray(raw.pages)) return;
-    const pages = raw.pages
+    const { channelId, pages: rawPages } = msg;
+    if (typeof channelId !== 'number' || !Array.isArray(rawPages)) return;
+    const pages = rawPages
       .map(parseMeta)
       .filter((p: WikiPageMeta | null): p is WikiPageMeta => p !== null);
-    update((index) => ({ ...index, [raw.channelId]: pages }));
+    update((index) => ({ ...index, [channelId]: pages }));
     // Pages may have been created, renamed or deleted; cached link
     // existence can no longer be trusted.
     resolveCache.clear();
   });
 
   chat.on('wiki-page', (msg: Message) => {
-    const raw = msg as any;
-    const pending = takePending(pendingPages, raw);
+    const pending = takePending(pendingPages, msg);
     if (!pending) return;
-    pending.resolve(parsePage(raw.page));
+    pending.resolve(parsePage(msg.page));
   });
 
   chat.on('wiki-revisions', (msg: Message) => {
-    const raw = msg as any;
-    const pending = takePending(pendingHistories, raw);
+    const pending = takePending(pendingHistories, msg);
     if (!pending) return;
-    const revisions = Array.isArray(raw.revisions)
-      ? raw.revisions
+    const revisions = Array.isArray(msg.revisions)
+      ? msg.revisions
           .map(parseRevisionMeta)
           .filter((r: WikiRevisionMeta | null): r is WikiRevisionMeta => r !== null)
       : [];
@@ -185,19 +183,17 @@ function createWikiStore() {
   });
 
   chat.on('wiki-revision', (msg: Message) => {
-    const raw = msg as any;
-    const pending = takePending(pendingRevisions, raw);
+    const pending = takePending(pendingRevisions, msg);
     if (!pending) return;
-    pending.resolve(parseRevision(raw.revision));
+    pending.resolve(parseRevision(msg.revision));
   });
 
   chat.on('wiki-resolved', (msg: Message) => {
-    const raw = msg as any;
-    const pending = takePending(pendingResolves, raw);
+    const pending = takePending(pendingResolves, msg);
     if (!pending) return;
     const result = new Map<string, boolean>();
-    if (Array.isArray(raw.results)) {
-      for (const entry of raw.results) {
+    if (Array.isArray(msg.results)) {
+      for (const entry of msg.results) {
         if (entry && typeof entry.channel === 'string' && typeof entry.slug === 'string') {
           const exists = entry.exists === true;
           const key = linkKey(entry);
@@ -210,17 +206,15 @@ function createWikiStore() {
   });
 
   chat.on('wiki-saved', (msg: Message) => {
-    const raw = msg as any;
-    const pending = takePending(pendingSaves, raw);
+    const pending = takePending(pendingSaves, msg);
     if (!pending) return;
-    pending.resolve({ ok: true, revision: typeof raw.revision === 'number' ? raw.revision : 0 });
+    pending.resolve({ ok: true, revision: typeof msg.revision === 'number' ? msg.revision : 0 });
   });
 
   chat.on('wiki-conflict', (msg: Message) => {
-    const raw = msg as any;
-    const pending = takePending(pendingSaves, raw);
+    const pending = takePending(pendingSaves, msg);
     if (!pending) return;
-    const current = parsePage(raw.page);
+    const current = parsePage(msg.page);
     if (current) {
       pending.resolve({ ok: false, current });
     } else {
@@ -229,7 +223,7 @@ function createWikiStore() {
   });
 
   chat.on('channel-remove', (msg: Message) => {
-    const id = (msg as any).channelId;
+    const id = msg.channelId;
     if (typeof id !== 'number') return;
     update((index) => {
       if (!(id in index)) return index;

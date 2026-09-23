@@ -50,20 +50,19 @@ function positiveInt(value: unknown, fallback: number, max: number): number {
 export const chatSettings = writable<ChatSettings>(defaultSettings());
 
 chat.on('chat-settings', (msg: Message) => {
-  const payload = msg as any;
   chatSettings.update((current) => ({
     slowModeSeconds:
-      typeof payload.slowModeSeconds === 'number' && payload.slowModeSeconds >= 0
-        ? Math.round(payload.slowModeSeconds)
+      typeof msg.slowModeSeconds === 'number' && msg.slowModeSeconds >= 0
+        ? Math.round(msg.slowModeSeconds)
         : 0,
     // A server can only ever lower the hard cap, so a frame claiming more
     // than the build knows about is clamped rather than trusted.
-    maxMessageLength: positiveInt(payload.maxMessageLength, MAX_MESSAGE_LENGTH, MAX_MESSAGE_LENGTH),
-    profanityFilter: payload.profanityFilter === true,
+    maxMessageLength: positiveInt(msg.maxMessageLength, MAX_MESSAGE_LENGTH, MAX_MESSAGE_LENGTH),
+    profanityFilter: msg.profanityFilter === true,
     // Only a manager's `get-chat-settings` answer carries the word list; a
     // broadcast without it must not wipe what the editor is holding.
-    words: Array.isArray(payload.words)
-      ? payload.words.filter((word: unknown): word is string => typeof word === 'string')
+    words: Array.isArray(msg.words)
+      ? msg.words.filter((word: unknown): word is string => typeof word === 'string')
       : current.words
   }));
 });
@@ -78,7 +77,7 @@ chat.on('chat-settings', (msg: Message) => {
 const lastOwnMessageAt = writable<number | null>(null);
 
 chat.on('chat', (msg: Message) => {
-  const user = (msg as any).user;
+  const user = msg.user;
   if (typeof user === 'string' && user === get(session).user) lastOwnMessageAt.set(Date.now());
 });
 

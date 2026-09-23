@@ -37,7 +37,7 @@ function createProfileStore() {
   const { subscribe, set, update } = writable<Record<string, UserProfile>>({});
 
   chat.on('profile-snapshot', (msg: Message) => {
-    const list = (msg as any).profiles;
+    const list = msg.profiles;
     if (!Array.isArray(list)) return;
     const map: Record<string, UserProfile> = {};
     for (const entry of list) {
@@ -48,7 +48,7 @@ function createProfileStore() {
   });
 
   chat.on('profile-update', (msg: Message) => {
-    const profile = toProfile((msg as any).profile);
+    const profile = toProfile(msg.profile);
     if (!profile) return;
     update((map) => ({ ...map, [profile.user]: profile }));
   });

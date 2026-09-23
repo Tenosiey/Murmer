@@ -13,7 +13,7 @@ import type { Message } from '../types';
 export const canSpeak = writable<boolean>(true);
 
 chat.on('voice-permissions', (msg: Message) => {
-  const allowed = (msg as any).canSpeak !== false;
+  const allowed = msg.canSpeak !== false;
   canSpeak.set(allowed);
   // Force listen-only: mute the mic the moment a no-talk channel is joined.
   if (!allowed) microphoneMuted.set(true);

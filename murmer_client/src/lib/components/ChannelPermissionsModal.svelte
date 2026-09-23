@@ -152,7 +152,7 @@
 
   function handleServerError(msg: Message) {
     if (!open) return;
-    const code = (msg as any).message;
+    const code = msg.message;
     if (
       typeof code === 'string' &&
       (code.startsWith('channel-override') ||

@@ -36,12 +36,11 @@ function createChannelOverridesStore() {
   const { subscribe, update, set } = writable<Record<string, ChannelOverridesEntry>>({});
 
   chat.on('channel-overrides', (msg: Message) => {
-    const raw = msg as any;
-    const channelId = typeof raw.channelId === 'number' ? raw.channelId : null;
+    const channelId = typeof msg.channelId === 'number' ? msg.channelId : null;
     if (channelId === null) return;
-    const voice = raw.voice === true;
-    const overrides = Array.isArray(raw.overrides)
-      ? raw.overrides.map(parseOverride).filter((o: ChannelOverride | null): o is ChannelOverride => o !== null)
+    const voice = msg.voice === true;
+    const overrides = Array.isArray(msg.overrides)
+      ? msg.overrides.map(parseOverride).filter((o: ChannelOverride | null): o is ChannelOverride => o !== null)
       : [];
     update((m) => ({ ...m, [overridesKey(voice, channelId)]: { channelId, voice, overrides } }));
   });

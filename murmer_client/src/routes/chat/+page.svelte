@@ -1907,7 +1907,7 @@
 
   const handleMessageDeleted = (event: Message) => {
     const messageId = (event.id as number | undefined) ?? (event.messageId as number | undefined);
-    const channelId = (event as any).channelId ?? currentChatChannelId;
+    const channelId = event.channelId ?? currentChatChannelId;
     if (typeof messageId !== 'number') return;
     pinned.removeMessage(channelId, messageId);
     if (highlightedMessageId === messageId) {

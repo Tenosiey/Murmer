@@ -20,25 +20,26 @@ function createVoiceMuteStore() {
   const { subscribe, update } = writable<Record<string, MuteState>>({});
 
   chat.on('voice-mute', (msg: Message) => {
-    const user = (msg as any).user as string;
+    const user = msg.user;
     if (!user) return;
     const state: MuteState = {
-      micMuted: Boolean((msg as any).micMuted),
-      outputMuted: Boolean((msg as any).outputMuted)
+      micMuted: Boolean(msg.micMuted),
+      outputMuted: Boolean(msg.outputMuted)
     };
     update((m) => ({ ...m, [user]: state }));
   });
 
   // Snapshot of everyone already muted in a channel, sent when we join.
   chat.on('voice-mute-active', (msg: Message) => {
-    const states = (msg as any).states;
+    const states = msg.states;
     if (!states || typeof states !== 'object') return;
     update((m) => {
       const next = { ...m };
       for (const [user, value] of Object.entries(states)) {
+        const entry = value as Partial<Record<keyof MuteState, unknown>> | null;
         next[user] = {
-          micMuted: Boolean((value as any).micMuted),
-          outputMuted: Boolean((value as any).outputMuted)
+          micMuted: Boolean(entry?.micMuted),
+          outputMuted: Boolean(entry?.outputMuted)
         };
       }
       return next;
