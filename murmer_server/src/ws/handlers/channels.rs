@@ -42,10 +42,7 @@ pub(super) async fn handle_create_channel(
         return;
     }
 
-    let category_id = v
-        .get("categoryId")
-        .and_then(|c| c.as_i64())
-        .map(|id| id as i32);
+    let category_id = i32_field(v, "categoryId");
 
     let private = v.get("private").and_then(|p| p.as_bool()).unwrap_or(false);
 
@@ -83,11 +80,7 @@ pub(super) async fn handle_rename_channel(
     v: &Value,
     user_name: &Option<String>,
 ) {
-    let Some(ch_id) = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .map(|c| c as i32)
-    else {
+    let Some(ch_id) = i32_field(v, "channelId") else {
         return;
     };
     let Some(name) = v.get("name").and_then(|n| n.as_str()) else {
@@ -158,11 +151,7 @@ pub(super) async fn handle_delete_channel(
     chan_rx: &mut tokio::sync::broadcast::Receiver<crate::Frame>,
     default_channel_id: i32,
 ) -> Result<(), ()> {
-    let Some(ch_id) = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .map(|c| c as i32)
-    else {
+    let Some(ch_id) = i32_field(v, "channelId") else {
         return Ok(());
     };
 
@@ -218,11 +207,7 @@ pub(super) async fn handle_move_channel(
     v: &Value,
     user_name: &Option<String>,
 ) {
-    let Some(ch_id) = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .map(|c| c as i32)
-    else {
+    let Some(ch_id) = i32_field(v, "channelId") else {
         return;
     };
 
@@ -242,9 +227,7 @@ pub(super) async fn handle_move_channel(
     let category_id = if v.get("categoryId").is_some_and(|c| c.is_null()) {
         None
     } else {
-        v.get("categoryId")
-            .and_then(|c| c.as_i64())
-            .map(|i| i as i32)
+        i32_field(v, "categoryId")
     };
 
     let is_voice = v.get("voice").and_then(|v| v.as_bool()).unwrap_or(false);
@@ -326,10 +309,7 @@ pub(super) async fn handle_reorder_channels(
         return;
     }
 
-    let category_id = v
-        .get("categoryId")
-        .and_then(|c| c.as_i64())
-        .map(|i| i as i32);
+    let category_id = i32_field(v, "categoryId");
     let is_voice = v.get("voice").and_then(|v| v.as_bool()).unwrap_or(false);
 
     match db::reorder_channels(&state.db, category_id, ids.clone(), is_voice).await {
@@ -402,11 +382,7 @@ pub(super) async fn handle_set_channel_topic(
     v: &Value,
     user_name: &Option<String>,
 ) {
-    let Some(ch_id) = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .map(|c| c as i32)
-    else {
+    let Some(ch_id) = i32_field(v, "channelId") else {
         return;
     };
     let Some(raw_topic) = v.get("topic").and_then(|t| t.as_str()) else {
@@ -507,10 +483,7 @@ pub(super) async fn handle_create_voice_channel(
         None => defaults.bitrate,
     };
 
-    let category_id = v
-        .get("categoryId")
-        .and_then(|c| c.as_i64())
-        .map(|id| id as i32);
+    let category_id = i32_field(v, "categoryId");
 
     let private = v.get("private").and_then(|p| p.as_bool()).unwrap_or(false);
 
@@ -567,11 +540,7 @@ pub(super) async fn handle_update_voice_channel(
     v: &Value,
     user_name: &Option<String>,
 ) {
-    let Some(ch_id) = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .map(|c| c as i32)
-    else {
+    let Some(ch_id) = i32_field(v, "channelId") else {
         return;
     };
 
@@ -657,11 +626,7 @@ pub(super) async fn handle_rename_voice_channel(
     v: &Value,
     user_name: &Option<String>,
 ) {
-    let Some(ch_id) = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .map(|c| c as i32)
-    else {
+    let Some(ch_id) = i32_field(v, "channelId") else {
         return;
     };
     let Some(name) = v.get("name").and_then(|n| n.as_str()) else {
@@ -717,11 +682,7 @@ pub(super) async fn handle_delete_voice_channel(
     user_name: &Option<String>,
     voice_channel: &mut Option<i32>,
 ) {
-    let Some(ch_id) = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .map(|c| c as i32)
-    else {
+    let Some(ch_id) = i32_field(v, "channelId") else {
         return;
     };
 
@@ -787,7 +748,7 @@ pub(super) async fn handle_create_category(
     }
 
     // Without an explicit position the category is appended at the end.
-    let position = v.get("position").and_then(|p| p.as_i64()).map(|p| p as i32);
+    let position = i32_field(v, "position");
 
     match db::add_category(&state.db, name, position).await {
         Ok((id, position)) => {
@@ -807,7 +768,7 @@ pub(super) async fn handle_rename_category(
     v: &Value,
     user_name: &Option<String>,
 ) {
-    let Some(id) = v.get("id").and_then(|i| i.as_i64()).map(|i| i as i32) else {
+    let Some(id) = i32_field(v, "id") else {
         return;
     };
     let Some(name) = v.get("name").and_then(|n| n.as_str()) else {
@@ -853,7 +814,7 @@ pub(super) async fn handle_delete_category(
     v: &Value,
     user_name: &Option<String>,
 ) {
-    let Some(id) = v.get("id").and_then(|i| i.as_i64()).map(|i| i as i32) else {
+    let Some(id) = i32_field(v, "id") else {
         return;
     };
 

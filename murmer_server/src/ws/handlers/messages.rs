@@ -12,7 +12,7 @@ use crate::ws::{
     constants::*,
     errors,
     helpers::*,
-    validation::{history_limit, is_emoji_shortcode},
+    validation::{history_limit, i32_field, is_emoji_shortcode},
 };
 use crate::{AppState, db, security};
 use axum::extract::ws::{Message, WebSocket};
@@ -78,8 +78,7 @@ pub(super) async fn handle_join(
     chan_rx: &mut tokio::sync::broadcast::Receiver<crate::Frame>,
     user_name: &Option<String>,
 ) {
-    if let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) {
-        let ch_id = ch_id as i32;
+    if let Some(ch_id) = i32_field(v, "channelId") {
         // Refuse to switch to a channel the user cannot see, so a non-viewer is
         // never even subscribed to the channel's live broadcast.
         if !can_view_text(state, user_name, ch_id).await {
@@ -179,11 +178,7 @@ pub(super) async fn handle_search_history(
         return;
     }
 
-    let channel_to_search = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .map(|c| c as i32)
-        .unwrap_or(channel_id);
+    let channel_to_search = i32_field(v, "channelId").unwrap_or(channel_id);
 
     // The frame names the channel, so a client could ask about one it may not
     // see; a private channel's messages and wiki pages must not leak through

@@ -96,13 +96,6 @@ async fn can_read_wiki(state: &Arc<AppState>, user_name: &Option<String>, channe
     }
 }
 
-/// Extract the target channel id from a wiki request.
-fn channel_id_of(v: &Value) -> Option<i32> {
-    v.get("channelId")
-        .and_then(|c| c.as_i64())
-        .map(|c| c as i32)
-}
-
 /// Resolve the requester name and check the channel-management role gate.
 /// Sends a permission error and returns `None` when the check fails.
 async fn require_wiki_writer(
@@ -141,7 +134,7 @@ pub(super) async fn handle_wiki_history(
     user_name: &Option<String>,
 ) {
     let request_id = v.get("requestId").cloned().unwrap_or(Value::Null);
-    let Some(channel_id) = channel_id_of(v) else {
+    let Some(channel_id) = i32_field(v, "channelId") else {
         return;
     };
     if !can_read_wiki(state, user_name, channel_id).await {
@@ -191,7 +184,7 @@ pub(super) async fn handle_wiki_revision(
     user_name: &Option<String>,
 ) {
     let request_id = v.get("requestId").cloned().unwrap_or(Value::Null);
-    let Some(channel_id) = channel_id_of(v) else {
+    let Some(channel_id) = i32_field(v, "channelId") else {
         return;
     };
     if !can_read_wiki(state, user_name, channel_id).await {
@@ -243,7 +236,7 @@ pub(super) async fn handle_wiki_restore(
     user_name: &Option<String>,
 ) {
     let request_id = v.get("requestId").cloned().unwrap_or(Value::Null);
-    let Some(channel_id) = channel_id_of(v) else {
+    let Some(channel_id) = i32_field(v, "channelId") else {
         return;
     };
     let Some(slug) = v.get("slug").and_then(|s| s.as_str()) else {
@@ -318,7 +311,7 @@ pub(super) async fn handle_wiki_get(
     user_name: &Option<String>,
 ) {
     let request_id = v.get("requestId").cloned().unwrap_or(Value::Null);
-    let Some(channel_id) = channel_id_of(v) else {
+    let Some(channel_id) = i32_field(v, "channelId") else {
         return;
     };
     if !can_read_wiki(state, user_name, channel_id).await {
@@ -401,7 +394,7 @@ pub(super) async fn handle_wiki_create(
     v: &Value,
     user_name: &Option<String>,
 ) {
-    let Some(channel_id) = channel_id_of(v) else {
+    let Some(channel_id) = i32_field(v, "channelId") else {
         return;
     };
     let Some(slug) = v.get("slug").and_then(|s| s.as_str()) else {
@@ -468,7 +461,7 @@ pub(super) async fn handle_wiki_update(
     user_name: &Option<String>,
 ) {
     let request_id = v.get("requestId").cloned().unwrap_or(Value::Null);
-    let Some(channel_id) = channel_id_of(v) else {
+    let Some(channel_id) = i32_field(v, "channelId") else {
         return;
     };
     let Some(slug) = v.get("slug").and_then(|s| s.as_str()) else {
@@ -549,7 +542,7 @@ pub(super) async fn handle_wiki_delete(
     v: &Value,
     user_name: &Option<String>,
 ) {
-    let Some(channel_id) = channel_id_of(v) else {
+    let Some(channel_id) = i32_field(v, "channelId") else {
         return;
     };
     let Some(slug) = v.get("slug").and_then(|s| s.as_str()) else {
@@ -583,7 +576,7 @@ pub(super) async fn handle_wiki_rename(
     v: &Value,
     user_name: &Option<String>,
 ) {
-    let Some(channel_id) = channel_id_of(v) else {
+    let Some(channel_id) = i32_field(v, "channelId") else {
         return;
     };
     let Some(slug) = v.get("slug").and_then(|s| s.as_str()) else {

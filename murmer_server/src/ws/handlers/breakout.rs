@@ -100,11 +100,7 @@ pub(super) async fn handle_open_breakouts(
     v: &Value,
     user_name: &Option<String>,
 ) {
-    let Some(parent_id) = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .map(|c| c as i32)
-    else {
+    let Some(parent_id) = i32_field(v, "channelId") else {
         return;
     };
     let Some(count) = v
@@ -222,11 +218,7 @@ pub(super) async fn handle_close_breakouts(
     v: &Value,
     user_name: &Option<String>,
 ) {
-    let Some(parent_id) = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .map(|c| c as i32)
-    else {
+    let Some(parent_id) = i32_field(v, "channelId") else {
         return;
     };
     let Some(requester) = require_channel_manager(state, sender, user_name).await else {

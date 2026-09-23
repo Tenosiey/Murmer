@@ -17,7 +17,7 @@
 //! existing wrap is never overwritten (see [`db::insert_channel_keys`]).
 
 use crate::channel_overrides::ChannelKind;
-use crate::ws::{constants::*, errors, helpers::*};
+use crate::ws::{constants::*, errors, helpers::*, validation::i32_field};
 use crate::{AppState, db, permissions};
 use axum::extract::ws::{Message, WebSocket};
 use futures::{SinkExt, stream::SplitSink};
@@ -39,11 +39,7 @@ async fn require_channel_view(
         send_error(sender, errors::CHANNEL_KEY_PERMISSION_DENIED).await;
         return None;
     };
-    let Some(channel_id) = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .map(|id| id as i32)
-    else {
+    let Some(channel_id) = i32_field(v, "channelId") else {
         send_error(sender, errors::INVALID_CHANNEL_KEY).await;
         return None;
     };
@@ -282,11 +278,7 @@ pub(super) async fn handle_set_channel_e2ee(
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
     }
-    let Some(channel_id) = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .map(|id| id as i32)
-    else {
+    let Some(channel_id) = i32_field(v, "channelId") else {
         send_error(sender, errors::INVALID_CHANNEL_KEY).await;
         return;
     };

@@ -33,6 +33,13 @@ pub fn validate_voice_quality(value: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == ' ')
 }
 
+/// Read an `i32` id (channel, category, …) from a frame field. Values that do
+/// not fit are rejected rather than truncated, so `2^32 + 5` cannot alias
+/// id 5.
+pub fn i32_field(v: &serde_json::Value, key: &str) -> Option<i32> {
+    v.get(key)?.as_i64().and_then(|n| i32::try_from(n).ok())
+}
+
 /// The page size for a history request, defaulted and clamped.
 ///
 /// The floor matters as much as the ceiling: SQLite reads a negative `LIMIT`
@@ -365,5 +372,14 @@ mod tests {
         );
         assert_eq!(history_limit(Some(0)), 1);
         assert_eq!(history_limit(Some(-1)), 1);
+    }
+
+    #[test]
+    fn i32_field_rejects_out_of_range_ids() {
+        let v = serde_json::json!({ "channelId": 5, "big": 4_294_967_301_i64, "text": "5" });
+        assert_eq!(i32_field(&v, "channelId"), Some(5));
+        assert_eq!(i32_field(&v, "big"), None);
+        assert_eq!(i32_field(&v, "text"), None);
+        assert_eq!(i32_field(&v, "missing"), None);
     }
 }

@@ -16,7 +16,7 @@
 use crate::channel_overrides::{ChannelKind, OverridePair};
 use crate::db::actions;
 use crate::permissions::{self, Permissions};
-use crate::ws::{errors, helpers::*};
+use crate::ws::{errors, helpers::*, validation::i32_field};
 use crate::{AppState, db};
 use axum::extract::ws::{Message, WebSocket};
 use futures::stream::SplitSink;
@@ -43,7 +43,7 @@ async fn require_channel_manager(
 
 /// Read `channelId` and the `voice` flag into an id + kind.
 fn channel_ref(v: &Value) -> Option<(ChannelKind, i32)> {
-    let id = v.get("channelId").and_then(|c| c.as_i64())? as i32;
+    let id = i32_field(v, "channelId")?;
     let kind = ChannelKind::from_voice(v.get("voice").and_then(|b| b.as_bool()).unwrap_or(false));
     Some((kind, id))
 }

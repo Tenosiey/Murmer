@@ -252,11 +252,7 @@ pub(super) async fn handle_play_sound(
         return;
     };
 
-    let Some(channel_id) = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .map(|c| c as i32)
-    else {
+    let Some(channel_id) = i32_field(v, "channelId") else {
         return;
     };
 

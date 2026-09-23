@@ -681,7 +681,7 @@ fn channel_scope(v: &Value) -> Option<(ChannelKind, i32)> {
         | "soundboard-play" => ChannelKind::Voice,
         _ => return None,
     };
-    let id = v.get("channelId").and_then(|c| c.as_i64())? as i32;
+    let id = i32_field(v, "channelId")?;
     Some((kind, id))
 }
 
@@ -888,8 +888,7 @@ async fn handle_voice_join(
     let Some(u) = user_name.as_deref() else {
         return;
     };
-    if let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) {
-        let ch_id = ch_id as i32;
+    if let Some(ch_id) = i32_field(v, "channelId") {
         // A private voice channel is join-gated by View (see + join).
         if !can_view_channel(state, u, ChannelKind::Voice, ch_id).await {
             return;
@@ -958,8 +957,7 @@ async fn handle_voice_leave(
     let Some(u) = user_name.as_deref() else {
         return;
     };
-    if let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) {
-        let ch_id = ch_id as i32;
+    if let Some(ch_id) = i32_field(v, "channelId") {
         let mut map = state.voice_channels.lock().await;
         if let Some(info) = map.get_mut(&ch_id) {
             info.users.remove(u);
@@ -988,14 +986,14 @@ async fn handle_screenshare_start(state: &Arc<AppState>, v: &Value) {
     let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
         return;
     };
-    let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) else {
+    let Some(ch_id) = i32_field(v, "channelId") else {
         return;
     };
     state
         .active_screen_shares
         .lock()
         .await
-        .entry(ch_id as i32)
+        .entry(ch_id)
         .or_default()
         .insert(user.to_string());
 }
@@ -1038,10 +1036,9 @@ async fn handle_screenshare_stop(state: &Arc<AppState>, v: &Value) {
     let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
         return;
     };
-    let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) else {
+    let Some(ch_id) = i32_field(v, "channelId") else {
         return;
     };
-    let ch_id = ch_id as i32;
     let mut shares = state.active_screen_shares.lock().await;
     if let Some(set) = shares.get_mut(&ch_id) {
         set.remove(user);
@@ -1056,14 +1053,14 @@ async fn handle_webcam_start(state: &Arc<AppState>, v: &Value) {
     let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
         return;
     };
-    let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) else {
+    let Some(ch_id) = i32_field(v, "channelId") else {
         return;
     };
     state
         .active_webcams
         .lock()
         .await
-        .entry(ch_id as i32)
+        .entry(ch_id)
         .or_default()
         .insert(user.to_string());
 }
@@ -1073,10 +1070,9 @@ async fn handle_webcam_stop(state: &Arc<AppState>, v: &Value) {
     let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
         return;
     };
-    let Some(ch_id) = v.get("channelId").and_then(|c| c.as_i64()) else {
+    let Some(ch_id) = i32_field(v, "channelId") else {
         return;
     };
-    let ch_id = ch_id as i32;
     let mut cams = state.active_webcams.lock().await;
     if let Some(set) = cams.get_mut(&ch_id) {
         set.remove(user);
