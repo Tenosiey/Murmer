@@ -70,7 +70,7 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, info, instrument, warn};
 
 /// Hands out a process-unique id per connection, so a user's mailbox can be
 /// removed on disconnect without disturbing their other open connections.
@@ -157,20 +157,20 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
 
     loop {
         tokio::select! {
-            Some(result) = receiver.next() => {
-                let text = match result {
-                    Ok(Message::Text(t)) => t,
+            incoming = receiver.next() => {
+                let text = match incoming {
+                    Some(Ok(Message::Text(t))) => t,
+                    // Axum answers pings itself but still hands them over;
+                    // bot libraries send them as keepalives, so they must
+                    // not end the connection.
+                    Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
                     _ => break,
                 };
                 crate::metrics::frame_received();
 
                 if let Ok(mut v) = serde_json::from_str::<Value>(&text) {
                     if let Some(t) = v.get("type").and_then(|t| t.as_str()) {
-                        if t.starts_with("voice-") {
-                            debug!("Received voice message: {t}");
-                        } else {
-                            info!("Received message type: {t}");
-                        }
+                        debug!("Received message type: {t}");
 
                         if !authenticated && t != "presence" && t != "bot-presence" {
                             send_error(&mut sender, errors::UNAUTHENTICATED).await;
@@ -544,12 +544,14 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 scheduled::handle_get_reminders(&state, &mut sender, &user_name).await;
                             }
                             _ => {
-                                error!("unknown message type: {t}");
+                                warn!("unknown message type: {t}");
                             }
                         }
                     }
                 } else {
-                    error!("invalid json message: {text}");
+                    // Client input, not a server fault, and never logged
+                    // verbatim: it can be large and can carry message text.
+                    warn!(len = text.len(), "invalid json frame");
                 }
             }
             // Frames addressed to this connection's user alone. No filtering
