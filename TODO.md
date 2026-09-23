@@ -60,11 +60,12 @@ not a description of the fix.
 
 ## ⚡ Performance
 
-- [ ] One array holds every message from every channel. `$chat` is flat and
-      unbounded: each update re-filters it for the open channel and rebuilds
-      every block, and every message ever scrolled into view stays in the DOM.
-      A long session with deep scrollback pays for all of it on every incoming
-      message. Key it by channel, cap it, or window the list
+- [ ] The open channel's message list is unbounded. `$chat` is cleared on
+      every channel switch, so it only ever holds one channel, but within it
+      every message scrolled into view stays in the store and the DOM, and
+      each incoming message re-filters the array and rebuilds every block. A
+      long session with deep scrollback pays for all of it on every message.
+      Cap it or window the list
 - [ ] Parse each broadcast frame once, not once per connection. Each
       connection task runs its own substring scan and `serde_json::from_str`
       over the same global frame, so one DM or channel-scoped frame is parsed
