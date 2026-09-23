@@ -40,6 +40,17 @@ const SEARCH_TIMEOUT_MS = 5000;
 const KEY_REQUEST_TIMEOUT_MS = 5000;
 /** Minimum interval between typing events sent to the server */
 const TYPING_SEND_INTERVAL_MS = 2000;
+/**
+ * Most messages the open channel holds once a live one arrives. Without a cap
+ * a long session kept every message it ever scrolled past, in the store and
+ * the DOM, and re-filtered and re-grouped all of them on every new message.
+ * Trimming on a live message is invisible: the view jumps to the newest one
+ * anyway, and scrolling back up reloads the trimmed pages from the server.
+ * History pages themselves are never trimmed — that is the user reading back.
+ * Above the 200 a jump to an old message loads, so that page survives a
+ * message arriving right after it.
+ */
+const MAX_LIVE_MESSAGES = 300;
 
 /** Pending search request tracking */
 type PendingSearch = {
@@ -274,7 +285,7 @@ function createChatStore() {
     switch (msg.type) {
       case 'chat': {
         const prepared = decryptChannelFrame(msg);
-        update((m) => [...m, prepared]);
+        update((m) => [...m, prepared].slice(-MAX_LIVE_MESSAGES));
 
         // The author's message arriving supersedes their typing signal.
         if (typeof prepared.channelId === 'number' && prepared.user) {

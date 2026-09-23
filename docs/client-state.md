@@ -26,6 +26,12 @@ Leaf modules that need to *send* — `channelKeys.ts` is the example — get
 their transport injected (`setTransport`) rather than importing `chat` back.
 That is what keeps their policy unit-testable without a WebSocket.
 
+`$chat` holds the open channel only — it is cleared on every switch — and a
+live message trims it to the newest `MAX_LIVE_MESSAGES`. History pages loaded
+by scrolling up are never trimmed. So nothing may treat `$chat` as the whole
+channel, and anything that sticks the view to the bottom must key on the
+newest message, not the count, which stops changing once the list is full.
+
 ## Three kinds of state
 
 ### 1. Local preference
