@@ -149,14 +149,16 @@ pub(super) async fn handle_get_storage_usage(
         .into_iter()
         .map(|(id, (bytes, files))| (id, serde_json::json!({ "bytes": bytes, "files": files })))
         .collect();
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "storage-usage",
-        "totalBytes": usage.total_bytes,
-        "fileCount": usage.file_count,
-        "categories": categories,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    send_json(
+        sender,
+        &serde_json::json!({
+            "type": "storage-usage",
+            "totalBytes": usage.total_bytes,
+            "fileCount": usage.file_count,
+            "categories": categories,
+        }),
+    )
+    .await;
 }
 
 /// Bytes and file counts of the upload directory, split by upload category.

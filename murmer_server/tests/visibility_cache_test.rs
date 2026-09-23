@@ -93,7 +93,7 @@ async fn repeated_asks_agree_with_the_uncached_answer() {
     }
 
     set_overrides(&state, private_to_role_two()).await;
-    broadcast_channels_refresh(&state).await;
+    broadcast_channels_refresh(&state);
 
     for _ in 0..3 {
         assert!(
@@ -118,7 +118,7 @@ async fn making_a_channel_private_stops_frames_reaching_a_cached_member() {
     );
 
     set_overrides(&state, private_to_role_two()).await;
-    broadcast_channels_refresh(&state).await;
+    broadcast_channels_refresh(&state);
 
     assert!(
         !cache
@@ -152,7 +152,7 @@ async fn losing_the_permitted_role_stops_frames_reaching_a_cached_member() {
         .lock()
         .await
         .insert("member".to_string(), Vec::new());
-    broadcast_user_roles(&state, "member", &[]).await;
+    broadcast_user_roles(&state, "member", &[]);
 
     assert!(
         !cache

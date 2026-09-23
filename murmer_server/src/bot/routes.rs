@@ -516,7 +516,7 @@ async fn send_message(
         "user": bot.name,
         "text": text,
     });
-    let _ = state.tx.send(notify.to_string().into());
+    ws::helpers::broadcast(&state, &notify);
 
     if let Some(expiry) = ephemeral_expiry {
         ws::helpers::schedule_ephemeral_deletion(Arc::clone(&state), id, channel_id, expiry);
@@ -1037,7 +1037,7 @@ async fn create_channel_handler(
     match db::add_channel(&state.db, name, body.category_id).await {
         Ok(Some(record)) => {
             ws::helpers::get_or_create_channel(&state, record.id).await;
-            ws::helpers::broadcast_new_channel(&state, &record).await;
+            ws::helpers::broadcast_new_channel(&state, &record);
             (
                 StatusCode::CREATED,
                 Json(serde_json::json!({
@@ -1084,7 +1084,7 @@ async fn update_channel_handler(
 
     match db::set_channel_description(&state.db, channel_id, topic).await {
         Ok(true) => {
-            ws::helpers::broadcast_channel_topic(&state, channel_id, topic).await;
+            ws::helpers::broadcast_channel_topic(&state, channel_id, topic);
             Json(serde_json::json!({
                 "data": {"channelId": channel_id, "topic": topic}
             }))
@@ -1124,7 +1124,7 @@ async fn delete_channel_handler(
     match db::remove_channel(&state.db, channel_id).await {
         Ok(()) => {
             state.channels.lock().await.remove(&channel_id);
-            ws::helpers::broadcast_remove_channel(&state, channel_id).await;
+            ws::helpers::broadcast_remove_channel(&state, channel_id);
             StatusCode::NO_CONTENT.into_response()
         }
         Err(e) => {

@@ -13,7 +13,7 @@
 use crate::ws::{errors, helpers::*};
 use crate::{AppState, db};
 use axum::extract::ws::{Message, WebSocket};
-use futures::{SinkExt, stream::SplitSink};
+use futures::stream::SplitSink;
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::error;
@@ -56,10 +56,12 @@ pub(super) async fn handle_get_audit_log(
             })
         })
         .collect();
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "audit-log",
-        "entries": rows,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    send_json(
+        sender,
+        &serde_json::json!({
+            "type": "audit-log",
+            "entries": rows,
+        }),
+    )
+    .await;
 }

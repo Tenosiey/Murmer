@@ -367,12 +367,13 @@ pub(super) async fn handle_set_stats_enabled(
     cache_stats_enabled(state, enabled);
     info!(requester, enabled, "Server-wide stat tracking toggled");
     // Broadcast without `optedIn`: each client keeps its own opt-in value.
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "stats-config",
-        "serverEnabled": enabled,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "stats-config",
+            "serverEnabled": enabled,
+        }),
+    );
 }
 
 /// Serialize a stats snapshot and send it to one client.
@@ -445,7 +446,7 @@ async fn send_user_stats(
         "favoriteReactions": favorite_entries,
         "favoriteSounds": favorite_sound_entries,
     });
-    let _ = sender.send(Message::Text(payload.to_string().into())).await;
+    send_json(sender, &payload).await;
 }
 
 /// Handle `get-user-stats`. Users can always fetch their own stats; another

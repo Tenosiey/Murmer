@@ -116,7 +116,7 @@ pub async fn set_role(
             .get(&user)
             .cloned()
             .unwrap_or_default();
-        helpers::broadcast_user_roles(&state, &user, &ids).await;
+        helpers::broadcast_user_roles(&state, &user, &ids);
     }
     StatusCode::OK
 }

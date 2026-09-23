@@ -16,7 +16,7 @@ use crate::ws::{constants::*, errors, helpers::*};
 use crate::{AppState, db};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use futures::{SinkExt, stream::SplitSink};
+use futures::stream::SplitSink;
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -99,7 +99,7 @@ fn broadcast_force_disconnect(state: &Arc<AppState>, target: &str, action: &str,
         "action": action,
         "by": by,
     });
-    let _ = state.tx.send(msg.to_string().into());
+    broadcast(state, &msg);
 }
 
 /// Describe a mute's expiry for the audit log. The wall-clock instant is what
@@ -219,7 +219,7 @@ pub(super) async fn handle_unban_user(
                 "user": target,
                 "by": requester,
             });
-            let _ = state.tx.send(msg.to_string().into());
+            broadcast(state, &msg);
             record_audit(state, actions::UNBAN, &requester, &target, "").await;
             info!(requester, target, "User unbanned");
         }
@@ -284,7 +284,7 @@ pub(super) async fn handle_mute_user(
         "by": requester,
         "until": until.map(|value| value.to_rfc3339()),
     });
-    let _ = state.tx.send(msg.to_string().into());
+    broadcast(state, &msg);
     record_audit(
         state,
         actions::MUTE,
@@ -334,7 +334,7 @@ pub(super) async fn handle_unmute_user(
                 "user": target,
                 "by": requester,
             });
-            let _ = state.tx.send(msg.to_string().into());
+            broadcast(state, &msg);
             record_audit(state, actions::UNMUTE, &requester, &target, "").await;
             info!(requester, target, "User unmuted");
         }
@@ -420,10 +420,12 @@ pub(super) async fn handle_get_ban_list(
             })
         })
         .collect();
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "ban-list",
-        "bans": entries,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    send_json(
+        sender,
+        &serde_json::json!({
+            "type": "ban-list",
+            "bans": entries,
+        }),
+    )
+    .await;
 }

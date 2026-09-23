@@ -23,7 +23,7 @@
 use crate::ws::{constants::*, errors, helpers::*, validation::*};
 use crate::{AppState, db, permissions};
 use axum::extract::ws::{Message, WebSocket};
-use futures::{SinkExt, stream::SplitSink};
+use futures::stream::SplitSink;
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::{error, info};
@@ -47,12 +47,14 @@ pub(super) async fn send_all_avatars(
         .into_iter()
         .map(|(user, avatar)| (user, Value::String(avatar)))
         .collect();
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "avatar-snapshot",
-        "avatars": map,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    send_json(
+        sender,
+        &serde_json::json!({
+            "type": "avatar-snapshot",
+            "avatars": map,
+        }),
+    )
+    .await;
 }
 
 /// Send every known user's profile to a newly connected client. Includes users
@@ -73,12 +75,14 @@ pub(super) async fn send_all_profiles(
         return;
     }
     let list: Vec<Value> = profiles.into_iter().map(profile_json).collect();
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "profile-snapshot",
-        "profiles": list,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    send_json(
+        sender,
+        &serde_json::json!({
+            "type": "profile-snapshot",
+            "profiles": list,
+        }),
+    )
+    .await;
 }
 
 /// Serialize one profile row for the snapshot and update frames.
@@ -98,12 +102,13 @@ fn profile_json(profile: db::UserProfile) -> Value {
 async fn broadcast_profile(state: &Arc<AppState>, user: &str) -> bool {
     match db::get_user_profile(&state.db, user).await {
         Ok(Some(profile)) => {
-            if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-                "type": "profile-update",
-                "profile": profile_json(profile),
-            })) {
-                let _ = state.tx.send(msg.into());
-            }
+            broadcast(
+                state,
+                &serde_json::json!({
+                    "type": "profile-update",
+                    "profile": profile_json(profile),
+                }),
+            );
             true
         }
         Ok(None) => false,
@@ -115,14 +120,15 @@ async fn broadcast_profile(state: &Arc<AppState>, user: &str) -> bool {
 }
 
 /// Broadcast a user's avatar change to all clients. `None` clears the avatar.
-async fn broadcast_avatar(state: &Arc<AppState>, user: &str, avatar: Option<&str>) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "avatar-update",
-        "user": user,
-        "avatar": avatar,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+fn broadcast_avatar(state: &Arc<AppState>, user: &str, avatar: Option<&str>) {
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "avatar-update",
+            "user": user,
+            "avatar": avatar,
+        }),
+    );
 }
 
 /// Validate a `set-avatar` reference: it must be a stored upload within the
@@ -204,7 +210,7 @@ pub(super) async fn handle_set_avatar(
 
     info!(requester, "Avatar updated");
     let avatar = (!new_avatar.is_empty()).then_some(new_avatar);
-    broadcast_avatar(state, requester, avatar.as_deref()).await;
+    broadcast_avatar(state, requester, avatar.as_deref());
 }
 
 /// Read an optional profile text field. `Ok(None)` means "not in the frame,

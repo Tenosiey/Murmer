@@ -438,7 +438,7 @@ pub(super) async fn handle_delete_role(
 
     broadcast_role_definitions(state).await;
     for (user, ids) in affected {
-        broadcast_user_roles(state, &user, &ids).await;
+        broadcast_user_roles(state, &user, &ids);
     }
     record_audit(state, actions::ROLE_DELETE, &requester, &target.name, "").await;
     info!(requester, role = %target.name, "Role deleted");
@@ -594,7 +594,7 @@ pub(super) async fn handle_set_user_roles(
         .lock()
         .await
         .insert(target_user.to_string(), ids.clone());
-    broadcast_user_roles(state, target_user, &ids).await;
+    broadcast_user_roles(state, target_user, &ids);
     record_audit(
         state,
         actions::USER_ROLES,

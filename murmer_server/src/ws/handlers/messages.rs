@@ -17,7 +17,7 @@ use crate::ws::{
 use crate::{AppState, db, security};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use futures::{SinkExt, stream::SplitSink};
+use futures::stream::SplitSink;
 use serde_json::{Map, Value};
 use std::sync::Arc;
 use tracing::error;
@@ -161,7 +161,7 @@ pub(super) async fn handle_search_history(
             "message": "missing-query",
             "requestId": request_id_for_error,
         });
-        let _ = sender.send(Message::Text(payload.to_string().into())).await;
+        send_json(sender, &payload).await;
         return;
     };
 
@@ -174,7 +174,7 @@ pub(super) async fn handle_search_history(
             "messages": [],
             "pages": [],
         });
-        let _ = sender.send(Message::Text(payload.to_string().into())).await;
+        send_json(sender, &payload).await;
         return;
     }
 
@@ -191,7 +191,7 @@ pub(super) async fn handle_search_history(
             "messages": [],
             "pages": [],
         });
-        let _ = sender.send(Message::Text(payload.to_string().into())).await;
+        send_json(sender, &payload).await;
         return;
     }
 
@@ -246,7 +246,7 @@ pub(super) async fn handle_search_history(
                 "messages": messages,
                 "pages": pages,
             });
-            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+            send_json(sender, &payload).await;
         }
         Err(error) => {
             error!(
@@ -258,7 +258,7 @@ pub(super) async fn handle_search_history(
                 "message": "Search failed",
                 "requestId": request_id_for_error,
             });
-            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+            send_json(sender, &payload).await;
         }
     }
 }
@@ -548,7 +548,7 @@ pub(super) async fn publish_message(
             if let Some(enc) = v.get("enc") {
                 notify["enc"] = enc.clone();
             }
-            let _ = state.tx.send(notify.to_string().into());
+            broadcast(state, &notify);
 
             if let Some(expiry) = ephemeral_expiry {
                 schedule_ephemeral_deletion(Arc::clone(state), id, channel_id, expiry);
@@ -935,7 +935,7 @@ pub(super) async fn handle_load_thread(
                 "channelId": channel_id,
                 "messages": messages,
             });
-            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+            send_json(sender, &payload).await;
         }
         Err(error) => {
             error!("failed to load thread {root_id}: {error}");

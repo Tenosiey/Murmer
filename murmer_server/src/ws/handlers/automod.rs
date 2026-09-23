@@ -243,7 +243,7 @@ pub(super) async fn screen(
                 "type": "automod-warning",
                 "rule": rule.name,
             });
-            let _ = sender.send(Message::Text(frame.to_string().into())).await;
+            send_json(sender, &frame).await;
             info!(user, rule = %rule.name, "Auto-moderation warned a member");
             Screen::Allowed
         }
@@ -286,7 +286,7 @@ async fn apply_mute(state: &Arc<AppState>, user: &str, rule: &AutomodRule) {
         "by": AUTOMOD_ACTOR,
         "until": until.to_rfc3339(),
     });
-    let _ = state.tx.send(msg.to_string().into());
+    broadcast(state, &msg);
     info!(
         user,
         rule = %rule.name,

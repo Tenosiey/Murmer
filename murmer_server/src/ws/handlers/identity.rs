@@ -75,7 +75,7 @@ pub(super) async fn send_welcome(
         "serverName": identity.name,
         "message": identity.welcome_message,
     });
-    let _ = sender.send(Message::Text(msg.to_string().into())).await;
+    send_json(sender, &msg).await;
 }
 
 /// Validate a `set-server-identity` icon reference: it must be a stored

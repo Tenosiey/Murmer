@@ -318,7 +318,7 @@ pub(super) async fn handle_play_sound(
         "user": requester,
         "channelId": channel_id,
     });
-    let _ = state.tx.send(msg.to_string().into());
+    broadcast(state, &msg);
 }
 
 /// Drop a user's cooldown entry when they disconnect so the map stays bounded

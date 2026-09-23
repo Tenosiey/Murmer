@@ -98,7 +98,7 @@ fn broadcast_messages_purged(state: &Arc<AppState>, requester: &str, purged: usi
         "by": requester,
         "count": purged,
     });
-    let _ = state.tx.send(msg.to_string().into());
+    broadcast(state, &msg);
 }
 
 /// Handle `reset-server`: wipe the server's structure (channels, categories,
@@ -178,17 +178,17 @@ pub(super) async fn handle_reset_server(
 
     broadcast_role_definitions(state).await;
     for (user, ids) in assignments {
-        broadcast_user_roles(state, &user, &ids).await;
+        broadcast_user_roles(state, &user, &ids);
     }
     broadcast_messages_purged(state, &requester, summary.messages);
     let msg = serde_json::json!({
         "type": "server-reset",
         "by": requester,
     });
-    let _ = state.tx.send(msg.to_string().into());
+    broadcast(state, &msg);
     // Rebuilds every connection's channel and voice lists from the database.
     // A member who was sitting in a voice channel now holds an id that is
     // gone from `voice_channels`, so their next join is refused and the
     // refreshed list drops the channel from their sidebar.
-    broadcast_channels_refresh(state).await;
+    broadcast_channels_refresh(state);
 }

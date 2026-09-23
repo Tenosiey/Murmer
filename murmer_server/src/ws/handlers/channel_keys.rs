@@ -20,7 +20,7 @@ use crate::channel_overrides::ChannelKind;
 use crate::ws::{constants::*, errors, helpers::*, validation::i32_field};
 use crate::{AppState, db, permissions};
 use axum::extract::ws::{Message, WebSocket};
-use futures::{SinkExt, stream::SplitSink};
+use futures::stream::SplitSink;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -113,7 +113,7 @@ pub(super) async fn send_channel_keys(
         "holders": holders,
         "members": members,
     });
-    let _ = sender.send(Message::Text(payload.to_string().into())).await;
+    send_json(sender, &payload).await;
 }
 
 /// Handle `get-channel-keys`.
@@ -312,5 +312,5 @@ pub(super) async fn handle_set_channel_e2ee(
 
     // Everyone rebuilds their channel list from this, which is also how
     // members learn to start fetching (or stop expecting) key material.
-    broadcast_channels_refresh(state).await;
+    broadcast_channels_refresh(state);
 }

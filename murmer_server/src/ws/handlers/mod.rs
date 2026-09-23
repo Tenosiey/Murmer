@@ -726,14 +726,14 @@ async fn handle_status_update(
         .lock()
         .await
         .insert(user.clone(), status.to_string());
-    broadcast_status(state, &user, status).await;
+    broadcast_status(state, &user, status);
 }
 
 /// Handle ping request.
 async fn handle_ping(sender: &mut SplitSink<WebSocket, Message>, v: &Value) {
     let id = v.get("id").cloned().unwrap_or(Value::Null);
     let msg = serde_json::json!({ "type": "pong", "id": id });
-    let _ = sender.send(Message::Text(msg.to_string().into())).await;
+    send_json(sender, &msg).await;
 }
 
 /// Handle a request for server details (currently the running version).
@@ -760,7 +760,7 @@ async fn handle_get_server_info(
         "type": "server-info",
         "version": env!("CARGO_PKG_VERSION"),
     });
-    let _ = sender.send(Message::Text(msg.to_string().into())).await;
+    send_json(sender, &msg).await;
 }
 
 /// Handle `get-server-metrics`: answer with the live operator counters —
@@ -804,7 +804,7 @@ async fn handle_get_server_metrics(
         "rejectedUploads": m.rejected_uploads,
         "rejectedReplays": m.rejected_replays,
     });
-    let _ = sender.send(Message::Text(msg.to_string().into())).await;
+    send_json(sender, &msg).await;
 }
 
 /// Store a client's self-reported connection quality numbers (ping, voice
@@ -876,7 +876,7 @@ async fn handle_get_connection_stats(
         "type": "connection-stats-list",
         "stats": stats,
     });
-    let _ = sender.send(Message::Text(msg.to_string().into())).await;
+    send_json(sender, &msg).await;
 }
 
 /// Handle voice join request.
@@ -923,7 +923,7 @@ async fn handle_voice_join(
             "user": u,
             "channelId": ch_id,
         });
-        let _ = state.tx.send(msg.to_string().into());
+        broadcast(state, &msg);
 
         // Tell the joiner whether they may speak here (Talk = SEND in the
         // channel). Voice audio is peer-to-peer, so the client enforces this by
@@ -941,7 +941,7 @@ async fn handle_voice_join(
             "channelId": ch_id,
             "canSpeak": can_speak,
         });
-        let _ = sender.send(Message::Text(perms.to_string().into())).await;
+        send_json(sender, &perms).await;
 
         send_active_screen_shares(state, sender, ch_id).await;
         send_active_webcams(state, sender, ch_id).await;
@@ -979,7 +979,7 @@ async fn handle_voice_leave(
             "user": u,
             "channelId": ch_id,
         });
-        let _ = state.tx.send(msg.to_string().into());
+        broadcast(state, &msg);
     }
 }
 
@@ -1023,13 +1023,14 @@ async fn end_screen_shares_for_user(state: &Arc<AppState>, user: &str) {
         channels
     };
     for ch_id in channels_with_share {
-        if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-            "type": "screenshare-stop",
-            "user": user,
-            "channelId": ch_id,
-        })) {
-            let _ = state.tx.send(msg.into());
-        }
+        broadcast(
+            state,
+            &serde_json::json!({
+                "type": "screenshare-stop",
+                "user": user,
+                "channelId": ch_id,
+            }),
+        );
     }
 }
 
@@ -1107,13 +1108,14 @@ async fn end_webcams_for_user(state: &Arc<AppState>, user: &str) {
         channels
     };
     for ch_id in channels_with_camera {
-        if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-            "type": "webcam-stop",
-            "user": user,
-            "channelId": ch_id,
-        })) {
-            let _ = state.tx.send(msg.into());
-        }
+        broadcast(
+            state,
+            &serde_json::json!({
+                "type": "webcam-stop",
+                "user": user,
+                "channelId": ch_id,
+            }),
+        );
     }
 }
 
@@ -1167,13 +1169,15 @@ async fn send_voice_mutes(
     if states.is_empty() {
         return;
     }
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "voice-mute-active",
-        "channelId": channel_id,
-        "states": states,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    send_json(
+        sender,
+        &serde_json::json!({
+            "type": "voice-mute-active",
+            "channelId": channel_id,
+            "states": states,
+        }),
+    )
+    .await;
 }
 
 /// Send active screen shares for a voice channel to a single client.
@@ -1192,13 +1196,15 @@ async fn send_active_screen_shares(
     if users.is_empty() {
         return;
     }
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "screenshare-active",
-        "channelId": channel_id,
-        "users": users,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    send_json(
+        sender,
+        &serde_json::json!({
+            "type": "screenshare-active",
+            "channelId": channel_id,
+            "users": users,
+        }),
+    )
+    .await;
 }
 
 /// Send the cameras already on in a voice channel to a single client.
@@ -1216,13 +1222,15 @@ async fn send_active_webcams(
     if users.is_empty() {
         return;
     }
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "webcam-active",
-        "channelId": channel_id,
-        "users": users,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    send_json(
+        sender,
+        &serde_json::json!({
+            "type": "webcam-active",
+            "channelId": channel_id,
+            "users": users,
+        }),
+    )
+    .await;
 }
 
 /// End `user`'s voice session: bank its time, take them out of their
@@ -1292,7 +1300,7 @@ async fn handle_disconnect(
         .lock()
         .await
         .insert(name.clone(), "offline".to_string());
-    broadcast_status(state, &name, "offline").await;
+    broadcast_status(state, &name, "offline");
 }
 
 /// Axum handler that upgrades the HTTP connection to a WebSocket and spawns message processing.

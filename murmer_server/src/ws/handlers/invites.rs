@@ -15,7 +15,7 @@ use crate::{AppState, db};
 use axum::extract::ws::{Message, WebSocket};
 use base64::Engine as _;
 use chrono::{Duration, Utc};
-use futures::{SinkExt, stream::SplitSink};
+use futures::stream::SplitSink;
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::{error, info, warn};
@@ -70,12 +70,14 @@ async fn send_invites(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, M
             })
         })
         .collect();
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "invite-list",
-        "invites": entries,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    send_json(
+        sender,
+        &serde_json::json!({
+            "type": "invite-list",
+            "invites": entries,
+        }),
+    )
+    .await;
 }
 
 /// Handle a request for the server's invite list.

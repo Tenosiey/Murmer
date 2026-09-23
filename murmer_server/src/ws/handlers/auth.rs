@@ -283,7 +283,7 @@ pub(super) async fn handle_presence(
                 .await
                 .insert(u.to_string(), "online".to_string());
 
-            broadcast_status(state, u, "online").await;
+            broadcast_status(state, u, "online");
             broadcast_users(state).await;
             *user_name = Some(u.to_string());
 
@@ -305,7 +305,7 @@ pub(super) async fn handle_presence(
                     .lock()
                     .await
                     .insert(u.to_string(), role_ids.clone());
-                broadcast_user_roles(state, u, &role_ids).await;
+                broadcast_user_roles(state, u, &role_ids);
             }
 
             send_role_definitions(state, sender).await;
@@ -396,7 +396,7 @@ pub(super) async fn handle_bot_presence(
         .await
         .insert(bot_name.clone(), "online".to_string());
 
-    broadcast_status(state, &bot_name, "online").await;
+    broadcast_status(state, &bot_name, "online");
     broadcast_users(state).await;
     *user_name = Some(bot_name);
 

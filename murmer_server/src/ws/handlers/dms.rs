@@ -14,7 +14,7 @@
 use crate::ws::{constants::*, errors, helpers::*, validation::history_limit};
 use crate::{AppState, db, security};
 use axum::extract::ws::{Message, WebSocket};
-use futures::{SinkExt, stream::SplitSink};
+use futures::stream::SplitSink;
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::error;
@@ -100,7 +100,7 @@ pub(super) async fn handle_dm(
             out["id"] = Value::from(id);
             // Delivered via the global broadcast; the socket loop filters the
             // frame so only the two participants receive it.
-            let _ = state.tx.send(out.to_string().into());
+            broadcast(state, &out);
 
             // Only the count is recorded — DM content and recipients stay
             // out of the stats tables entirely.
@@ -148,7 +148,7 @@ pub(super) async fn handle_load_dm_history(
                 "with": peer,
                 "messages": msgs,
             });
-            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+            send_json(sender, &payload).await;
         }
         Err(e) => {
             error!("Failed to load DM history between {user} and {peer}: {e}");
@@ -176,5 +176,5 @@ pub(super) async fn handle_get_user_key(
         "user": user,
         "publicKey": key,
     });
-    let _ = sender.send(Message::Text(msg.to_string().into())).await;
+    send_json(sender, &msg).await;
 }

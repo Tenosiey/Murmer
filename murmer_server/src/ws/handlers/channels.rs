@@ -60,9 +60,9 @@ pub(super) async fn handle_create_channel(
                 )
                 .await;
             }
-            broadcast_new_channel(state, &record).await;
+            broadcast_new_channel(state, &record);
             if private {
-                broadcast_channels_refresh(state).await;
+                broadcast_channels_refresh(state);
             }
         }
         Ok(None) => {}
@@ -122,7 +122,7 @@ pub(super) async fn handle_rename_channel(
 
     match db::rename_channel(&state.db, ch_id, name).await {
         Ok(db::RenameResult::Renamed(record)) => {
-            broadcast_channel_rename(state, record.id, &record.name).await;
+            broadcast_channel_rename(state, record.id, &record.name);
         }
         Ok(db::RenameResult::NameTaken) => {
             send_error(sender, errors::CHANNEL_NAME_TAKEN).await;
@@ -188,7 +188,7 @@ pub(super) async fn handle_delete_channel(
         Ok(_) => {
             super::channel_overrides::cleanup_channel(state, ChannelKind::Text, ch_id).await;
             state.channels.lock().await.remove(&ch_id);
-            broadcast_remove_channel(state, ch_id).await;
+            broadcast_remove_channel(state, ch_id);
             if *channel_id == ch_id {
                 *channel_id = default_channel_id;
                 *chan_tx = get_or_create_channel(state, *channel_id).await;
@@ -250,7 +250,7 @@ pub(super) async fn handle_move_channel(
 
     match result {
         Ok(Some(position)) => {
-            broadcast_channel_move(state, ch_id, category_id, position, is_voice).await;
+            broadcast_channel_move(state, ch_id, category_id, position, is_voice);
         }
         Ok(None) => {
             send_error(sender, errors::CHANNEL_MOVE_FAILED).await;
@@ -323,7 +323,7 @@ pub(super) async fn handle_reorder_channels(
                     }
                 }
             }
-            broadcast_channel_reorder(state, category_id, &ids, is_voice).await;
+            broadcast_channel_reorder(state, category_id, &ids, is_voice);
         }
         Ok(false) => {
             send_error(sender, errors::REORDER_FAILED).await;
@@ -363,7 +363,7 @@ pub(super) async fn handle_reorder_categories(
 
     match db::reorder_categories(&state.db, ids.clone()).await {
         Ok(true) => {
-            broadcast_category_reorder(state, &ids).await;
+            broadcast_category_reorder(state, &ids);
         }
         Ok(false) => {
             send_error(sender, errors::REORDER_FAILED).await;
@@ -411,7 +411,7 @@ pub(super) async fn handle_set_channel_topic(
 
     match db::set_channel_description(&state.db, ch_id, topic).await {
         Ok(true) => {
-            broadcast_channel_topic(state, ch_id, topic).await;
+            broadcast_channel_topic(state, ch_id, topic);
         }
         Ok(false) => {
             send_error(sender, errors::UNKNOWN_CHANNEL).await;
@@ -521,9 +521,9 @@ pub(super) async fn handle_create_voice_channel(
                 )
                 .await;
             }
-            broadcast_new_voice_channel(state, record.id, &info).await;
+            broadcast_new_voice_channel(state, record.id, &info);
             if private {
-                broadcast_channels_refresh(state).await;
+                broadcast_channels_refresh(state);
             }
         }
         Ok(None) => {}
@@ -606,7 +606,7 @@ pub(super) async fn handle_update_voice_channel(
                 entry.bitrate = next_bitrate;
                 let snapshot = entry.clone();
                 drop(map);
-                broadcast_voice_channel_update(state, ch_id, &snapshot).await;
+                broadcast_voice_channel_update(state, ch_id, &snapshot);
             }
         }
         Ok(false) => {
@@ -659,7 +659,7 @@ pub(super) async fn handle_rename_voice_channel(
                 entry.name = record.name.clone();
             }
             drop(map);
-            broadcast_voice_channel_rename(state, record.id, &record.name).await;
+            broadcast_voice_channel_rename(state, record.id, &record.name);
         }
         Ok(db::RenameResult::NameTaken) => {
             send_error(sender, errors::CHANNEL_NAME_TAKEN).await;
@@ -712,7 +712,7 @@ pub(super) async fn handle_delete_voice_channel(
         // log it because the channel would reappear after a restart.
         error!("db remove voice channel error: {e}");
     }
-    broadcast_remove_voice_channel(state, ch_id).await;
+    broadcast_remove_voice_channel(state, ch_id);
     if *voice_channel == Some(ch_id) {
         *voice_channel = None;
     }
@@ -752,7 +752,7 @@ pub(super) async fn handle_create_category(
 
     match db::add_category(&state.db, name, position).await {
         Ok((id, position)) => {
-            broadcast_new_category(state, id, name, position).await;
+            broadcast_new_category(state, id, name, position);
         }
         Err(e) => {
             error!("db add category error: {e}");
@@ -795,7 +795,7 @@ pub(super) async fn handle_rename_category(
 
     match db::rename_category(&state.db, id, name).await {
         Ok(true) => {
-            broadcast_rename_category(state, id, name).await;
+            broadcast_rename_category(state, id, name);
         }
         Ok(false) => {
             send_error(sender, errors::UNKNOWN_CATEGORY).await;
@@ -833,7 +833,7 @@ pub(super) async fn handle_delete_category(
 
     match db::remove_category(&state.db, id).await {
         Ok(true) => {
-            broadcast_remove_category(state, id).await;
+            broadcast_remove_category(state, id);
         }
         Ok(false) => {
             send_error(sender, errors::UNKNOWN_CATEGORY).await;

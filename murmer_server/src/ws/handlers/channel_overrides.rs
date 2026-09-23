@@ -292,7 +292,7 @@ pub(super) async fn handle_set_channel_override(
     )
     .await;
 
-    broadcast_channels_refresh(state).await;
+    broadcast_channels_refresh(state);
     send_channel_overrides(state, sender, kind, channel_id).await;
 }
 
@@ -411,7 +411,7 @@ async fn remove_and_notify(
         &describe_target(target_type, target_label),
     )
     .await;
-    broadcast_channels_refresh(state).await;
+    broadcast_channels_refresh(state);
     send_channel_overrides(state, sender, kind, channel_id).await;
 }
 

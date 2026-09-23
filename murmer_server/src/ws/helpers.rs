@@ -13,8 +13,18 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::error;
 
+/// Broadcast a frame to every connection. Nobody listening is not an error.
+pub fn broadcast(state: &AppState, frame: &Value) {
+    let _ = state.tx.send(frame.to_string().into());
+}
+
+/// Send a frame to one client. Send failures are ignored; the socket loop
+/// notices a dead connection itself.
+pub async fn send_json(sender: &mut SplitSink<WebSocket, Message>, frame: &Value) {
+    let _ = sender.send(Message::Text(frame.to_string().into())).await;
+}
+
 /// Send a pre-serialized error frame (see [`crate::ws::errors`]) to one client.
-/// Send failures are ignored; the socket loop notices a dead connection itself.
 pub async fn send_error(sender: &mut SplitSink<WebSocket, Message>, error_json: &str) {
     let _ = sender
         .send(Message::Text(error_json.to_string().into()))
@@ -37,25 +47,28 @@ pub async fn get_user_lists(state: &Arc<AppState>) -> (Vec<String>, Vec<String>)
 /// Broadcast the current list of online users to all connected clients.
 pub async fn broadcast_users(state: &Arc<AppState>) {
     let (online, all) = get_user_lists(state).await;
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "online-users",
-        "users": online,
-        "all": all,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "online-users",
+            "users": online,
+            "all": all,
+        }),
+    );
 }
 
 /// Send the current list of online and known users to a single client.
 pub async fn send_users(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let (online, all) = get_user_lists(state).await;
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "online-users",
-        "users": online,
-        "all": all,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    send_json(
+        sender,
+        &serde_json::json!({
+            "type": "online-users",
+            "users": online,
+            "all": all,
+        }),
+    )
+    .await;
 }
 
 /// Broadcast the users currently in a voice channel to all clients.
@@ -66,13 +79,14 @@ pub async fn broadcast_voice(state: &Arc<AppState>, channel_id: i32) {
             .map(|info| info.users.iter().cloned().collect())
             .unwrap_or_default()
     };
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "voice-users",
-        "channelId": channel_id,
-        "users": list,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "voice-users",
+            "channelId": channel_id,
+            "users": list,
+        }),
+    );
 }
 
 /// Sanitize and normalize a message timestamp.
@@ -152,19 +166,20 @@ pub async fn send_role_definitions(
 }
 
 /// Broadcast one user's assigned role ids to all connected clients.
-pub async fn broadcast_user_roles(state: &Arc<AppState>, user: &str, role_ids: &[i64]) {
+pub fn broadcast_user_roles(state: &Arc<AppState>, user: &str, role_ids: &[i64]) {
     // Which roles a user holds feeds every channel visibility decision. The
     // stamp is server-wide rather than per user: one user's reassignment is
     // rare next to the frames the memo saves, so the coarser invalidation is
     // cheaper than tracking who each entry belongs to.
     invalidate_channel_visibility(state);
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "user-roles",
-        "user": user,
-        "roleIds": role_ids,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "user-roles",
+            "user": user,
+            "roleIds": role_ids,
+        }),
+    );
 }
 
 /// Send every connected user's role assignments to a newly connected client.
@@ -174,11 +189,15 @@ pub async fn send_all_user_roles(
 ) {
     let assignments = state.user_roles.lock().await.clone();
     for (user, ids) in assignments {
-        if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        let frame = serde_json::json!({
             "type": "user-roles",
             "user": user,
             "roleIds": ids,
-        })) && sender.send(Message::Text(msg.into())).await.is_err()
+        });
+        if sender
+            .send(Message::Text(frame.to_string().into()))
+            .await
+            .is_err()
         {
             break;
         }
@@ -191,123 +210,134 @@ pub async fn send_all_statuses(state: &Arc<AppState>, sender: &mut SplitSink<Web
     if statuses.is_empty() {
         return;
     }
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "status-snapshot",
-        "statuses": statuses,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    send_json(
+        sender,
+        &serde_json::json!({
+            "type": "status-snapshot",
+            "statuses": statuses,
+        }),
+    )
+    .await;
 }
 
 /// Broadcast a user's status change to all clients.
-pub async fn broadcast_status(state: &Arc<AppState>, user: &str, status: &str) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "status-update",
-        "user": user,
-        "status": status,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+pub fn broadcast_status(state: &Arc<AppState>, user: &str, status: &str) {
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "status-update",
+            "user": user,
+            "status": status,
+        }),
+    );
 }
 
 /// Broadcast to all clients that a new channel was created.
-pub async fn broadcast_new_channel(state: &Arc<AppState>, record: &crate::db::ChannelRecord) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "channel-add",
-        "channelId": record.id,
-        "name": record.name,
-        "categoryId": record.category_id,
-        "topic": record.description,
-        "position": record.position,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+pub fn broadcast_new_channel(state: &Arc<AppState>, record: &crate::db::ChannelRecord) {
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "channel-add",
+            "channelId": record.id,
+            "name": record.name,
+            "categoryId": record.category_id,
+            "topic": record.description,
+            "position": record.position,
+        }),
+    );
 }
 
 /// Broadcast a channel's updated topic/description to all clients.
-pub async fn broadcast_channel_topic(state: &Arc<AppState>, channel_id: i32, topic: &str) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "channel-topic",
-        "channelId": channel_id,
-        "topic": topic,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+pub fn broadcast_channel_topic(state: &Arc<AppState>, channel_id: i32, topic: &str) {
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "channel-topic",
+            "channelId": channel_id,
+            "topic": topic,
+        }),
+    );
 }
 
 /// Broadcast a channel's new name to all clients.
-pub async fn broadcast_channel_rename(state: &Arc<AppState>, channel_id: i32, name: &str) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "channel-rename",
-        "channelId": channel_id,
-        "name": name,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+pub fn broadcast_channel_rename(state: &Arc<AppState>, channel_id: i32, name: &str) {
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "channel-rename",
+            "channelId": channel_id,
+            "name": name,
+        }),
+    );
 }
 
 /// Broadcast to all clients that a channel was deleted.
-pub async fn broadcast_remove_channel(state: &Arc<AppState>, channel_id: i32) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "channel-remove",
-        "channelId": channel_id,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+pub fn broadcast_remove_channel(state: &Arc<AppState>, channel_id: i32) {
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "channel-remove",
+            "channelId": channel_id,
+        }),
+    );
 }
 
 /// Broadcast to all clients that a new voice channel was created.
-pub async fn broadcast_new_voice_channel(state: &Arc<AppState>, id: i32, info: &VoiceChannelState) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "voice-channel-add",
-        "channelId": id,
-        "name": info.name,
-        "quality": info.quality,
-        "bitrate": info.bitrate,
-        "categoryId": info.category_id,
-        "position": info.position,
-        "breakoutParent": info.breakout_parent,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+pub fn broadcast_new_voice_channel(state: &Arc<AppState>, id: i32, info: &VoiceChannelState) {
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "voice-channel-add",
+            "channelId": id,
+            "name": info.name,
+            "quality": info.quality,
+            "bitrate": info.bitrate,
+            "categoryId": info.category_id,
+            "position": info.position,
+            "breakoutParent": info.breakout_parent,
+        }),
+    );
 }
 
 /// Broadcast an update to a voice channel's configuration.
-pub async fn broadcast_voice_channel_update(
+pub fn broadcast_voice_channel_update(
     state: &Arc<AppState>,
     channel_id: i32,
     info: &VoiceChannelState,
 ) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "voice-channel-update",
-        "channelId": channel_id,
-        "name": info.name,
-        "quality": info.quality,
-        "bitrate": info.bitrate,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "voice-channel-update",
+            "channelId": channel_id,
+            "name": info.name,
+            "quality": info.quality,
+            "bitrate": info.bitrate,
+        }),
+    );
 }
 
 /// Broadcast a voice channel's new name to all clients.
-pub async fn broadcast_voice_channel_rename(state: &Arc<AppState>, channel_id: i32, name: &str) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "voice-channel-rename",
-        "channelId": channel_id,
-        "name": name,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+pub fn broadcast_voice_channel_rename(state: &Arc<AppState>, channel_id: i32, name: &str) {
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "voice-channel-rename",
+            "channelId": channel_id,
+            "name": name,
+        }),
+    );
 }
 
 /// Broadcast to all clients that a voice channel was deleted.
-pub async fn broadcast_remove_voice_channel(state: &Arc<AppState>, channel_id: i32) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "voice-channel-remove",
-        "channelId": channel_id,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+pub fn broadcast_remove_voice_channel(state: &Arc<AppState>, channel_id: i32) {
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "voice-channel-remove",
+            "channelId": channel_id,
+        }),
+    );
 }
 
 /// Send the list of available channels to a client.
@@ -362,12 +392,14 @@ pub async fn send_categories(state: &Arc<AppState>, sender: &mut SplitSink<WebSo
             })
         })
         .collect();
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "category-list",
-        "categories": categories,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    send_json(
+        sender,
+        &serde_json::json!({
+            "type": "category-list",
+            "categories": categories,
+        }),
+    )
+    .await;
 }
 
 /// Send the list of available voice channels to a client.
@@ -412,11 +444,15 @@ pub async fn voice_channel_list_frame(
 pub async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let map = state.voice_channels.lock().await.clone();
     for (id, info) in map {
-        if let Ok(msg) = serde_json::to_string(&serde_json::json!({
+        let frame = serde_json::json!({
             "type": "voice-users",
             "channelId": id,
             "users": info.users.into_iter().collect::<Vec<_>>(),
-        })) && sender.send(Message::Text(msg.into())).await.is_err()
+        });
+        if sender
+            .send(Message::Text(frame.to_string().into()))
+            .await
+            .is_err()
         {
             break;
         }
@@ -424,84 +460,90 @@ pub async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSoc
 }
 
 /// Broadcast to all clients that a new category was created.
-pub async fn broadcast_new_category(state: &Arc<AppState>, id: i32, name: &str, position: i32) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "category-add",
-        "id": id,
-        "name": name,
-        "position": position,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+pub fn broadcast_new_category(state: &Arc<AppState>, id: i32, name: &str, position: i32) {
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "category-add",
+            "id": id,
+            "name": name,
+            "position": position,
+        }),
+    );
 }
 
 /// Broadcast to all clients that a category was renamed.
-pub async fn broadcast_rename_category(state: &Arc<AppState>, id: i32, name: &str) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "category-update",
-        "id": id,
-        "name": name,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+pub fn broadcast_rename_category(state: &Arc<AppState>, id: i32, name: &str) {
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "category-update",
+            "id": id,
+            "name": name,
+        }),
+    );
 }
 
 /// Broadcast to all clients that a category was deleted.
-pub async fn broadcast_remove_category(state: &Arc<AppState>, id: i32) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "category-remove",
-        "id": id,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+pub fn broadcast_remove_category(state: &Arc<AppState>, id: i32) {
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "category-remove",
+            "id": id,
+        }),
+    );
 }
 
 /// Broadcast to all clients that a channel was moved to a different category
 /// (appended at `position`, the end of the target category).
-pub async fn broadcast_channel_move(
+pub fn broadcast_channel_move(
     state: &Arc<AppState>,
     channel_id: i32,
     category_id: Option<i32>,
     position: i32,
     voice: bool,
 ) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "channel-move",
-        "channelId": channel_id,
-        "categoryId": category_id,
-        "position": position,
-        "voice": voice,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "channel-move",
+            "channelId": channel_id,
+            "categoryId": category_id,
+            "position": position,
+            "voice": voice,
+        }),
+    );
 }
 
 /// Broadcast the new order of one category's text or voice channels; the
 /// listed channels now live in `category_id` at their list index.
-pub async fn broadcast_channel_reorder(
+pub fn broadcast_channel_reorder(
     state: &Arc<AppState>,
     category_id: Option<i32>,
     order: &[i32],
     voice: bool,
 ) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "channel-reorder",
-        "categoryId": category_id,
-        "order": order,
-        "voice": voice,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "channel-reorder",
+            "categoryId": category_id,
+            "order": order,
+            "voice": voice,
+        }),
+    );
 }
 
 /// Broadcast the new order of all categories.
-pub async fn broadcast_category_reorder(state: &Arc<AppState>, order: &[i32]) {
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "category-reorder",
-        "order": order,
-    })) {
-        let _ = state.tx.send(msg.into());
-    }
+pub fn broadcast_category_reorder(state: &Arc<AppState>, order: &[i32]) {
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "category-reorder",
+            "order": order,
+        }),
+    );
 }
 
 /// A user's effective permission mask: the union of the default `@everyone`
@@ -661,7 +703,7 @@ pub async fn has_channel_permission(
 /// Broadcast a signal telling every connection to rebuild its own filtered
 /// channel and voice lists. Sent when a channel's permission overrides change,
 /// so private channels appear/disappear per viewer without leaking structure.
-pub async fn broadcast_channels_refresh(state: &Arc<AppState>) {
+pub fn broadcast_channels_refresh(state: &Arc<AppState>) {
     invalidate_channel_visibility(state);
     // A fixed frame, so it needs no allocation at all.
     let _ = state
@@ -691,14 +733,16 @@ pub async fn send_channel_overrides(
             })
         })
         .collect();
-    if let Ok(msg) = serde_json::to_string(&serde_json::json!({
-        "type": "channel-overrides",
-        "channelId": channel_id,
-        "voice": kind == ChannelKind::Voice,
-        "overrides": entries,
-    })) {
-        let _ = sender.send(Message::Text(msg.into())).await;
-    }
+    send_json(
+        sender,
+        &serde_json::json!({
+            "type": "channel-overrides",
+            "channelId": channel_id,
+            "voice": kind == ChannelKind::Voice,
+            "overrides": entries,
+        }),
+    )
+    .await;
 }
 
 /// Whether a text channel stores its messages end-to-end encrypted. Read from

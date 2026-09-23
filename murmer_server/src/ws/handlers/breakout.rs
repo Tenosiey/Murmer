@@ -179,10 +179,10 @@ pub(super) async fn handle_open_breakouts(
     for (id, info) in &created {
         inherit_overrides(state, parent_id, *id).await;
         state.voice_channels.lock().await.insert(*id, info.clone());
-        broadcast_new_voice_channel(state, *id, info).await;
+        broadcast_new_voice_channel(state, *id, info);
     }
     if channel_is_private(state, ChannelKind::Voice, parent_id).await {
-        broadcast_channels_refresh(state).await;
+        broadcast_channels_refresh(state);
     }
 
     // Deal the members out round-robin over a sorted roster, so the split is
@@ -282,7 +282,7 @@ pub(super) async fn close_breakouts(
             // it because the row would come back as a channel after a restart.
             error!("db remove breakout room error: {e}");
         }
-        broadcast_remove_voice_channel(state, *room_id).await;
+        broadcast_remove_voice_channel(state, *room_id);
     }
     rooms.len()
 }

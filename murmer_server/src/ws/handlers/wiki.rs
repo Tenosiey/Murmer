@@ -166,7 +166,7 @@ pub(super) async fn handle_wiki_history(
                 "slug": slug,
                 "revisions": revisions,
             });
-            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+            send_json(sender, &payload).await;
         }
         Err(e) => {
             error!("Failed to load wiki history for {slug} in channel {channel_id}: {e}");
@@ -215,7 +215,7 @@ pub(super) async fn handle_wiki_revision(
                     })
                 }),
             });
-            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+            send_json(sender, &payload).await;
         }
         Err(e) => {
             error!(
@@ -272,7 +272,7 @@ pub(super) async fn handle_wiki_restore(
                 "slug": slug,
                 "revision": new_revision,
             });
-            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+            send_json(sender, &payload).await;
             info!(
                 user,
                 channel_id, slug, revision, new_revision, "Wiki revision restored"
@@ -287,7 +287,7 @@ pub(super) async fn handle_wiki_restore(
                 "slug": slug,
                 "page": page_json(&current),
             });
-            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+            send_json(sender, &payload).await;
         }
         Ok(db::RestoreWikiResult::RevisionNotFound) => {
             send_error(sender, errors::WIKI_REVISION_NOT_FOUND).await;
@@ -330,7 +330,7 @@ pub(super) async fn handle_wiki_get(
                 "channelId": channel_id,
                 "page": page.as_ref().map(page_json),
             });
-            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+            send_json(sender, &payload).await;
         }
         Err(e) => {
             error!("Failed to load wiki page {slug} in channel {channel_id}: {e}");
@@ -379,7 +379,7 @@ pub(super) async fn handle_wiki_resolve(
                 "requestId": request_id,
                 "results": results,
             });
-            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+            send_json(sender, &payload).await;
         }
         Err(e) => {
             error!("Failed to resolve wiki links: {e}");
@@ -511,7 +511,7 @@ pub(super) async fn handle_wiki_update(
                 "slug": slug,
                 "revision": revision,
             });
-            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+            send_json(sender, &payload).await;
             info!(user, channel_id, slug, revision, "Wiki page saved");
             broadcast_wiki_index(state, channel_id).await;
         }
@@ -523,7 +523,7 @@ pub(super) async fn handle_wiki_update(
                 "slug": slug,
                 "page": page_json(&current),
             });
-            let _ = sender.send(Message::Text(payload.to_string().into())).await;
+            send_json(sender, &payload).await;
         }
         Ok(db::UpdateWikiResult::NotFound) => {
             send_error(sender, errors::WIKI_PAGE_NOT_FOUND).await;
