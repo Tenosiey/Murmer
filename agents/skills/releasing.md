@@ -54,6 +54,11 @@ Pushing the tag triggers `.github/workflows/release.yml`, which builds the
 NSIS installer, signs the updater artifacts and publishes a regular GitHub
 release.
 
+Where a tag cannot be pushed, start the same workflow by hand on `main`
+(Actions, Release, Run workflow). It names the tag after the version in
+`tauri.conf.json` and creates it on the commit it ran from, so bump and
+push that commit first.
+
 **The release must not be marked pre-release.** The updater endpoint
 `releases/latest/download/latest.json` ignores prereleases, so a prerelease
 publishes artifacts nobody receives.

@@ -7,6 +7,9 @@ on:
   push:
     tags:
       - 'v*'
+  # Run from main when a tag cannot be pushed: tauri-action then creates the
+  # tag itself, on the commit the run was started from.
+  workflow_dispatch:
 
 jobs:
   release:
@@ -44,8 +47,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: murmer_client
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Murmer ${{ github.ref_name }}'
+          # The app version from tauri.conf.json, so a manual run names the
+          # release the same way a pushed tag does.
+          tagName: 'v__VERSION__'
+          releaseName: 'Murmer v__VERSION__'
           releaseBody: 'See the assets below to download and install this version.'
           # Must stay a normal release (not draft/prerelease): the updater
           # endpoint releases/latest/download/latest.json skips prereleases.
