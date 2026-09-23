@@ -91,21 +91,30 @@ async fn main() -> Result<()> {
 
     let existing_voice = db::get_voice_channels(&db_client).await;
 
-    let existing_mutes = db::get_all_mutes(&db_client).await.unwrap_or_default();
+    // The in-memory mirrors below are what every permission, mute and
+    // moderation check reads. Starting with an empty one after a failed load
+    // would fail open until the next restart — no overrides makes every
+    // private channel public, no mutes un-mutes everyone — so a load error
+    // stops the server instead.
+    let existing_mutes = db::get_all_mutes(&db_client)
+        .await
+        .context("failed to load mutes")?;
+    let existing_role_defs = db::list_role_defs(&db_client)
+        .await
+        .context("failed to load role definitions")?;
+    let existing_overrides = db::load_all_overrides(&db_client)
+        .await
+        .context("failed to load channel permission overrides")?;
+    let chat_settings = db::chat_settings(&db_client)
+        .await
+        .context("failed to load chat settings")?;
+    let automod_rules = db::automod_rules(&db_client)
+        .await
+        .context("failed to load auto-moderation rules")?;
 
-    let existing_role_defs = db::list_role_defs(&db_client).await.unwrap_or_default();
-
-    let existing_overrides = db::load_all_overrides(&db_client).await.unwrap_or_default();
-
-    // Cached so the per-message recording hooks can skip the database while
-    // tracking is off; `db::record_user_stats` still enforces the real gate.
+    // Off is the safe default here: `db::record_user_stats` still enforces
+    // the real gate, so this cache can only skip work, never record more.
     let stats_enabled = db::stats_server_enabled(&db_client).await.unwrap_or(false);
-
-    // Consulted by every chat message; see `AppState::chat_settings`.
-    let chat_settings = db::chat_settings(&db_client).await.unwrap_or_default();
-
-    // Compiled once here rather than per message; see `AppState::automod`.
-    let automod_rules = db::automod_rules(&db_client).await.unwrap_or_default();
 
     tokio::fs::create_dir_all(&config.upload_dir)
         .await
