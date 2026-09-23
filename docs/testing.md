@@ -15,7 +15,10 @@ most here — what deliberately is **not** tested. To write a test, follow
 | `cargo clippy --all-targets -- -D warnings` | both Rust crates | Lint, as a gate |
 
 `.github/workflows/ci.yml` runs all of them in two parallel jobs on every
-push to `main`/`dev` and every pull request.
+push to `main`/`dev` and every pull request. It also checks that the
+server's Docker builder image names the Rust release pinned in
+`rust-toolchain.toml`; `.github/workflows/docker.yml` builds that image
+whenever the Dockerfile changes, since nothing else does.
 
 Dependency advisories are a **separate weekly job**,
 `.github/workflows/audit.yml`, which runs `bun audit` and `cargo audit` over

@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1.6
-ARG RUST_VERSION=1.97.1
-FROM docker.io/library/rust:${RUST_VERSION}-slim-trixie@sha256:754a8924e308fb20a327febeda1a07053a2b0fd7474b5ac1cc460a6d33ab18f3 AS builder
+# The Rust version is spelled out in the tag, not passed as an ARG: Dependabot
+# cannot update an image named through a variable. It must match the channel
+# in the repo-root rust-toolchain.toml, which CI checks.
+FROM docker.io/library/rust:1.97.1-slim-trixie@sha256:754a8924e308fb20a327febeda1a07053a2b0fd7474b5ac1cc460a6d33ab18f3 AS builder
 WORKDIR /app
 
 # Cache dependencies

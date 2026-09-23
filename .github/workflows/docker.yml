@@ -1,0 +1,33 @@
+# Builds the server image whenever its Dockerfile changes, which is mostly
+# Dependabot moving the base images. Nothing else in CI builds the image, so
+# a broken one would otherwise surface on an operator's `docker compose up`.
+name: Docker
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - murmer_server/Dockerfile
+      - murmer_server/.dockerignore
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - murmer_server/Dockerfile
+      - murmer_server/.dockerignore
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Server image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build
+        run: docker build murmer_server

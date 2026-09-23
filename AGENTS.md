@@ -137,7 +137,8 @@ that is not obvious until it ships.
 Run these before pushing; `.github/workflows/ci.yml` runs the same ones on
 every push to `main`/`dev` and on every pull request. A second workflow,
 `.github/workflows/audit.yml`, audits the lockfiles for security advisories
-every Monday and fails on nothing else.
+every Monday and fails on nothing else. A third, `.github/workflows/docker.yml`,
+builds the server image whenever its Dockerfile changes.
 
 ```bash
 cd murmer_server && cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
