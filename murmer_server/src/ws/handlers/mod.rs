@@ -54,9 +54,9 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt, stream::SplitSink};
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use tokio::sync::broadcast;
+use tokio::sync::{Mutex, broadcast};
 use tracing::{debug, info, instrument, warn};
 
 /// Hands out a process-unique id per connection, so a user's mailbox can be
@@ -364,7 +364,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             // than one peer, so they stay on the broadcast.
                             "screenshare-start" => {
                                 if claims_own_user(&v, &user_name) && names_own_voice_channel(&v, voice_channel) {
-                                    handle_screenshare_start(&state, &v).await;
+                                    tile_start(&state.active_screen_shares, &v).await;
                                     if let Some(u) = user_name.as_deref() {
                                         stats::note_screenshare_start(&state, u).await;
                                     }
@@ -373,7 +373,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "screenshare-stop" => {
                                 if claims_own_user(&v, &user_name) {
-                                    handle_screenshare_stop(&state, &v).await;
+                                    tile_stop(&state.active_screen_shares, &v).await;
                                     if let Some(u) = user_name.as_deref() {
                                         stats::flush_screenshare_session(&state, u).await;
                                     }
@@ -385,13 +385,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             // voice peer connections that already exist.
                             "webcam-start" => {
                                 if claims_own_user(&v, &user_name) && names_own_voice_channel(&v, voice_channel) {
-                                    handle_webcam_start(&state, &v).await;
+                                    tile_start(&state.active_webcams, &v).await;
                                     broadcast_serialized(&state, text, &v);
                                 }
                             }
                             "webcam-stop" => {
                                 if claims_own_user(&v, &user_name) {
-                                    handle_webcam_stop(&state, &v).await;
+                                    tile_stop(&state.active_webcams, &v).await;
                                     broadcast_serialized(&state, text, &v);
                                 }
                             }
@@ -667,10 +667,7 @@ async fn resync_global(
 ) {
     auth::send_state_snapshot(state, sender, user).await;
     if let Some(ch_id) = voice_channel {
-        send_active_screen_shares(state, sender, ch_id).await;
-        send_active_webcams(state, sender, ch_id).await;
-        send_voice_mutes(state, sender, ch_id).await;
-        hands::send_voice_hands(state, sender, ch_id).await;
+        send_voice_channel_state(state, sender, ch_id).await;
     }
     send_json(sender, &serde_json::json!({ "type": "resync" })).await;
 }
@@ -974,10 +971,7 @@ async fn handle_voice_join(
         });
         send_json(sender, &perms).await;
 
-        send_active_screen_shares(state, sender, ch_id).await;
-        send_active_webcams(state, sender, ch_id).await;
-        send_voice_mutes(state, sender, ch_id).await;
-        hands::send_voice_hands(state, sender, ch_id).await;
+        send_voice_channel_state(state, sender, ch_id).await;
     }
 }
 
@@ -1000,8 +994,7 @@ async fn handle_voice_leave(
         hands::lower_hand(state, u).await;
         stats::flush_voice_session(state, u).await;
         stats::flush_screenshare_session(state, u).await;
-        end_screen_shares_for_user(state, u).await;
-        end_webcams_for_user(state, u).await;
+        end_tiles_for_user(state, u).await;
         broadcast_voice(state, ch_id).await;
         if *voice_channel == Some(ch_id) {
             *voice_channel = None;
@@ -1015,16 +1008,20 @@ async fn handle_voice_leave(
     }
 }
 
-/// Track a new screen share in application state.
-async fn handle_screenshare_start(state: &Arc<AppState>, v: &Value) {
-    let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
+/// Screen shares and cameras are both a set of users per voice channel,
+/// switched by a start/stop frame and snapshotted for whoever joins. These
+/// functions serve both maps.
+type Tiles = Mutex<HashMap<i32, HashSet<String>>>;
+
+/// Record the tile a checked start frame announces.
+async fn tile_start(tiles: &Tiles, v: &Value) {
+    let (Some(user), Some(ch_id)) = (
+        v.get("user").and_then(|u| u.as_str()),
+        i32_field(v, "channelId"),
+    ) else {
         return;
     };
-    let Some(ch_id) = i32_field(v, "channelId") else {
-        return;
-    };
-    state
-        .active_screen_shares
+    tiles
         .lock()
         .await
         .entry(ch_id)
@@ -1032,123 +1029,86 @@ async fn handle_screenshare_start(state: &Arc<AppState>, v: &Value) {
         .insert(user.to_string());
 }
 
-/// End every active screen share owned by `user` and announce each end to
-/// all clients. Screen shares cannot outlive the voice session, so this runs
-/// on voice-leave and on disconnect; well-behaved clients send an explicit
-/// `screenshare-stop` first, in which case this is a no-op.
-async fn end_screen_shares_for_user(state: &Arc<AppState>, user: &str) {
-    let channels_with_share: Vec<i32> = {
-        let mut shares = state.active_screen_shares.lock().await;
-        let channels: Vec<i32> = shares
-            .iter()
-            .filter(|(_, users)| users.contains(user))
-            .map(|(ch_id, _)| *ch_id)
-            .collect();
-        for ch_id in &channels {
-            if let Some(set) = shares.get_mut(ch_id) {
-                set.remove(user);
-                if set.is_empty() {
-                    shares.remove(ch_id);
-                }
-            }
-        }
-        channels
-    };
-    for ch_id in channels_with_share {
-        broadcast(
-            state,
-            &serde_json::json!({
-                "type": "screenshare-stop",
-                "user": user,
-                "channelId": ch_id,
-            }),
-        );
-    }
-}
-
-/// Remove a screen share from application state.
-async fn handle_screenshare_stop(state: &Arc<AppState>, v: &Value) {
-    let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
+/// Drop the tile a checked stop frame names.
+async fn tile_stop(tiles: &Tiles, v: &Value) {
+    let (Some(user), Some(ch_id)) = (
+        v.get("user").and_then(|u| u.as_str()),
+        i32_field(v, "channelId"),
+    ) else {
         return;
     };
-    let Some(ch_id) = i32_field(v, "channelId") else {
-        return;
-    };
-    let mut shares = state.active_screen_shares.lock().await;
-    if let Some(set) = shares.get_mut(&ch_id) {
+    let mut map = tiles.lock().await;
+    if let Some(set) = map.get_mut(&ch_id) {
         set.remove(user);
         if set.is_empty() {
-            shares.remove(&ch_id);
+            map.remove(&ch_id);
         }
     }
 }
 
-/// Track a camera that was just switched on.
-async fn handle_webcam_start(state: &Arc<AppState>, v: &Value) {
-    let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
-        return;
-    };
-    let Some(ch_id) = i32_field(v, "channelId") else {
-        return;
-    };
-    state
-        .active_webcams
-        .lock()
-        .await
-        .entry(ch_id)
-        .or_default()
-        .insert(user.to_string());
-}
-
-/// Remove a camera from application state.
-async fn handle_webcam_stop(state: &Arc<AppState>, v: &Value) {
-    let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
-        return;
-    };
-    let Some(ch_id) = i32_field(v, "channelId") else {
-        return;
-    };
-    let mut cams = state.active_webcams.lock().await;
-    if let Some(set) = cams.get_mut(&ch_id) {
-        set.remove(user);
-        if set.is_empty() {
-            cams.remove(&ch_id);
-        }
-    }
-}
-
-/// Switch off every camera owned by `user` and announce each one. A camera
-/// cannot outlive the voice session that carries its video, so this runs on
-/// voice-leave and on disconnect; a well-behaved client sends `webcam-stop`
-/// first, in which case this is a no-op.
-async fn end_webcams_for_user(state: &Arc<AppState>, user: &str) {
-    let channels_with_camera: Vec<i32> = {
-        let mut cams = state.active_webcams.lock().await;
-        let channels: Vec<i32> = cams
-            .iter()
-            .filter(|(_, users)| users.contains(user))
-            .map(|(ch_id, _)| *ch_id)
-            .collect();
-        for ch_id in &channels {
-            if let Some(set) = cams.get_mut(ch_id) {
-                set.remove(user);
-                if set.is_empty() {
-                    cams.remove(ch_id);
+/// End every screen share and camera owned by `user` and announce each end
+/// to all clients. Neither can outlive the voice session that carries it, so
+/// this runs on voice-leave and on disconnect; a well-behaved client sends
+/// the explicit stop first, in which case this is a no-op.
+async fn end_tiles_for_user(state: &Arc<AppState>, user: &str) {
+    for (tiles, stop_type) in [
+        (&state.active_screen_shares, "screenshare-stop"),
+        (&state.active_webcams, "webcam-stop"),
+    ] {
+        let channels: Vec<i32> = {
+            let mut map = tiles.lock().await;
+            let channels: Vec<i32> = map
+                .iter()
+                .filter(|(_, users)| users.contains(user))
+                .map(|(ch_id, _)| *ch_id)
+                .collect();
+            for ch_id in &channels {
+                if let Some(set) = map.get_mut(ch_id) {
+                    set.remove(user);
+                    if set.is_empty() {
+                        map.remove(ch_id);
+                    }
                 }
             }
+            channels
+        };
+        for ch_id in channels {
+            broadcast(
+                state,
+                &serde_json::json!({ "type": stop_type, "user": user, "channelId": ch_id }),
+            );
         }
-        channels
-    };
-    for ch_id in channels_with_camera {
-        broadcast(
-            state,
-            &serde_json::json!({
-                "type": "webcam-stop",
-                "user": user,
-                "channelId": ch_id,
-            }),
-        );
     }
+}
+
+/// Send a voice channel's member state to one client that just joined it or
+/// fell behind: the screen shares and cameras already on, the mutes and the
+/// raised hands.
+async fn send_voice_channel_state(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    ch_id: i32,
+) {
+    for (tiles, frame_type) in [
+        (&state.active_screen_shares, "screenshare-active"),
+        (&state.active_webcams, "webcam-active"),
+    ] {
+        let users: Vec<String> = tiles
+            .lock()
+            .await
+            .get(&ch_id)
+            .map(|set| set.iter().cloned().collect())
+            .unwrap_or_default();
+        if !users.is_empty() {
+            send_json(
+                sender,
+                &serde_json::json!({ "type": frame_type, "channelId": ch_id, "users": users }),
+            )
+            .await;
+        }
+    }
+    send_voice_mutes(state, sender, ch_id).await;
+    hands::send_voice_hands(state, sender, ch_id).await;
 }
 
 /// Record the sender's voice mute state (microphone / output) and tell
@@ -1167,7 +1127,7 @@ async fn handle_voice_mute(
     };
     // Only into the channel the connection actually sits in, as for
     // `voice-hand`: the route follows `channelId`.
-    if i32_field(v, "channelId") != Some(ch_id) {
+    if !names_own_voice_channel(v, voice_channel) {
         return;
     }
     let mic_muted = v.get("micMuted").and_then(|m| m.as_bool()).unwrap_or(false);
@@ -1254,59 +1214,6 @@ async fn send_ice_config(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket
     .await;
 }
 
-/// Send active screen shares for a voice channel to a single client.
-async fn send_active_screen_shares(
-    state: &Arc<AppState>,
-    sender: &mut SplitSink<WebSocket, Message>,
-    channel_id: i32,
-) {
-    let users: Vec<String> = {
-        let shares = state.active_screen_shares.lock().await;
-        shares
-            .get(&channel_id)
-            .map(|set| set.iter().cloned().collect())
-            .unwrap_or_default()
-    };
-    if users.is_empty() {
-        return;
-    }
-    send_json(
-        sender,
-        &serde_json::json!({
-            "type": "screenshare-active",
-            "channelId": channel_id,
-            "users": users,
-        }),
-    )
-    .await;
-}
-
-/// Send the cameras already on in a voice channel to a single client.
-async fn send_active_webcams(
-    state: &Arc<AppState>,
-    sender: &mut SplitSink<WebSocket, Message>,
-    channel_id: i32,
-) {
-    let users: Vec<String> = {
-        let cams = state.active_webcams.lock().await;
-        cams.get(&channel_id)
-            .map(|set| set.iter().cloned().collect())
-            .unwrap_or_default()
-    };
-    if users.is_empty() {
-        return;
-    }
-    send_json(
-        sender,
-        &serde_json::json!({
-            "type": "webcam-active",
-            "channelId": channel_id,
-            "users": users,
-        }),
-    )
-    .await;
-}
-
 /// End `user`'s voice session: bank its time, take them out of their
 /// channel, and stop the screen shares and cameras that rode on it.
 async fn end_voice_session(state: &Arc<AppState>, user: &str) {
@@ -1325,8 +1232,7 @@ async fn end_voice_session(state: &Arc<AppState>, user: &str) {
 
     state.voice_mutes.lock().await.remove(user);
     hands::lower_hand(state, user).await;
-    end_screen_shares_for_user(state, user).await;
-    end_webcams_for_user(state, user).await;
+    end_tiles_for_user(state, user).await;
 }
 
 /// Clean up after a closed connection. Its direct mailbox must already be

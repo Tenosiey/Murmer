@@ -24,7 +24,7 @@ pub(super) async fn handle_voice_hand(
     };
     // Only into the channel the connection actually sits in; the frame is
     // filtered by its `channelId`, so a forged one could reach the wrong room.
-    if i32_field(v, "channelId") != Some(ch_id) {
+    if !super::names_own_voice_channel(v, voice_channel) {
         return;
     }
     let Some(raised) = v.get("raised").and_then(|r| r.as_bool()) else {
