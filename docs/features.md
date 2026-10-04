@@ -67,6 +67,22 @@ pruned on disconnect. The client's cooldown is a cosmetic mirror.
 `db::migrate_soundboard_permissions` grants the two flags to pre-soundboard
 databases once, marker-guarded, so an existing server matches a fresh one.
 
+## Raised hands
+
+Server: `ws/handlers/hands.rs`. Client: `stores/voiceHands.ts`.
+
+A member of a voice channel may raise or lower their own hand, and nobody
+else's. The server stamps when a hand went up, so the speaking queue is
+ordered by its clock rather than by whatever a client reports, and raising an
+already raised hand keeps its place.
+
+Hands live in memory and **drop when their owner leaves or switches
+channel**. The server broadcasts that as a lowered hand; without it everyone
+else would keep showing the hand of somebody who left. `voice-hand` is
+channel-scoped like the other voice frames, and the snapshot
+(`voice-hands-active`) goes to whoever joins and replaces what they still
+held for that channel from an earlier visit.
+
 ## Message forwarding
 
 Server: `ws/handlers/messages.rs::handle_forward_message`,

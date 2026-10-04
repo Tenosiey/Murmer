@@ -72,8 +72,6 @@ not a description of the fix.
 - [ ] Live polling during meetings
 - [ ] Meeting notes that auto-generate from voice
 - [ ] Optional spatial/3D audio
-- [ ] Raise hand and a speaking queue, for the calls with more listeners than
-      talkers
 - [ ] Real-time transcription of voice to text
 - [ ] Record and play back voice messages
 - [ ] Screen-share annotations

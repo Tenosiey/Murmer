@@ -223,3 +223,66 @@ async fn a_dm_reaches_only_its_two_participants() {
         "bob received someone else's DM: {seen:?}"
     );
 }
+
+/// Alice creates a public voice channel and both clients join it.
+async fn shared_voice_channel(alice: &mut Client, bob: &mut Client) -> i64 {
+    alice
+        .send(json!({ "type": "create-voice-channel", "name": "Lounge" }))
+        .await;
+    let frames = alice
+        .until(|f| f["type"] == "voice-channel-add" && f["name"] == "Lounge")
+        .await;
+    let channel = frames.last().unwrap()["channelId"]
+        .as_i64()
+        .expect("voice channel id");
+    for client in [&mut *alice, &mut *bob] {
+        client
+            .send(json!({ "type": "voice-join", "channelId": channel }))
+            .await;
+        client.until(|f| f["type"] == "voice-hands-active").await;
+    }
+    channel
+}
+
+#[tokio::test]
+async fn a_hand_is_raised_only_in_the_channel_its_owner_sits_in() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+    let channel = shared_voice_channel(&mut alice, &mut bob).await;
+
+    // Into a channel bob is not in: refused. Then the real one: raised.
+    bob.send(json!({ "type": "voice-hand", "channelId": channel + 1, "raised": true }))
+        .await;
+    bob.send(json!({ "type": "voice-hand", "channelId": channel, "raised": true }))
+        .await;
+    bob.mark("away").await;
+
+    let seen = alice.until_mark("bob", "away").await;
+    let hands = of_type(&seen, "voice-hand");
+    assert_eq!(hands.len(), 1, "{seen:?}");
+    assert_eq!(hands[0]["user"], "bob");
+    assert_eq!(hands[0]["channelId"], channel);
+    assert_eq!(hands[0]["raised"], true);
+}
+
+#[tokio::test]
+async fn leaving_voice_lowers_the_hand_for_everyone_else() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+    let channel = shared_voice_channel(&mut alice, &mut bob).await;
+
+    bob.send(json!({ "type": "voice-hand", "channelId": channel, "raised": true }))
+        .await;
+    bob.send(json!({ "type": "voice-leave", "channelId": channel }))
+        .await;
+    bob.mark("away").await;
+
+    let seen = alice.until_mark("bob", "away").await;
+    let raised: Vec<_> = of_type(&seen, "voice-hand")
+        .into_iter()
+        .map(|f| f["raised"].as_bool())
+        .collect();
+    assert_eq!(raised, [Some(true), Some(false)], "{seen:?}");
+}

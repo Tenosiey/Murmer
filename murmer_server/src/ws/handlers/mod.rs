@@ -16,6 +16,7 @@ mod channels;
 mod chat_settings;
 mod dms;
 mod emojis;
+mod hands;
 mod identity;
 mod invites;
 mod maintenance;
@@ -426,6 +427,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                     broadcast_serialized(&state, text, &v);
                                 }
                             }
+                            "voice-hand" => {
+                                hands::handle_voice_hand(&state, &v, &user_name, voice_channel).await;
+                            }
                             "kick-user" => {
                                 moderation::handle_kick_user(&state, &mut sender, &v, &user_name).await;
                             }
@@ -665,6 +669,7 @@ async fn resync_global(
         send_active_screen_shares(state, sender, ch_id).await;
         send_active_webcams(state, sender, ch_id).await;
         send_voice_mutes(state, sender, ch_id).await;
+        hands::send_voice_hands(state, sender, ch_id).await;
     }
     send_json(sender, &serde_json::json!({ "type": "resync" })).await;
 }
@@ -903,6 +908,16 @@ async fn handle_voice_join(
         }
         *voice_channel = Some(ch_id);
         drop(map);
+        // Switching channels: a hand raised in the old one does not follow.
+        if state
+            .voice_hands
+            .lock()
+            .await
+            .get(u)
+            .is_some_and(|(ch, _)| *ch != ch_id)
+        {
+            hands::lower_hand(state, u).await;
+        }
         stats::note_voice_join(state, u).await;
         broadcast_voice(state, ch_id).await;
         let msg = serde_json::json!({
@@ -933,6 +948,7 @@ async fn handle_voice_join(
         send_active_screen_shares(state, sender, ch_id).await;
         send_active_webcams(state, sender, ch_id).await;
         send_voice_mutes(state, sender, ch_id).await;
+        hands::send_voice_hands(state, sender, ch_id).await;
     }
 }
 
@@ -952,6 +968,7 @@ async fn handle_voice_leave(
         }
         drop(map);
         state.voice_mutes.lock().await.remove(u);
+        hands::lower_hand(state, u).await;
         stats::flush_voice_session(state, u).await;
         stats::flush_screenshare_session(state, u).await;
         end_screen_shares_for_user(state, u).await;
@@ -1254,6 +1271,7 @@ async fn end_voice_session(state: &Arc<AppState>, user: &str) {
     }
 
     state.voice_mutes.lock().await.remove(user);
+    hands::lower_hand(state, user).await;
     end_screen_shares_for_user(state, user).await;
     end_webcams_for_user(state, user).await;
 }

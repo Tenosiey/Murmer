@@ -23,6 +23,7 @@
   import { canSpeak } from '$lib/stores/voicePermissions';
   import { speakingUsers } from '$lib/stores/voiceSpeaking';
   import { voiceMuteStates } from '$lib/stores/voiceMute';
+  import { handQueue, sendHand, voiceHands } from '$lib/stores/voiceHands';
   import {
     activeScreenShares,
     screenSharePreview,
@@ -82,6 +83,11 @@
   // Cosmetic soundboard gates; the server re-checks both on every frame.
   let canUseSoundboard = $derived($can(PERMISSIONS.USE_SOUNDBOARD));
   let canManageSounds = $derived($can(PERMISSIONS.MANAGE_SOUNDS));
+  let handRaised = $derived(
+    inVoice &&
+      currentVoiceChannelId !== null &&
+      $voiceHands[$session.user ?? '']?.channelId === currentVoiceChannelId
+  );
 
   const COLLAPSED_KEY = 'murmer_collapsed_categories';
   const UNCATEGORIZED_KEY = '__uncategorized';
@@ -454,6 +460,7 @@
                 <span class="voice-channel-quality">{formatVoiceQuality(ch)}</span>
               </button>
               {#if $voiceUsers[ch.id]?.length}
+                {@const queue = handQueue($voiceHands, ch.id)}
                 <ul class="voice-user-list">
                   {#each $voiceUsers[ch.id] as user}
                     {@const mute =
@@ -494,6 +501,17 @@
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>
                             </span>
                           {/if}
+                        </span>
+                      {/if}
+                      {#if queue.includes(user)}
+                        {@const place = queue.indexOf(user) + 1}
+                        <span
+                          class="hand-raised"
+                          title={`Hand raised — ${place} in queue`}
+                          aria-label={`Hand raised, ${place} in queue`}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-4 0"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
+                          <span>{place}</span>
                         </span>
                       {/if}
                       {#if $activeScreenShares[ch.id]?.includes(user)}
@@ -616,6 +634,19 @@
           </span>
           <span class="btn-text">{!inVoice ? 'Speaker' : $outputMuted ? 'Unmute Out' : 'Mute Out'}</span>
         </button>
+        {#if inVoice && currentVoiceChannelId !== null}
+          {@const channelId = currentVoiceChannelId}
+          <button
+            class="voice-control-btn hand"
+            class:raised={handRaised}
+            onclick={() => sendHand(channelId, !handRaised)}
+            aria-pressed={handRaised}
+            title={handRaised ? 'Lower your hand' : 'Raise your hand to ask to speak'}
+          >
+            <span class="btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-4 0"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg></span>
+            <span class="btn-text">{handRaised ? 'Lower Hand' : 'Raise Hand'}</span>
+          </button>
+        {/if}
       </div>
 
       {#if inVoice}
@@ -859,10 +890,13 @@
     transition: opacity 0.05s ease-out, box-shadow 0.05s ease-out;
   }
 
+  /* The name is the identity and the role badge decoration, so in the
+     narrow default sidebar the badge truncates first: with a zero flex basis
+     the name used to be the first thing squeezed out of a busy row. */
   .voice-user-list .username {
     font-weight: 500;
     color: var(--color-on-surface-variant);
-    flex: 1;
+    flex: 1 0.2 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -873,7 +907,10 @@
     font-size: var(--text-xs);
     font-weight: 500;
     opacity: 0.75;
-    flex-shrink: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .mute-icons {
@@ -888,6 +925,16 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+  }
+
+  .hand-raised {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+    color: var(--color-warning);
+    font-size: var(--text-xs);
+    font-weight: 600;
   }
 
   .voice-channel-name {
@@ -976,6 +1023,11 @@
   .voice-control-btn.leave:hover {
     background: color-mix(in srgb, var(--color-error) 12%, transparent);
     color: var(--color-error);
+  }
+
+  .voice-control-btn.hand.raised {
+    background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+    color: var(--color-warning);
   }
 
   .voice-control-btn.disabled {

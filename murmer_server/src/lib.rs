@@ -106,6 +106,7 @@ impl Route {
                 | "screenshare-stop"
                 | "webcam-start"
                 | "webcam-stop"
+                | "voice-hand"
                 | "soundboard-play",
             ) => channel(ChannelKind::Voice),
             _ => Route::All,
@@ -353,6 +354,9 @@ pub struct AppState {
     pub active_webcams: Mutex<HashMap<i32, HashSet<String>>>,
     /// Voice mute state per user: username -> (microphone_muted, output_muted).
     pub voice_mutes: Mutex<HashMap<String, (bool, bool)>>,
+    /// Raised hands: username -> (voice channel id, when it went up in Unix
+    /// milliseconds). The timestamp is the speaking queue's order.
+    pub voice_hands: Mutex<HashMap<String, (i32, i64)>>,
     /// Latest self-reported connection stats per user (in-memory only).
     pub connection_stats: Mutex<HashMap<String, ConnectionStatsEntry>>,
     /// When each user joined a voice channel; used to accumulate lifetime
@@ -433,6 +437,7 @@ impl AppState {
             active_screen_shares: Mutex::default(),
             active_webcams: Mutex::default(),
             voice_mutes: Mutex::default(),
+            voice_hands: Mutex::default(),
             connection_stats: Mutex::default(),
             voice_session_starts: Mutex::default(),
             screenshare_session_starts: Mutex::default(),
