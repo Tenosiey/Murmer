@@ -258,7 +258,7 @@
     width: 0.5rem;
     height: 0.5rem;
     border-radius: 50%;
-    background: var(--color-success, #22c55e);
+    background: var(--color-success);
     flex-shrink: 0;
   }
 </style>

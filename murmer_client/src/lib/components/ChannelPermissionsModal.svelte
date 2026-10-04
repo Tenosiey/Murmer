@@ -501,7 +501,7 @@
 
   .tri-btn {
     width: 28px;
-    height: var(--control-height-sm, 28px);
+    height: 28px;
     border: none;
     background: var(--color-surface);
     color: var(--color-muted);
