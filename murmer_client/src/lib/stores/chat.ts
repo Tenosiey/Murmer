@@ -12,6 +12,7 @@ import {
   mergeHistory
 } from '../message-utils';
 import { parseWikiSearchHits } from '../chat/search';
+import { describeServerError } from '../errors';
 import { WebSocketManager } from '../websocket-manager';
 import { connection } from './connection';
 import { typing } from './typing';
@@ -1014,3 +1015,20 @@ function createChatStore() {
 }
 
 export const chat = createChatStore();
+
+/**
+ * Hand `onError` the readable text of every server error whose code is in
+ * `codes`, until the returned function is called. Shaped for `onMount`, which
+ * runs a returned function on destroy.
+ */
+export function onServerError(
+  codes: ReadonlySet<string>,
+  onError: (text: string) => void
+): () => void {
+  const handler = (msg: Message) => {
+    const code = msg.message;
+    if (typeof code === 'string' && codes.has(code)) onError(describeServerError(code));
+  };
+  chat.on('error', handler);
+  return () => chat.off('error', handler);
+}

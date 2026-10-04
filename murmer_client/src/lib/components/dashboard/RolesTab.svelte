@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { onMount, onDestroy, untrack } from 'svelte';
-  import { chat } from '$lib/stores/chat';
+  import { onMount, untrack } from 'svelte';
+  import { chat, onServerError } from '$lib/stores/chat';
   import { selectedServer } from '$lib/stores/servers';
   import { customEmojiList } from '$lib/stores/customEmojis';
   import { dialogs } from '$lib/stores/dialogs';
-  import { describeServerError } from '$lib/errors';
   import { httpBaseFromWs } from '$lib/server-url';
   import { uploadImage } from '$lib/upload';
   import {
@@ -17,7 +16,7 @@
     PERMISSION_GROUPS,
     hasPermission
   } from '$lib/chat/permissions';
-  import type { Message, RoleDef } from '$lib/types';
+  import type { RoleDef } from '$lib/types';
 
   interface Props {
     active: boolean;
@@ -195,16 +194,11 @@
     'invalid-role-permissions'
   ]);
 
-  function handleServerError(msg: Message) {
-    const code = msg.message;
-    if (typeof code !== 'string') return;
-    if (ROLE_ERROR_CODES.has(code)) {
-      roleFeedback = { text: describeServerError(code), kind: 'error' };
-    }
-  }
-
-  onMount(() => chat.on('error', handleServerError));
-  onDestroy(() => chat.off('error', handleServerError));
+  onMount(() =>
+    onServerError(ROLE_ERROR_CODES, (text) => {
+      roleFeedback = { text, kind: 'error' };
+    })
+  );
 </script>
 
 {#if active}

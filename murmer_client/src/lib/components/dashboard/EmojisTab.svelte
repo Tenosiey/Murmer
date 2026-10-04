@@ -1,17 +1,15 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { chat } from '$lib/stores/chat';
+  import { onMount } from 'svelte';
+  import { chat, onServerError } from '$lib/stores/chat';
   import { selectedServer } from '$lib/stores/servers';
   import { customEmojis, customEmojiList } from '$lib/stores/customEmojis';
   import { dialogs } from '$lib/stores/dialogs';
-  import { describeServerError } from '$lib/errors';
   import { httpBaseFromWs } from '$lib/server-url';
   import { uploadImage } from '$lib/upload';
   import {
     EMOJI_NAME_RE,
     MAX_EMOJI_FILE_BYTES
   } from '$lib/chat/constants';
-  import type { Message } from '$lib/types';
 
   interface Props {
     active: boolean;
@@ -80,16 +78,11 @@
     'emoji-not-found'
   ]);
 
-  function handleServerError(msg: Message) {
-    const code = msg.message;
-    if (typeof code !== 'string') return;
-    if (EMOJI_ERROR_CODES.has(code)) {
-      emojiFeedback = { text: describeServerError(code), kind: 'error' };
-    }
-  }
-
-  onMount(() => chat.on('error', handleServerError));
-  onDestroy(() => chat.off('error', handleServerError));
+  onMount(() =>
+    onServerError(EMOJI_ERROR_CODES, (text) => {
+      emojiFeedback = { text, kind: 'error' };
+    })
+  );
 </script>
 
 {#if active}

@@ -1,15 +1,13 @@
 <script lang="ts">
-  import { onMount, onDestroy, untrack } from 'svelte';
-  import { chat } from '$lib/stores/chat';
+  import { onMount, untrack } from 'svelte';
+  import { onServerError } from '$lib/stores/chat';
   import { selectedServer } from '$lib/stores/servers';
   import { dialogs } from '$lib/stores/dialogs';
-  import { describeServerError } from '$lib/errors';
   import { displayNames } from '$lib/stores/profiles';
   import { invites, inviteSpent, type InviteEntry } from '$lib/stores/invites';
   import { servers } from '$lib/stores/servers';
   import { createInviteLink } from '$lib/invite';
   import { isWebClient } from '$lib/platform';
-  import type { Message } from '$lib/types';
 
   interface Props {
     active: boolean;
@@ -113,16 +111,11 @@
     'invite-update-failed'
   ]);
 
-  function handleServerError(msg: Message) {
-    const code = msg.message;
-    if (typeof code !== 'string') return;
-    if (INVITE_ERROR_CODES.has(code)) {
-      inviteFeedback = { text: describeServerError(code), kind: 'error' };
-    }
-  }
-
-  onMount(() => chat.on('error', handleServerError));
-  onDestroy(() => chat.off('error', handleServerError));
+  onMount(() =>
+    onServerError(INVITE_ERROR_CODES, (text) => {
+      inviteFeedback = { text, kind: 'error' };
+    })
+  );
 </script>
 
 {#if active}

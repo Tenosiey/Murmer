@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { chat } from '$lib/stores/chat';
+  import { onMount } from 'svelte';
+  import { onServerError } from '$lib/stores/chat';
   import { selectedServer } from '$lib/stores/servers';
-  import { describeServerError } from '$lib/errors';
   import { httpBaseFromWs } from '$lib/server-url';
   import { uploadImage } from '$lib/upload';
   import { onlineUsers } from '$lib/stores/online';
@@ -14,7 +13,6 @@
     MAX_SERVER_ICON_BYTES
   } from '$lib/chat/constants';
   import { serverIdentity } from '$lib/stores/serverIdentity';
-  import type { Message } from '$lib/types';
 
   interface Props {
     active: boolean;
@@ -102,17 +100,12 @@
     'identity-update-failed'
   ]);
 
-  function handleServerError(msg: Message) {
-    const code = msg.message;
-    if (typeof code !== 'string') return;
-    if (IDENTITY_ERROR_CODES.has(code)) {
-      identitySavePending = false;
-      identityFeedback = { text: describeServerError(code), kind: 'error' };
-    }
-  }
-
-  onMount(() => chat.on('error', handleServerError));
-  onDestroy(() => chat.off('error', handleServerError));
+  onMount(() =>
+    onServerError(IDENTITY_ERROR_CODES, (text) => {
+    identitySavePending = false;
+      identityFeedback = { text, kind: 'error' };
+    })
+  );
 </script>
 
 {#if active}

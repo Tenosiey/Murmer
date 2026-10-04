@@ -1,13 +1,11 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { chat } from '$lib/stores/chat';
-  import { describeServerError } from '$lib/errors';
+  import { onMount } from 'svelte';
+  import { onServerError } from '$lib/stores/chat';
   import {
     VOICE_QUALITY_PRESETS,
     MAX_VOICE_BITRATE
   } from '$lib/chat/constants';
   import { voiceDefaults, setVoiceDefaults } from '$lib/stores/voiceDefaults';
-  import type { Message } from '$lib/types';
 
   interface Props {
     active: boolean;
@@ -72,17 +70,12 @@
     'invalid-voice-bitrate'
   ]);
 
-  function handleServerError(msg: Message) {
-    const code = msg.message;
-    if (typeof code !== 'string') return;
-    if (VOICE_DEFAULTS_ERROR_CODES.has(code)) {
-      voiceSavePending = false;
-      voiceFeedback = { text: describeServerError(code), kind: 'error' };
-    }
-  }
-
-  onMount(() => chat.on('error', handleServerError));
-  onDestroy(() => chat.off('error', handleServerError));
+  onMount(() =>
+    onServerError(VOICE_DEFAULTS_ERROR_CODES, (text) => {
+    voiceSavePending = false;
+      voiceFeedback = { text, kind: 'error' };
+    })
+  );
 </script>
 
 {#if active}
