@@ -79,9 +79,6 @@ not a description of the fix.
 - [ ] Live polling during meetings
 - [ ] Meeting notes that auto-generate from voice
 - [ ] Optional spatial/3D audio
-- [ ] Output limiter / loudness normalisation — a `DynamicsCompressorNode` on
-      the remote graph to tame the one person who is always clipping, without
-      having to ride their per-user volume by hand
 - [ ] Raise hand and a speaking queue, for the calls with more listeners than
       talkers
 - [ ] Real-time transcription of voice to text
