@@ -52,8 +52,8 @@ possible — all local, all persisted per server URL.
 
 `play-sound` requires `USE_SOUNDBOARD`, that the connection is actually in
 the named voice channel, `can_view_channel` for it, and that the user is not
-server-muted. The frame is filtered per recipient by `channel_scope`/
-`channel_frame_hint` like the other voice-scoped frames.
+server-muted. The frame is filtered per recipient by its `Route` like the
+other voice-scoped frames.
 
 Uploads reuse `/upload` and are **re-validated on registration** by
 extension, size (`MAX_SOUND_FILE_BYTES`) and audio magic bytes

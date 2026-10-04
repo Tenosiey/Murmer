@@ -1,7 +1,13 @@
 use base64::{Engine as _, engine::general_purpose};
+use murmer_server::Route;
 use murmer_server::db::{self, DbCall};
-use murmer_server::ws::helpers::{SealedPayloadError, dm_involves, validate_sealed_payload};
-use serde_json::json;
+use murmer_server::ws::helpers::{SealedPayloadError, validate_sealed_payload};
+use serde_json::{Value, json};
+
+/// Whether the socket loop would forward this DM frame to `user`.
+fn dm_involves(frame: &Value, user: Option<&str>) -> bool {
+    !Route::of(frame).withholds_dm_from(user)
+}
 
 /// Base64 of `len` arbitrary bytes, mimicking client-encoded crypto fields.
 fn b64(len: usize) -> String {
@@ -125,4 +131,12 @@ fn requires_exact_name_match() {
 fn ignores_non_string_participants() {
     let frame = json!({"type": "dm", "from": 42, "to": null, "text": "hi"});
     assert!(!dm_involves(&frame, Some("42")));
+}
+
+#[test]
+fn hides_a_dm_missing_a_party_from_everyone() {
+    // It must not fall through to `Route::All` and reach every connection.
+    let frame = json!({"type": "dm", "from": "alice", "text": "hi"});
+    assert!(!dm_involves(&frame, Some("bob")));
+    assert!(!dm_involves(&frame, Some("")));
 }

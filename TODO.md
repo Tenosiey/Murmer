@@ -57,13 +57,6 @@ not a description of the fix.
 
 ## ⚡ Performance
 
-- [ ] Parse each broadcast frame once, not once per connection. Each
-      connection task runs its own substring scan and `serde_json::from_str`
-      over the same global frame, so one DM or channel-scoped frame is parsed
-      as many times as there are clients. Deciding the routing at the send
-      site and shipping it alongside the frame makes fan-out constant in parse
-      cost
-
 ---
 
 ## 🚀 Features

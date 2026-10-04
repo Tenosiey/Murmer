@@ -362,7 +362,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                     if let Some(u) = user_name.as_deref() {
                                         stats::note_screenshare_start(&state, u).await;
                                     }
-                                    let _ = state.tx.send(text);
+                                    broadcast_serialized(&state, text, &v);
                                 }
                             }
                             "screenshare-stop" => {
@@ -371,7 +371,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                     if let Some(u) = user_name.as_deref() {
                                         stats::flush_screenshare_session(&state, u).await;
                                     }
-                                    let _ = state.tx.send(text);
+                                    broadcast_serialized(&state, text, &v);
                                 }
                             }
                             // A camera is announced to the channel the same way, but
@@ -380,13 +380,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "webcam-start" => {
                                 if claims_own_user(&v, &user_name) && names_own_voice_channel(&v, voice_channel) {
                                     handle_webcam_start(&state, &v).await;
-                                    let _ = state.tx.send(text);
+                                    broadcast_serialized(&state, text, &v);
                                 }
                             }
                             "webcam-stop" => {
                                 if claims_own_user(&v, &user_name) {
                                     handle_webcam_stop(&state, &v).await;
-                                    let _ = state.tx.send(text);
+                                    broadcast_serialized(&state, text, &v);
                                 }
                             }
                             "set-screenshare-max-bitrate" => {
@@ -422,7 +422,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "voice-mute" => {
                                 if claims_own_user(&v, &user_name) {
                                     handle_voice_mute(&state, &v).await;
-                                    let _ = state.tx.send(text);
+                                    broadcast_serialized(&state, text, &v);
                                 }
                             }
                             "kick-user" => {
@@ -565,53 +565,45 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
             }
             result = global_rx.recv() => {
                 match result {
-                    Ok(msg) => {
-                        // Parse once for the per-recipient filters below. Only
-                        // frames that need filtering are inspected further.
-                        let parsed = if msg.contains("\"type\":\"dm\"")
-                            || channel_frame_hint(&msg)
-                            || msg.contains("channels-refresh")
-                            || msg.contains("force-disconnect")
-                        {
-                            serde_json::from_str::<Value>(&msg).ok()
-                        } else {
-                            None
-                        };
-
-                        if let Some(v) = &parsed {
-                            let frame_type = v.get("type").and_then(|t| t.as_str());
+                    Ok(routed) => {
+                        // The sender decided who this frame is for; nothing
+                        // here parses it again.
+                        let (frame, route) = &*routed;
+                        match route {
+                            crate::Route::All => {}
                             // Channel permissions changed: rebuild this
                             // connection's own filtered channel/voice lists.
-                            if frame_type == Some("channels-refresh") {
+                            crate::Route::ChannelsRefresh => {
                                 send_channels(&state, &mut sender, user_name.as_deref()).await;
                                 send_voice_channels(&state, &mut sender, user_name.as_deref()).await;
                                 continue;
                             }
                             // Direct messages must only reach their two participants.
-                            if frame_type == Some("dm")
-                                && !dm_involves(v, user_name.as_deref())
-                            {
-                                continue;
+                            crate::Route::Dm { .. } => {
+                                if route.withholds_dm_from(user_name.as_deref()) {
+                                    continue;
+                                }
                             }
                             // Channel-scoped frames must not reach a user who
                             // cannot see the channel. Resolved once per
                             // channel and memoised until the permissions that
                             // decide it change.
-                            if let Some((kind, id)) = channel_scope(v)
-                                && !visibility.can_receive(&state, user_name.as_deref(), kind, id).await
-                            {
-                                continue;
+                            crate::Route::Channel(kind, id) => {
+                                if !visibility.can_receive(&state, user_name.as_deref(), *kind, *id).await {
+                                    continue;
+                                }
                             }
+                            crate::Route::ForceDisconnect(_) => {}
                         }
 
                         // A force-disconnect broadcast targeting this user
                         // (kick/ban) is forwarded so the client learns why,
                         // then the connection is closed.
-                        let targets_this_user = parsed.as_ref().is_some_and(|v| {
-                            v.get("type").and_then(|t| t.as_str()) == Some("force-disconnect")
-                                && v.get("user").and_then(|u| u.as_str()) == user_name.as_deref()
-                        });
-                        if sender.send(Message::Text(msg)).await.is_err() { break; }
+                        let targets_this_user = matches!(
+                            route,
+                            crate::Route::ForceDisconnect(u) if Some(u.as_str()) == user_name.as_deref()
+                        );
+                        if sender.send(Message::Text(frame.clone())).await.is_err() { break; }
                         if targets_this_user {
                             info!("Closing connection after force-disconnect");
                             break;
@@ -674,53 +666,6 @@ async fn resync_global(
         send_voice_mutes(state, sender, ch_id).await;
     }
     send_json(sender, &serde_json::json!({ "type": "resync" })).await;
-}
-
-/// Cheap substring pre-check: does this frame's type look channel-scoped and
-/// therefore warrant parsing for the visibility filter? Avoids parsing the bulk
-/// of global frames (roles, statuses, presence, …).
-fn channel_frame_hint(msg: &str) -> bool {
-    msg.contains("-notify")
-        || msg.contains("channel-add")
-        || msg.contains("channel-topic")
-        || msg.contains("channel-rename")
-        || msg.contains("channel-remove")
-        || msg.contains("voice-channel-")
-        || msg.contains("voice-users")
-        || msg.contains("voice-join")
-        || msg.contains("voice-leave")
-        || msg.contains("screenshare-start")
-        || msg.contains("screenshare-stop")
-        || msg.contains("webcam-start")
-        || msg.contains("webcam-stop")
-        || msg.contains("soundboard-play")
-}
-
-/// If a broadcast frame is scoped to one channel whose visibility must be
-/// enforced, return its (kind, channel id). Frames not listed here reach
-/// everyone: `channel-move`/`channel-reorder` only shuffle ids a client already
-/// has, and voice/screen-share signaling is only meaningful to joined peers.
-fn channel_scope(v: &Value) -> Option<(ChannelKind, i32)> {
-    let ty = v.get("type").and_then(|t| t.as_str())?;
-    let kind = match ty {
-        "message-notify" | "channel-add" | "channel-topic" | "channel-rename"
-        | "channel-remove" => ChannelKind::Text,
-        "voice-channel-add"
-        | "voice-channel-update"
-        | "voice-channel-rename"
-        | "voice-channel-remove"
-        | "voice-users"
-        | "voice-join"
-        | "voice-leave"
-        | "screenshare-start"
-        | "screenshare-stop"
-        | "webcam-start"
-        | "webcam-stop"
-        | "soundboard-play" => ChannelKind::Voice,
-        _ => return None,
-    };
-    let id = i32_field(v, "channelId")?;
-    Some((kind, id))
 }
 
 /// Whether a relayed frame's `user` field names the connection's own

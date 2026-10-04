@@ -8,7 +8,7 @@
 //!
 //! DM frames travel over the global broadcast channel like presence updates,
 //! but the socket loop only forwards a frame to its two participants (see
-//! [`crate::ws::helpers::dm_involves`]), so other clients never receive the
+//! [`crate::Route::Dm`]), so other clients never receive the
 //! content over the wire.
 
 use crate::ws::{constants::*, errors, helpers::*, validation::history_limit};
