@@ -1,5 +1,13 @@
 <script lang="ts">
-  import { theme, accent, DEFAULT_ACCENT, accentToHex, hexToAccent, type Accent } from '$lib/stores/theme';
+  import {
+    theme,
+    accent,
+    DEFAULT_ACCENT,
+    accentToHex,
+    parseThemeCode,
+    themeCode,
+    type Accent
+  } from '$lib/stores/theme';
   import ThemeWheel from '$lib/components/ThemeWheel.svelte';
 
   interface Props {
@@ -37,11 +45,14 @@
   }
 
   function commitHex() {
-    const parsed = hexToAccent(hexInput);
-    if (!parsed) {
+    // Also takes a whole theme code pasted from somebody else.
+    const code = parseThemeCode(hexInput);
+    if (!code) {
       hexInvalid = true;
       return;
     }
+    if (code.mode) theme.set(code.mode);
+    const parsed = code.accent;
     const current = $accent ?? DEFAULT_ACCENT;
     if (parsed.hue === current.hue && parsed.saturation === current.saturation) {
       // Unchanged: leaving the field must not pin the default palette to a
@@ -53,6 +64,18 @@
     // Re-render from the stored position: the wheel drops the hex's
     // lightness, so the field must show the color that was actually applied.
     syncHexField(parsed);
+  }
+
+  let copied = $state(false);
+
+  async function copyThemeCode() {
+    try {
+      await navigator.clipboard.writeText(themeCode($theme, $accent));
+      copied = true;
+      setTimeout(() => (copied = false), 1500);
+    } catch (e) {
+      console.error('Failed to copy theme code', e);
+    }
   }
 
   /**
@@ -114,12 +137,12 @@
             {/each}
           </div>
           <label class="field hex-field">
-            <span>Hex code</span>
+            <span>Hex or theme code</span>
             <input
               class="hex-input"
               class:invalid={hexInvalid}
               type="text"
-              maxlength="7"
+              maxlength="20"
               spellcheck="false"
               autocomplete="off"
               placeholder="#27c0e8"
@@ -130,6 +153,9 @@
               onkeydown={handleHexKeydown}
             />
           </label>
+          <button class="btn reset-accent" onclick={copyThemeCode}>
+            {copied ? 'Copied' : 'Copy theme code'}
+          </button>
           <button class="btn reset-accent" onclick={() => accent.reset()} disabled={$accent === null}>
             Reset to default
           </button>
@@ -138,6 +164,7 @@
       <div class="setting-description">
         Drag the dot to recolor the whole app — the angle picks the color, the distance from the center picks how strong it is.
         You can also type a hex code; its brightness is set by the theme, so only the color and its strength are taken from it.
+        To share your theme, copy its code and send it on — pasting a code like <code>dark #8fbf26</code> here applies both the mode and the color.
       </div>
     </div>
   </div>

@@ -36,11 +36,6 @@ not a description of the fix.
       would delete every attachment of every encrypted channel. The options
       that remain are the author's client naming the files when it deletes
       its own message, or an operator-chosen age limit for attachments
-- [ ] Retention policy for message history. The database grows without bound
-      and an operator has only the all-or-nothing purge. A server-wide or
-      per-channel "delete messages older than N days", cascading through
-      reactions, pins and the FTS index, is the counterpart to the upload
-      sweep above
 - [ ] Split the three files that have outgrown being read end to end:
       `routes/chat/+page.svelte` (2.4k lines), `ServerDashboardModal.svelte`
       (2.3k) and `SettingsModal.svelte` (1.6k). "Keep it simple" cuts both
@@ -77,8 +72,6 @@ not a description of the fix.
 - [ ] Live polling during meetings
 - [ ] Meeting notes that auto-generate from voice
 - [ ] Optional spatial/3D audio
-- [ ] Raise hand and a speaking queue, for the calls with more listeners than
-      talkers
 - [ ] Real-time transcription of voice to text
 - [ ] Record and play back voice messages
 - [ ] Screen-share annotations
@@ -107,8 +100,6 @@ not a description of the fix.
 - [ ] Pomodoro timer integration for study groups
 - [ ] Real-time collaborative code editing
 - [ ] Scheduled voice events / calendar integration
-- [ ] Shareable themes — the accent wheel re-tints, but a theme cannot be
-      saved, exported or handed to somebody else
 - [ ] Translatable UI. Every string is hardcoded English, so this is a
       structural change (extraction plus a lookup) rather than a translation
       job, and it only gets more expensive with every screen added
