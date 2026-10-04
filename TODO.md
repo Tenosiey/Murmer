@@ -40,11 +40,6 @@ the idea comes from and what users will expect it to behave like.
       are unthrottled, and all of them queue on the one database thread — a
       single client in a loop slows the server for everyone. One
       per-connection budget in `handle_socket` covers them all at once
-- [ ] Rebuild `voice-mute` instead of relaying it. It goes out byte for byte
-      (`broadcast_serialized`) on `Route::All`, so any field a client adds
-      reaches every connection, including members who cannot see the
-      sender's private voice channel. Build it from the checked fields and
-      scope it to the channel like the other voice frames
 - [ ] Reclaim orphaned uploads. Deleting an emoji, avatar, server icon or
       sound removes its file; deleting a *message* does not, and neither does
       the Danger Zone purge or reset. The dashboard's storage breakdown can

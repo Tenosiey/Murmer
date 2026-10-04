@@ -405,6 +405,74 @@ async fn signaling_does_not_cross_between_voice_channels() {
 }
 
 #[tokio::test]
+async fn a_voice_mute_is_rebuilt_and_kept_to_the_senders_channel() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+    let channel = shared_voice_channel(&mut alice, &mut bob).await;
+
+    // Into a channel bob is not in: refused. Then his own, claiming to be
+    // alice and carrying a field of his own: sent as bob, without it.
+    bob.send(json!({ "type": "voice-mute", "channelId": channel + 1, "micMuted": true }))
+        .await;
+    bob.send(json!({
+        "type": "voice-mute",
+        "user": "alice",
+        "channelId": channel,
+        "micMuted": true,
+        "outputMuted": false,
+        "injected": "payload",
+    }))
+    .await;
+    bob.mark("away").await;
+
+    let seen = alice.until_mark("bob", "away").await;
+    let mutes = of_type(&seen, "voice-mute");
+    assert_eq!(mutes.len(), 1, "{seen:?}");
+    assert_eq!(
+        *mutes[0],
+        json!({
+            "type": "voice-mute",
+            "user": "bob",
+            "channelId": channel,
+            "micMuted": true,
+            "outputMuted": false,
+        })
+    );
+}
+
+#[tokio::test]
+async fn a_voice_mute_in_a_private_channel_reaches_only_who_can_see_it() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+
+    alice
+        .send(json!({ "type": "create-voice-channel", "name": "Backroom", "private": true }))
+        .await;
+    let frames = alice
+        .until(|f| f["type"] == "voice-channel-add" && f["name"] == "Backroom")
+        .await;
+    let channel = frames.last().unwrap()["channelId"]
+        .as_i64()
+        .expect("voice channel id");
+    join_voice(&mut alice, channel).await;
+    alice
+        .send(json!({ "type": "voice-mute", "channelId": channel, "micMuted": true }))
+        .await;
+    alice.mark("away").await;
+
+    let own = alice.until_mark("alice", "away").await;
+    assert_eq!(of_type(&own, "voice-mute").len(), 1, "{own:?}");
+
+    let seen = bob.until_mark("alice", "away").await;
+    assert!(
+        of_type(&seen, "voice-mute").is_empty(),
+        "bob saw a mute in a private channel: {seen:?}"
+    );
+}
+
+#[tokio::test]
 async fn a_frame_beyond_the_size_limit_closes_the_connection() {
     let addr = start_server().await;
     let mut alice = Client::connect(addr, "alice").await;

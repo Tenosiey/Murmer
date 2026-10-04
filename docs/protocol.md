@@ -29,7 +29,7 @@ is the first decision when adding a frame.
 | Route | Mechanism | Use for |
 | --- | --- | --- |
 | Server-wide broadcast | `AppState.tx` | Events every connected client needs: profile updates, role changes, emoji edits. |
-| Channel-scoped broadcast | the per-channel sender | Anything that belongs to one channel: messages, reactions, pins, `screenshare-start`/`-stop`, `webcam-start`/`-stop`, `soundboard-play`. |
+| Channel-scoped broadcast | the per-channel sender | Anything that belongs to one channel: messages, reactions, pins, `screenshare-start`/`-stop`, `webcam-start`/`-stop`, `soundboard-play`, `voice-mute`. |
 | Direct | `AppState.direct` | Anything addressed to a single user. |
 
 Frames that concern one account and nobody else take the direct route even

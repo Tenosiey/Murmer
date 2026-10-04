@@ -107,6 +107,7 @@ impl Route {
                 | "webcam-start"
                 | "webcam-stop"
                 | "voice-hand"
+                | "voice-mute"
                 | "soundboard-play",
             ) => channel(ChannelKind::Voice),
             _ => Route::All,
