@@ -1365,10 +1365,6 @@
     if (error) setCommandFeedback(error, 'error');
   }
 
-  function canPinMessage(msg: Message): boolean {
-    return typeof msg.id === 'number';
-  }
-
   function isMessagePinned(msg: Message): boolean {
     if (typeof msg.id !== 'number') return false;
     return pinned.isPinned(currentChatChannelId, msg.id);
@@ -2136,7 +2132,6 @@
                   : 0}
                 canEdit={canEditMessage(block.message)}
                 canDelete={canDeleteMessage(block.message)}
-                canPin={canPinMessage(block.message)}
                 onFocusMessage={focusMessage}
                 onFocusForwarded={focusForwardedSource}
                 onReply={startReply}
@@ -2170,7 +2165,7 @@
         {previewUrl}
         canSend={$can(PERMISSIONS.SEND_MESSAGES)}
         encrypted={currentChannelEncrypted}
-        keyPending={currentChannelEncrypted && currentChannelKeyPending}
+        keyPending={currentChannelKeyPending}
         onSend={send}
         onInput={handleComposerInput}
         onCancelReply={cancelReply}
