@@ -144,3 +144,61 @@ async fn reset_keeps_identities_bans_and_emojis() {
     assert_eq!(db::list_bans(&db).await.expect("bans").len(), 1);
     assert_eq!(db::get_emojis(&db).await.expect("emojis").len(), 1);
 }
+
+#[tokio::test]
+async fn retention_deletes_only_messages_past_the_limit() {
+    let db = setup().await;
+    let channel = general_id(&db).await;
+
+    let old = db::insert_message(
+        &db,
+        channel,
+        r#"{"user":"a","text":"ancient","timestamp":"2020-01-01T00:00:00+00:00"}"#,
+    )
+    .await
+    .expect("insert");
+    let fresh = chrono::Utc::now().to_rfc3339();
+    db::insert_message(
+        &db,
+        channel,
+        &format!(r#"{{"user":"b","text":"recent","timestamp":"{fresh}"}}"#),
+    )
+    .await
+    .expect("insert");
+    // Neither a missing timestamp nor a malformed row may be deleted — nor
+    // fail the sweep for every other row.
+    db::insert_message(&db, channel, r#"{"user":"c","text":"undated"}"#)
+        .await
+        .expect("insert");
+    db::insert_message(&db, channel, "not json")
+        .await
+        .expect("insert");
+    db::add_pin(&db, old, channel, "mod", 25)
+        .await
+        .expect("pin");
+    db::add_reaction(&db, old, "a", "👍").await.expect("react");
+
+    assert_eq!(
+        db::delete_messages_older_than(&db, 30)
+            .await
+            .expect("sweep"),
+        1
+    );
+
+    let history = db::fetch_history(&db, channel, None, 50)
+        .await
+        .expect("history");
+    assert_eq!(history.len(), 3);
+    assert!(
+        db::get_pins_for_channel(&db, channel)
+            .await
+            .expect("pins")
+            .is_empty()
+    );
+    assert!(
+        db::search_messages(&db, channel, "ancient", 50)
+            .await
+            .expect("search")
+            .is_empty()
+    );
+}

@@ -32,6 +32,7 @@ mod uploads;
 mod voice_defaults;
 mod wiki;
 
+pub use maintenance::spawn_message_retention;
 pub use scheduled::{recover_claimed_scheduled_messages, spawn_scheduler};
 
 use super::{

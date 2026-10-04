@@ -1,4 +1,5 @@
-//! Danger Zone handlers: purging every message and resetting the server.
+//! Danger Zone handlers: purging every message and resetting the server, plus
+//! the operator's standing retention limit ([`spawn_message_retention`]).
 //!
 //! Both require `ADMINISTRATOR` (never the no-`ADMIN_TOKEN` fallback that
 //! keeps channel management open) *and* a typed confirmation phrase echoed
@@ -18,7 +19,12 @@ use axum::extract::ws::{Message, WebSocket};
 use futures::stream::SplitSink;
 use serde_json::Value;
 use std::sync::Arc;
+use tokio::time::{Duration, MissedTickBehavior, interval};
 use tracing::{error, info, warn};
+
+/// How often the retention sweep runs. The limit is in days, so an hour of
+/// slack is invisible against a pass that is a full scan of `messages`.
+const RETENTION_SWEEP_SECONDS: u64 = 60 * 60;
 
 /// Phrase the client must echo in `confirm` to purge all messages.
 const PURGE_CONFIRMATION: &str = "PURGE";
@@ -191,4 +197,26 @@ pub(super) async fn handle_reset_server(
     // gone from `voice_channels`, so their next join is refused and the
     // refreshed list drops the channel from their sidebar.
     broadcast_channels_refresh(state);
+}
+
+/// Start deleting channel messages older than `days`, once at startup and
+/// then hourly.
+///
+/// Clients are not told: a message this old is far outside any history page
+/// they hold open, and it is gone the next time they load it. The sweep logs
+/// what it removed, because a retention limit that quietly stopped deleting
+/// is otherwise only noticed when the disk fills.
+pub fn spawn_message_retention(db: db::Db, days: u32) {
+    tokio::spawn(async move {
+        let mut ticker = interval(Duration::from_secs(RETENTION_SWEEP_SECONDS));
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            match db::delete_messages_older_than(&db, days).await {
+                Ok(0) => {}
+                Ok(deleted) => info!(deleted, days, "Expired messages deleted"),
+                Err(e) => error!("Message retention sweep failed: {e}"),
+            }
+        }
+    });
 }

@@ -27,6 +27,9 @@ pub struct Config {
     pub web_client_dir: Option<PathBuf>,
     /// STUN server URLs handed to clients for WebRTC ICE gathering.
     pub stun_servers: Vec<String>,
+    /// Delete channel messages older than this many days (None keeps them
+    /// forever).
+    pub message_retention_days: Option<u32>,
 }
 
 /// Used when `STUN_SERVERS` is unset. Dropping it would break direct
@@ -47,6 +50,8 @@ impl Config {
     /// - `CORS_ALLOW_ORIGINS` (optional): Comma-separated list of allowed origins
     /// - `WEB_CLIENT_DIR` (optional): Directory with the built web client to serve
     /// - `STUN_SERVERS` (optional): Comma-separated STUN URLs; empty for none
+    /// - `MESSAGE_RETENTION_DAYS` (optional): Age after which channel messages
+    ///   are deleted; unset or `0` keeps them forever
     pub fn from_env() -> Result<Self> {
         let database_path = env::var("DATABASE_PATH").unwrap_or_else(|_| "murmer.db".to_string());
 
@@ -74,6 +79,19 @@ impl Config {
 
         let stun_servers = parse_stun_servers(env::var("STUN_SERVERS").ok().as_deref())?;
 
+        // A typo must not start a server that silently keeps everything (or,
+        // worse, read as a shorter limit), so an unparseable value is fatal.
+        let message_retention_days = match env::var("MESSAGE_RETENTION_DAYS") {
+            Ok(value) if !value.trim().is_empty() => Some(
+                value
+                    .trim()
+                    .parse::<u32>()
+                    .context("MESSAGE_RETENTION_DAYS must be a whole number of days")?,
+            )
+            .filter(|days| *days > 0),
+            _ => None,
+        };
+
         Ok(Self {
             bind_addr,
             database_path,
@@ -83,6 +101,7 @@ impl Config {
             cors_allowlist,
             web_client_dir,
             stun_servers,
+            message_retention_days,
         })
     }
 

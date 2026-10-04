@@ -44,6 +44,42 @@ pub async fn purge_all_messages(db: &Db) -> Result<usize, DbError> {
     .await
 }
 
+/// Delete every channel message older than `days`, with its reactions and
+/// pins; the FTS index follows through its trigger. DMs are left alone: they
+/// are end-to-end encrypted and private to two people, not server history.
+/// Returns the number of messages deleted.
+///
+/// Age is the message's stored `timestamp`, which the sender supplies and the
+/// server only normalises. A back-dated message therefore goes early and a
+/// future-dated one late — acceptable for a storage bound, which is all this
+/// is. A row without a parseable timestamp is kept rather than guessed at.
+pub async fn delete_messages_older_than(db: &Db, days: u32) -> Result<usize, DbError> {
+    // `CASE` rather than `AND json_valid(..)`: SQLite does not promise to
+    // short-circuit `AND`, and `json_extract` on one malformed row would fail
+    // the whole statement — and with it every future sweep.
+    const EXPIRED: &str = "SELECT id FROM messages WHERE julianday(CASE WHEN json_valid(content) \
+         THEN json_extract(content, '$.timestamp') END) < julianday('now', ?1)";
+    let cutoff = format!("-{days} days");
+    db.call_db(move |conn| {
+        let tx = conn.transaction()?;
+        tx.execute(
+            &format!("DELETE FROM reactions WHERE message_id IN ({EXPIRED})"),
+            params![cutoff],
+        )?;
+        tx.execute(
+            &format!("DELETE FROM pins WHERE message_id IN ({EXPIRED})"),
+            params![cutoff],
+        )?;
+        let messages = tx.execute(
+            &format!("DELETE FROM messages WHERE id IN ({EXPIRED})"),
+            params![cutoff],
+        )?;
+        tx.commit()?;
+        Ok(messages)
+    })
+    .await
+}
+
 /// Reset the server's structure: every message, pin, reaction and wiki page,
 /// every channel except `general`, every voice channel, category, per-channel
 /// permission override, every custom role and every queued scheduled message.

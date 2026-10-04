@@ -36,11 +36,6 @@ not a description of the fix.
       would delete every attachment of every encrypted channel. The options
       that remain are the author's client naming the files when it deletes
       its own message, or an operator-chosen age limit for attachments
-- [ ] Retention policy for message history. The database grows without bound
-      and an operator has only the all-or-nothing purge. A server-wide or
-      per-channel "delete messages older than N days", cascading through
-      reactions, pins and the FTS index, is the counterpart to the upload
-      sweep above
 - [ ] Split the three files that have outgrown being read end to end:
       `routes/chat/+page.svelte` (2.4k lines), `ServerDashboardModal.svelte`
       (2.3k) and `SettingsModal.svelte` (1.6k). "Keep it simple" cuts both

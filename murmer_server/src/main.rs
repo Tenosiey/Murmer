@@ -162,6 +162,13 @@ async fn main() -> Result<()> {
     // failure rather than retried. Must run before the scheduler starts.
     ws::recover_claimed_scheduled_messages(&state).await;
     ws::spawn_scheduler(Arc::clone(&state));
+    if let Some(days) = config.message_retention_days {
+        info!(
+            days,
+            "Deleting channel messages older than the retention limit"
+        );
+        ws::spawn_message_retention(state.db.clone(), days);
+    }
 
     let mut router = Router::new()
         .route(
