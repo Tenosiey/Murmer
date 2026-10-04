@@ -9,6 +9,10 @@
 //! `visibility_cache_test.rs` cover the helpers; these drive the real `/ws`
 //! handshake and dispatch loop over a real socket.
 //!
+//! WebRTC signaling is the other silent leak: a client answers any offer
+//! naming its voice channel with its microphone, camera or screen, so a
+//! relayed offer from outside the call is an eavesdropper let in.
+//!
 //! Absence is asserted without sleeping: after the action under test the
 //! sender broadcasts a status change, which travels the same ordered channel
 //! and reaches everyone. Anything the filter let through arrives before it.
@@ -224,23 +228,31 @@ async fn a_dm_reaches_only_its_two_participants() {
     );
 }
 
-/// Alice creates a public voice channel and both clients join it.
-async fn shared_voice_channel(alice: &mut Client, bob: &mut Client) -> i64 {
+/// Alice creates a public voice channel and hands back its id.
+async fn create_voice_channel(alice: &mut Client, name: &str) -> i64 {
     alice
-        .send(json!({ "type": "create-voice-channel", "name": "Lounge" }))
+        .send(json!({ "type": "create-voice-channel", "name": name }))
         .await;
     let frames = alice
-        .until(|f| f["type"] == "voice-channel-add" && f["name"] == "Lounge")
+        .until(|f| f["type"] == "voice-channel-add" && f["name"] == name)
         .await;
-    let channel = frames.last().unwrap()["channelId"]
+    frames.last().unwrap()["channelId"]
         .as_i64()
-        .expect("voice channel id");
-    for client in [&mut *alice, &mut *bob] {
-        client
-            .send(json!({ "type": "voice-join", "channelId": channel }))
-            .await;
-        client.until(|f| f["type"] == "voice-hands-active").await;
-    }
+        .expect("voice channel id")
+}
+
+async fn join_voice(client: &mut Client, channel: i64) {
+    client
+        .send(json!({ "type": "voice-join", "channelId": channel }))
+        .await;
+    client.until(|f| f["type"] == "voice-hands-active").await;
+}
+
+/// Alice creates a public voice channel and both clients join it.
+async fn shared_voice_channel(alice: &mut Client, bob: &mut Client) -> i64 {
+    let channel = create_voice_channel(alice, "Lounge").await;
+    join_voice(alice, channel).await;
+    join_voice(bob, channel).await;
     channel
 }
 
@@ -285,4 +297,109 @@ async fn leaving_voice_lowers_the_hand_for_everyone_else() {
         .map(|f| f["raised"].as_bool())
         .collect();
     assert_eq!(raised, [Some(true), Some(false)], "{seen:?}");
+}
+
+fn voice_offer(from: &str, to: &str, channel: i64) -> Value {
+    json!({
+        "type": "voice-offer",
+        "user": from,
+        "target": to,
+        "channelId": channel,
+        "sdp": { "type": "offer", "sdp": "v=0" },
+    })
+}
+
+/// Have `outsider` send each of `frames` to bob, then let alice send bob a
+/// legitimate offer, and return everything bob received up to it.
+///
+/// Signaling arrives through bob's direct mailbox, not the broadcast, so the
+/// status mark alone proves nothing. Bob first waits for the outsider's mark
+/// — by then the outsider's frames were handled and anything relayed already
+/// sits in his mailbox — and alice's offer then queues behind it there.
+async fn signaling_reaching_bob(
+    alice: &mut Client,
+    bob: &mut Client,
+    outsider: &mut Client,
+    frames: Vec<Value>,
+    channel: i64,
+) -> Vec<Value> {
+    for frame in frames {
+        outsider.send(frame).await;
+    }
+    outsider.mark("away").await;
+    let mut seen = bob.until_mark(outsider.name, "away").await;
+
+    alice.send(voice_offer("alice", "bob", channel)).await;
+    seen.extend(
+        bob.until(|f| f["type"] == "voice-offer" && f["user"] == "alice")
+            .await,
+    );
+    seen
+}
+
+#[tokio::test]
+async fn signaling_from_outside_voice_never_reaches_a_member() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+    let mut carol = Client::connect(addr, "carol").await;
+    let channel = shared_voice_channel(&mut alice, &mut bob).await;
+
+    let seen = signaling_reaching_bob(
+        &mut alice,
+        &mut bob,
+        &mut carol,
+        vec![
+            voice_offer("carol", "bob", channel),
+            json!({
+                "type": "screenshare-offer",
+                "user": "carol",
+                "target": "bob",
+                "channelId": channel,
+                "sdp": { "type": "offer", "sdp": "v=0" },
+            }),
+        ],
+        channel,
+    )
+    .await;
+
+    let from_carol: Vec<_> = seen
+        .iter()
+        .filter(|f| f["user"] == "carol" && f["type"] != "status-update")
+        .collect();
+    assert!(
+        from_carol.is_empty(),
+        "carol's signaling reached bob: {from_carol:?}"
+    );
+}
+
+#[tokio::test]
+async fn signaling_does_not_cross_between_voice_channels() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+    let mut carol = Client::connect(addr, "carol").await;
+    let channel = shared_voice_channel(&mut alice, &mut bob).await;
+    let elsewhere = create_voice_channel(&mut alice, "Elsewhere").await;
+    join_voice(&mut carol, elsewhere).await;
+
+    // Naming bob's channel, which carol is not in; then naming her own,
+    // which bob is not in.
+    let seen = signaling_reaching_bob(
+        &mut alice,
+        &mut bob,
+        &mut carol,
+        vec![
+            voice_offer("carol", "bob", channel),
+            voice_offer("carol", "bob", elsewhere),
+        ],
+        channel,
+    )
+    .await;
+
+    let from_carol = of_type(&seen, "voice-offer")
+        .into_iter()
+        .filter(|f| f["user"] == "carol")
+        .count();
+    assert_eq!(from_carol, 0, "carol's offer crossed channels: {seen:?}");
 }

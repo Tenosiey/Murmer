@@ -53,6 +53,13 @@ every connected client a socket write and a parse per frame. `target` is
 therefore load-bearing: a signaling frame without one is dropped and its
 session never connects.
 
+The relay also checks that the frame stays inside the sender's call
+(`signals_within_own_voice_channel`): its `channelId` must be the voice
+channel the sending connection joined, and its `target` must be a member of
+it. A client answers any offer that names its own channel, and the sender
+writes that field — without the check, anyone could offer to a member of a
+private call and receive their microphone, camera or screen.
+
 `screenshare-start` and `-stop` stay on the channel broadcast, because they
 announce to a channel rather than to one peer. A start must name the voice
 channel the connection is in; otherwise anyone could post a share into any
@@ -124,7 +131,8 @@ Three checks matter, in `ws/helpers.rs` and `ws/handlers/mod.rs`:
 - **`claims_own_user`** — a relayed frame must prove it speaks for its
   sender before being routed. Addressing a frame to a `target` narrows *who
   sees* it; it is not an authorization check and must never be treated as one
-  when adding a new relayed type.
+  when adding a new relayed type. Signaling additionally has to stay inside
+  the sender's voice channel (`signals_within_own_voice_channel`).
 - **`has_permission` / `top_position`** — the single enforcement point for
   the permission bitmask and the role hierarchy.
 - **`can_view_channel` / `channel_permissions`** — per-channel overrides

@@ -11,7 +11,8 @@ history is the record of what shipped, and a list that only holds open items
 stays readable. Use the checkboxes to mark something you have picked up.
 
 Where an entry names a file or a symbol, that is the place to start reading,
-not a description of the fix.
+not a description of the fix. Where an entry names another app, that is where
+the idea comes from and what users will expect it to behave like.
 
 ---
 
@@ -21,11 +22,38 @@ not a description of the fix.
       the transmission gate now ramps instead of stepping, which removed the
       clicks at the start and end of each burst; needs a re-test to see
       whether anything remains mid-speech
+- [ ] Mentions only fire on the account name. `containsMention`
+      (`message-utils.ts`) matches `@accountname`, but the UI shows nicknames
+      and display names everywhere and the composer offers no completion, so
+      a user typing the name they actually see (`@Nick`) notifies nobody.
+      Fixed by the mention completion under Chat Features, which inserts the
+      account name
 
 ---
 
 ## 🔧 Tech debt / hardening
 
+- [ ] Bound the WebSocket message size. `ws_handler` takes axum's default
+      (64 MiB per message), and every frame is parsed into a
+      `serde_json::Value` before anything looks at its type. The largest
+      legitimate frame is a wiki save (`MAX_WIKI_BODY_BYTES`, 100 kB) or an
+      encrypted envelope; the limit belongs just above that
+- [ ] Cap the distinct reactions on one message. `handle_react` accepts any
+      emoji string up to 16 bytes, so one member can hang thousands of rows
+      off a message, and every `reaction-update` re-sends the whole summary
+      to the channel
+- [ ] Rate-limit frames in general, not just chat. Only `chat`, `dm`,
+      `forward-message` and wiki writes go through
+      `check_message_rate_limit`; `search-history` (a full-text query),
+      `load-history`, `react`, `set-profile`, `create-invite` and the rest
+      are unthrottled, and all of them queue on the one database thread — a
+      single client in a loop slows the server for everyone. One
+      per-connection budget in `handle_socket` covers them all at once
+- [ ] Rebuild `voice-mute` instead of relaying it. It goes out byte for byte
+      (`broadcast_serialized`) on `Route::All`, so any field a client adds
+      reaches every connection, including members who cannot see the
+      sender's private voice channel. Build it from the checked fields and
+      scope it to the channel like the other voice frames
 - [ ] Reclaim orphaned uploads. Deleting an emoji, avatar, server icon or
       sound removes its file; deleting a *message* does not, and neither does
       the Danger Zone purge or reset. The dashboard's storage breakdown can
@@ -36,10 +64,9 @@ not a description of the fix.
       would delete every attachment of every encrypted channel. The options
       that remain are the author's client naming the files when it deletes
       its own message, or an operator-chosen age limit for attachments
-- [ ] Split the three files that have outgrown being read end to end:
-      `routes/chat/+page.svelte` (2.4k lines), `ServerDashboardModal.svelte`
-      (2.3k) and `SettingsModal.svelte` (1.6k). "Keep it simple" cuts both
-      ways — past a point the flat file is the complicated option
+- [ ] Split `routes/chat/+page.svelte` (2.4k lines). The dashboard and
+      settings modals have been split into tabs; the chat page is the one
+      file left that has outgrown being read end to end
 - [ ] TURN support — voice does not connect at all behind symmetric NAT or a
       network that blocks UDP. The ICE configuration already comes from the
       server (`STUN_SERVERS`, the `ice-config` frame); what is missing is the
@@ -58,61 +85,127 @@ not a description of the fix.
 
 ### 🗨️ Chat Features
 
+- [ ] Block a user — hide their messages, mute their voice and soundboard
+      clips, drop their DMs (Discord block, TeamSpeak ignore). Personal and
+      local like the existing per-user soundboard mute, so no server change
+- [ ] Bulk delete for moderators — remove the last N messages of a channel,
+      or everything one member posted in the last hour, with the ban
+      (Discord's purge and "delete message history"). The Danger Zone only
+      knows everything at once
+- [ ] Copy a link to a message, which opens the right server and channel and
+      scrolls to it. `highlightMessageById` already does the jumping
+- [ ] Mention completion and group mentions — typing `@` suggests members by
+      what the UI shows them as and inserts the account name; `@here` and
+      `@role` behind a permission so they cannot become spam (Discord). Fixes
+      the mention bug above
+- [ ] Mentions inbox — one list of recent mentions across all channels
+      (Discord's inbox). A per-channel badge says *where*, not *what*
 - [ ] Outbound webhooks. The bot REST API covers "something else drives
       Murmer"; there is no way round for Murmer to notify something else when
       a message arrives
+- [ ] Polls — a question with options, one vote per account, counts kept by
+      the server (Discord, Teams). Refused in encrypted channels, as
+      forwarding is: the server would have to see the votes to count them
 - [ ] Saved messages — a personal bookmark list, separate from the
       server-wide pins
-- [ ] Text-to-speech
+- [ ] Search filters — `from:`, `in:`, `has:file`, `before:`/`after:` in the
+      search overlay (`chat/search.ts`), the way Discord and Slack search
+      works
+- [ ] Spoilers — `||text||` markup and a "spoiler" toggle on image uploads
+      that blurs them until clicked (Discord)
+- [ ] Synced read state. Last-read ids live in `localStorage`
+      (`stores/unread.ts`), so the desktop app and the web client each think
+      the other's reading is still unread. Per-user read markers on the
+      server fix it, DMs included
+- [ ] Text-to-speech — `/tts` messages read aloud by the platform's
+      `speechSynthesis` (Discord), off by default per listener
+- [ ] Up-arrow in an empty composer edits your last message (Discord, Slack)
+- [ ] Voice messages — record a clip in the composer and send it as an audio
+      attachment (Skype, WhatsApp). Attachments already travel sealed in DMs
+      and encrypted channels, so it inherits that for free
 
 ### 🎤 Voice Features
 
-- [ ] Collaborative whiteboard during voice chats
-- [ ] Gesture recognition through webcam
-- [ ] Live polling during meetings
-- [ ] Meeting notes that auto-generate from voice
-- [ ] Optional spatial/3D audio
-- [ ] Real-time transcription of voice to text
-- [ ] Record and play back voice messages
-- [ ] Screen-share annotations
-- [ ] Temporary voice channels
+- [ ] AFK channel — move a member who has been deafened or silent for N
+      minutes into a designated channel (TeamSpeak, Discord). In a full mesh
+      an idle member still costs everyone a connection
+- [ ] Direct calls — call someone from a DM, with ringing, accept and decline
+      (Skype, Discord). Voice exists only in server channels today, so a
+      private call means creating a private channel first. The peer
+      connection code carries over; what is new is the ringing state and a
+      call that belongs to no channel
+- [ ] Move members between voice channels — drag a member onto another
+      channel, behind a new `MOVE_MEMBERS` permission (TeamSpeak, Discord,
+      Mumble). Breakout rooms already move people around, so the mechanism
+      exists
+- [ ] Poke — a short nudge that pops up even when the channel is muted
+      (TeamSpeak). Rate-limited, and blockable with the block above
+- [ ] Priority speaker — while a member with the permission talks, everyone
+      else's playback is ducked (Mumble, Discord). The soundboard ducking
+      (`voice/soundboard.ts`) is the same mechanism pointed at voices
+- [ ] Server mute and deafen in voice (Discord, TeamSpeak). Like talk
+      permission it can only be a hint, because audio is peer-to-peer — label
+      it as such, and leave kicking from the channel as the hard option
+- [ ] Temporary voice channels — a lobby that creates a personal channel on
+      join and deletes it when the last person leaves (Discord "join to
+      create", TeamSpeak temporary channels). Breakout rooms already have
+      exactly that lifecycle
 - [ ] Text chat scoped to a voice channel — somewhere to drop a link mid-call
       that does not interrupt the channel everyone else is reading
-- [ ] Virtual backgrounds
-- [ ] Voice activity heatmaps
-- [ ] Voice-controlled commands
-- [ ] Voice effects and filters
-- [ ] Voice sentiment analysis
+- [ ] User limit per voice channel (TeamSpeak max clients, Discord user
+      limit). Every member of a mesh costs every other member a connection,
+      so a cap is a quality setting as much as a social one. Refused in
+      `handle_voice_join`
+- [ ] Whisper — hold a hotkey to talk to selected members of the same
+      channel only (Mumble, TeamSpeak). In the mesh that is muting the audio
+      sender towards everyone else, so it needs no server change
 
 ### 🛠️ Other Features
 
 - [ ] Accessibility pass — keyboard navigation and screen-reader labels. The
       main chat page carries five `aria-` attributes across 2.4k lines, so
       most of the app is currently hard to reach without a mouse
-- [ ] Anonymous chat modes
-- [ ] Backup & export of chat history and uploads
-- [ ] Decentralized/mesh networking option
-- [ ] Mini-games embedded in chat
-- [ ] Music streaming from local files
+- [ ] Auto-away — switch to away after N minutes without input and back on
+      return (Discord idle, TeamSpeak away). Status is manual only today
+- [ ] Backup and export. For operators: a consistent snapshot of the database
+      (`VACUUM INTO`) plus `uploads/` without stopping the server. For users:
+      an export of their own DMs, which only their client can decrypt
+- [ ] Custom status text — a short line such as "back at 3" with an optional
+      expiry, next to the presence dot (Discord, Teams)
+- [ ] Launch on login for the desktop app — the Tauri autostart plugin, gated
+      on `isTauri` like the other native integrations
 - [ ] Narrow-window and touch layout. The web client is a shipped target, and
-      six `max-width` media queries in the whole client is what it has to meet
-      a phone with
-- [ ] Pomodoro timer integration for study groups
-- [ ] Real-time collaborative code editing
-- [ ] Scheduled voice events / calendar integration
+      nine `max-width` media queries in the whole client is what it has to
+      meet a phone with
+- [ ] Rules screening — new members accept the server rules before they can
+      post (Discord membership screening). The welcome message already
+      reaches first-time members; this makes it a gate
+- [ ] Scheduled events — a time, a description, a voice channel and an RSVP
+      list, with a reminder to everyone who said yes (Discord events). The
+      reminder scheduler (`ws/handlers/scheduled.rs`) already runs
 - [ ] Translatable UI. Every string is hardcoded English, so this is a
       structural change (extraction plus a lookup) rather than a translation
       job, and it only gets more expensive with every screen added
-- [ ] Translation services for international teams
 
 ---
 
 ## 💡 Future Ideas
 
-- [ ] AI-powered chat summarization
 - [ ] An SFU for large voice channels — the real answer to the mesh's square
       growth, and a much bigger commitment than TURN: it puts media through
       the server, which today never sees any
+- [ ] Background blur for the camera. Needs a segmentation model in the
+      client — worth it once cameras are used routinely
+- [ ] Call recording to a local file, with an indicator everyone in the
+      channel sees (Mumble's recording notice). Recording without one is not
+      an option
 - [ ] Federation between Murmer servers (cross-server DMs)
-- [ ] Offline LAN party mode without Internet
-- [ ] Proximity voice channels for events
+- [ ] In-game overlay — a transparent always-on-top window showing who is
+      talking (Discord, TeamSpeak overlays)
+- [ ] LAN server discovery over mDNS, so a LAN party finds its server without
+      anyone typing an address
+- [ ] Local transcription and meeting notes. The server never sees media, so
+      this can only run on a client (a local Whisper model in the desktop
+      app), and only with the same visible indicator as recording
+- [ ] Positional audio for games (Mumble)
+- [ ] Screen-share annotations
