@@ -28,7 +28,8 @@ import {
   decryptChannelMessage,
   encryptChannelMessage,
   parseSealedMessage,
-  type ChannelMessagePayload
+  type ChannelMessagePayload,
+  type SealedMessage
 } from '../channel-crypto';
 import { loadKeyPair } from '../keypair';
 
@@ -51,6 +52,9 @@ const TYPING_SEND_INTERVAL_MS = 2000;
  * message arriving right after it.
  */
 const MAX_LIVE_MESSAGES = 300;
+
+/** Refusal shown when sending into an encrypted channel without its key. */
+const KEY_PENDING_MESSAGE = 'This channel is encrypted and your copy of its key has not arrived yet.';
 
 /** Pending search request tracking */
 type PendingSearch = {
@@ -192,6 +196,16 @@ function createChatStore() {
   }
 
   /**
+   * The text of a sealed channel envelope, or `null` when it cannot be opened
+   * (key not arrived yet, or bad ciphertext).
+   */
+  function openSealedText(sealed: SealedMessage, channelId: number): string | null {
+    const key = channelKeys.keyFor(channelId, sealed.epoch);
+    const text = key ? decryptChannelMessage(sealed, key)?.text : null;
+    return typeof text === 'string' ? text : null;
+  }
+
+  /**
    * Publish a channel's pins, opening any sealed previews on the way.
    *
    * Pins arrive with the channel join, which on a reconnect is before the
@@ -204,11 +218,9 @@ function createChatStore() {
       channelId,
       raw.map((item) => {
         if (!item || typeof item !== 'object') return item;
-        const sealed = parseSealedMessage((item as Record<string, unknown>).enc);
-        if (!sealed) return item;
-        const key = channelKeys.keyFor(channelId, sealed.epoch);
-        const payload = key ? decryptChannelMessage(sealed, key) : null;
-        return { ...(item as Record<string, unknown>), text: payload?.text ?? null };
+        const row = item as Record<string, unknown>;
+        const sealed = parseSealedMessage(row.enc);
+        return sealed ? { ...row, text: openSealedText(sealed, channelId) } : item;
       })
     );
   }
@@ -227,12 +239,8 @@ function createChatStore() {
         const row = item as Record<string, unknown>;
         const sealed = parseSealedMessage(row.enc);
         if (!sealed) return item;
-        const key = channelKeys.keyFor(
-          typeof row.channelId === 'number' ? row.channelId : joinedChannelId,
-          sealed.epoch
-        );
-        const payload = key ? decryptChannelMessage(sealed, key) : null;
-        return { ...row, text: payload?.text ?? null };
+        const channelId = typeof row.channelId === 'number' ? row.channelId : joinedChannelId;
+        return { ...row, text: openSealedText(sealed, channelId) };
       })
     );
   }
@@ -278,6 +286,24 @@ function createChatStore() {
     return sealed ? { epoch: sealed.epoch, nonce: sealed.nonce, ciphertext: sealed.ciphertext } : 'locked';
   }
 
+  /**
+   * Raise a desktop notification for a channel message, if the channel's
+   * notification preference asks for one.
+   */
+  function notifyChannelMessage(
+    channelId: number,
+    sender: string | undefined,
+    text: string,
+    mention: boolean
+  ): void {
+    const preference = get(channelNotifications)[channelId] ?? 'all';
+    if (preference === 'mentions' ? !mention : preference !== 'all') return;
+    const from = sender ?? 'Unknown user';
+    const body = text.trim();
+    if (mention) notify(`Mention from ${from}`, body || `${from} mentioned you`);
+    else notify('New message', `${from}: ${body || 'sent a message'}`);
+  }
+
   /** Handle incoming messages from WebSocket */
   function handleMessage(msg: Message): void {
     const current = get(session).user;
@@ -292,27 +318,9 @@ function createChatStore() {
           typing.clear(prepared.channelId, prepared.user);
         }
 
-        // Handle notifications
         if (!current || prepared.user !== current) {
-          const chId = prepared.channelId ?? 0;
-          const preferences = get(channelNotifications);
-          const preference = preferences[chId] ?? 'all';
           const mention = current ? containsMention(prepared.text, current) : false;
-          const trimmedText = (prepared.text ?? '').trim();
-          const shouldNotify =
-            preference === 'all' ? true : preference === 'mentions' ? mention : false;
-
-          if (shouldNotify) {
-            if (mention) {
-              const body =
-                trimmedText.length > 0 ? trimmedText : `${prepared.user ?? 'Someone'} mentioned you`;
-              notify(`Mention from ${prepared.user ?? 'Unknown user'}`, body);
-            } else {
-              const sender = prepared.user ?? 'Unknown user';
-              const body = trimmedText.length > 0 ? trimmedText : 'sent a message';
-              notify('New message', `${sender}: ${body}`);
-            }
-          }
+          notifyChannelMessage(prepared.channelId ?? 0, prepared.user, prepared.text ?? '', mention);
         }
         break;
       }
@@ -551,29 +559,16 @@ function createChatStore() {
         // In an encrypted channel the announcement carries the sealed
         // envelope instead of the text; members hold the key, so mention
         // detection and notification previews keep working locally.
-        let text = typeof msg.text === 'string' ? msg.text : '';
         const sealed = parseSealedMessage(msg.enc);
-        if (sealed) {
-          const key = channelKeys.keyFor(channelId, sealed.epoch);
-          const payload = key ? decryptChannelMessage(sealed, key) : null;
-          text = typeof payload?.text === 'string' ? payload.text : '';
-        }
+        const text = sealed
+          ? (openSealedText(sealed, channelId) ?? '')
+          : typeof msg.text === 'string'
+            ? msg.text
+            : '';
         const mention = current ? containsMention(text, current) : false;
         unread.recordIncoming(channelId, messageId, mention);
 
-        const preferences = get(channelNotifications);
-        const preference = preferences[channelId] ?? 'all';
-        const shouldNotify =
-          preference === 'all' ? true : preference === 'mentions' ? mention : false;
-        if (shouldNotify) {
-          const from = sender ?? 'Unknown user';
-          const trimmedText = text.trim();
-          if (mention) {
-            notify(`Mention from ${from}`, trimmedText || `${from} mentioned you`);
-          } else {
-            notify('New message', `${from}: ${trimmedText || 'sent a message'}`);
-          }
-        }
+        notifyChannelMessage(channelId, sender, text, mention);
         break;
       }
 
@@ -594,10 +589,31 @@ function createChatStore() {
     }
   }
 
+  /**
+   * Drop everything held for the current server. Shared by connect (to a
+   * new server) and disconnect so the two lists cannot drift apart.
+   */
+  function resetSession(): void {
+    set([]);
+    typing.reset();
+    unread.reset();
+    threadData.set(null);
+    dm.reset();
+    pinned.reset();
+    // Channel keys are held in memory only — the server keeps the wraps, and
+    // they are re-fetched from the channel list the next connection sends.
+    channelKeys.reset();
+    encryptedChannels = new Set();
+    joinedChannelId = 0;
+    rawPins.clear();
+    rawScheduled = [];
+    scheduled.reset();
+    clearPeerKeyRequests();
+  }
+
   /** Connect to a WebSocket server. */
   function connect(url: string, onOpen?: () => void): void {
-    set([]); // Clear previous history when connecting to a server
-    typing.reset();
+    resetSession();
     // Per-channel client state (last-read markers, notification preferences)
     // is persisted per server; switch both stores to this server's slice.
     unread.setServer(url);
@@ -611,19 +627,6 @@ function createChatStore() {
     // Unsent composer text is parked per server too, so a reconnect gives
     // back what was half-typed instead of discarding it.
     drafts.setServer(url);
-    clearPeerKeyRequests();
-    // Channel keys are held in memory only — the server keeps the wraps, and
-    // they are re-fetched from the channel list this connection sends us.
-    channelKeys.reset();
-    encryptedChannels = new Set();
-    joinedChannelId = 0;
-    rawPins.clear();
-    rawScheduled = [];
-    scheduled.reset();
-    unread.reset();
-    threadData.set(null);
-    dm.reset();
-    pinned.reset();
     connection.set('connecting');
     wsManager.connect(
       url,
@@ -688,7 +691,7 @@ function createChatStore() {
 
     const sealed = sealForJoinedChannel(content);
     if (sealed === 'locked') {
-      return 'This channel is encrypted and your copy of its key has not arrived yet.';
+      return KEY_PENDING_MESSAGE;
     }
     if (sealed) {
       payload.enc = sealed;
@@ -836,7 +839,7 @@ function createChatStore() {
     };
     const sealed = sealForJoinedChannel({ text });
     if (sealed === 'locked') {
-      return 'This channel is encrypted and your copy of its key has not arrived yet.';
+      return KEY_PENDING_MESSAGE;
     }
     if (sealed) {
       payload.enc = sealed;
@@ -943,7 +946,7 @@ function createChatStore() {
 
     const sealed = sealForJoinedChannel({ text });
     if (sealed === 'locked') {
-      return 'This channel is encrypted and your copy of its key has not arrived yet.';
+      return KEY_PENDING_MESSAGE;
     }
     wsManager.send(
       sealed ? { type: 'edit-message', messageId, enc: sealed } : { type: 'edit-message', messageId, text }
@@ -962,20 +965,8 @@ function createChatStore() {
   /** Disconnect from the WebSocket server. */
   function disconnect(): void {
     wsManager.disconnect();
-    set([]);
-    typing.reset();
-    unread.reset();
-    threadData.set(null);
-    dm.reset();
-    pinned.reset();
-    channelKeys.reset();
-    encryptedChannels = new Set();
-    joinedChannelId = 0;
-    rawPins.clear();
-    rawScheduled = [];
-    scheduled.reset();
+    resetSession();
     clearPendingSearches('Disconnected');
-    clearPeerKeyRequests();
     connection.set('idle');
   }
 
