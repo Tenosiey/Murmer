@@ -73,17 +73,8 @@
       label: STATUS_LABELS[value]
     }));
 
-  let statusMenuOpen = $state(false);
-  let statusMenuButton: HTMLButtonElement | null = $state(null);
-  let statusMenuElement: HTMLDivElement | null = $state(null);
-
-  let notificationMenuOpen = $state(false);
-  let notificationMenuButton: HTMLButtonElement | null = $state(null);
-  let notificationMenuElement: HTMLDivElement | null = $state(null);
-
-  let statsMenuOpen = $state(false);
-  let statsMenuButton: HTMLButtonElement | null = $state(null);
-  let statsMenuElement: HTMLDivElement | null = $state(null);
+  /** The header menu that is open; at most one at a time. */
+  let openMenu: 'status' | 'notifications' | 'stats' | null = $state(null);
 
   let currentUserStatus = $derived($session.user
     ? ensureStatus(statusMap, $session.user, 'online')
@@ -99,90 +90,36 @@
   // Close any open menu when the user switches channels.
   $effect(() => {
     void channelId;
-    statusMenuOpen = false;
-    notificationMenuOpen = false;
-    statsMenuOpen = false;
+    openMenu = null;
   });
 
-  function toggleStatusMenu(event: MouseEvent) {
+  // The toggles and the menus stop their clicks from propagating, so any click
+  // that reaches the window landed outside every menu.
+  function toggleMenu(menu: NonNullable<typeof openMenu>, event: MouseEvent) {
     event.stopPropagation();
-    if (notificationMenuOpen) {
-      notificationMenuOpen = false;
-    }
-    statsMenuOpen = false;
-    statusMenuOpen = !statusMenuOpen;
-  }
-
-  function toggleStatsMenu(event: MouseEvent) {
-    event.stopPropagation();
-    statusMenuOpen = false;
-    notificationMenuOpen = false;
-    statsMenuOpen = !statsMenuOpen;
+    openMenu = openMenu === menu ? null : menu;
   }
 
   function selectStatus(value: UserStatus) {
     statuses.setSelf(value);
-    statusMenuOpen = false;
-  }
-
-  function toggleNotificationMenu(event: MouseEvent) {
-    event.stopPropagation();
-    if (statusMenuOpen) {
-      statusMenuOpen = false;
-    }
-    notificationMenuOpen = !notificationMenuOpen;
+    openMenu = null;
   }
 
   function selectNotificationPreference(value: ChannelNotificationPreference) {
     channelNotifications.setPreference(channelId, value);
-    notificationMenuOpen = false;
+    openMenu = null;
   }
 
-  function handleMenuOutside(event: MouseEvent) {
-    const target = event.target as Node | null;
-    if (statusMenuOpen) {
-      if (statusMenuElement && target && statusMenuElement.contains(target)) return;
-      if (statusMenuButton && target && statusMenuButton.contains(target)) return;
-      statusMenuOpen = false;
-    }
-    if (notificationMenuOpen) {
-      if (notificationMenuElement && target && notificationMenuElement.contains(target)) return;
-      if (notificationMenuButton && target && notificationMenuButton.contains(target)) return;
-      notificationMenuOpen = false;
-    }
-    if (statsMenuOpen) {
-      if (statsMenuElement && target && statsMenuElement.contains(target)) return;
-      if (statsMenuButton && target && statsMenuButton.contains(target)) return;
-      statsMenuOpen = false;
-    }
-  }
-
-  function handleStatsMenuKeydown(event: KeyboardEvent) {
+  function handleMenuKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
-      statsMenuOpen = false;
-      event.stopPropagation();
-      event.preventDefault();
-    }
-  }
-
-  function handleStatusMenuKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      statusMenuOpen = false;
-      event.stopPropagation();
-      event.preventDefault();
-    }
-  }
-
-  function handleNotificationMenuKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      notificationMenuOpen = false;
+      openMenu = null;
       event.stopPropagation();
       event.preventDefault();
     }
   }
 </script>
 
-<svelte:window onclick={handleMenuOutside} />
+<svelte:window onclick={() => (openMenu = null)} />
 
 <div class="header">
   <div class="title">
@@ -224,10 +161,9 @@
       <div class="status-control">
       <button
         class="btn btn-ghost status-button"
-        bind:this={statusMenuButton}
         aria-haspopup="true"
-        aria-expanded={statusMenuOpen}
-        onclick={toggleStatusMenu}
+        aria-expanded={openMenu === 'status'}
+        onclick={(event) => toggleMenu('status', event)}
         title={`Set status (${currentUserStatusLabel})`}
       >
         <span class={`status ${currentUserStatus}`}></span>
@@ -246,14 +182,13 @@
           <polyline points="6 9 12 15 18 9"></polyline>
         </svg>
       </button>
-      {#if statusMenuOpen}
+      {#if openMenu === 'status'}
         <div
           class="status-menu"
-          bind:this={statusMenuElement}
           role="menu"
           tabindex="-1"
           onclick={(event) => event.stopPropagation()}
-          onkeydown={handleStatusMenuKeydown}
+          onkeydown={handleMenuKeydown}
         >
           {#each statusOptions as option}
             <button
@@ -272,23 +207,21 @@
       <div class="connection-control">
         <button
           class="connection-info"
-          bind:this={statsMenuButton}
           aria-haspopup="true"
-          aria-expanded={statsMenuOpen}
-          onclick={toggleStatsMenu}
+          aria-expanded={openMenu === 'stats'}
+          onclick={(event) => toggleMenu('stats', event)}
           title="Connection stats"
         >
           <PingDot ping={$ping} />
           <ConnectionBars strength={serverStrength} />
         </button>
-        {#if statsMenuOpen}
+        {#if openMenu === 'stats'}
           <div
             class="stats-menu"
-            bind:this={statsMenuElement}
             role="menu"
             tabindex="-1"
             onclick={(event) => event.stopPropagation()}
-            onkeydown={handleStatsMenuKeydown}
+            onkeydown={handleMenuKeydown}
           >
             <ConnectionStatsPanel />
           </div>
@@ -364,10 +297,9 @@
     <div class="notification-control">
       <button
         class="icon-btn"
-        bind:this={notificationMenuButton}
         aria-haspopup="true"
-        aria-expanded={notificationMenuOpen}
-        onclick={toggleNotificationMenu}
+        aria-expanded={openMenu === 'notifications'}
+        onclick={(event) => toggleMenu('notifications', event)}
         title={`Channel notifications: ${notificationMenuLabel}`}
       >
         <span class="notification-icon" aria-hidden="true">
@@ -381,14 +313,13 @@
         </span>
         <span class="sr-only">Configure channel notifications</span>
       </button>
-      {#if notificationMenuOpen}
+      {#if openMenu === 'notifications'}
         <div
           class="notification-menu"
-          bind:this={notificationMenuElement}
           role="menu"
           tabindex="-1"
           onclick={(event) => event.stopPropagation()}
-          onkeydown={handleNotificationMenuKeydown}
+          onkeydown={handleMenuKeydown}
         >
           {#each NOTIFICATION_OPTIONS as option}
             <button
