@@ -70,13 +70,15 @@ function createUnreadStore() {
     }
   });
 
+  // Both early returns check before calling `update`: a writable treats any
+  // object it is handed as changed, so returning the same one from `update`
+  // would still notify every badge and re-persist the whole last-read map.
   function clearCounts(channelId: number) {
-    counts.update((current) => {
-      if (!(channelId in current)) return current;
-      const next = { ...current };
-      delete next[channelId];
-      return next;
-    });
+    const current = get(counts);
+    if (!(channelId in current)) return;
+    const next = { ...current };
+    delete next[channelId];
+    counts.set(next);
   }
 
   return {
@@ -98,10 +100,10 @@ function createUnreadStore() {
     /** Advance the last-read pointer for a channel and reset its counter. */
     markRead(channelId: number, messageId: number) {
       if (!Number.isFinite(messageId) || messageId <= 0) return;
-      lastRead.update((current) => {
-        if ((current[channelId] ?? 0) >= messageId) return current;
-        return { ...current, [channelId]: messageId };
-      });
+      const current = get(lastRead);
+      if ((current[channelId] ?? 0) < messageId) {
+        lastRead.set({ ...current, [channelId]: messageId });
+      }
       clearCounts(channelId);
     },
     getLastRead(channelId: number): number {
