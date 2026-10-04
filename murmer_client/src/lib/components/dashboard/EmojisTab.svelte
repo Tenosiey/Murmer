@@ -6,7 +6,7 @@
   import { dialogs } from '$lib/stores/dialogs';
   import { describeServerError } from '$lib/errors';
   import { httpBaseFromWs } from '$lib/server-url';
-  import { uploadForm, uploadErrorMessage } from '$lib/upload';
+  import { uploadImage } from '$lib/upload';
   import {
     EMOJI_NAME_RE,
     MAX_EMOJI_FILE_BYTES
@@ -45,31 +45,18 @@
     uploading = true;
     emojiFeedback = null;
     const name = normalizedEmojiName;
-    try {
-      const res = await fetch(httpBase + '/upload', {
-        method: 'POST',
-        body: uploadForm(emojiFile)
-      });
-      const uploadError = uploadErrorMessage(res.status, 'image');
-      if (uploadError) {
-        emojiFeedback = { text: uploadError, kind: 'error' };
-        return;
-      }
-      if (!res.ok) throw new Error(`upload failed with status ${res.status}`);
-      const data = await res.json();
-      if (typeof data.url !== 'string') throw new Error('upload response missing url');
-      // Registration is role-checked server-side; success arrives as an
-      // updated emoji-list broadcast, errors as an error frame handled above.
-      chat.sendRaw({ type: 'add-emoji', name, url: data.url });
-      emojiName = '';
-      emojiFile = null;
-      if (emojiFileInput) emojiFileInput.value = '';
-    } catch (e) {
-      console.error('emoji upload failed', e);
-      emojiFeedback = { text: 'Emoji upload failed. Please try again.', kind: 'error' };
-    } finally {
-      uploading = false;
+    const result = await uploadImage(httpBase, emojiFile, MAX_EMOJI_FILE_BYTES);
+    uploading = false;
+    if (!result.ok) {
+      emojiFeedback = { text: result.message, kind: 'error' };
+      return;
     }
+    // Registration is role-checked server-side; success arrives as an
+    // updated emoji-list broadcast, errors as an error frame handled above.
+    chat.sendRaw({ type: 'add-emoji', name, url: result.url });
+    emojiName = '';
+    emojiFile = null;
+    if (emojiFileInput) emojiFileInput.value = '';
   }
 
   async function deleteEmoji(name: string) {

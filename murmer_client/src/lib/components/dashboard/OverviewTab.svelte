@@ -4,7 +4,7 @@
   import { selectedServer } from '$lib/stores/servers';
   import { describeServerError } from '$lib/errors';
   import { httpBaseFromWs } from '$lib/server-url';
-  import { uploadForm, uploadErrorMessage } from '$lib/upload';
+  import { uploadImage } from '$lib/upload';
   import { onlineUsers } from '$lib/stores/online';
   import { displayNames } from '$lib/stores/profiles';
   import {
@@ -77,29 +77,15 @@
     input.value = '';
     if (!file || !httpBase) return;
     identityFeedback = null;
-    if (file.size > MAX_SERVER_ICON_BYTES) {
-      identityFeedback = { text: 'Server icons must be 1 MB or smaller.', kind: 'error' };
+    iconUploading = true;
+    const result = await uploadImage(httpBase, file, MAX_SERVER_ICON_BYTES);
+    iconUploading = false;
+    if (!result.ok) {
+      identityFeedback = { text: result.message, kind: 'error' };
       return;
     }
-    iconUploading = true;
-    try {
-      const res = await fetch(httpBase + '/upload', { method: 'POST', body: uploadForm(file) });
-      const uploadError = uploadErrorMessage(res.status, 'image');
-      if (uploadError) {
-        identityFeedback = { text: uploadError, kind: 'error' };
-        return;
-      }
-      if (!res.ok) throw new Error(`upload failed with status ${res.status}`);
-      const data = await res.json();
-      if (typeof data.url !== 'string') throw new Error('upload response missing url');
-      // Registration is role-checked server-side, like emoji registration.
-      serverIdentity.save({ icon: data.url });
-    } catch (e) {
-      console.error('server icon upload failed', e);
-      identityFeedback = { text: 'Icon upload failed. Please try again.', kind: 'error' };
-    } finally {
-      iconUploading = false;
-    }
+    // Registration is role-checked server-side, like emoji registration.
+    serverIdentity.save({ icon: result.url });
   }
 
   function removeIcon() {

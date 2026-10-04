@@ -6,7 +6,7 @@
   import { dialogs } from '$lib/stores/dialogs';
   import { describeServerError } from '$lib/errors';
   import { httpBaseFromWs } from '$lib/server-url';
-  import { uploadForm, uploadErrorMessage } from '$lib/upload';
+  import { uploadImage } from '$lib/upload';
   import {
     MAX_ROLE_ICON_BYTES
   } from '$lib/chat/constants';
@@ -14,7 +14,8 @@
   import { myTopPosition } from '$lib/stores/permissions';
   import {
     PERMISSIONS,
-    PERMISSION_GROUPS
+    PERMISSION_GROUPS,
+    hasPermission
   } from '$lib/chat/permissions';
   import type { Message, RoleDef } from '$lib/types';
 
@@ -90,11 +91,6 @@
     draftPermissions ^= flag;
   }
 
-  function isPermissionOn(flag: number): boolean {
-    if ((draftPermissions & PERMISSIONS.ADMINISTRATOR) !== 0) return true;
-    return (draftPermissions & flag) === flag;
-  }
-
   function saveRole() {
     if (!selectedRole) return;
     const color = draftColor.trim();
@@ -121,29 +117,15 @@
     input.value = '';
     if (!file || !httpBase) return;
     roleFeedback = null;
-    if (file.size > MAX_ROLE_ICON_BYTES) {
-      roleFeedback = { text: 'Role icons must be 512 KB or smaller.', kind: 'error' };
+    roleIconUploading = true;
+    const result = await uploadImage(httpBase, file, MAX_ROLE_ICON_BYTES);
+    roleIconUploading = false;
+    if (!result.ok) {
+      roleFeedback = { text: result.message, kind: 'error' };
       return;
     }
-    roleIconUploading = true;
-    try {
-      const res = await fetch(httpBase + '/upload', { method: 'POST', body: uploadForm(file) });
-      const uploadError = uploadErrorMessage(res.status, 'image');
-      if (uploadError) {
-        roleFeedback = { text: uploadError, kind: 'error' };
-        return;
-      }
-      if (!res.ok) throw new Error(`upload failed with status ${res.status}`);
-      const data = await res.json();
-      if (typeof data.url !== 'string') throw new Error('upload response missing url');
-      draftIcon = data.url;
-      roleFeedback = { text: 'Icon ready — save to apply it.', kind: 'info' };
-    } catch (e) {
-      console.error('role icon upload failed', e);
-      roleFeedback = { text: 'Icon upload failed. Please try again.', kind: 'error' };
-    } finally {
-      roleIconUploading = false;
-    }
+    draftIcon = result.url;
+    roleFeedback = { text: 'Icon ready — save to apply it.', kind: 'info' };
   }
 
   // Picking a custom emoji just reuses its uploaded image, so no second copy
@@ -359,7 +341,7 @@
                   <label class="perm-row">
                     <input
                       type="checkbox"
-                      checked={isPermissionOn(perm.flag)}
+                      checked={hasPermission(draftPermissions, perm.flag)}
                       disabled={!permsEditable}
                       onchange={() => togglePermission(perm.flag)}
                     />
