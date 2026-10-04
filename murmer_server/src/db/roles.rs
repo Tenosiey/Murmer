@@ -13,7 +13,7 @@
 
 use rusqlite::{OptionalExtension, params};
 
-use super::{Db, DbCall, DbError};
+use super::{Db, DbCall, DbError, read_setting, write_setting};
 use crate::permissions::Permissions;
 use crate::roles::{BUILTIN_ROLES, RoleDef};
 
@@ -337,6 +337,34 @@ pub fn migrate_roles(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// Run a one-time permission migration guarded by a `server_settings`
+/// marker, so an owner who later revokes the granted flag keeps it revoked
+/// across restarts.
+fn once(
+    conn: &rusqlite::Connection,
+    marker: &str,
+    migrate: impl FnOnce() -> rusqlite::Result<()>,
+) -> rusqlite::Result<()> {
+    if read_setting(conn, marker)?.is_some() {
+        return Ok(());
+    }
+    migrate()?;
+    write_setting(conn, marker, "1")
+}
+
+/// Grant `flag` to every role that holds `holder`.
+fn grant_to_holders(
+    conn: &rusqlite::Connection,
+    flag: Permissions,
+    holder: Permissions,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE role_definitions SET permissions = permissions | ?1 WHERE permissions & ?2 != 0",
+        params![flag as i64, holder as i64],
+    )?;
+    Ok(())
+}
+
 /// One-time grant of the soundboard permissions to databases created before
 /// the soundboard existed. Without it the stored `@everyone` mask would keep
 /// the new bits cleared and nobody on an existing server could play a sound,
@@ -347,32 +375,17 @@ pub fn migrate_roles(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
 /// closest existing "curates server assets" capability. Marker-guarded so an
 /// owner who deliberately revokes either flag never has it re-granted.
 pub fn migrate_soundboard_permissions(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
-    let already: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM server_settings WHERE key = 'soundboard_perms'",
-        [],
-        |row| row.get(0),
-    )?;
-    if already > 0 {
-        return Ok(());
-    }
-
-    conn.execute(
-        "UPDATE role_definitions SET permissions = permissions | ?1 WHERE is_default = 1",
-        params![crate::permissions::USE_SOUNDBOARD as i64],
-    )?;
-    conn.execute(
-        "UPDATE role_definitions SET permissions = permissions | ?1 WHERE permissions & ?2 != 0",
-        params![
-            crate::permissions::MANAGE_SOUNDS as i64,
-            crate::permissions::MANAGE_EMOJIS as i64,
-        ],
-    )?;
-
-    conn.execute(
-        "INSERT OR IGNORE INTO server_settings (key, value) VALUES ('soundboard_perms', '1')",
-        [],
-    )?;
-    Ok(())
+    once(conn, "soundboard_perms", || {
+        conn.execute(
+            "UPDATE role_definitions SET permissions = permissions | ?1 WHERE is_default = 1",
+            params![crate::permissions::USE_SOUNDBOARD as i64],
+        )?;
+        grant_to_holders(
+            conn,
+            crate::permissions::MANAGE_SOUNDS,
+            crate::permissions::MANAGE_EMOJIS,
+        )
+    })
 }
 
 /// Grant [`MANAGE_NICKNAMES`](crate::permissions::MANAGE_NICKNAMES) to every
@@ -384,28 +397,13 @@ pub fn migrate_soundboard_permissions(conn: &rusqlite::Connection) -> rusqlite::
 /// Marker-guarded like the soundboard migration: it runs once, so an owner who
 /// deliberately takes the flag away again does not get it back on restart.
 pub fn migrate_nickname_permissions(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
-    let already: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM server_settings WHERE key = 'nickname_perms'",
-        [],
-        |row| row.get(0),
-    )?;
-    if already > 0 {
-        return Ok(());
-    }
-
-    conn.execute(
-        "UPDATE role_definitions SET permissions = permissions | ?1 WHERE permissions & ?2 != 0",
-        params![
-            crate::permissions::MANAGE_NICKNAMES as i64,
-            crate::permissions::KICK_MEMBERS as i64,
-        ],
-    )?;
-
-    conn.execute(
-        "INSERT OR IGNORE INTO server_settings (key, value) VALUES ('nickname_perms', '1')",
-        [],
-    )?;
-    Ok(())
+    once(conn, "nickname_perms", || {
+        grant_to_holders(
+            conn,
+            crate::permissions::MANAGE_NICKNAMES,
+            crate::permissions::KICK_MEMBERS,
+        )
+    })
 }
 
 /// Grant [`VIEW_AUDIT_LOG`](crate::permissions::VIEW_AUDIT_LOG) to every role
@@ -418,28 +416,13 @@ pub fn migrate_nickname_permissions(conn: &rusqlite::Connection) -> rusqlite::Re
 /// Marker-guarded like the migrations above: it runs once, so an owner who
 /// deliberately revokes the flag does not get it back on the next restart.
 pub fn migrate_audit_log_permissions(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
-    let already: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM server_settings WHERE key = 'audit_log_perms'",
-        [],
-        |row| row.get(0),
-    )?;
-    if already > 0 {
-        return Ok(());
-    }
-
-    conn.execute(
-        "UPDATE role_definitions SET permissions = permissions | ?1 WHERE permissions & ?2 != 0",
-        params![
-            crate::permissions::VIEW_AUDIT_LOG as i64,
-            crate::permissions::MANAGE_SERVER as i64,
-        ],
-    )?;
-
-    conn.execute(
-        "INSERT OR IGNORE INTO server_settings (key, value) VALUES ('audit_log_perms', '1')",
-        [],
-    )?;
-    Ok(())
+    once(conn, "audit_log_perms", || {
+        grant_to_holders(
+            conn,
+            crate::permissions::VIEW_AUDIT_LOG,
+            crate::permissions::MANAGE_SERVER,
+        )
+    })
 }
 
 /// Grant [`CREATE_INVITES`](crate::permissions::CREATE_INVITES) to every role
@@ -451,26 +434,11 @@ pub fn migrate_audit_log_permissions(conn: &rusqlite::Connection) -> rusqlite::R
 ///
 /// Marker-guarded, so an owner who takes the flag away again keeps it away.
 pub fn migrate_invite_permissions(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
-    let already: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM server_settings WHERE key = 'invite_perms'",
-        [],
-        |row| row.get(0),
-    )?;
-    if already > 0 {
-        return Ok(());
-    }
-
-    conn.execute(
-        "UPDATE role_definitions SET permissions = permissions | ?1 WHERE permissions & ?2 != 0",
-        params![
-            crate::permissions::CREATE_INVITES as i64,
-            crate::permissions::KICK_MEMBERS as i64,
-        ],
-    )?;
-
-    conn.execute(
-        "INSERT OR IGNORE INTO server_settings (key, value) VALUES ('invite_perms', '1')",
-        [],
-    )?;
-    Ok(())
+    once(conn, "invite_perms", || {
+        grant_to_holders(
+            conn,
+            crate::permissions::CREATE_INVITES,
+            crate::permissions::KICK_MEMBERS,
+        )
+    })
 }
