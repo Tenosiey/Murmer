@@ -45,47 +45,39 @@ impl BotPermissions {
         self.0 & flag == flag
     }
 
+    /// Every flag with its API name, the one table the name lists and the
+    /// `missing-permission:` error codes are derived from.
+    const NAMES: [(i32, &'static str); 7] = [
+        (Self::READ_MESSAGES, "read_messages"),
+        (Self::SEND_MESSAGES, "send_messages"),
+        (Self::MANAGE_MESSAGES, "manage_messages"),
+        (Self::ADD_REACTIONS, "add_reactions"),
+        (Self::READ_CHANNELS, "read_channels"),
+        (Self::MANAGE_CHANNELS, "manage_channels"),
+        (Self::READ_USERS, "read_users"),
+    ];
+
+    /// The API name of a single flag.
+    pub fn name(flag: i32) -> &'static str {
+        Self::NAMES
+            .iter()
+            .find(|(f, _)| *f == flag)
+            .map_or("unknown", |(_, name)| name)
+    }
+
     pub fn to_list(self) -> Vec<&'static str> {
-        let mut list = Vec::new();
-        if self.has(Self::READ_MESSAGES) {
-            list.push("read_messages");
-        }
-        if self.has(Self::SEND_MESSAGES) {
-            list.push("send_messages");
-        }
-        if self.has(Self::MANAGE_MESSAGES) {
-            list.push("manage_messages");
-        }
-        if self.has(Self::ADD_REACTIONS) {
-            list.push("add_reactions");
-        }
-        if self.has(Self::READ_CHANNELS) {
-            list.push("read_channels");
-        }
-        if self.has(Self::MANAGE_CHANNELS) {
-            list.push("manage_channels");
-        }
-        if self.has(Self::READ_USERS) {
-            list.push("read_users");
-        }
-        list
+        Self::NAMES
+            .iter()
+            .filter(|(flag, _)| self.has(*flag))
+            .map(|(_, name)| *name)
+            .collect()
     }
 
     pub fn from_list(names: &[String]) -> i32 {
-        let mut bits = 0i32;
-        for name in names {
-            match name.as_str() {
-                "read_messages" => bits |= Self::READ_MESSAGES,
-                "send_messages" => bits |= Self::SEND_MESSAGES,
-                "manage_messages" => bits |= Self::MANAGE_MESSAGES,
-                "add_reactions" => bits |= Self::ADD_REACTIONS,
-                "read_channels" => bits |= Self::READ_CHANNELS,
-                "manage_channels" => bits |= Self::MANAGE_CHANNELS,
-                "read_users" => bits |= Self::READ_USERS,
-                _ => {}
-            }
-        }
-        bits
+        Self::NAMES
+            .iter()
+            .filter(|(_, name)| names.iter().any(|n| n == name))
+            .fold(0, |bits, (flag, _)| bits | flag)
     }
 }
 

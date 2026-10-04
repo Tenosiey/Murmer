@@ -12,13 +12,13 @@ use crate::ws::{
     constants::*,
     errors,
     helpers::*,
-    validation::{history_limit, i32_field, is_emoji_shortcode},
+    validation::{history_limit, i32_field, is_emoji_shortcode, is_valid_reaction_key},
 };
 use crate::{AppState, db, security};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use futures::stream::SplitSink;
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::sync::Arc;
 use tracing::error;
 
@@ -202,39 +202,7 @@ pub(super) async fn handle_search_history(
 
     match db::search_messages(&state.db, channel_to_search, trimmed_query, limit).await {
         Ok(rows) => {
-            let ids: Vec<i64> = rows.iter().map(|(id, _)| *id).collect();
-            let reaction_map = if ids.is_empty() {
-                std::collections::HashMap::new()
-            } else {
-                match db::get_reactions_for_messages(&state.db, &ids).await {
-                    Ok(map) => map,
-                    Err(error) => {
-                        error!(
-                            "Failed to load reactions for search results in channel {channel_to_search}: {error}"
-                        );
-                        std::collections::HashMap::new()
-                    }
-                }
-            };
-
-            let mut messages = Vec::new();
-            for (id, content) in rows {
-                if let Ok(mut value) = serde_json::from_str::<Value>(&content) {
-                    value["id"] = Value::from(id);
-                    if value.get("channelId").is_none() {
-                        value["channelId"] = Value::from(channel_to_search);
-                    }
-                    if let Some(reactions) = reaction_map.get(&id)
-                        && let Ok(reaction_value) = serde_json::to_value(reactions)
-                    {
-                        value["reactions"] = reaction_value;
-                    }
-                    if value.get("reactions").is_none() {
-                        value["reactions"] = Value::Object(Map::new());
-                    }
-                    messages.push(value);
-                }
-            }
+            let messages = db::hydrate_messages(&state.db, rows, channel_to_search).await;
 
             let pages = search_wiki_hits(state, channel_to_search, trimmed_query, limit).await;
 
@@ -591,11 +559,7 @@ pub(super) async fn handle_forward_message(
         send_error(sender, errors::INVALID_MESSAGE_ID).await;
         return;
     };
-    let Some(target_id) = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .and_then(|c| i32::try_from(c).ok())
-    else {
+    let Some(target_id) = i32_field(v, "channelId") else {
         send_error(sender, errors::UNKNOWN_CHANNEL).await;
         return;
     };
@@ -694,25 +658,16 @@ pub(super) async fn handle_delete_message(
         return;
     }
 
-    let owner = record
-        .content
-        .get("user")
-        .and_then(|user| user.as_str())
-        .map(|value| value.to_string());
-
-    let mut allowed = owner.as_deref() == Some(requester.as_str());
-    if !allowed
-        && has_channel_permission(
+    let is_own = record.content.get("user").and_then(|u| u.as_str()) == Some(requester.as_str());
+    let allowed = is_own
+        || has_channel_permission(
             state,
             &requester,
             ChannelKind::Text,
             channel_id,
             crate::permissions::MANAGE_MESSAGES,
         )
-        .await
-    {
-        allowed = true;
-    }
+        .await;
 
     if !allowed {
         send_error(sender, errors::MESSAGE_PERMISSION_DENIED).await;
@@ -731,7 +686,7 @@ pub(super) async fn handle_delete_message(
 
             // Only deleting one's own message counts towards the stat;
             // moderator deletions say nothing about the requester's habits.
-            if owner.as_deref() == Some(requester.as_str()) {
+            if is_own {
                 super::stats::record(state, &requester, vec![(db::Stat::MessagesDeleted, 1)]).await;
             }
         }
@@ -901,31 +856,7 @@ pub(super) async fn handle_load_thread(
 
     match db::fetch_thread(&state.db, channel_id, root_id, MAX_THREAD_MESSAGES).await {
         Ok(rows) => {
-            let ids: Vec<i64> = rows.iter().map(|(id, _)| *id).collect();
-            let reaction_map = if ids.is_empty() {
-                std::collections::HashMap::new()
-            } else {
-                match db::get_reactions_for_messages(&state.db, &ids).await {
-                    Ok(map) => map,
-                    Err(error) => {
-                        error!("Failed to load reactions for thread {root_id}: {error}");
-                        std::collections::HashMap::new()
-                    }
-                }
-            };
-
-            let mut messages = Vec::new();
-            for (id, content) in rows {
-                if let Ok(mut value) = serde_json::from_str::<Value>(&content) {
-                    value["id"] = Value::from(id);
-                    if let Some(reactions) = reaction_map.get(&id)
-                        && let Ok(reaction_value) = serde_json::to_value(reactions)
-                    {
-                        value["reactions"] = reaction_value;
-                    }
-                    messages.push(value);
-                }
-            }
+            let messages = db::hydrate_messages(&state.db, rows, channel_id).await;
 
             let payload = serde_json::json!({
                 "type": "thread",
@@ -1003,14 +934,7 @@ pub(super) async fn handle_react(
     };
 
     let emoji = raw_emoji.trim();
-    // Custom emoji shortcodes (`:name:`) may exceed the 16-byte cap that
-    // bounds regular unicode reactions.
-    let shortcode = is_emoji_shortcode(emoji);
-    if !shortcode
-        && (emoji.is_empty()
-            || emoji.len() > 16
-            || emoji.chars().any(|c| c.is_control() || c.is_whitespace()))
-    {
+    if !is_valid_reaction_key(emoji) {
         send_error(sender, errors::INVALID_EMOJI).await;
         return;
     }
@@ -1018,7 +942,7 @@ pub(super) async fn handle_react(
     // Adding a shortcode reaction requires the emoji to actually exist so
     // junk shortcodes cannot be planted; removal stays permissive so
     // reactions of since-deleted emojis remain removable.
-    if shortcode && action == "add" {
+    if action == "add" && is_emoji_shortcode(emoji) {
         match db::emoji_exists(&state.db, emoji.trim_matches(':')).await {
             Ok(true) => {}
             Ok(false) => {

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use axum::extract::ws::{Message, WebSocket};
 use futures::SinkExt;
 use rusqlite::params;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use tracing::error;
 
 use super::reactions::get_reactions_for_messages;
@@ -58,6 +58,35 @@ pub async fn insert_message(db: &Db, channel_id: i32, content: &str) -> Result<i
     .await
 }
 
+/// Turn stored `(id, content)` rows into message frames: parse the JSON,
+/// stamp `id`, fill a missing `channelId` and attach the reactions. History,
+/// search, threads and the bot API all serve messages through this so they
+/// cannot drift apart in shape. Rows that fail to parse are dropped.
+pub async fn hydrate_messages(db: &Db, rows: Vec<(i64, String)>, channel_id: i32) -> Vec<Value> {
+    let ids: Vec<i64> = rows.iter().map(|(id, _)| *id).collect();
+    let reaction_map = get_reactions_for_messages(db, &ids)
+        .await
+        .unwrap_or_else(|e| {
+            error!("db reaction load error in channel {channel_id}: {e}");
+            HashMap::new()
+        });
+
+    rows.into_iter()
+        .filter_map(|(id, content)| {
+            let mut msg = serde_json::from_str::<Value>(&content).ok()?;
+            msg["id"] = Value::from(id);
+            if msg.get("channelId").is_none() {
+                msg["channelId"] = Value::from(channel_id);
+            }
+            msg["reactions"] = reaction_map
+                .get(&id)
+                .and_then(|r| serde_json::to_value(r).ok())
+                .unwrap_or_else(|| Value::Object(Map::new()));
+            Some(msg)
+        })
+        .collect()
+}
+
 /// Send a slice of messages over the WebSocket as a `history` payload.
 pub async fn send_history(
     db: &Db,
@@ -67,32 +96,9 @@ pub async fn send_history(
     limit: i64,
 ) {
     match fetch_history(db, channel_id, before, limit).await {
-        Ok(rows) => {
-            let ids: Vec<i64> = rows.iter().map(|(id, _)| *id).collect();
-            let reaction_map = if ids.is_empty() {
-                HashMap::new()
-            } else {
-                match get_reactions_for_messages(db, &ids).await {
-                    Ok(map) => map,
-                    Err(e) => {
-                        error!("db reaction load error: {e}");
-                        HashMap::new()
-                    }
-                }
-            };
-
-            let mut msgs = Vec::new();
-            for (id, content) in rows.into_iter().rev() {
-                if let Ok(mut val) = serde_json::from_str::<Value>(&content) {
-                    val["id"] = Value::from(id);
-                    if let Some(reactions) = reaction_map.get(&id)
-                        && let Ok(value) = serde_json::to_value(reactions)
-                    {
-                        val["reactions"] = value;
-                    }
-                    msgs.push(val);
-                }
-            }
+        Ok(mut rows) => {
+            rows.reverse();
+            let msgs = hydrate_messages(db, rows, channel_id).await;
             let payload = serde_json::json!({"type": "history", "messages": msgs});
             let _ = sender.send(Message::Text(payload.to_string().into())).await;
         }
@@ -215,11 +221,8 @@ pub async fn get_ephemeral_messages(db: &Db) -> Result<Vec<(i64, i32, String)>, 
 pub async fn get_message_channel_id(db: &Db, message_id: i64) -> Result<Option<i32>, DbError> {
     db.call_db(move |conn| {
         let id = conn
-            .query_row(
-                "SELECT channel_id FROM messages WHERE id = ?1",
-                params![message_id],
-                |row| row.get(0),
-            )
+            .prepare_cached("SELECT channel_id FROM messages WHERE id = ?1")?
+            .query_row(params![message_id], |row| row.get(0))
             .ok();
         Ok(id)
     })
