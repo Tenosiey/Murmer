@@ -103,7 +103,8 @@ pub async fn reorder_categories(db: &Db, ids: Vec<i32>) -> Result<bool, DbError>
     db.call_db(move |conn| {
         let tx = conn.transaction()?;
         {
-            let mut stmt = tx.prepare("UPDATE categories SET position = ?1 WHERE id = ?2")?;
+            let mut stmt =
+                tx.prepare_cached("UPDATE categories SET position = ?1 WHERE id = ?2")?;
             for (index, id) in ids.iter().enumerate() {
                 if stmt.execute(params![index as i32, id])? == 0 {
                     return Ok(false);
@@ -185,11 +186,10 @@ pub async fn get_channel_id_by_name(db: &Db, name: &str) -> Option<i32> {
 pub async fn get_channel_by_id(db: &Db, id: i32) -> Option<ChannelRecord> {
     db.call_db(move |conn| {
         let record = conn
-            .query_row(
-                &format!("SELECT {CHANNEL_COLUMNS} FROM channels WHERE id = ?1"),
-                params![id],
-                row_to_channel,
-            )
+            .prepare_cached(&format!(
+                "SELECT {CHANNEL_COLUMNS} FROM channels WHERE id = ?1"
+            ))?
+            .query_row(params![id], row_to_channel)
             .ok();
         Ok(record)
     })
@@ -317,7 +317,7 @@ pub async fn reorder_channels(
         let table = if voice { "voice_channels" } else { "channels" };
         let tx = conn.transaction()?;
         {
-            let mut stmt = tx.prepare(&format!(
+            let mut stmt = tx.prepare_cached(&format!(
                 "UPDATE {table} SET category_id = ?1, position = ?2 WHERE id = ?3"
             ))?;
             for (index, id) in ids.iter().enumerate() {

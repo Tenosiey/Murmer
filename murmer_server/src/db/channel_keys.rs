@@ -156,7 +156,7 @@ pub async fn insert_channel_keys(
 
         let mut stored = 0usize;
         {
-            let mut stmt = tx.prepare(
+            let mut stmt = tx.prepare_cached(
                 "INSERT OR IGNORE INTO channel_keys \
                  (channel_id, epoch, recipient_key, sender_key, nonce, wrapped_key) \
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",

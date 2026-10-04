@@ -164,7 +164,7 @@ pub async fn set_user_roles(db: &Db, key: &str, role_ids: &[i64]) -> Result<(), 
         let tx = conn.transaction()?;
         tx.execute("DELETE FROM user_roles WHERE public_key = ?1", params![key])?;
         {
-            let mut stmt = tx.prepare(
+            let mut stmt = tx.prepare_cached(
                 "INSERT OR IGNORE INTO user_roles (public_key, role_id) VALUES (?1, ?2)",
             )?;
             for id in &role_ids {

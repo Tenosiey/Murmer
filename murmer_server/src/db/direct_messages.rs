@@ -21,11 +21,11 @@ pub async fn insert_direct_message(
     let recipient = recipient.to_owned();
     let content = content.to_owned();
     db.call_db(move |conn| {
-        let id = conn.query_row(
-            "INSERT INTO direct_messages (sender, recipient, content) VALUES (?1, ?2, ?3) RETURNING id",
-            params![sender, recipient, content],
-            |row| row.get(0),
-        )?;
+        let id = conn
+            .prepare_cached(
+                "INSERT INTO direct_messages (sender, recipient, content)                  VALUES (?1, ?2, ?3) RETURNING id",
+            )?
+            .query_row(params![sender, recipient, content], |row| row.get(0))?;
         Ok(id)
     })
     .await
