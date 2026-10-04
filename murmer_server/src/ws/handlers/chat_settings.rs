@@ -193,32 +193,32 @@ pub(super) async fn note_message_sent(state: &Arc<AppState>, user: &str) {
         .insert(user.to_string(), Instant::now());
 }
 
-/// The filtered word list, or `None` while the filter is off or empty.
-async fn active_filter_words(state: &Arc<AppState>) -> Option<Vec<String>> {
+/// `text` with its filtered words masked, or `None` while the filter is off
+/// or nothing matched. Masks under the settings lock rather than cloning the
+/// word list for every message; the match is synchronous and short.
+async fn masked(state: &Arc<AppState>, text: &str) -> Option<String> {
     let settings = state.chat_settings.lock().await;
-    (settings.profanity_filter && !settings.profanity_words.is_empty())
-        .then(|| settings.profanity_words.clone())
+    if !settings.profanity_filter {
+        return None;
+    }
+    profanity::mask(text, &settings.profanity_words)
 }
 
 /// Mask filtered words in `text`. Runs before a message is stored or
 /// broadcast, so the masked form is the only one that ever exists outside the
 /// sender's own composer.
 pub(super) async fn mask_text(state: &Arc<AppState>, text: &str) -> String {
-    match active_filter_words(state).await {
-        Some(words) => profanity::mask(text, &words).unwrap_or_else(|| text.to_string()),
-        None => text.to_string(),
-    }
+    masked(state, text)
+        .await
+        .unwrap_or_else(|| text.to_string())
 }
 
 /// Mask filtered words in a message's `text` field, in place.
 pub(super) async fn apply_profanity_filter(state: &Arc<AppState>, v: &mut Value) {
-    let Some(words) = active_filter_words(state).await else {
-        return;
-    };
     let Some(text) = v.get("text").and_then(|t| t.as_str()) else {
         return;
     };
-    if let Some(masked) = profanity::mask(text, &words) {
+    if let Some(masked) = masked(state, text).await {
         v["text"] = Value::String(masked);
     }
 }
