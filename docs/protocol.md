@@ -126,6 +126,11 @@ badge can be missed, a message cannot.
 
 ## Inbound validation
 
+Before any of it, a message larger than `MAX_WS_MESSAGE_BYTES`
+(`ws/constants.rs`) closes the connection unread: every frame is parsed into
+a `serde_json::Value` before its type is known, so the size bound is the
+only thing between a client and an arbitrarily large parse.
+
 Three checks matter, in `ws/helpers.rs` and `ws/handlers/mod.rs`:
 
 - **`claims_own_user`** — a relayed frame must prove it speaks for its

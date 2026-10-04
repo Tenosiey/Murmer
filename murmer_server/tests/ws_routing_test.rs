@@ -403,3 +403,39 @@ async fn signaling_does_not_cross_between_voice_channels() {
         .count();
     assert_eq!(from_carol, 0, "carol's offer crossed channels: {seen:?}");
 }
+
+#[tokio::test]
+async fn a_frame_beyond_the_size_limit_closes_the_connection() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+
+    // A wiki save's worth of padding still gets through.
+    let fits = "x".repeat(200 * 1024);
+    alice
+        .send(json!({ "type": "ping", "id": "fits", "pad": fits }))
+        .await;
+    alice
+        .until(|f| f["type"] == "pong" && f["id"] == "fits")
+        .await;
+
+    let too_big = "x".repeat(300 * 1024);
+    // The server may already have closed by the time the send completes.
+    let _ = alice
+        .ws
+        .send(Message::text(
+            json!({ "type": "ping", "pad": too_big }).to_string(),
+        ))
+        .await;
+    loop {
+        let next = tokio::time::timeout(Duration::from_secs(5), alice.ws.next())
+            .await
+            .expect("connection stayed open");
+        match next {
+            Some(Ok(Message::Text(text))) => {
+                assert!(!text.contains("pong"), "oversized frame was handled");
+            }
+            Some(Ok(Message::Close(_)) | Err(_)) | None => break,
+            Some(Ok(_)) => {}
+        }
+    }
+}

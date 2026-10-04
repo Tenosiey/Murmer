@@ -37,7 +37,7 @@ pub use maintenance::spawn_message_retention;
 pub use scheduled::{recover_claimed_scheduled_messages, spawn_scheduler};
 
 use super::{
-    constants::{DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT},
+    constants::{DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT, MAX_WS_MESSAGE_BYTES},
     errors,
     helpers::*,
     validation::*,
@@ -1363,5 +1363,7 @@ pub async fn ws_handler(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state, addr))
+    ws.max_message_size(MAX_WS_MESSAGE_BYTES)
+        .max_frame_size(MAX_WS_MESSAGE_BYTES)
+        .on_upgrade(move |socket| handle_socket(socket, state, addr))
 }
