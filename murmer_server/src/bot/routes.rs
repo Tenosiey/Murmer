@@ -467,8 +467,7 @@ async fn send_message(
     };
     msg["id"] = serde_json::json!(id);
 
-    let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-    let _ = chan_tx.send(msg.to_string().into());
+    ws::helpers::send_to_channel(&state, channel_id, &msg).await;
 
     // Announce the message globally so clients viewing other channels can
     // update unread counts, mirroring the WebSocket chat handler.
@@ -533,8 +532,7 @@ async fn delete_message_handler(
                 "id": message_id,
                 "channelId": channel_id,
             });
-            let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-            let _ = chan_tx.send(payload.to_string().into());
+            ws::helpers::send_to_channel(&state, channel_id, &payload).await;
             StatusCode::NO_CONTENT.into_response()
         }
         Ok(false) => json_error(StatusCode::NOT_FOUND, "message-not-found"),
@@ -610,8 +608,7 @@ async fn add_reaction_handler(
         "messageId": message_id,
         "reactions": reactions,
     });
-    let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-    let _ = chan_tx.send(payload.to_string().into());
+    ws::helpers::send_to_channel(&state, channel_id, &payload).await;
 
     Json(serde_json::json!({"data": {"messageId": message_id, "reactions": reactions}}))
         .into_response()
@@ -659,8 +656,7 @@ async fn remove_reaction_handler(
         "messageId": message_id,
         "reactions": reactions,
     });
-    let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-    let _ = chan_tx.send(payload.to_string().into());
+    ws::helpers::send_to_channel(&state, channel_id, &payload).await;
 
     Json(serde_json::json!({"data": {"messageId": message_id, "reactions": reactions}}))
         .into_response()
@@ -734,8 +730,7 @@ async fn edit_message_handler(
                 "text": new_text,
                 "editedAt": edited_at,
             });
-            let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-            let _ = chan_tx.send(payload.to_string().into());
+            ws::helpers::send_to_channel(&state, channel_id, &payload).await;
 
             content["id"] = Value::from(message_id);
             Json(serde_json::json!({"data": content})).into_response()
@@ -1050,8 +1045,7 @@ async fn typing_handler(
         "user": bot.name,
         "channelId": channel_id,
     });
-    let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-    let _ = chan_tx.send(payload.to_string().into());
+    ws::helpers::send_to_channel(&state, channel_id, &payload).await;
 
     StatusCode::NO_CONTENT.into_response()
 }

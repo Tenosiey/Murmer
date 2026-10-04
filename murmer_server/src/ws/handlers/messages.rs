@@ -681,8 +681,7 @@ pub(super) async fn handle_delete_message(
                 "id": message_id,
                 "channelId": record.channel_id,
             });
-            let chan_sender = get_or_create_channel(state, record.channel_id).await;
-            let _ = chan_sender.send(payload.to_string().into());
+            send_to_channel(state, record.channel_id, &payload).await;
 
             // Only deleting one's own message counts towards the stat;
             // moderator deletions say nothing about the requester's habits.
@@ -823,8 +822,7 @@ pub(super) async fn handle_edit_message(
             } else {
                 payload["text"] = Value::String(new_text.clone());
             }
-            let chan_sender = get_or_create_channel(state, record.channel_id).await;
-            let _ = chan_sender.send(payload.to_string().into());
+            send_to_channel(state, record.channel_id, &payload).await;
 
             super::stats::record(state, &requester, vec![(db::Stat::MessagesEdited, 1)]).await;
         }
@@ -899,8 +897,7 @@ pub(super) async fn handle_typing(
         "user": user,
         "channelId": channel_id,
     });
-    let chan_tx = get_or_create_channel(state, channel_id).await;
-    let _ = chan_tx.send(payload.to_string().into());
+    send_to_channel(state, channel_id, &payload).await;
 }
 
 /// Handle reaction (add/remove emoji) request.
@@ -1036,6 +1033,5 @@ pub(super) async fn handle_react(
         "messageId": message_id,
         "reactions": reactions,
     });
-    let chan_sender = get_or_create_channel(state, target_channel_id).await;
-    let _ = chan_sender.send(payload.to_string().into());
+    send_to_channel(state, target_channel_id, &payload).await;
 }

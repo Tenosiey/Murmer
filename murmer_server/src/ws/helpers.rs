@@ -62,31 +62,20 @@ pub async fn get_user_lists(state: &Arc<AppState>) -> (Vec<String>, Vec<String>)
     (online, all)
 }
 
+/// The `online-users` frame: who is online, and every user the server knows.
+async fn users_frame(state: &Arc<AppState>) -> Value {
+    let (online, all) = get_user_lists(state).await;
+    serde_json::json!({ "type": "online-users", "users": online, "all": all })
+}
+
 /// Broadcast the current list of online users to all connected clients.
 pub async fn broadcast_users(state: &Arc<AppState>) {
-    let (online, all) = get_user_lists(state).await;
-    broadcast(
-        state,
-        &serde_json::json!({
-            "type": "online-users",
-            "users": online,
-            "all": all,
-        }),
-    );
+    broadcast(state, &users_frame(state).await);
 }
 
 /// Send the current list of online and known users to a single client.
 pub async fn send_users(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
-    let (online, all) = get_user_lists(state).await;
-    send_json(
-        sender,
-        &serde_json::json!({
-            "type": "online-users",
-            "users": online,
-            "all": all,
-        }),
-    )
-    .await;
+    send_json(sender, &users_frame(state).await).await;
 }
 
 /// Broadcast the users currently in a voice channel to all clients.
@@ -1023,8 +1012,7 @@ pub fn schedule_ephemeral_deletion(
                     "id": message_id,
                     "channelId": channel_id,
                 });
-                let chan_tx = get_or_create_channel(&state, channel_id).await;
-                let _ = chan_tx.send(payload.to_string().into());
+                send_to_channel(&state, channel_id, &payload).await;
             }
             // Already gone (deleted manually or by an earlier run).
             Ok(false) => {}
@@ -1134,6 +1122,13 @@ pub async fn get_or_create_channel(
             tokio::sync::broadcast::channel::<crate::Frame>(crate::BROADCAST_CAPACITY).0
         })
         .clone()
+}
+
+/// Send a frame to every client joined to a channel.
+pub async fn send_to_channel(state: &Arc<AppState>, channel_id: i32, frame: &Value) {
+    let _ = get_or_create_channel(state, channel_id)
+        .await
+        .send(frame.to_string().into());
 }
 
 /// Truncate quoted text for a reply snippet, respecting UTF-8 character
