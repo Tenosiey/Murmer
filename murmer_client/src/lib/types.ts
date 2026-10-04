@@ -209,6 +209,8 @@ export interface ChannelInfo {
   /** True when the channel's messages are end-to-end encrypted; the server
    *  stores ciphertext only (see `src/lib/channel-crypto.ts`). */
   e2ee?: boolean;
+  /** The channel's topic, trimmed; absent when it has none. */
+  topic?: string;
 }
 
 /** One sound in the server's shared soundboard library. */

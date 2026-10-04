@@ -1,65 +1,19 @@
-import { writable } from 'svelte/store';
+import { derived } from 'svelte/store';
 import { chat } from './chat';
-import type { Message } from '../types';
+import { channels } from './channels';
 
-function createChannelTopicStore() {
-  const { subscribe, update, set } = writable<Record<number, string>>({});
+/** channelId -> topic, for the channels that have one. Held by `channels`. */
+const topics = derived(channels, ($channels) => {
+  const map: Record<number, string> = {};
+  for (const ch of $channels) if (ch.topic) map[ch.id] = ch.topic;
+  return map;
+});
 
-  function applyTopic(channelId: number, topic: string) {
-    const trimmed = topic.trim();
-    update((topics) => {
-      const next = { ...topics };
-      if (trimmed) {
-        next[channelId] = trimmed;
-      } else {
-        delete next[channelId];
-      }
-      return next;
-    });
-  }
-
-  chat.on('channel-list', (msg: Message) => {
-    const list = msg.channels;
-    if (!Array.isArray(list)) return;
-    const topics: Record<number, string> = {};
-    for (const item of list) {
-      if (
-        item &&
-        typeof item === 'object' &&
-        typeof item.id === 'number' &&
-        typeof item.topic === 'string' &&
-        item.topic.trim()
-      ) {
-        topics[item.id] = item.topic.trim();
-      }
-    }
-    set(topics);
-  });
-
-  chat.on('channel-topic', (msg: Message) => {
-    if (typeof msg.channelId !== 'number' || typeof msg.topic !== 'string') return;
-    applyTopic(msg.channelId, msg.topic);
-  });
-
-  chat.on('channel-remove', (msg: Message) => {
-    const id = msg.channelId;
-    if (typeof id === 'number') {
-      update((topics) => {
-        if (!(id in topics)) return topics;
-        const next = { ...topics };
-        delete next[id];
-        return next;
-      });
-    }
-  });
-
+export const channelTopics = {
+  subscribe: topics.subscribe,
   /** Send a topic update to the server; the store updates when it broadcasts back. */
-  function setTopic(channelId: number, topic: string) {
+  setTopic(channelId: number, topic: string) {
     if (!channelId) return;
     chat.sendRaw({ type: 'set-channel-topic', channelId, topic: topic.trim() });
   }
-
-  return { subscribe, setTopic };
-}
-
-export const channelTopics = createChannelTopicStore();
+};

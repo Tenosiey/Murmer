@@ -2,6 +2,11 @@ import { writable } from 'svelte/store';
 import { chat } from './chat';
 import type { Message, ChannelInfo } from '../types';
 
+/** A frame's topic field, trimmed, or `undefined` when it carries none. */
+function topicOf(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
 function createChannelStore() {
   const { subscribe, set, update } = writable<ChannelInfo[]>([]);
 
@@ -16,7 +21,8 @@ function createChannelStore() {
           categoryId: typeof item.categoryId === 'number' ? item.categoryId : null,
           position: typeof item.position === 'number' ? item.position : 0,
           private: item.private === true,
-          e2ee: item.e2ee === true
+          e2ee: item.e2ee === true,
+          topic: topicOf(item.topic)
         }));
       set(items);
     }
@@ -29,12 +35,20 @@ function createChannelStore() {
       const categoryId = typeof msg.categoryId === 'number' ? msg.categoryId : null;
       const position = typeof msg.position === 'number' ? msg.position : 0;
       const isPrivate = msg.private === true;
+      const topic = topicOf(msg.topic);
       update((chs) =>
         chs.some((c) => c.id === id)
           ? chs
-          : [...chs, { id, name, categoryId, position, private: isPrivate }]
+          : [...chs, { id, name, categoryId, position, private: isPrivate, topic }]
       );
     }
+  });
+
+  chat.on('channel-topic', (msg: Message) => {
+    if (typeof msg.channelId !== 'number' || typeof msg.topic !== 'string') return;
+    const id = msg.channelId;
+    const topic = topicOf(msg.topic);
+    update((chs) => chs.map((c) => (c.id === id ? { ...c, topic } : c)));
   });
 
   chat.on('channel-rename', (msg: Message) => {
