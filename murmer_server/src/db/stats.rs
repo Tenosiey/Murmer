@@ -14,7 +14,10 @@
 
 use rusqlite::{OptionalExtension, params};
 
-use super::{Db, DbCall, DbError, NOW_UTC};
+use super::{Db, DbCall, DbError, NOW_UTC, read_setting, write_setting};
+
+/// `server_settings` key for the server-wide stats toggle.
+const STATS_ENABLED_KEY: &str = "stats_enabled";
 
 /// A single counter in the `user_stats` table.
 ///
@@ -158,10 +161,7 @@ CREATE TABLE IF NOT EXISTS user_sound_stats (
 /// Whether the connection-level double opt-in gate is open for `user`:
 /// server-wide toggle on AND the user opted in.
 fn tracking_enabled(conn: &rusqlite::Connection, user: &str) -> rusqlite::Result<bool> {
-    let server_enabled: Option<String> = conn
-        .prepare_cached("SELECT value FROM server_settings WHERE key = 'stats_enabled'")?
-        .query_row([], |row| row.get(0))
-        .optional()?;
+    let server_enabled = read_setting(conn, STATS_ENABLED_KEY)?;
     // Privacy default: tracking is OFF until an Owner/Admin explicitly
     // enables it for the server.
     if server_enabled.as_deref() != Some("1") {
@@ -176,30 +176,14 @@ fn tracking_enabled(conn: &rusqlite::Connection, user: &str) -> rusqlite::Result
 
 /// Whether the server-wide stats toggle is enabled.
 pub async fn stats_server_enabled(db: &Db) -> Result<bool, DbError> {
-    db.call_db(|conn| {
-        let value: Option<String> = conn
-            .query_row(
-                "SELECT value FROM server_settings WHERE key = 'stats_enabled'",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?;
-        Ok(value.as_deref() == Some("1"))
-    })
-    .await
+    db.call_db(|conn| Ok(read_setting(conn, STATS_ENABLED_KEY)?.as_deref() == Some("1")))
+        .await
 }
 
 /// Set the server-wide stats toggle (Owner/Admin action, checked by caller).
 pub async fn set_stats_server_enabled(db: &Db, enabled: bool) -> Result<(), DbError> {
-    db.call_db(move |conn| {
-        conn.execute(
-            "INSERT INTO server_settings (key, value) VALUES ('stats_enabled', ?1)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![if enabled { "1" } else { "0" }],
-        )?;
-        Ok(())
-    })
-    .await
+    db.call_db(move |conn| write_setting(conn, STATS_ENABLED_KEY, if enabled { "1" } else { "0" }))
+        .await
 }
 
 /// Whether `user` has opted in to stat tracking.

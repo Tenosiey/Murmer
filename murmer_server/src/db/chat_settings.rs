@@ -7,9 +7,7 @@
 //! cached in [`crate::AppState`] because every chat message consults them,
 //! and the cache is refreshed in the same handler that writes them.
 
-use rusqlite::{OptionalExtension, params};
-
-use super::{Db, DbCall, DbError};
+use super::{Db, DbCall, DbError, read_setting, write_setting};
 
 /// `server_settings` key for the per-user slow mode interval in seconds.
 const SLOW_MODE_KEY: &str = "slow_mode_seconds";
@@ -108,14 +106,7 @@ pub fn clamp_chat_settings(settings: ChatSettings) -> ChatSettings {
 /// unparseable settings.
 pub async fn chat_settings(db: &Db) -> Result<ChatSettings, DbError> {
     db.call_db(|conn| {
-        let read = |key: &str| -> rusqlite::Result<Option<String>> {
-            conn.query_row(
-                "SELECT value FROM server_settings WHERE key = ?1",
-                params![key],
-                |row| row.get(0),
-            )
-            .optional()
-        };
+        let read = |key: &str| read_setting(conn, key);
 
         let mut settings = ChatSettings::default();
         if let Some(seconds) = read(SLOW_MODE_KEY)?.and_then(|v| v.parse::<u64>().ok()) {
@@ -155,11 +146,7 @@ pub async fn set_chat_settings(db: &Db, settings: &ChatSettings) -> Result<ChatS
     db.call_db(move |conn| {
         let tx = conn.transaction()?;
         for (key, value) in values {
-            tx.execute(
-                "INSERT INTO server_settings (key, value) VALUES (?1, ?2)
-                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                params![key, value],
-            )?;
+            write_setting(&tx, key, &value)?;
         }
         tx.commit()?;
         Ok(())
