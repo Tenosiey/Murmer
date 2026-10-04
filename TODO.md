@@ -100,8 +100,6 @@ not a description of the fix.
 - [ ] Pomodoro timer integration for study groups
 - [ ] Real-time collaborative code editing
 - [ ] Scheduled voice events / calendar integration
-- [ ] Shareable themes — the accent wheel re-tints, but a theme cannot be
-      saved, exported or handed to somebody else
 - [ ] Translatable UI. Every string is hardcoded English, so this is a
       structural change (extraction plus a lookup) rather than a translation
       job, and it only gets more expensive with every screen added

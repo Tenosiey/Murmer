@@ -240,3 +240,24 @@ export const accent = createAccentStore();
 // Re-derive the palette whenever the mode or the accent changes.
 theme.subscribe((mode) => applyAccent(mode, get(accent)));
 accent.subscribe((value) => applyAccent(get(theme), value));
+
+/* ---- Theme codes --------------------------------------------------------
+   A whole theme — mode plus accent — as one short line ("dark #8fbf26") to
+   paste into a chat and back into Settings. Plain text rather than JSON or
+   base64, so whoever receives one can see what they are about to apply. */
+
+/** Renders the current theme as a shareable code. */
+export function themeCode(mode: Theme, value: Accent | null): string {
+  return `${mode} ${accentToHex(value ?? DEFAULT_ACCENT)}`;
+}
+
+/**
+ * Parses a theme code, or a bare hex code — which leaves the mode alone, so
+ * the field keeps accepting what it always did. Null for anything else.
+ */
+export function parseThemeCode(input: string): { mode: Theme | null; accent: Accent } | null {
+  const match = /^\s*(?:(dark|light)\s+)?(\S+)\s*$/i.exec(input);
+  const parsed = match && hexToAccent(match[2]);
+  if (!match || !parsed) return null;
+  return { mode: (match[1]?.toLowerCase() as Theme | undefined) ?? null, accent: parsed };
+}
