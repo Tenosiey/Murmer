@@ -5,6 +5,7 @@
 -->
 <script lang="ts">
   import { browser } from '$app/environment';
+  import { SvelteSet } from 'svelte/reactivity';
   import ConnectionBars from '$lib/components/ConnectionBars.svelte';
   import ScreenShareControls from '$lib/components/ScreenShareControls.svelte';
   import WebcamControls from '$lib/components/WebcamControls.svelte';
@@ -96,24 +97,20 @@
   const CHANNEL_DRAG_MIME = 'application/x-murmer-channel';
   const CATEGORY_DRAG_MIME = 'application/x-murmer-category';
 
-  function loadCollapsed(): Set<number> {
-    if (!browser) return new Set();
+  function loadCollapsed(): number[] {
+    if (!browser) return [];
     try {
       const parsed = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]');
-      return new Set(Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'number') : []);
+      return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'number') : [];
     } catch {
-      return new Set();
+      return [];
     }
   }
 
-  let collapsedCategories: Set<number> = $state(loadCollapsed());
+  // A SvelteSet, because `$state` does not track the contents of a plain Set.
+  const collapsedCategories = new SvelteSet<number>(loadCollapsed());
   function toggleCategory(id: number) {
-    if (collapsedCategories.has(id)) {
-      collapsedCategories.delete(id);
-    } else {
-      collapsedCategories.add(id);
-    }
-    collapsedCategories = collapsedCategories;
+    if (!collapsedCategories.delete(id)) collapsedCategories.add(id);
     if (browser) {
       localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsedCategories]));
     }
@@ -351,26 +348,27 @@
         ondrop={(e) => handleGroupDrop(e, group)}
       >
         {#if group.category}
+          {@const category = group.category}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
           <h3
             class="section category-header"
-            class:dragging={draggedCategoryId === group.category.id}
-            class:drop-before={categoryDropTarget?.id === group.category.id && !categoryDropTarget.after}
-            class:drop-after={categoryDropTarget?.id === group.category.id && categoryDropTarget.after}
+            class:dragging={draggedCategoryId === category.id}
+            class:drop-before={categoryDropTarget?.id === category.id && !categoryDropTarget.after}
+            class:drop-after={categoryDropTarget?.id === category.id && categoryDropTarget.after}
             role="button"
             tabindex="0"
             draggable="true"
-            ondragstart={(e) => { if (group.category) handleCategoryDragStart(e, group.category); }}
+            ondragstart={(e) => handleCategoryDragStart(e, category)}
             ondragend={handleCategoryDragEnd}
-            ondragover={(e) => { if (group.category) handleCategoryDragOver(e, group.category); }}
-            ondragleave={() => { if (group.category) handleCategoryDragLeave(group.category); }}
-            ondrop={(e) => { if (group.category) handleCategoryDrop(e, group.category); }}
-            onclick={() => toggleCategory(group.category?.id ?? 0)}
-            oncontextmenu={(e) => { if (group.category) onOpenCategoryMenu(e, group.category); }}
+            ondragover={(e) => handleCategoryDragOver(e, category)}
+            ondragleave={() => handleCategoryDragLeave(category)}
+            ondrop={(e) => handleCategoryDrop(e, category)}
+            onclick={() => toggleCategory(category.id)}
+            oncontextmenu={(e) => onOpenCategoryMenu(e, category)}
           >
-            <span class="category-chevron" class:collapsed={collapsedCategories.has(group.category?.id ?? 0)}>&#9662;</span>
-            {group.category?.name ?? ''}
+            <span class="category-chevron" class:collapsed={collapsedCategories.has(category.id)}>&#9662;</span>
+            {category.name}
           </h3>
         {:else}
           {#if group.textChannels.length}
