@@ -15,6 +15,7 @@
 -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { displayNames } from '$lib/stores/profiles';
   import { chat } from '$lib/stores/chat';
   import { session } from '$lib/stores/session';
   import { avatars } from '$lib/stores/avatars';
@@ -60,8 +61,7 @@
   let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
   let isSelf = $derived(user !== null && user === $session.user);
   let profile = $derived(user ? ($profiles[user] ?? null) : null);
-  // Same precedence as the `displayNames` store: the server's label first.
-  let shownName = $derived(profile?.nickname || profile?.displayName || user || '');
+  let shownName = $derived(user ? $displayNames(user) : '');
   let avatarUrl = $derived(user ? ($avatars[user] ?? null) : null);
 
   /** The user's roles, highest position first, with `@everyone` left out. */

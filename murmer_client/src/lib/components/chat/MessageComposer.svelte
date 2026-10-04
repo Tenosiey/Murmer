@@ -5,6 +5,7 @@
   callbacks down.
 -->
 <script lang="ts">
+  import { displayNames } from '$lib/stores/profiles';
 
   import type { Message } from '$lib/types';
   import { formatFileSize, searchResultPreview } from '$lib/chat/helpers';
@@ -111,7 +112,7 @@
   {#if replyingTo}
     <div class="reply-bar">
       <span class="reply-bar-label">
-        Replying to <strong>{replyingTo.user}</strong>
+        Replying to <strong>{replyingTo.user ? $displayNames(replyingTo.user) : ''}</strong>
         <span class="reply-bar-preview">{searchResultPreview(replyingTo)}</span>
       </span>
       <button type="button" class="reply-bar-cancel" onclick={onCancelReply} aria-label="Cancel reply">

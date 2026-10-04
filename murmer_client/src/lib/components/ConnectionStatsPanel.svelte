@@ -4,6 +4,7 @@
   every user's self-reported stats, refreshed while the panel is open.
 -->
 <script lang="ts">
+  import { displayNames } from '$lib/stores/profiles';
   import { ping } from '$lib/stores/ping';
   import { voiceStats } from '$lib/stores/voice';
   import {
@@ -91,7 +92,7 @@
             <tbody>
               {#each userList as [user, stats] (user)}
                 <tr>
-                  <td class="user-cell">{user}</td>
+                  <td class="user-cell">{$displayNames(user)}</td>
                   <td>{fmtMs(stats.ping)}</td>
                   <td>{fmtMs(stats.voiceRtt)}</td>
                   <td>{fmtMs(stats.voiceJitter)}</td>
