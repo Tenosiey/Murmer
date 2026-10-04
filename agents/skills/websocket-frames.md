@@ -36,7 +36,9 @@ reference behind this procedure is [`../../docs/protocol.md`](../../docs/protoco
    reads do it this way for exactly this reason.
 4. For a relayed frame, confirm `claims_own_user`. A `target` field narrows
    *who sees* the frame; it is not an authorization check and must never be
-   used as one.
+   used as one. A frame that opens a media session between two peers also
+   has to pass `signals_within_own_voice_channel`, or it hands the sender
+   whatever the target's client answers with.
 5. If it is a moderation or role action, add the hierarchy check
    (`top_position`): strictly outranking the target, and never granting a
    permission the actor lacks.

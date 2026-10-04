@@ -347,12 +347,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 handle_voice_leave(&state, &v, &mut voice_channel, &user_name).await;
                             }
                             // WebRTC signaling frames are relayed verbatim, so make sure a
-                            // client can only speak for itself before relaying. Each names
-                            // its recipient, so it goes to that peer alone.
+                            // client can only speak for itself, and only to a peer in its
+                            // own call, before relaying. Each names its recipient, so it
+                            // goes to that peer alone.
                             "voice-offer" | "voice-answer" | "voice-candidate"
                             | "screenshare-offer" | "screenshare-answer"
                             | "screenshare-candidate" => {
-                                if claims_own_user(&v, &user_name) {
+                                if claims_own_user(&v, &user_name)
+                                    && signals_within_own_voice_channel(&state, &v, voice_channel).await
+                                {
                                     relay_to_target(&state, &v, text).await;
                                 }
                             }
@@ -689,6 +692,34 @@ fn claims_own_user(v: &Value, user_name: &Option<String>) -> bool {
 /// included, where it would sit as a tile that never connects.
 fn names_own_voice_channel(v: &Value, voice_channel: Option<i32>) -> bool {
     voice_channel.is_some() && i32_field(v, "channelId") == voice_channel
+}
+
+/// Whether a signaling frame stays inside the sender's voice channel: it
+/// names the channel this connection joined, and its `target` sits in that
+/// channel too.
+///
+/// A client answers any offer that names its own channel, and the sender
+/// writes that field. Without this check a member who may not join a private
+/// call could offer to someone inside it and receive their microphone and
+/// camera, or offer to a sharer and receive their screen. Watching a share
+/// already requires being in its voice channel, so screen-share signaling
+/// is held to the same rule.
+async fn signals_within_own_voice_channel(
+    state: &Arc<AppState>,
+    v: &Value,
+    voice_channel: Option<i32>,
+) -> bool {
+    let (Some(channel), Some(target)) = (voice_channel, v.get("target").and_then(|t| t.as_str()))
+    else {
+        return false;
+    };
+    names_own_voice_channel(v, voice_channel)
+        && state
+            .voice_channels
+            .lock()
+            .await
+            .get(&channel)
+            .is_some_and(|info| info.users.contains(target))
 }
 
 async fn handle_status_update(
