@@ -244,6 +244,12 @@ Soundboard sounds are never mixed into a microphone stream. The server
 authorizes `play-sound` and fans out a `soundboard-play` frame; each client
 fetches and plays the file itself. See [`features.md`](features.md).
 
+Clips duck to a quarter of their level while somebody *else* in the channel
+is talking (`othersSpeaking` in `voice/soundboard.ts`), driven by the same
+`speakingUsers` store as the speaking rings. Its 500 ms release hold is what
+stops the duck pumping between words; shortening it would make the
+soundboard flutter under every sentence.
+
 ## Remote playback
 
 Each peer plays through `gain → limiter` (`voice/remoteAudio.ts`). The

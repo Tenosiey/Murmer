@@ -10,15 +10,37 @@
  * microphone chain, which ends at its own `MediaStreamAudioDestinationNode`,
  * so a sound cannot leak into the outgoing track. Decoded buffers are cached
  * so a repeated sound costs one gain node.
+ *
+ * Every clip then passes one shared duck node, which drops the soundboard
+ * while somebody else in the channel is talking so a clip never buries the
+ * conversation. The speaking indicator's own release hold is what keeps it
+ * from pumping between words.
  */
 import { get } from 'svelte/store';
 import { chat } from '../stores/chat';
 import { selectedServer } from '../stores/servers';
+import { session } from '../stores/session';
 import { outputMuted } from '../stores/settings';
 import { effectiveGain } from '../stores/soundboardSettings';
+import { speakingUsers } from '../stores/voiceSpeaking';
 import { httpBaseFromWs } from '../server-url';
 import { getAudioContext, resumeAudioContext } from './audioContext';
 import type { Message } from '../types';
+
+/** Soundboard level while ducked, about -12 dB: still there, but underneath. */
+export const DUCK_GAIN = 0.25;
+/** Ramp time constants in seconds: duck quickly, recover gently. */
+const DUCK_ATTACK = 0.05;
+const DUCK_RELEASE = 0.3;
+
+/**
+ * Whether somebody other than the local user is talking. The local user's
+ * own speech does not duck their clips: it is not played back to them, and
+ * every other listener ducks the clip on their own side.
+ */
+export function othersSpeaking(speaking: Record<string, boolean>, self: string | null): boolean {
+  return Object.keys(speaking).some((user) => user !== self && speaking[user]);
+}
 
 /** A playback that reached the speakers, for the transient "played X" hint. */
 export interface SoundPlayEvent {
@@ -34,6 +56,10 @@ export class SoundboardPlayer {
   private pending = new Map<number, Promise<AudioBuffer | null>>();
   private channelId: number | null = null;
   private listeners: Array<(event: SoundPlayEvent) => void> = [];
+  /** Shared by every clip; built on the first playback. */
+  private duckNode: GainNode | null = null;
+  private ducked = false;
+  private readonly unsubSpeaking: () => void;
 
   // Kept so `destroy` can unregister exactly these handlers: `chat.off(type)`
   // without a callback drops every handler for the type, which would take the
@@ -51,6 +77,31 @@ export class SoundboardPlayer {
   constructor() {
     chat.on('soundboard-play', this.onPlay);
     chat.on('sound-list', this.onSoundList);
+    this.unsubSpeaking = speakingUsers.subscribe((speaking) => {
+      this.ducked = othersSpeaking(speaking, get(session).user);
+      this.applyDuck();
+    });
+  }
+
+  /** Ramp rather than step: a gain jump is an audible click. */
+  private applyDuck() {
+    if (!this.duckNode) return;
+    const { gain, context } = this.duckNode;
+    gain.cancelScheduledValues(context.currentTime);
+    gain.setTargetAtTime(
+      this.ducked ? DUCK_GAIN : 1,
+      context.currentTime,
+      this.ducked ? DUCK_ATTACK : DUCK_RELEASE
+    );
+  }
+
+  private output(context: AudioContext): GainNode {
+    if (!this.duckNode) {
+      this.duckNode = context.createGain();
+      this.duckNode.gain.value = this.ducked ? DUCK_GAIN : 1;
+      this.duckNode.connect(context.destination);
+    }
+    return this.duckNode;
   }
 
   /** Notify subscribers about sounds that actually played locally. */
@@ -136,7 +187,7 @@ export class SoundboardPlayer {
     const gainNode = context.createGain();
     gainNode.gain.value = gain;
     source.connect(gainNode);
-    gainNode.connect(context.destination);
+    gainNode.connect(this.output(context));
     source.onended = () => {
       source.disconnect();
       gainNode.disconnect();
@@ -149,6 +200,9 @@ export class SoundboardPlayer {
   destroy() {
     chat.off('soundboard-play', this.onPlay);
     chat.off('sound-list', this.onSoundList);
+    this.unsubSpeaking();
+    this.duckNode?.disconnect();
+    this.duckNode = null;
     this.buffers.clear();
     this.pending.clear();
   }

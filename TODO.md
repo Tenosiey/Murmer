@@ -73,8 +73,6 @@ not a description of the fix.
 ### 🎤 Voice Features
 
 - [ ] Collaborative whiteboard during voice chats
-- [ ] Ducking — drop the soundboard (and other app sounds) while somebody is
-      actually talking, so a clip never buries the conversation
 - [ ] Gesture recognition through webcam
 - [ ] Live polling during meetings
 - [ ] Meeting notes that auto-generate from voice
