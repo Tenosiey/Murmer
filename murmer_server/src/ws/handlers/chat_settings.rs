@@ -147,7 +147,7 @@ pub(super) async fn handle_set_chat_settings(
     *state.chat_settings.lock().await = stored;
 
     if let Some(msg) = chat_settings_frame(state, false).await {
-        let _ = state.tx.send(msg.into());
+        broadcast_to_all(state, msg);
     }
     // The editor keeps its word list in sync from this answer; the broadcast
     // above deliberately carries no words.

@@ -57,13 +57,6 @@ not a description of the fix.
 
 ## ⚡ Performance
 
-- [ ] Parse each broadcast frame once, not once per connection. Each
-      connection task runs its own substring scan and `serde_json::from_str`
-      over the same global frame, so one DM or channel-scoped frame is parsed
-      as many times as there are clients. Deciding the routing at the send
-      site and shipping it alongside the frame makes fan-out constant in parse
-      cost
-
 ---
 
 ## 🚀 Features
@@ -80,15 +73,10 @@ not a description of the fix.
 ### 🎤 Voice Features
 
 - [ ] Collaborative whiteboard during voice chats
-- [ ] Ducking — drop the soundboard (and other app sounds) while somebody is
-      actually talking, so a clip never buries the conversation
 - [ ] Gesture recognition through webcam
 - [ ] Live polling during meetings
 - [ ] Meeting notes that auto-generate from voice
 - [ ] Optional spatial/3D audio
-- [ ] Output limiter / loudness normalisation — a `DynamicsCompressorNode` on
-      the remote graph to tame the one person who is always clipping, without
-      having to ride their per-user volume by hand
 - [ ] Raise hand and a speaking queue, for the calls with more listeners than
       talkers
 - [ ] Real-time transcription of voice to text

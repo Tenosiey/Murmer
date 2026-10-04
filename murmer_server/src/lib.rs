@@ -43,6 +43,93 @@ pub use roles::RoleDef;
 /// so receivers can still inspect the JSON without converting back.
 pub type Frame = axum::extract::ws::Utf8Bytes;
 
+/// Who a frame on the server-wide broadcast is for.
+///
+/// Decided once, where the frame is sent and the sender still holds it as a
+/// `Value`, and shipped alongside it. Each connection used to re-scan and
+/// re-parse the same JSON to make this decision, so one DM or channel-scoped
+/// frame was parsed as many times as there were clients.
+#[derive(Debug, PartialEq)]
+pub enum Route {
+    /// Reaches every connection unchanged.
+    All,
+    /// A direct message: only its sender and recipient receive it. A party
+    /// missing from the frame matches nobody.
+    Dm {
+        from: Option<String>,
+        to: Option<String>,
+    },
+    /// Scoped to one channel; withheld from anyone who cannot see it.
+    Channel(channel_overrides::ChannelKind, i32),
+    /// Never delivered as-is: each connection rebuilds its own filtered
+    /// channel lists instead.
+    ChannelsRefresh,
+    /// Delivered to everyone; the named user's connections close after it.
+    ForceDisconnect(String),
+}
+
+impl Route {
+    /// Classify a frame by its `type`. Frames not listed reach everyone:
+    /// `channel-move`/`channel-reorder` only shuffle ids a client already
+    /// has, and voice/screen-share signaling is only meaningful to joined
+    /// peers.
+    pub fn of(v: &serde_json::Value) -> Self {
+        use channel_overrides::ChannelKind;
+        let field = |key| v.get(key).and_then(|f| f.as_str()).map(str::to_owned);
+        let channel = |kind| match ws::validation::i32_field(v, "channelId") {
+            Some(id) => Route::Channel(kind, id),
+            None => Route::All,
+        };
+        match v.get("type").and_then(|t| t.as_str()) {
+            Some("dm") => Route::Dm {
+                from: field("from"),
+                to: field("to"),
+            },
+            Some("channels-refresh") => Route::ChannelsRefresh,
+            Some("force-disconnect") => match field("user") {
+                Some(user) => Route::ForceDisconnect(user),
+                None => Route::All,
+            },
+            Some(
+                "message-notify" | "channel-add" | "channel-topic" | "channel-rename"
+                | "channel-remove",
+            ) => channel(ChannelKind::Text),
+            Some(
+                "voice-channel-add"
+                | "voice-channel-update"
+                | "voice-channel-rename"
+                | "voice-channel-remove"
+                | "voice-users"
+                | "voice-join"
+                | "voice-leave"
+                | "screenshare-start"
+                | "screenshare-stop"
+                | "webcam-start"
+                | "webcam-stop"
+                | "soundboard-play",
+            ) => channel(ChannelKind::Voice),
+            _ => Route::All,
+        }
+    }
+
+    /// Whether this is a direct message `user` is not a party to. An
+    /// unauthenticated connection is a party to none.
+    pub fn withholds_dm_from(&self, user: Option<&str>) -> bool {
+        match self {
+            Route::Dm { from, to } => {
+                user.is_none() || (user != from.as_deref() && user != to.as_deref())
+            }
+            _ => false,
+        }
+    }
+}
+
+/// A frame on the server-wide broadcast, together with its [`Route`].
+///
+/// Behind an `Arc` so the per-receiver clone stays a refcount bump, as it is
+/// for a bare [`Frame`].
+pub type Routed = Arc<(Frame, Route)>;
+
 /// How many undelivered frames a single connection's direct mailbox holds
 /// before further ones are dropped.
 ///
@@ -231,7 +318,7 @@ pub struct VoiceChannelState {
 
 /// Shared application state passed to handlers.
 pub struct AppState {
-    pub tx: broadcast::Sender<Frame>,
+    pub tx: broadcast::Sender<Routed>,
     /// Per-text-channel broadcast senders, keyed by channel ID.
     pub channels: Mutex<HashMap<i32, broadcast::Sender<Frame>>>,
     /// Mailboxes for frames addressed to a single user (see [`DirectRegistry`]).

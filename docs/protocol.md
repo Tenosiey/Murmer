@@ -64,10 +64,16 @@ signaling of its own to relay. See [`voice.md`](voice.md).
 
 Private channels mean a channel-scoped broadcast cannot simply be fanned out.
 The `global_rx` loop in `ws/handlers/mod.rs` filters per recipient:
-`channel_scope` reads the channel a frame belongs to, `channel_frame_hint`
-marks the frame types that need the check at all, and `can_view_channel`
-decides per connection. Channel-list senders are viewer-aware for the same
-reason. See [`permissions.md`](permissions.md).
+`Route::of` (`lib.rs`) reads who a frame is for — everyone, a DM's two
+parties or one channel's viewers — and `can_view_channel` decides per
+connection. Channel-list senders are viewer-aware for the same reason. See
+[`permissions.md`](permissions.md).
+
+The route is decided once, at the send site, and travels with the frame.
+Each connection used to re-parse the JSON to find it, so one frame cost as
+many parses as there were clients. The catch: a pre-serialized frame sent
+with `broadcast_to_all` skips classification, so a scoped type must go
+through `broadcast` or it reaches everyone unfiltered.
 
 Resolving that answer is not cheap — it locks `channel_overrides`,
 `role_defs`, `user_roles` and `user_keys` and re-applies the override set —

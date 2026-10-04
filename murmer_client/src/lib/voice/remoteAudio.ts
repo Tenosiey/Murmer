@@ -1,7 +1,7 @@
 /**
  * The Svelte action behind every remote peer's `<audio>` element: plays the
- * stream at the member's own volume, on the chosen output device, and drives
- * that member's speaking indicator.
+ * stream at the member's own volume through a peak limiter, on the chosen
+ * output device, and drives that member's speaking indicator.
  */
 import { outputDeviceId, outputMuted, userVolumes, volume } from '../stores/settings';
 import { setSpeaking, SPEAKING_RMS_THRESHOLD } from '../stores/voiceSpeaking';
@@ -19,6 +19,7 @@ export function remoteAudio(node: HTMLAudioElement, data: RemoteAudio) {
   let analyser: AnalyserNode | null = null;
   let sourceNode: MediaStreamAudioSourceNode | null = null;
   let gainNode: GainNode | null = null;
+  let limiter: DynamicsCompressorNode | null = null;
   let stopTicks: (() => void) | null = null;
   let buffer: Uint8Array<ArrayBuffer> | null = null;
 
@@ -94,6 +95,8 @@ export function remoteAudio(node: HTMLAudioElement, data: RemoteAudio) {
     analyser = null;
     disconnectNode(gainNode, 'gain node');
     gainNode = null;
+    disconnectNode(limiter, 'limiter');
+    limiter = null;
     buffer = null;
     setSpeaking(currentUserId, false);
   };
@@ -119,14 +122,16 @@ export function remoteAudio(node: HTMLAudioElement, data: RemoteAudio) {
 
       sourceNode.connect(analyser);
 
-      // source -> gain -> destination stream, which the element then plays.
-      // Playing the gained stream back through the element (instead of
-      // sending it to the context destination) keeps `setSinkId` output
-      // device selection and the global volume/mute working as before.
+      // source -> gain -> limiter -> destination stream, which the element
+      // then plays. Playing the gained stream back through the element
+      // (instead of sending it to the context destination) keeps `setSinkId`
+      // output device selection and the global volume/mute working as before.
       gainNode = audioContext.createGain();
+      limiter = createLimiter(audioContext);
       const destination = audioContext.createMediaStreamDestination();
       sourceNode.connect(gainNode);
-      gainNode.connect(destination);
+      gainNode.connect(limiter);
+      limiter.connect(destination);
       node.srcObject = destination.stream;
       updateVolume();
 
@@ -173,4 +178,25 @@ export function remoteAudio(node: HTMLAudioElement, data: RemoteAudio) {
       teardownAudio();
     }
   };
+}
+
+/**
+ * A limiter for one peer, after their volume so it also catches a boost past
+ * 100%: the member who is always clipping is pulled down on their peaks
+ * instead of somebody riding their slider by hand.
+ *
+ * A near-limiter rather than a compressor on purpose — threshold just under
+ * full scale, high ratio — because the spec gives every
+ * `DynamicsCompressorNode` an automatic make-up gain derived from these
+ * values. A low threshold would raise everyone's level along with flattening
+ * it; this one costs under 2 dB of make-up.
+ */
+function createLimiter(context: BaseAudioContext): DynamicsCompressorNode {
+  const limiter = context.createDynamicsCompressor();
+  limiter.threshold.value = -3;
+  limiter.knee.value = 3;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.003;
+  limiter.release.value = 0.25;
+  return limiter;
 }

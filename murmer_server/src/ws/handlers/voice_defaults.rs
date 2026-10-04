@@ -104,6 +104,6 @@ pub(super) async fn handle_set_voice_defaults(
         "Voice defaults updated"
     );
     if let Some(msg) = voice_defaults_frame(state).await {
-        let _ = state.tx.send(msg.into());
+        broadcast_to_all(state, msg);
     }
 }

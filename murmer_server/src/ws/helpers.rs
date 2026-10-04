@@ -13,9 +13,27 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::error;
 
-/// Broadcast a frame to every connection. Nobody listening is not an error.
+/// Broadcast a frame on the server-wide channel; each connection delivers it
+/// or not according to its [`Route`](crate::Route). Nobody listening is not
+/// an error.
 pub fn broadcast(state: &AppState, frame: &Value) {
-    let _ = state.tx.send(frame.to_string().into());
+    broadcast_serialized(state, frame.to_string().into(), frame);
+}
+
+/// [`broadcast`] for a frame already serialized as `text`, so a relayed
+/// client frame is forwarded byte for byte instead of re-serialized.
+pub fn broadcast_serialized(state: &AppState, text: crate::Frame, frame: &Value) {
+    let _ = state.tx.send(Arc::new((text, crate::Route::of(frame))));
+}
+
+/// Broadcast a pre-serialized frame that every connection receives, such as
+/// a configuration or library snapshot. Only for frame types [`Route::of`]
+/// classifies as [`Route::All`](crate::Route::All) — anything scoped must go
+/// through [`broadcast`] so it is filtered.
+///
+/// [`Route::of`]: crate::Route::of
+pub fn broadcast_to_all(state: &AppState, text: impl Into<crate::Frame>) {
+    let _ = state.tx.send(Arc::new((text.into(), crate::Route::All)));
 }
 
 /// Send a frame to one client. Send failures are ignored; the socket loop
@@ -148,7 +166,7 @@ pub async fn broadcast_role_definitions(state: &Arc<AppState>) {
     invalidate_channel_visibility(state);
     let defs = state.role_defs.lock().await;
     if let Some(msg) = role_definitions_frame(&defs) {
-        let _ = state.tx.send(msg.into());
+        broadcast_to_all(state, msg);
     }
 }
 
@@ -703,10 +721,11 @@ pub async fn has_channel_permission(
 /// so private channels appear/disappear per viewer without leaking structure.
 pub fn broadcast_channels_refresh(state: &Arc<AppState>) {
     invalidate_channel_visibility(state);
-    // A fixed frame, so it needs no allocation at all.
-    let _ = state
-        .tx
-        .send(crate::Frame::from_static(r#"{"type":"channels-refresh"}"#));
+    // A fixed frame, so it needs no allocation beyond the route's.
+    let _ = state.tx.send(Arc::new((
+        crate::Frame::from_static(r#"{"type":"channels-refresh"}"#),
+        crate::Route::ChannelsRefresh,
+    )));
 }
 
 /// Send the override list for one channel to a single (manager) client.
@@ -915,7 +934,7 @@ pub async fn send_emojis(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket
 /// Broadcast the current custom emoji list to all connected clients.
 pub async fn broadcast_emojis(state: &Arc<AppState>) {
     if let Some(msg) = emoji_list_frame(state).await {
-        let _ = state.tx.send(msg.into());
+        broadcast_to_all(state, msg);
     }
 }
 
@@ -959,7 +978,7 @@ pub async fn send_sounds(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket
 /// Broadcast the current soundboard library to all connected clients.
 pub async fn broadcast_sounds(state: &Arc<AppState>) {
     if let Some(msg) = sound_list_frame(state).await {
-        let _ = state.tx.send(msg.into());
+        broadcast_to_all(state, msg);
     }
 }
 
@@ -1328,16 +1347,6 @@ pub fn validate_sealed_payload(
         return Err(SealedPayloadError::TooLong);
     }
     Ok(())
-}
-
-/// Whether `user` is the sender or recipient of a direct-message frame.
-/// The socket loop uses this to keep DMs private on the shared broadcast.
-pub fn dm_involves(v: &Value, user: Option<&str>) -> bool {
-    let Some(user) = user else {
-        return false;
-    };
-    v.get("from").and_then(|f| f.as_str()) == Some(user)
-        || v.get("to").and_then(|t| t.as_str()) == Some(user)
 }
 
 /// Ensure reactions field exists and is a valid empty object if missing.

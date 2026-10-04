@@ -534,7 +534,7 @@ pub(super) async fn publish_message(
             // currently viewing.
             // Carries the sealed envelope rather than the text for an
             // encrypted channel: the frame is already filtered to members (see
-            // `channel_scope` in the socket loop), and they hold the key, so
+            // `Route::of`), and they hold the key, so
             // mention highlighting keeps working without the server ever
             // handling the plaintext.
             let mut notify = serde_json::json!({

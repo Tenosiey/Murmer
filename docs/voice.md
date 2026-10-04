@@ -244,6 +244,21 @@ Soundboard sounds are never mixed into a microphone stream. The server
 authorizes `play-sound` and fans out a `soundboard-play` frame; each client
 fetches and plays the file itself. See [`features.md`](features.md).
 
+Clips duck to a quarter of their level while somebody *else* in the channel
+is talking (`othersSpeaking` in `voice/soundboard.ts`), driven by the same
+`speakingUsers` store as the speaking rings. Its 500 ms release hold is what
+stops the duck pumping between words; shortening it would make the
+soundboard flutter under every sentence.
+
+## Remote playback
+
+Each peer plays through `gain → limiter` (`voice/remoteAudio.ts`). The
+limiter sits after the per-user gain so it also catches a boost past 100%.
+It is deliberately a near-limiter (threshold −3 dB, ratio 20) rather than a
+compressor: the spec gives every `DynamicsCompressorNode` an automatic
+make-up gain derived from its settings, so a low threshold would quietly
+raise everyone's level as well as flatten the loud one.
+
 ## Room size
 
 The mesh is one connection per pair, so a channel of *n* people carries
