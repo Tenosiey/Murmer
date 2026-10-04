@@ -62,18 +62,30 @@ pub async fn delete_messages_older_than(db: &Db, days: u32) -> Result<usize, DbE
     let cutoff = format!("-{days} days");
     db.call_db(move |conn| {
         let tx = conn.transaction()?;
+        // `EXPIRED` parses the JSON of every message, so it runs once into a
+        // temp table rather than once per table it deletes from: the sweep
+        // holds the only connection thread while it works.
+        tx.execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS expired_messages (id INTEGER PRIMARY KEY);
+             DELETE FROM expired_messages;",
+        )?;
         tx.execute(
-            &format!("DELETE FROM reactions WHERE message_id IN ({EXPIRED})"),
+            &format!("INSERT INTO expired_messages {EXPIRED}"),
             params![cutoff],
         )?;
         tx.execute(
-            &format!("DELETE FROM pins WHERE message_id IN ({EXPIRED})"),
-            params![cutoff],
+            "DELETE FROM reactions WHERE message_id IN (SELECT id FROM expired_messages)",
+            [],
+        )?;
+        tx.execute(
+            "DELETE FROM pins WHERE message_id IN (SELECT id FROM expired_messages)",
+            [],
         )?;
         let messages = tx.execute(
-            &format!("DELETE FROM messages WHERE id IN ({EXPIRED})"),
-            params![cutoff],
+            "DELETE FROM messages WHERE id IN (SELECT id FROM expired_messages)",
+            [],
         )?;
+        tx.execute("DELETE FROM expired_messages", [])?;
         tx.commit()?;
         Ok(messages)
     })

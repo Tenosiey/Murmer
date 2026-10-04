@@ -6,9 +6,7 @@
 //! created with, and a client that names a quality/bitrate itself still wins.
 //! A `None` bitrate means the channel is uncompressed ("lossless").
 
-use rusqlite::{OptionalExtension, params};
-
-use super::{Db, DbCall, DbError};
+use super::{Db, DbCall, DbError, read_setting, write_setting};
 
 /// `server_settings` key for the default voice quality label.
 const VOICE_DEFAULT_QUALITY_KEY: &str = "voice_default_quality";
@@ -47,14 +45,7 @@ impl Default for VoiceDefaults {
 /// unparseable settings.
 pub async fn voice_defaults(db: &Db) -> Result<VoiceDefaults, DbError> {
     db.call_db(|conn| {
-        let read = |key: &str| -> rusqlite::Result<Option<String>> {
-            conn.query_row(
-                "SELECT value FROM server_settings WHERE key = ?1",
-                params![key],
-                |row| row.get(0),
-            )
-            .optional()
-        };
+        let read = |key: &str| read_setting(conn, key);
 
         let mut defaults = VoiceDefaults::default();
         if let Some(quality) = read(VOICE_DEFAULT_QUALITY_KEY)?.filter(|q| !q.trim().is_empty()) {
@@ -79,11 +70,7 @@ pub async fn set_voice_defaults(db: &Db, defaults: &VoiceDefaults) -> Result<(),
             (VOICE_DEFAULT_QUALITY_KEY, quality),
             (VOICE_DEFAULT_BITRATE_KEY, bitrate),
         ] {
-            tx.execute(
-                "INSERT INTO server_settings (key, value) VALUES (?1, ?2)
-                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                params![key, value],
-            )?;
+            write_setting(&tx, key, &value)?;
         }
         tx.commit()?;
         Ok(())

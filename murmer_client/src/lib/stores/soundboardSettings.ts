@@ -1,5 +1,6 @@
 import { browser } from '$app/environment';
 import { get, writable } from 'svelte/store';
+import { loadBool } from './settings';
 
 /**
  * Local, per-listener soundboard preferences. None of this is ever sent to the
@@ -39,12 +40,6 @@ function clampVolume(value: unknown): number {
   const num = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(num)) return 1;
   return Math.min(Math.max(num, 0), 1);
-}
-
-function loadBoolean(key: string, fallback: boolean): boolean {
-  if (!browser) return fallback;
-  const raw = localStorage.getItem(key);
-  return raw === null ? fallback : raw === 'true';
 }
 
 function loadVolume(): number {
@@ -96,7 +91,7 @@ function loadPersisted(): PersistedPrefs {
 }
 
 /** Master on/off switch: when false nothing is ever played. */
-export const soundboardEnabled = writable<boolean>(loadBoolean(ENABLED_KEY, true));
+export const soundboardEnabled = writable<boolean>(loadBool(ENABLED_KEY, true));
 /** Master volume multiplier applied on top of every per-sound volume. */
 export const soundboardVolume = writable<number>(loadVolume());
 

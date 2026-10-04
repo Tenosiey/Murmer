@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { displayNames } from '$lib/stores/profiles';
 
   import { userVolumes, setUserVolume, MAX_USER_VOLUME } from '$lib/stores/settings';
   import { soundboardPrefs } from '$lib/stores/soundboardSettings';
@@ -38,7 +39,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="volume-menu" style="left: {x}px; top: {y}px;" onclick={(event) => event.stopPropagation()}>
       <div class="volume-menu-header">
-        <span class="volume-menu-user">{user}</span>
+        <span class="volume-menu-user">{user ? $displayNames(user) : ''}</span>
         <span class="volume-menu-title">Volume Control</span>
       </div>
       <div class="volume-menu-content">

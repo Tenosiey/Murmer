@@ -184,10 +184,8 @@ export function formatExpiry(expiresAt: string | undefined, now: number): string
     : `Expires in ${days}d ${remainingHours}h`;
 }
 
-export function formatExpiryAbsolute(expiresAt: string | undefined): string | null {
-  if (!expiresAt) return null;
-  const parsed = parseTimestampValue(expiresAt);
-  return parsed ? parsed.toLocaleString() : null;
+export function formatLocalDateTime(timestamp: string | undefined): string | null {
+  return parseTimestampValue(timestamp)?.toLocaleString() ?? null;
 }
 
 export function ephemeralInfo(
@@ -197,7 +195,7 @@ export function ephemeralInfo(
   const expiresAt = typeof message.expiresAt === 'string' ? message.expiresAt : undefined;
   const label = formatExpiry(expiresAt, now);
   if (!label) return null;
-  const absolute = formatExpiryAbsolute(expiresAt) ?? undefined;
+  const absolute = formatLocalDateTime(expiresAt) ?? undefined;
   return { label, absolute };
 }
 

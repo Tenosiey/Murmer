@@ -1,5 +1,6 @@
 import { get } from 'svelte/store';
 import { selectedServer } from './stores/servers';
+import { httpBaseFromWs } from './server-url';
 
 export interface LinkPreviewData {
   url: string;
@@ -14,10 +15,7 @@ function serverHttpBase(): string | null {
   const selected = get(selectedServer);
   if (!selected) return null;
   try {
-    const u = new URL(selected);
-    u.protocol = u.protocol.replace('ws', 'http');
-    if (u.pathname.endsWith('/ws')) u.pathname = u.pathname.slice(0, -3);
-    return u.toString().replace(/\/$/, '');
+    return httpBaseFromWs(selected);
   } catch {
     return null;
   }

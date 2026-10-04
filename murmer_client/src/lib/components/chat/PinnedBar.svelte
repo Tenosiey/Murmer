@@ -4,6 +4,7 @@
   import type { PinnedEntry } from '$lib/stores/pins';
   import type { Message } from '$lib/types';
   import { PIN_PREVIEW_LIMIT } from '$lib/chat/constants';
+  import { formatLocalDateTime } from '$lib/chat/helpers';
 
   
   interface Props {
@@ -39,10 +40,7 @@
 
   function pinnedTimestamp(entry: PinnedEntry): string {
     const source = resolvePinnedMessage(entry)?.timestamp ?? entry.timestamp ?? entry.pinnedAt;
-    if (!source) return '';
-    const parsed = Date.parse(source);
-    if (Number.isNaN(parsed)) return '';
-    return new Date(parsed).toLocaleString();
+    return formatLocalDateTime(source) ?? '';
   }
 </script>
 

@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { onMount, onDestroy, untrack } from 'svelte';
-  import { chat } from '$lib/stores/chat';
+  import { onMount, untrack } from 'svelte';
+  import { onServerError } from '$lib/stores/chat';
   import { dialogs } from '$lib/stores/dialogs';
-  import { describeServerError } from '$lib/errors';
   import { displayNames } from '$lib/stores/profiles';
   import {
     MAX_MESSAGE_LENGTH,
@@ -36,7 +35,6 @@
     PERMISSIONS,
     hasPermission
   } from '$lib/chat/permissions';
-  import type { Message } from '$lib/types';
 
   interface Props {
     active: boolean;
@@ -350,20 +348,22 @@
     'moderation-failed'
   ]);
 
-  function handleServerError(msg: Message) {
-    const code = msg.message;
-    if (typeof code !== 'string') return;
-    if (AUTOMOD_ERROR_CODES.has(code)) {
-      automodSavePending = false;
-      automodFeedback = { text: describeServerError(code), kind: 'error' };
-    } else if (CHAT_SETTINGS_ERROR_CODES.has(code) || MODERATION_ERROR_CODES.has(code)) {
-      chatSavePending = false;
-      chatFeedback = { text: describeServerError(code), kind: 'error' };
-    }
-  }
+  const CHAT_FEEDBACK_CODES = new Set([...CHAT_SETTINGS_ERROR_CODES, ...MODERATION_ERROR_CODES]);
 
-  onMount(() => chat.on('error', handleServerError));
-  onDestroy(() => chat.off('error', handleServerError));
+  onMount(() => {
+    const offAutomod = onServerError(AUTOMOD_ERROR_CODES, (text) => {
+      automodSavePending = false;
+      automodFeedback = { text, kind: 'error' };
+    });
+    const offChat = onServerError(CHAT_FEEDBACK_CODES, (text) => {
+      chatSavePending = false;
+      chatFeedback = { text, kind: 'error' };
+    });
+    return () => {
+      offAutomod();
+      offChat();
+    };
+  });
 </script>
 
 {#if active}

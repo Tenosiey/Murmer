@@ -6,9 +6,7 @@
 //! `/upload` endpoint reads them on every request, so a change takes effect
 //! immediately without a restart.
 
-use rusqlite::{OptionalExtension, params};
-
-use super::{Db, DbCall, DbError};
+use super::{Db, DbCall, DbError, read_setting, write_setting};
 use crate::upload::{DEFAULT_MAX_FILE_SIZE, default_category_ids, is_known_category};
 
 /// `server_settings` key for the per-file upload cap in bytes.
@@ -51,29 +49,15 @@ pub async fn upload_config(db: &Db) -> Result<UploadConfig, DbError> {
     db.call_db(|conn| {
         let mut config = UploadConfig::default();
 
-        let raw_max: Option<String> = conn
-            .query_row(
-                "SELECT value FROM server_settings WHERE key = ?1",
-                params![UPLOAD_MAX_BYTES_KEY],
-                |row| row.get(0),
-            )
-            .optional()?;
-        if let Some(bytes) = raw_max
+        if let Some(bytes) = read_setting(conn, UPLOAD_MAX_BYTES_KEY)?
             .and_then(|v| v.parse::<u64>().ok())
             .filter(|&v| v > 0)
         {
             config.max_bytes = bytes;
         }
 
-        let raw_categories: Option<String> = conn
-            .query_row(
-                "SELECT value FROM server_settings WHERE key = ?1",
-                params![UPLOAD_CATEGORIES_KEY],
-                |row| row.get(0),
-            )
-            .optional()?;
         // An empty stored value is meaningful: every category is disabled.
-        if let Some(raw) = raw_categories {
+        if let Some(raw) = read_setting(conn, UPLOAD_CATEGORIES_KEY)? {
             config.categories = parse_categories(&raw);
         }
 
@@ -92,11 +76,7 @@ pub async fn set_upload_config(db: &Db, config: &UploadConfig) -> Result<(), DbE
             (UPLOAD_MAX_BYTES_KEY, max_bytes),
             (UPLOAD_CATEGORIES_KEY, categories),
         ] {
-            tx.execute(
-                "INSERT INTO server_settings (key, value) VALUES (?1, ?2)
-                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                params![key, value],
-            )?;
+            write_setting(&tx, key, &value)?;
         }
         tx.commit()?;
         Ok(())

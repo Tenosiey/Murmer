@@ -77,6 +77,16 @@ pub fn is_emoji_shortcode(value: &str) -> bool {
         .is_some_and(validate_emoji_name)
 }
 
+/// Whether a trimmed reaction key is acceptable: a custom emoji shortcode,
+/// or a short unicode emoji. Shortcodes may exceed the 16-byte cap that
+/// bounds unicode reactions.
+pub fn is_valid_reaction_key(value: &str) -> bool {
+    is_emoji_shortcode(value)
+        || (!value.is_empty()
+            && value.len() <= 16
+            && !value.chars().any(|c| c.is_control() || c.is_whitespace()))
+}
+
 /// Validate the server display name: may be empty (unset), otherwise within
 /// the length limit and free of control characters.
 pub fn validate_server_name(value: &str) -> bool {
@@ -365,6 +375,15 @@ mod tests {
         assert!(!validate_wiki_title("   "));
         assert!(!validate_wiki_title("bad\u{7}title"));
         assert!(!validate_wiki_title(&"x".repeat(MAX_WIKI_TITLE_LENGTH + 1)));
+    }
+
+    #[test]
+    fn reaction_keys_are_shortcodes_or_short_emoji() {
+        assert!(is_valid_reaction_key("👍"));
+        assert!(is_valid_reaction_key(":a_very_long_custom_emoji_name:"));
+        assert!(!is_valid_reaction_key(""));
+        assert!(!is_valid_reaction_key("a b"));
+        assert!(!is_valid_reaction_key("x".repeat(17).as_str()));
     }
 
     #[test]

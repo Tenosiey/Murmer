@@ -8,6 +8,8 @@
   import { wiki, type WikiPage, type WikiRevision, type WikiRevisionMeta } from '$lib/stores/wiki';
   import { collapseUnchanged, diffLines, type DiffRow } from '$lib/wiki/diff';
   import { dialogs } from '$lib/stores/dialogs';
+  import { formatBytes } from '$lib/stores/storageUsage';
+  import { formatLocalDateTime } from '$lib/chat/helpers';
 
   interface Props {
     channelId: number;
@@ -114,15 +116,6 @@
     }
   }
 
-  function formatTimestamp(value: string): string {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-  }
-
-  function formatBytes(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    return `${(bytes / 1024).toFixed(1)} kB`;
-  }
 
   /* The selection is derived rather than reconciled after every load: a
      revision that has been pruned away, or a page switched underneath the
@@ -223,7 +216,7 @@
                 {/if}
               </span>
               <span class="revision-meta">
-                {revision.author || 'unknown'} · {formatTimestamp(revision.createdAt)}
+                {revision.author || 'unknown'} · {formatLocalDateTime(revision.createdAt) ?? revision.createdAt}
               </span>
               <span class="revision-meta">{revision.title} · {formatBytes(revision.bytes)}</span>
             </button>
@@ -240,7 +233,7 @@
         <div class="diff-title">
           <h4>Revision {meta.revision}</h4>
           <span class="diff-sub">
-            by {meta.author || 'unknown'} · {formatTimestamp(meta.createdAt)}
+            by {meta.author || 'unknown'} · {formatLocalDateTime(meta.createdAt) ?? meta.createdAt}
           </span>
         </div>
         <div class="diff-actions">

@@ -1,9 +1,7 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { chat } from '$lib/stores/chat';
+  import { onMount } from 'svelte';
+  import { chat, onServerError } from '$lib/stores/chat';
   import { dialogs } from '$lib/stores/dialogs';
-  import { describeServerError } from '$lib/errors';
-  import type { Message } from '$lib/types';
 
   interface Props {
     active: boolean;
@@ -68,16 +66,11 @@
     'maintenance-failed'
   ]);
 
-  function handleServerError(msg: Message) {
-    const code = msg.message;
-    if (typeof code !== 'string') return;
-    if (MAINTENANCE_ERROR_CODES.has(code)) {
-      dangerFeedback = { text: describeServerError(code), kind: 'error' };
-    }
-  }
-
-  onMount(() => chat.on('error', handleServerError));
-  onDestroy(() => chat.off('error', handleServerError));
+  onMount(() =>
+    onServerError(MAINTENANCE_ERROR_CODES, (text) => {
+      dangerFeedback = { text, kind: 'error' };
+    })
+  );
 </script>
 
 {#if active}

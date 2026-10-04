@@ -40,6 +40,7 @@ import { subscribeTick } from './ticker';
 import { micProcessingConstraints, openMicrophone } from './capture';
 import { connectMicSource, type MicSource } from './denoise';
 import { withOpusFeatures } from './sdp';
+import { capBitrate } from '../webrtc/bitrate';
 import { remoteFingerprint } from '../webrtc/fingerprint';
 import { PeerRecovery } from '../webrtc/recovery';
 
@@ -87,7 +88,8 @@ function vadConfig(): VadConfig {
 
 export class VoiceManager {
   private peers: Record<string, RTCPeerConnection> = {};
-  private statsIntervals: Record<string, number> = {};
+  /** One stats poll for the whole call, so a tick re-renders the list once. */
+  private statsInterval: number | null = null;
   /** Cumulative RTP packet counters per peer, used to compute windowed loss. */
   private prevPacketCounts: Record<
     string,
@@ -131,12 +133,7 @@ export class VoiceManager {
   /** Encoder cap for the camera, in bits per second. */
   private cameraBitrate = DEFAULT_CAMERA_BITRATE;
 
-  /**
-   * The peer list of the current session. Held here as well as threaded
-   * through the handlers because connection repairs are driven by timers
-   * rather than by an incoming frame, so they have no call site to take it
-   * from. Empty while not in a channel.
-   */
+  /** The peer list of the current session. Empty while not in a channel. */
   private activePeers: RemotePeer[] = [];
 
   /** Keeps peers whose connection breaks alive instead of dropping them. */
@@ -146,9 +143,10 @@ export class VoiceManager {
     setReconnecting: (id, reconnecting) => this.markReconnecting(id, reconnecting)
   });
 
-  private vad: VoiceActivityDetector | null = null;
-  private ptt: PushToTalkManager | null = null;
-  private shouldTransmit = false;
+  // The manager is a module singleton that lives as long as the app, so these
+  // are never torn down.
+  private readonly vad = new VoiceActivityDetector();
+  private readonly ptt = new PushToTalkManager(get(pttKey));
 
   private audioContext: AudioContext | null = null;
   private gainNode: GainNode | null = null;
@@ -159,7 +157,6 @@ export class VoiceManager {
   private inputGainNode: GainNode | null = null;
   /** Microphone end of the chain, including the RNNoise node when enabled. */
   private micSource: MicSource | null = null;
-  private destinationStream: MediaStream | null = null;
   private rawStream: MediaStream | null = null;
 
   /** Level meter on the outgoing audio, driving our own talking indicator. */
@@ -179,7 +176,8 @@ export class VoiceManager {
   private muteSound = new Audio('/sounds/mute_sound.wav');
   private unmuteSound = new Audio('/sounds/unmute_sound.wav');
 
-  private channelConfig: VoiceChannelInfo | null = null;
+  /** Encoder cap for our microphone in this channel; `null` lifts it. */
+  private audioBitrate: number | null = null;
 
   constructor() {
     appSoundVolume.subscribe((v) => {
@@ -223,9 +221,6 @@ export class VoiceManager {
       this.playMuteSound(muted);
     });
 
-    this.vad = new VoiceActivityDetector();
-    this.ptt = new PushToTalkManager(get(pttKey));
-
     voiceMode.subscribe(() => {
       this.updateTransmissionMode();
       this.syncGlobalPushToTalk();
@@ -243,11 +238,7 @@ export class VoiceManager {
     // The device used to be read once at join time, so picking a different
     // microphone mid-call did nothing until you left and rejoined.
     inputDeviceId.subscribe(() => this.swapCapture());
-    pttKey.subscribe((key) => {
-      if (this.ptt) {
-        this.ptt.setKey(key);
-      }
-    });
+    pttKey.subscribe((key) => this.ptt.setKey(key));
 
     this.vad.subscribe((isActive, level) => {
       voiceActivity.set(isActive);
@@ -262,25 +253,12 @@ export class VoiceManager {
     chat.on('voice-channel-update', (msg) => {
       const chId = msg.channelId;
       if (typeof chId !== 'number' || this.channelId !== chId) return;
-      const quality =
-        typeof msg.quality === 'string' && msg.quality.trim()
-          ? msg.quality.trim()
-          : (this.channelConfig?.quality ?? 'standard');
-      let bitrate: number | null = this.channelConfig?.bitrate ?? DEFAULT_AUDIO_BITRATE;
       if (msg.bitrate === null) {
-        bitrate = null;
+        this.audioBitrate = null;
       } else if (typeof msg.bitrate === 'number' && Number.isFinite(msg.bitrate)) {
-        bitrate = Math.max(0, Math.round(msg.bitrate));
+        this.audioBitrate = Math.max(0, Math.round(msg.bitrate));
       }
-      this.channelConfig = {
-        id: chId,
-        name: this.channelConfig?.name ?? '',
-        quality,
-        bitrate,
-        categoryId: this.channelConfig?.categoryId ?? null,
-        position: this.channelConfig?.position ?? 0
-      };
-      this.applyChannelConfigToPeers();
+      this.applyAudioBitrateToPeers();
     });
   }
 
@@ -290,9 +268,9 @@ export class VoiceManager {
 
     const mode = get(voiceMode);
 
-    if (mode === 'vad' && this.vad) {
+    if (mode === 'vad') {
       this.vad.start(source, vadConfig());
-    } else if (this.vad) {
+    } else {
       this.vad.stop();
     }
 
@@ -304,11 +282,11 @@ export class VoiceManager {
    * something: in a channel, in push-to-talk mode.
    */
   private syncGlobalPushToTalk() {
-    this.ptt?.setGlobalEnabled(this.userName !== null && get(voiceMode) === 'ptt');
+    this.ptt.setGlobalEnabled(this.userName !== null && get(voiceMode) === 'ptt');
   }
 
   private updateVadConfig() {
-    if (get(voiceMode) === 'vad' && this.vad) {
+    if (get(voiceMode) === 'vad') {
       this.vad.configure(vadConfig());
     }
   }
@@ -461,63 +439,18 @@ export class VoiceManager {
       }
     }
 
-    this.shouldTransmit = shouldTransmit;
-    this.applyTransmissionState();
+    if (!this.gainNode) return;
+    // Ramp instead of stepping: an instant gain change clicks on every open
+    // and close of the gate. The ramp is linear rather than exponential
+    // because closing the gate has to reach exactly zero — an exponential
+    // approach would leave the microphone very quietly open forever.
+    rampGain(this.gainNode, shouldTransmit ? 1.0 : 0.0, GATE_RAMP_SECONDS);
   }
 
   /** Push the configured input volume onto the live graph. */
   private applyInputGain() {
     if (!this.inputGainNode) return;
-    const target = clampMicGain(get(micGain));
-    const gain = this.inputGainNode.gain;
-    const now = this.inputGainNode.context.currentTime;
-    try {
-      gain.cancelScheduledValues(now);
-      gain.setValueAtTime(gain.value, now);
-      gain.linearRampToValueAtTime(target, now + INPUT_GAIN_RAMP_SECONDS);
-    } catch {
-      gain.value = target;
-    }
-  }
-
-  private applyTransmissionState() {
-    if (!this.gainNode) return;
-    const shouldTransmitAudio = this.shouldTransmit && !get(microphoneMuted);
-    const target = shouldTransmitAudio ? 1.0 : 0.0;
-    const gain = this.gainNode.gain;
-    const now = this.gainNode.context.currentTime;
-    // Ramp instead of stepping: an instant gain change clicks on every open
-    // and close of the gate. The ramp is linear rather than exponential
-    // because closing the gate has to reach exactly zero — an exponential
-    // approach would leave the microphone very quietly open forever.
-    try {
-      gain.cancelScheduledValues(now);
-      gain.setValueAtTime(gain.value, now);
-      gain.linearRampToValueAtTime(target, now + GATE_RAMP_SECONDS);
-    } catch {
-      gain.value = target;
-    }
-  }
-
-  private configureSender(sender: RTCRtpSender) {
-    if (!this.channelConfig) return;
-    try {
-      const params = sender.getParameters();
-      if (!params.encodings || params.encodings.length === 0) {
-        params.encodings = [{}];
-      }
-      const target = this.channelConfig.bitrate;
-      for (const encoding of params.encodings) {
-        if (target && target > 0) {
-          encoding.maxBitrate = target;
-        } else {
-          delete (encoding as any).maxBitrate;
-        }
-      }
-      sender.setParameters(params).catch(() => {});
-    } catch {
-      // Ignore configuration errors
-    }
+    rampGain(this.inputGainNode, clampMicGain(get(micGain)), INPUT_GAIN_RAMP_SECONDS);
   }
 
   /**
@@ -528,19 +461,7 @@ export class VoiceManager {
    * text has to stay sharp.
    */
   private configureVideoSender(sender: RTCRtpSender) {
-    try {
-      const params = sender.getParameters();
-      if (!params.encodings || params.encodings.length === 0) {
-        params.encodings = [{}];
-      }
-      for (const encoding of params.encodings) {
-        encoding.maxBitrate = this.cameraBitrate;
-      }
-      params.degradationPreference = 'maintain-framerate';
-      sender.setParameters(params).catch(() => {});
-    } catch {
-      // Ignore configuration errors
-    }
+    capBitrate(sender, this.cameraBitrate, 'maintain-framerate');
   }
 
   /**
@@ -607,13 +528,10 @@ export class VoiceManager {
     return stream;
   }
 
-  private applyChannelConfigToPeers() {
-    if (!this.channelConfig) return;
+  private applyAudioBitrateToPeers() {
     for (const pc of Object.values(this.peers)) {
       for (const sender of pc.getSenders()) {
-        if (sender.track && sender.track.kind === 'audio') {
-          this.configureSender(sender);
-        }
+        if (sender.track?.kind === 'audio') capBitrate(sender, this.audioBitrate);
       }
     }
   }
@@ -653,9 +571,8 @@ export class VoiceManager {
       this.inputGainNode.connect(this.gainNode);
       this.gainNode.connect(destination);
       this.micSource = await connectMicSource(this.audioContext, inputStream, this.inputGainNode);
-      this.destinationStream = destination.stream;
       this.startLocalLevelMeter();
-      return this.destinationStream;
+      return destination.stream;
     } catch (error) {
       console.error('Failed to set up audio processing:', error);
       this.cleanupAudioProcessing();
@@ -728,7 +645,6 @@ export class VoiceManager {
       this.rawStream = null;
     }
     captureStream.set(null);
-    this.destinationStream = null;
   }
 
   subscribe(cb: (peers: RemotePeer[]) => void) {
@@ -742,29 +658,23 @@ export class VoiceManager {
     for (const cb of this.listeners) cb(peers);
   }
 
-  private cleanupPeer(id: string, peersList: RemotePeer[]) {
+  private cleanupPeer(id: string) {
     this.recovery.forget(id);
     const pc = this.peers[id];
     if (pc) {
       pc.close();
       delete this.peers[id];
-      const interval = this.statsIntervals[id];
-      if (interval) {
-        clearInterval(interval);
-        delete this.statsIntervals[id];
-      }
       delete this.prevPacketCounts[id];
       delete this.lossWindows[id];
     }
     delete this.videoSenders[id];
     delete this.remoteVideo[id];
-    // Remove in place. `peersList` is the array every other emit spreads, so a
-    // peer that was only filtered out of the copy handed to subscribers comes
-    // back the moment anything else emits — a closed connection reappearing in
-    // the member list with a dead stream.
-    const index = peersList.findIndex((r) => r.id === id);
-    if (index !== -1) peersList.splice(index, 1);
-    this.emit([...peersList]);
+    // Remove from `activePeers` itself, the array every emit spreads: a peer
+    // only filtered out of the copy handed to subscribers comes back the
+    // moment anything else emits — a closed connection reappearing in the
+    // member list with a dead stream.
+    this.activePeers = this.activePeers.filter((r) => r.id !== id);
+    this.emit([...this.activePeers]);
   }
 
   /**
@@ -781,15 +691,7 @@ export class VoiceManager {
     if (this.userName < id) return;
     try {
       pc.restartIce();
-      const offer = withOpusFeatures(await pc.createOffer());
-      await pc.setLocalDescription(offer);
-      chat.sendRaw({
-        type: 'voice-offer',
-        user: this.userName,
-        target: id,
-        channelId: this.channelId,
-        sdp: offer
-      });
+      await this.sendOffer(id, pc);
     } catch (error) {
       // A restart that throws is just an attempt that did not land; the
       // controller retries, and the deadline still ends in a rebuild.
@@ -807,11 +709,11 @@ export class VoiceManager {
    */
   private rebuildPeer(id: string) {
     if (!this.userName || !this.peers[id]) return;
-    this.cleanupPeer(id, this.activePeers);
+    this.cleanupPeer(id);
     // Same tiebreak as the ICE restart: one side offers, the other picks the
     // new session up from that offer.
     if (this.userName > id) {
-      void this.createPeer(id, true, this.activePeers);
+      void this.createPeer(id, true);
     }
   }
 
@@ -823,7 +725,13 @@ export class VoiceManager {
     this.emit([...this.activePeers]);
   }
 
-  private async updateStats(id: string, peersList: RemotePeer[]) {
+  /** Refresh every peer's connection stats, then publish the list once. */
+  private async pollStats() {
+    await Promise.all(Object.keys(this.peers).map((id) => this.updateStats(id)));
+    this.emit([...this.activePeers]);
+  }
+
+  private async updateStats(id: string) {
     const pc = this.peers[id];
     if (!pc) return;
     // A connection that is not up reports no round-trip time, and `rtt === 0`
@@ -831,10 +739,9 @@ export class VoiceManager {
     // that never connected at all, would sit there showing five full bars
     // while carrying no audio. Report it as what it is instead.
     if (pc.connectionState !== 'connected') {
-      for (const p of peersList) {
+      for (const p of this.activePeers) {
         if (p.id === id) p.stats = { rtt: 0, jitter: 0, packetLoss: 0, strength: 0 };
       }
-      this.emit([...peersList]);
       return;
     }
     try {
@@ -921,31 +828,22 @@ export class VoiceManager {
       else if (packetLoss >= 5) strength = Math.min(strength, 2);
       else if (packetLoss >= 2) strength = Math.min(strength, 3);
 
-      for (const p of peersList) {
-        if (p.id === id) {
-          p.stats = { rtt, jitter, packetLoss, strength };
-        }
+      for (const p of this.activePeers) {
+        if (p.id === id) p.stats = { rtt, jitter, packetLoss, strength };
       }
-      this.emit([...peersList]);
     } catch {
       // ignore stats errors
     }
   }
 
-  private async createPeer(
-    id: string,
-    initiator: boolean,
-    peersList: RemotePeer[]
-  ): Promise<RTCPeerConnection> {
+  private async createPeer(id: string, initiator: boolean): Promise<RTCPeerConnection> {
     if (this.peers[id]) return this.peers[id];
     const pc = new RTCPeerConnection({ iceServers: get(iceServers) });
     this.peers[id] = pc;
     if (this.localStream) {
       for (const track of this.localStream.getTracks()) {
         const sender = pc.addTrack(track, this.localStream);
-        if (track.kind === 'audio') {
-          this.configureSender(sender);
-        }
+        if (track.kind === 'audio') capBitrate(sender, this.audioBitrate);
       }
     }
     // Every voice connection carries a camera transceiver whether or not a
@@ -967,7 +865,7 @@ export class VoiceManager {
       this.configureVideoSender(video.sender);
     }
     pc.ontrack = (ev) => {
-      const existing = peersList.find((r) => r.id === id);
+      const existing = this.activePeers.find((r) => r.id === id);
       // The camera transceiver is created rather than added with a track, so
       // it has no stream association and `ev.streams` is empty for video.
       const peer = existing ?? { id, stream: new MediaStream() };
@@ -976,8 +874,8 @@ export class VoiceManager {
       } else if (ev.streams[0]) {
         peer.stream = ev.streams[0];
       }
-      if (!existing) peersList.push(peer);
-      this.emit([...peersList]);
+      if (!existing) this.activePeers.push(peer);
+      this.emit([...this.activePeers]);
     };
     pc.onicecandidate = (ev) => {
       if (ev.candidate && this.userName) {
@@ -997,21 +895,29 @@ export class VoiceManager {
       this.recovery.observe(id, pc.connectionState);
       // `closed` is only ever reached because we closed it ourselves, but the
       // peer still has to leave the list when that happened elsewhere.
-      if (pc.connectionState === 'closed') this.cleanupPeer(id, peersList);
+      if (pc.connectionState === 'closed') this.cleanupPeer(id);
     };
-    this.statsIntervals[id] = window.setInterval(() => this.updateStats(id, peersList), 1000);
-    if (initiator && this.userName) {
-      const offer = withOpusFeatures(await pc.createOffer());
-      await pc.setLocalDescription(offer);
-      chat.sendRaw({
-        type: 'voice-offer',
-        user: this.userName,
-        target: id,
-        channelId: this.channelId,
-        sdp: offer
-      });
-    }
+    if (initiator) await this.sendOffer(id, pc);
     return pc;
+  }
+
+  /** Create an offer on `pc` and send it to `id`. */
+  private async sendOffer(id: string, pc: RTCPeerConnection) {
+    if (!this.userName) return;
+    const offer = withOpusFeatures(await pc.createOffer());
+    await pc.setLocalDescription(offer);
+    chat.sendRaw({
+      type: 'voice-offer',
+      user: this.userName,
+      target: id,
+      channelId: this.channelId,
+      sdp: offer
+    });
+  }
+
+  /** Whether a signaling frame is addressed to us, in our channel. */
+  private addressedToMe(msg: Message): boolean {
+    return !!this.userName && msg.target === this.userName && msg.channelId === this.channelId;
   }
 
   /**
@@ -1021,7 +927,7 @@ export class VoiceManager {
    * graph fails, so a denied permission prompt doesn't leave the manager
    * stuck in a half-joined state that blocks all future joins.
    */
-  async join(user: string, channelId: number, peersList: RemotePeer[], info?: VoiceChannelInfo) {
+  async join(user: string, channelId: number, info?: VoiceChannelInfo) {
     if (this.userName) return;
 
     // Acquire the microphone and build the graph before touching any state:
@@ -1038,31 +944,16 @@ export class VoiceManager {
 
     this.userName = user;
     this.channelId = channelId;
-    this.activePeers = peersList;
-    this.channelConfig = info
-      ? {
-          id: channelId,
-          name: info.name,
-          quality: info.quality,
-          bitrate: info.bitrate,
-          categoryId: info.categoryId ?? null,
-          position: info.position ?? 0
-        }
-      : {
-          id: channelId,
-          name: '',
-          quality: 'standard',
-          bitrate: DEFAULT_AUDIO_BITRATE,
-          categoryId: null,
-          position: 0
-        };
+    this.activePeers = [];
+    this.audioBitrate = info ? info.bitrate : DEFAULT_AUDIO_BITRATE;
+    this.statsInterval = window.setInterval(() => void this.pollStats(), 1000);
     resetSpeaking();
     this.signaling = [
-      ['voice-join', (m) => this.handleJoin(m, peersList)],
-      ['voice-offer', (m) => this.handleOffer(m, peersList)],
+      ['voice-join', (m) => this.handleJoin(m)],
+      ['voice-offer', (m) => this.handleOffer(m)],
       ['voice-answer', (m) => this.handleAnswer(m)],
       ['voice-candidate', (m) => this.handleCandidate(m)],
-      ['voice-leave', (m) => this.handleLeave(m, peersList)]
+      ['voice-leave', (m) => this.handleLeave(m)]
     ];
     for (const [type, handler] of this.signaling) chat.on(type, handler);
 
@@ -1076,14 +967,18 @@ export class VoiceManager {
   /**
    * Leave the current voice channel and clean up all peer connections.
    */
-  leave(channelId: number, peersList: RemotePeer[]) {
+  leave(channelId: number) {
     if (!this.userName) return;
     chat.sendRaw({ type: 'voice-leave', user: this.userName, channelId });
     // Before the teardown, so no timer can fire a restart or a rebuild against
     // a session that is on its way out.
     this.recovery.clear();
+    if (this.statsInterval !== null) {
+      clearInterval(this.statsInterval);
+      this.statsInterval = null;
+    }
     for (const id of Object.keys(this.peers)) {
-      this.cleanupPeer(id, peersList);
+      this.cleanupPeer(id);
     }
     this.cleanupAudioProcessing();
     this.localStream = null;
@@ -1093,9 +988,7 @@ export class VoiceManager {
     this.videoSenders = {};
     this.remoteVideo = {};
 
-    if (this.vad) {
-      this.vad.stop();
-    }
+    this.vad.stop();
 
     voiceActivity.set(false);
     isPttActive.set(false);
@@ -1104,32 +997,26 @@ export class VoiceManager {
     this.signaling = [];
     this.userName = null;
     this.channelId = null;
-    this.channelConfig = null;
+    this.audioBitrate = null;
     this.activePeers = [];
     this.syncGlobalPushToTalk();
-    peersList.length = 0;
     this.emit([]);
     resetSpeaking();
   }
 
-  private handleJoin(msg: Message, peersList: RemotePeer[]) {
+  private handleJoin(msg: Message) {
     if (
       !this.userName ||
       msg.user === this.userName ||
       msg.channelId !== this.channelId
     )
       return;
-    this.createPeer(msg.user as string, true, peersList);
+    this.createPeer(msg.user as string, true);
     this.playPeerSound(this.joinSound);
   }
 
-  private async handleOffer(msg: Message, peersList: RemotePeer[]) {
-    if (
-      !this.userName ||
-      msg.target !== this.userName ||
-      msg.channelId !== this.channelId
-    )
-      return;
+  private async handleOffer(msg: Message) {
+    if (!this.addressedToMe(msg)) return;
     const remote = msg.user as string;
     const offerSdp = (msg.sdp as RTCSessionDescriptionInit | undefined)?.sdp;
     // Two very different offers arrive on an existing connection. An ICE
@@ -1144,10 +1031,10 @@ export class VoiceManager {
         existing.currentRemoteDescription != null &&
         remoteFingerprint(offerSdp) !== remoteFingerprint(existing.currentRemoteDescription.sdp);
       if (rebuilt || existing.connectionState === 'failed' || existing.signalingState === 'closed') {
-        this.cleanupPeer(remote, peersList);
+        this.cleanupPeer(remote);
       }
     }
-    const pc = await this.createPeer(remote, false, peersList);
+    const pc = await this.createPeer(remote, false);
     // The peer's description is munged too, not just ours: the encoder takes
     // its DTX/FEC settings from the *remote* side of the negotiation, so this
     // is what guarantees our own uplink stops paying for silence even if the
@@ -1170,12 +1057,7 @@ export class VoiceManager {
   }
 
   private async handleAnswer(msg: Message) {
-    if (
-      !this.userName ||
-      msg.target !== this.userName ||
-      msg.channelId !== this.channelId
-    )
-      return;
+    if (!this.addressedToMe(msg)) return;
     const pc = this.peers[msg.user as string];
     // Accept an answer whenever one is outstanding, not just the first one:
     // an ICE restart is a second round of offer/answer on a connection that
@@ -1189,12 +1071,7 @@ export class VoiceManager {
   }
 
   private async handleCandidate(msg: Message) {
-    if (
-      !this.userName ||
-      msg.target !== this.userName ||
-      msg.channelId !== this.channelId
-    )
-      return;
+    if (!this.addressedToMe(msg)) return;
     const pc = this.peers[msg.user as string];
     if (pc) {
       try {
@@ -1203,23 +1080,25 @@ export class VoiceManager {
     }
   }
 
-  private handleLeave(msg: Message, peersList: RemotePeer[]) {
+  private handleLeave(msg: Message) {
     if (!this.userName || msg.channelId !== this.channelId) return;
-    this.cleanupPeer(msg.user as string, peersList);
+    this.cleanupPeer(msg.user as string);
     this.playPeerSound(this.leaveSound);
   }
+}
 
-  destroy() {
-    if (this.vad) {
-      this.vad.destroy();
-      this.vad = null;
-    }
-
-    if (this.ptt) {
-      this.ptt.destroy();
-      this.ptt = null;
-    }
-
-    resetSpeaking();
+/**
+ * Ramp a gain node to `target` instead of stepping it, which clicks.
+ * Falls back to a step on an engine that refuses the automation.
+ */
+function rampGain(node: GainNode, target: number, seconds: number) {
+  const gain = node.gain;
+  const now = node.context.currentTime;
+  try {
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(gain.value, now);
+    gain.linearRampToValueAtTime(target, now + seconds);
+  } catch {
+    gain.value = target;
   }
 }

@@ -125,10 +125,10 @@ pub async fn remove_reaction(
     let user = user.to_owned();
     let emoji = emoji.to_owned();
     db.call_db(move |conn| {
-        conn.execute(
+        conn.prepare_cached(
             "DELETE FROM reactions WHERE message_id = ?1 AND user_name = ?2 AND emoji = ?3",
-            params![message_id, user, emoji],
-        )?;
+        )?
+        .execute(params![message_id, user, emoji])?;
         Ok(())
     })
     .await

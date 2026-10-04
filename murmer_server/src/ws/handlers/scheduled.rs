@@ -26,7 +26,7 @@
 //!   account, so every frame here leaves through that user's direct mailbox.
 
 use crate::channel_overrides::ChannelKind;
-use crate::ws::{constants::*, errors, helpers::*};
+use crate::ws::{constants::*, errors, helpers::*, validation::i32_field};
 use crate::{AppState, db};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -173,11 +173,7 @@ pub(super) async fn handle_schedule_message(
         send_error(sender, errors::NOT_AUTHENTICATED).await;
         return;
     };
-    let Some(channel_id) = v
-        .get("channelId")
-        .and_then(|c| c.as_i64())
-        .and_then(|c| i32::try_from(c).ok())
-    else {
+    let Some(channel_id) = i32_field(v, "channelId") else {
         send_error(sender, errors::UNKNOWN_CHANNEL).await;
         return;
     };

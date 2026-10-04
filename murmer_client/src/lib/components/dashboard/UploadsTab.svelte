@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { onMount, onDestroy, untrack } from 'svelte';
-  import { chat } from '$lib/stores/chat';
-  import { describeServerError } from '$lib/errors';
+  import { onMount, untrack } from 'svelte';
+  import { onServerError } from '$lib/stores/chat';
   import {
     MIN_UPLOAD_MAX_BYTES,
     MAX_UPLOAD_MAX_BYTES,
@@ -9,7 +8,6 @@
   } from '$lib/chat/constants';
   import { storageUsage, formatBytes } from '$lib/stores/storageUsage';
   import { uploadConfig, setUploadConfig } from '$lib/stores/uploadConfig';
-  import type { Message } from '$lib/types';
 
   interface Props {
     active: boolean;
@@ -90,17 +88,12 @@
     'upload-config-update-failed'
   ]);
 
-  function handleServerError(msg: Message) {
-    const code = msg.message;
-    if (typeof code !== 'string') return;
-    if (UPLOAD_ERROR_CODES.has(code)) {
-      uploadSavePending = false;
-      uploadFeedback = { text: describeServerError(code), kind: 'error' };
-    }
-  }
-
-  onMount(() => chat.on('error', handleServerError));
-  onDestroy(() => chat.off('error', handleServerError));
+  onMount(() =>
+    onServerError(UPLOAD_ERROR_CODES, (text) => {
+    uploadSavePending = false;
+      uploadFeedback = { text, kind: 'error' };
+    })
+  );
 </script>
 
 {#if active}

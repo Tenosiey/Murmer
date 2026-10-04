@@ -10,6 +10,7 @@
   import { selectedServer } from '$lib/stores/servers';
   import { httpBaseFromWs } from '$lib/server-url';
   import { describeDuration } from '$lib/chat/helpers';
+  import { formatBytes } from '$lib/stores/storageUsage';
 
   interface Props {
     snapshot: UserStatsSnapshot;
@@ -25,19 +26,6 @@
 
   function formatNumber(value: number): string {
     return numberFormat.format(value);
-  }
-
-  function formatBytes(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    const units = ['KB', 'MB', 'GB', 'TB'];
-    let value = bytes;
-    let unit = 'B';
-    for (const next of units) {
-      if (value < 1024) break;
-      value /= 1024;
-      unit = next;
-    }
-    return `${value >= 100 ? Math.round(value) : value.toFixed(1)} ${unit}`;
   }
 
   function formatDuration(seconds: number): string {

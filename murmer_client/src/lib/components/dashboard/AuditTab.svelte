@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { onMount, onDestroy, untrack } from 'svelte';
-  import { chat } from '$lib/stores/chat';
-  import { describeServerError } from '$lib/errors';
+  import { onMount, untrack } from 'svelte';
+  import { onServerError } from '$lib/stores/chat';
   import { displayNames } from '$lib/stores/profiles';
   import { auditLog } from '$lib/stores/auditLog';
   import {
@@ -9,7 +8,6 @@
     auditTargetIsMember,
     AUDIT_ACTOR_ADMIN_TOKEN
   } from '$lib/chat/audit';
-  import type { Message } from '$lib/types';
 
   interface Props {
     active: boolean;
@@ -66,16 +64,11 @@
 
   const AUDIT_ERROR_CODES = new Set(['audit-log-permission-denied', 'audit-log-failed']);
 
-  function handleServerError(msg: Message) {
-    const code = msg.message;
-    if (typeof code !== 'string') return;
-    if (AUDIT_ERROR_CODES.has(code)) {
-      auditFeedback = { text: describeServerError(code), kind: 'error' };
-    }
-  }
-
-  onMount(() => chat.on('error', handleServerError));
-  onDestroy(() => chat.off('error', handleServerError));
+  onMount(() =>
+    onServerError(AUDIT_ERROR_CODES, (text) => {
+      auditFeedback = { text, kind: 'error' };
+    })
+  );
 </script>
 
 {#if active}

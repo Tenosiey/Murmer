@@ -55,7 +55,10 @@ pub async fn get_bot_by_id(db: &Db, id: &str) -> Result<Option<BotRecord>, DbErr
     let id = id.to_owned();
     db.call_db(move |conn| {
         let query = format!("SELECT {SELECT_COLS} FROM bots WHERE id = ?1");
-        let bot = conn.query_row(&query, params![id], row_to_bot).ok();
+        let bot = conn
+            .prepare_cached(&query)?
+            .query_row(params![id], row_to_bot)
+            .ok();
         Ok(bot)
     })
     .await
@@ -68,7 +71,10 @@ pub async fn get_bot_by_token_hash(
     let token_hash = token_hash.to_owned();
     db.call_db(move |conn| {
         let query = format!("SELECT {SELECT_COLS} FROM bots WHERE token_hash = ?1");
-        let bot = conn.query_row(&query, params![token_hash], row_to_bot).ok();
+        let bot = conn
+            .prepare_cached(&query)?
+            .query_row(params![token_hash], row_to_bot)
+            .ok();
         Ok(bot)
     })
     .await

@@ -97,6 +97,23 @@ impl DbCall for Db {
     }
 }
 
+/// Read one value from the generic `server_settings` key-value table.
+fn read_setting(conn: &rusqlite::Connection, key: &str) -> rusqlite::Result<Option<String>> {
+    conn.prepare_cached("SELECT value FROM server_settings WHERE key = ?1")?
+        .query_row([key], |row| row.get(0))
+        .optional()
+}
+
+/// Upsert one value in the generic `server_settings` key-value table.
+fn write_setting(conn: &rusqlite::Connection, key: &str, value: &str) -> rusqlite::Result<()> {
+    conn.prepare_cached(
+        "INSERT INTO server_settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )?
+    .execute([key, value])?;
+    Ok(())
+}
+
 /// Timestamps are stored as RFC 3339 TEXT in UTC so they parse back into
 /// `chrono::DateTime<Utc>` and sort correctly as strings.
 const NOW_UTC: &str = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";

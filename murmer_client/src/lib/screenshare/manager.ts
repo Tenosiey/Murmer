@@ -8,6 +8,7 @@
 import { chat } from '../stores/chat';
 import { get } from 'svelte/store';
 import { iceServers } from '../stores/iceConfig';
+import { capBitrate } from '../webrtc/bitrate';
 import { remoteFingerprint } from '../webrtc/fingerprint';
 import { PeerRecovery } from '../webrtc/recovery';
 import type { Message, ScreenShareSettings, ScreenSharePeer } from '../types';
@@ -335,15 +336,7 @@ export class ScreenShareManager {
     if (!Number.isFinite(limit) || limit <= 0) return;
     for (const pc of Object.values(this.outgoing)) {
       for (const sender of pc.getSenders()) {
-        if (sender.track?.kind !== 'video') continue;
-        const params = sender.getParameters();
-        if (!params.encodings || params.encodings.length === 0) {
-          params.encodings = [{}];
-        }
-        for (const encoding of params.encodings) {
-          encoding.maxBitrate = limit;
-        }
-        sender.setParameters(params).catch(() => {});
+        if (sender.track?.kind === 'video') capBitrate(sender, limit);
       }
     }
   }

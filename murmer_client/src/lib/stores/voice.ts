@@ -1,4 +1,4 @@
-import { writable, derived, get } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 import type { RemotePeer, ConnectionStats, VoiceChannelInfo } from '../types';
 import { VoiceManager } from '../voice/manager';
 import { SoundboardPlayer } from '../voice/soundboard';
@@ -20,12 +20,12 @@ export const voice = {
   join: async (user: string, channelId: number, info?: VoiceChannelInfo) => {
     // Only arm the player once the microphone was actually acquired; a failed
     // join must not leave us playing sounds for a channel we are not in.
-    await manager.join(user, channelId, get(peers), info);
+    await manager.join(user, channelId, info);
     soundboardPlayer.setChannel(channelId);
   },
   leave: (channelId: number) => {
     soundboardPlayer.setChannel(null);
-    manager.leave(channelId, get(peers));
+    manager.leave(channelId);
   },
   /**
    * Send (or stop sending) our camera to everyone in the channel. Video rides

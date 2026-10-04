@@ -29,6 +29,10 @@
 //!   - `GET    /api/v1/users`                                         – list users
 //!   - `GET    /api/v1/server/info`                                   – server metadata
 
+use crate::ws::constants::{
+    DEFAULT_HISTORY_LIMIT, MAX_EPHEMERAL_SECONDS, MAX_PINS_PER_CHANNEL, MAX_REPLY_PREVIEW_CHARS,
+    MAX_SEARCH_RESULTS, MAX_THREAD_MESSAGES, MIN_EPHEMERAL_SECONDS,
+};
 use crate::{AppState, db, security, ws};
 use axum::{
     Router,
@@ -42,7 +46,7 @@ use axum_extra::{
     headers::{Authorization, authorization::Bearer},
 };
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use subtle::ConstantTimeEq;
@@ -59,16 +63,6 @@ use super::{
 
 const MAX_BOT_MESSAGE_LENGTH: usize = 4000;
 const MAX_BOT_DESCRIPTION_LENGTH: usize = 256;
-const MIN_EPHEMERAL_SECONDS: i64 = 5;
-const MAX_EPHEMERAL_SECONDS: i64 = 86_400;
-const DEFAULT_MESSAGE_LIMIT: i64 = 50;
-const MAX_MESSAGE_LIMIT: i64 = 200;
-// The following mirror the WebSocket handler limits in `ws::constants`
-// (private to the ws module) so bots behave identically to regular clients.
-const MAX_SEARCH_RESULTS: i64 = 200;
-const MAX_THREAD_MESSAGES: i64 = 200;
-const MAX_PINS_PER_CHANNEL: i64 = 25;
-const MAX_REPLY_PREVIEW_CHARS: usize = 200;
 
 fn json_error(status: StatusCode, message: &str) -> Response {
     (status, Json(serde_json::json!({"error": message}))).into_response()
@@ -90,35 +84,24 @@ async fn verify_bot(state: &AppState, token: &str) -> Option<BotRecord> {
         .filter(|b| b.active)
 }
 
-async fn format_messages(db: &db::Db, rows: Vec<(i64, String)>, channel_id: i32) -> Vec<Value> {
-    let ids: Vec<i64> = rows.iter().map(|(id, _)| *id).collect();
-
-    let reaction_map = if ids.is_empty() {
-        HashMap::new()
-    } else {
-        db::get_reactions_for_messages(db, &ids)
-            .await
-            .unwrap_or_default()
+/// Authenticate a bot token and check it holds `perm`, or produce the
+/// rejection to return.
+async fn require_bot(
+    state: &AppState,
+    bearer: &Bearer,
+    perm: i32,
+) -> Result<BotRecord, Box<Response>> {
+    let Some(bot) = verify_bot(state, bearer.token()).await else {
+        return Err(Box::new(json_error(
+            StatusCode::UNAUTHORIZED,
+            "invalid-bot-token",
+        )));
     };
-
-    rows.into_iter()
-        .map(|(id, content)| {
-            let mut msg = serde_json::from_str::<Value>(&content).unwrap_or(Value::Null);
-            msg["id"] = Value::from(id);
-            if msg.get("channelId").is_none() {
-                msg["channelId"] = Value::from(channel_id);
-            }
-            if let Some(reactions) = reaction_map.get(&id)
-                && let Ok(val) = serde_json::to_value(reactions)
-            {
-                msg["reactions"] = val;
-            }
-            if msg.get("reactions").is_none() {
-                msg["reactions"] = Value::Object(Map::new());
-            }
-            msg
-        })
-        .collect()
+    if !BotPermissions(bot.permissions).has(perm) {
+        let code = format!("missing-permission:{}", BotPermissions::name(perm));
+        return Err(Box::new(json_error(StatusCode::FORBIDDEN, &code)));
+    }
+    Ok(bot)
 }
 
 // ---------------------------------------------------------------------------
@@ -135,9 +118,6 @@ async fn create_bot(
     }
 
     let name = body.name.trim();
-    if name.is_empty() || name.len() > 32 {
-        return json_error(StatusCode::BAD_REQUEST, "invalid-bot-name");
-    }
     if !security::validate_user_name(name) {
         return json_error(StatusCode::BAD_REQUEST, "invalid-bot-name");
     }
@@ -229,7 +209,7 @@ async fn update_bot_handler(
 
     if let Some(ref n) = body.name {
         let n = n.trim();
-        if n.is_empty() || n.len() > 32 || !security::validate_user_name(n) {
+        if !security::validate_user_name(n) {
             return json_error(StatusCode::BAD_REQUEST, "invalid-bot-name");
         }
     }
@@ -317,13 +297,8 @@ async fn list_channels_handler(
     State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
-    };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::READ_CHANNELS) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:read_channels");
+    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::READ_CHANNELS).await {
+        return *denied;
     }
 
     let channels = db::get_channels(&state.db).await;
@@ -346,23 +321,15 @@ async fn get_messages(
     Path(channel_id): Path<i32>,
     Query(params): Query<MessageQuery>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
-    };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::READ_MESSAGES) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:read_messages");
+    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::READ_MESSAGES).await {
+        return *denied;
     }
 
     if db::get_channel_by_id(&state.db, channel_id).await.is_none() {
         return json_error(StatusCode::NOT_FOUND, "channel-not-found");
     }
 
-    let limit = params
-        .limit
-        .unwrap_or(DEFAULT_MESSAGE_LIMIT)
-        .clamp(1, MAX_MESSAGE_LIMIT);
+    let limit = ws::validation::history_limit(params.limit);
 
     let rows = if let Some(after) = params.after {
         bot_db::fetch_messages_after(&state.db, channel_id, after, limit).await
@@ -376,7 +343,7 @@ async fn get_messages(
                 rows.reverse();
             }
             let has_more = rows.len() as i64 == limit;
-            let messages = format_messages(&state.db, rows, channel_id).await;
+            let messages = db::hydrate_messages(&state.db, rows, channel_id).await;
             Json(serde_json::json!({
                 "data": {
                     "channelId": channel_id,
@@ -399,14 +366,10 @@ async fn send_message(
     Path(channel_id): Path<i32>,
     Json(body): Json<SendMessageRequest>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
+    let bot = match require_bot(&state, &bearer, BotPermissions::SEND_MESSAGES).await {
+        Ok(bot) => bot,
+        Err(denied) => return *denied,
     };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::SEND_MESSAGES) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:send_messages");
-    }
 
     let rate_key = format!("bot::{}", bot.id);
     if !security::check_message_rate_limit(&state.rate_limiter, &rate_key).await {
@@ -504,8 +467,7 @@ async fn send_message(
     };
     msg["id"] = serde_json::json!(id);
 
-    let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-    let _ = chan_tx.send(msg.to_string().into());
+    ws::helpers::send_to_channel(&state, channel_id, &msg).await;
 
     // Announce the message globally so clients viewing other channels can
     // update unread counts, mirroring the WebSocket chat handler.
@@ -570,8 +532,7 @@ async fn delete_message_handler(
                 "id": message_id,
                 "channelId": channel_id,
             });
-            let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-            let _ = chan_tx.send(payload.to_string().into());
+            ws::helpers::send_to_channel(&state, channel_id, &payload).await;
             StatusCode::NO_CONTENT.into_response()
         }
         Ok(false) => json_error(StatusCode::NOT_FOUND, "message-not-found"),
@@ -588,30 +549,19 @@ async fn add_reaction_handler(
     Path((channel_id, message_id)): Path<(i32, i64)>,
     Json(body): Json<AddReactionRequest>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
+    let bot = match require_bot(&state, &bearer, BotPermissions::ADD_REACTIONS).await {
+        Ok(bot) => bot,
+        Err(denied) => return *denied,
     };
 
-    if !BotPermissions(bot.permissions).has(BotPermissions::ADD_REACTIONS) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:add_reactions");
-    }
-
     let emoji = body.emoji.trim();
-    // Custom emoji shortcodes (`:name:`) may exceed the 16-byte cap that
-    // bounds regular unicode reactions, mirroring the WS handler.
-    let shortcode = ws::validation::is_emoji_shortcode(emoji);
-    if !shortcode
-        && (emoji.is_empty()
-            || emoji.len() > 16
-            || emoji.chars().any(|c| c.is_control() || c.is_whitespace()))
-    {
+    if !ws::validation::is_valid_reaction_key(emoji) {
         return json_error(StatusCode::BAD_REQUEST, "invalid-emoji");
     }
 
     // Shortcode reactions require the custom emoji to actually exist so junk
     // shortcodes cannot be planted.
-    if shortcode {
+    if ws::validation::is_emoji_shortcode(emoji) {
         match db::emoji_exists(&state.db, emoji.trim_matches(':')).await {
             Ok(true) => {}
             Ok(false) => return json_error(StatusCode::BAD_REQUEST, "invalid-emoji"),
@@ -658,8 +608,7 @@ async fn add_reaction_handler(
         "messageId": message_id,
         "reactions": reactions,
     });
-    let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-    let _ = chan_tx.send(payload.to_string().into());
+    ws::helpers::send_to_channel(&state, channel_id, &payload).await;
 
     Json(serde_json::json!({"data": {"messageId": message_id, "reactions": reactions}}))
         .into_response()
@@ -670,14 +619,10 @@ async fn remove_reaction_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path((channel_id, message_id, emoji)): Path<(i32, i64, String)>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
+    let bot = match require_bot(&state, &bearer, BotPermissions::ADD_REACTIONS).await {
+        Ok(bot) => bot,
+        Err(denied) => return *denied,
     };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::ADD_REACTIONS) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:add_reactions");
-    }
 
     let target_channel_id = match db::get_message_channel_id(&state.db, message_id).await {
         Ok(Some(ch)) => ch,
@@ -711,8 +656,7 @@ async fn remove_reaction_handler(
         "messageId": message_id,
         "reactions": reactions,
     });
-    let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-    let _ = chan_tx.send(payload.to_string().into());
+    ws::helpers::send_to_channel(&state, channel_id, &payload).await;
 
     Json(serde_json::json!({"data": {"messageId": message_id, "reactions": reactions}}))
         .into_response()
@@ -724,14 +668,10 @@ async fn edit_message_handler(
     Path((channel_id, message_id)): Path<(i32, i64)>,
     Json(body): Json<EditMessageRequest>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
+    let bot = match require_bot(&state, &bearer, BotPermissions::SEND_MESSAGES).await {
+        Ok(bot) => bot,
+        Err(denied) => return *denied,
     };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::SEND_MESSAGES) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:send_messages");
-    }
 
     let new_text = body.text.trim();
     if new_text.is_empty() || new_text.len() > MAX_BOT_MESSAGE_LENGTH {
@@ -790,8 +730,7 @@ async fn edit_message_handler(
                 "text": new_text,
                 "editedAt": edited_at,
             });
-            let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-            let _ = chan_tx.send(payload.to_string().into());
+            ws::helpers::send_to_channel(&state, channel_id, &payload).await;
 
             content["id"] = Value::from(message_id);
             Json(serde_json::json!({"data": content})).into_response()
@@ -810,13 +749,8 @@ async fn search_messages_handler(
     Path(channel_id): Path<i32>,
     Query(params): Query<SearchQuery>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
-    };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::READ_MESSAGES) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:read_messages");
+    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::READ_MESSAGES).await {
+        return *denied;
     }
 
     if db::get_channel_by_id(&state.db, channel_id).await.is_none() {
@@ -830,12 +764,12 @@ async fn search_messages_handler(
 
     let limit = params
         .limit
-        .unwrap_or(DEFAULT_MESSAGE_LIMIT)
+        .unwrap_or(DEFAULT_HISTORY_LIMIT)
         .clamp(1, MAX_SEARCH_RESULTS);
 
     match db::search_messages(&state.db, channel_id, query, limit).await {
         Ok(rows) => {
-            let messages = format_messages(&state.db, rows, channel_id).await;
+            let messages = db::hydrate_messages(&state.db, rows, channel_id).await;
             Json(serde_json::json!({
                 "data": {
                     "channelId": channel_id,
@@ -857,13 +791,8 @@ async fn get_thread_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path((channel_id, message_id)): Path<(i32, i64)>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
-    };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::READ_MESSAGES) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:read_messages");
+    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::READ_MESSAGES).await {
+        return *denied;
     }
 
     if db::get_channel_by_id(&state.db, channel_id).await.is_none() {
@@ -875,7 +804,7 @@ async fn get_thread_handler(
             if rows.is_empty() {
                 return json_error(StatusCode::NOT_FOUND, "message-not-found");
             }
-            let messages = format_messages(&state.db, rows, channel_id).await;
+            let messages = db::hydrate_messages(&state.db, rows, channel_id).await;
             Json(serde_json::json!({
                 "data": {
                     "channelId": channel_id,
@@ -892,34 +821,13 @@ async fn get_thread_handler(
     }
 }
 
-/// Broadcast the current pin snapshot for a channel, mirroring the WS handler.
-async fn broadcast_pins(state: &Arc<AppState>, channel_id: i32) {
-    match db::get_pins_for_channel(&state.db, channel_id).await {
-        Ok(pins) => {
-            let payload = serde_json::json!({
-                "type": "pins",
-                "channelId": channel_id,
-                "pins": pins,
-            });
-            let chan_tx = ws::helpers::get_or_create_channel(state, channel_id).await;
-            let _ = chan_tx.send(payload.to_string().into());
-        }
-        Err(e) => error!("Failed to load pins for channel {channel_id}: {e}"),
-    }
-}
-
 async fn list_pins_handler(
     State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path(channel_id): Path<i32>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
-    };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::READ_MESSAGES) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:read_messages");
+    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::READ_MESSAGES).await {
+        return *denied;
     }
 
     if db::get_channel_by_id(&state.db, channel_id).await.is_none() {
@@ -943,14 +851,10 @@ async fn pin_message_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path((channel_id, message_id)): Path<(i32, i64)>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
+    let bot = match require_bot(&state, &bearer, BotPermissions::MANAGE_MESSAGES).await {
+        Ok(bot) => bot,
+        Err(denied) => return *denied,
     };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::MANAGE_MESSAGES) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:manage_messages");
-    }
 
     let record = match db::get_message_record(&state.db, message_id).await {
         Ok(Some(r)) => r,
@@ -975,7 +879,7 @@ async fn pin_message_handler(
     .await
     {
         Ok(true) => {
-            broadcast_pins(&state, channel_id).await;
+            ws::broadcast_pins(&state, channel_id).await;
             StatusCode::NO_CONTENT.into_response()
         }
         Ok(false) => json_error(StatusCode::CONFLICT, "pin-limit-reached"),
@@ -989,26 +893,17 @@ async fn pin_message_handler(
 async fn unpin_message_handler(
     State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
-    Path((channel_id, message_id)): Path<(i32, i64)>,
+    Path((_channel_id, message_id)): Path<(i32, i64)>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
-    };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::MANAGE_MESSAGES) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:manage_messages");
+    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::MANAGE_MESSAGES).await {
+        return *denied;
     }
 
     match db::remove_pin(&state.db, message_id).await {
         Ok(Some(pin_channel_id)) => {
-            if pin_channel_id != channel_id {
-                // The pin lived in a different channel; the removal already
-                // happened, so broadcast where it actually was.
-                broadcast_pins(&state, pin_channel_id).await;
-            } else {
-                broadcast_pins(&state, channel_id).await;
-            }
+            // Broadcast where the pin actually lived, which may differ
+            // from the channel in the path.
+            ws::broadcast_pins(&state, pin_channel_id).await;
             StatusCode::NO_CONTENT.into_response()
         }
         Ok(None) => json_error(StatusCode::NOT_FOUND, "pin-not-found"),
@@ -1024,13 +919,8 @@ async fn create_channel_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Json(body): Json<CreateChannelRequest>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
-    };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::MANAGE_CHANNELS) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:manage_channels");
+    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::MANAGE_CHANNELS).await {
+        return *denied;
     }
 
     let name = body.name.trim();
@@ -1069,13 +959,8 @@ async fn update_channel_handler(
     Path(channel_id): Path<i32>,
     Json(body): Json<UpdateChannelRequest>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
-    };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::MANAGE_CHANNELS) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:manage_channels");
+    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::MANAGE_CHANNELS).await {
+        return *denied;
     }
 
     let Some(raw_topic) = body.topic else {
@@ -1107,13 +992,8 @@ async fn delete_channel_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path(channel_id): Path<i32>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
-    };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::MANAGE_CHANNELS) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:manage_channels");
+    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::MANAGE_CHANNELS).await {
+        return *denied;
     }
 
     let record = match db::get_channel_by_id(&state.db, channel_id).await {
@@ -1143,14 +1023,10 @@ async fn typing_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path(channel_id): Path<i32>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
+    let bot = match require_bot(&state, &bearer, BotPermissions::SEND_MESSAGES).await {
+        Ok(bot) => bot,
+        Err(denied) => return *denied,
     };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::SEND_MESSAGES) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:send_messages");
-    }
 
     // Typing events are transient and never persisted. They share the message
     // rate-limit window but under a separate key, so a chatty typing loop
@@ -1169,8 +1045,7 @@ async fn typing_handler(
         "user": bot.name,
         "channelId": channel_id,
     });
-    let chan_tx = ws::helpers::get_or_create_channel(&state, channel_id).await;
-    let _ = chan_tx.send(payload.to_string().into());
+    ws::helpers::send_to_channel(&state, channel_id, &payload).await;
 
     StatusCode::NO_CONTENT.into_response()
 }
@@ -1209,13 +1084,8 @@ async fn list_users(
     State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
-    };
-
-    if !BotPermissions(bot.permissions).has(BotPermissions::READ_USERS) {
-        return json_error(StatusCode::FORBIDDEN, "missing-permission:read_users");
+    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::READ_USERS).await {
+        return *denied;
     }
 
     let (online, all) = ws::helpers::get_user_lists(&state).await;

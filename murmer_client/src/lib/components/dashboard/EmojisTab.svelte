@@ -1,17 +1,15 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { chat } from '$lib/stores/chat';
+  import { onMount } from 'svelte';
+  import { chat, onServerError } from '$lib/stores/chat';
   import { selectedServer } from '$lib/stores/servers';
   import { customEmojis, customEmojiList } from '$lib/stores/customEmojis';
   import { dialogs } from '$lib/stores/dialogs';
-  import { describeServerError } from '$lib/errors';
   import { httpBaseFromWs } from '$lib/server-url';
-  import { uploadForm, uploadErrorMessage } from '$lib/upload';
+  import { uploadImage } from '$lib/upload';
   import {
     EMOJI_NAME_RE,
     MAX_EMOJI_FILE_BYTES
   } from '$lib/chat/constants';
-  import type { Message } from '$lib/types';
 
   interface Props {
     active: boolean;
@@ -45,31 +43,18 @@
     uploading = true;
     emojiFeedback = null;
     const name = normalizedEmojiName;
-    try {
-      const res = await fetch(httpBase + '/upload', {
-        method: 'POST',
-        body: uploadForm(emojiFile)
-      });
-      const uploadError = uploadErrorMessage(res.status, 'image');
-      if (uploadError) {
-        emojiFeedback = { text: uploadError, kind: 'error' };
-        return;
-      }
-      if (!res.ok) throw new Error(`upload failed with status ${res.status}`);
-      const data = await res.json();
-      if (typeof data.url !== 'string') throw new Error('upload response missing url');
-      // Registration is role-checked server-side; success arrives as an
-      // updated emoji-list broadcast, errors as an error frame handled above.
-      chat.sendRaw({ type: 'add-emoji', name, url: data.url });
-      emojiName = '';
-      emojiFile = null;
-      if (emojiFileInput) emojiFileInput.value = '';
-    } catch (e) {
-      console.error('emoji upload failed', e);
-      emojiFeedback = { text: 'Emoji upload failed. Please try again.', kind: 'error' };
-    } finally {
-      uploading = false;
+    const result = await uploadImage(httpBase, emojiFile, MAX_EMOJI_FILE_BYTES);
+    uploading = false;
+    if (!result.ok) {
+      emojiFeedback = { text: result.message, kind: 'error' };
+      return;
     }
+    // Registration is role-checked server-side; success arrives as an
+    // updated emoji-list broadcast, errors as an error frame handled above.
+    chat.sendRaw({ type: 'add-emoji', name, url: result.url });
+    emojiName = '';
+    emojiFile = null;
+    if (emojiFileInput) emojiFileInput.value = '';
   }
 
   async function deleteEmoji(name: string) {
@@ -93,16 +78,11 @@
     'emoji-not-found'
   ]);
 
-  function handleServerError(msg: Message) {
-    const code = msg.message;
-    if (typeof code !== 'string') return;
-    if (EMOJI_ERROR_CODES.has(code)) {
-      emojiFeedback = { text: describeServerError(code), kind: 'error' };
-    }
-  }
-
-  onMount(() => chat.on('error', handleServerError));
-  onDestroy(() => chat.off('error', handleServerError));
+  onMount(() =>
+    onServerError(EMOJI_ERROR_CODES, (text) => {
+      emojiFeedback = { text, kind: 'error' };
+    })
+  );
 </script>
 
 {#if active}

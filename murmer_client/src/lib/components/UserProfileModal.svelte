@@ -14,8 +14,9 @@
   the fact that somebody else changed it.
 -->
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { chat } from '$lib/stores/chat';
+  import { onMount } from 'svelte';
+  import { displayNames } from '$lib/stores/profiles';
+  import { onServerError } from '$lib/stores/chat';
   import { session } from '$lib/stores/session';
   import { avatars } from '$lib/stores/avatars';
   import { profiles } from '$lib/stores/profiles';
@@ -23,7 +24,6 @@
   import { userRoleIds } from '$lib/stores/roles';
   import { selectedServer } from '$lib/stores/servers';
   import { httpBaseFromWs } from '$lib/server-url';
-  import { describeServerError } from '$lib/errors';
   import { uploadImage } from '$lib/upload';
   import {
     MAX_ABOUT_LENGTH,
@@ -33,7 +33,7 @@
   } from '$lib/chat/constants';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import RoleIcon from '$lib/components/RoleIcon.svelte';
-  import type { Message, RoleDef } from '$lib/types';
+  import type { RoleDef } from '$lib/types';
 
   interface Props {
     open: boolean;
@@ -60,8 +60,7 @@
   let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
   let isSelf = $derived(user !== null && user === $session.user);
   let profile = $derived(user ? ($profiles[user] ?? null) : null);
-  // Same precedence as the `displayNames` store: the server's label first.
-  let shownName = $derived(profile?.nickname || profile?.displayName || user || '');
+  let shownName = $derived(user ? $displayNames(user) : '');
   let avatarUrl = $derived(user ? ($avatars[user] ?? null) : null);
 
   /** The user's roles, highest position first, with `@everyone` left out. */
@@ -153,14 +152,11 @@
     avatars.setSelf(null);
   }
 
-  function handleServerError(msg: Message) {
-    const code = msg.message;
-    if (!open || typeof code !== 'string' || !PROFILE_ERROR_CODES.has(code)) return;
-    feedback = { text: describeServerError(code), kind: 'error' };
-  }
-
-  onMount(() => chat.on('error', handleServerError));
-  onDestroy(() => chat.off('error', handleServerError));
+  onMount(() =>
+    onServerError(PROFILE_ERROR_CODES, (text) => {
+      if (open) feedback = { text, kind: 'error' };
+    })
+  );
 
   function messageUser() {
     if (!user) return;

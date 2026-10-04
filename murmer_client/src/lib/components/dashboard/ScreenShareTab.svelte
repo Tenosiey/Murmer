@@ -1,12 +1,10 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { chat } from '$lib/stores/chat';
-  import { describeServerError } from '$lib/errors';
+  import { onMount } from 'svelte';
+  import { onServerError } from '$lib/stores/chat';
   import {
     screenShareServerMaxBitrate,
     setServerScreenShareMaxBitrate
   } from '$lib/stores/screenShare';
-  import type { Message } from '$lib/types';
 
   interface Props {
     active: boolean;
@@ -57,17 +55,12 @@
     'screenshare-update-failed'
   ]);
 
-  function handleServerError(msg: Message) {
-    const code = msg.message;
-    if (typeof code !== 'string') return;
-    if (SCREENSHARE_ERROR_CODES.has(code)) {
-      screenShareSavePending = false;
-      screenShareFeedback = { text: describeServerError(code), kind: 'error' };
-    }
-  }
-
-  onMount(() => chat.on('error', handleServerError));
-  onDestroy(() => chat.off('error', handleServerError));
+  onMount(() =>
+    onServerError(SCREENSHARE_ERROR_CODES, (text) => {
+    screenShareSavePending = false;
+      screenShareFeedback = { text, kind: 'error' };
+    })
+  );
 </script>
 
 {#if active}
