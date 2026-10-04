@@ -1069,17 +1069,26 @@ pub(super) async fn handle_react(
 
     let result = match action {
         "add" => db::add_reaction(&state.db, message_id, &user, emoji).await,
-        "remove" => db::remove_reaction(&state.db, message_id, &user, emoji).await,
+        "remove" => db::remove_reaction(&state.db, message_id, &user, emoji)
+            .await
+            .map(|()| true),
         _ => {
             send_error(sender, errors::INVALID_REACTION_ACTION).await;
             return;
         }
     };
 
-    if let Err(e) = result {
-        error!("db reaction error: {e}");
-        send_error(sender, errors::REACTION_FAILED).await;
-        return;
+    match result {
+        Ok(true) => {}
+        Ok(false) => {
+            send_error(sender, errors::REACTION_LIMIT).await;
+            return;
+        }
+        Err(e) => {
+            error!("db reaction error: {e}");
+            send_error(sender, errors::REACTION_FAILED).await;
+            return;
+        }
     }
 
     if action == "add" {

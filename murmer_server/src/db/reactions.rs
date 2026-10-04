@@ -80,21 +80,37 @@ pub async fn get_reaction_summary(
     Ok(map.remove(&message_id).unwrap_or_default())
 }
 
-/// Add a reaction to a message. Duplicate reactions by the same user are ignored.
+/// Most distinct emojis one message may carry (Discord's limit). Every
+/// `reaction-update` re-sends a message's whole summary to its channel, so
+/// without a cap one member could hang thousands of rows off a message and
+/// make each later reaction cost everyone that much.
+pub const MAX_REACTIONS_PER_MESSAGE: i64 = 20;
+
+/// Add a reaction to a message. Duplicate reactions by the same user are
+/// ignored. Returns `false`, storing nothing, when the emoji would be a new
+/// one on a message already at [`MAX_REACTIONS_PER_MESSAGE`]; joining an
+/// emoji that is already there is always allowed.
 pub async fn add_reaction(
     db: &Db,
     message_id: i64,
     user: &str,
     emoji: &str,
-) -> Result<(), DbError> {
+) -> Result<bool, DbError> {
     let user = user.to_owned();
     let emoji = emoji.to_owned();
     db.call_db(move |conn| {
-        conn.execute(
-            "INSERT OR IGNORE INTO reactions (message_id, user_name, emoji) VALUES (?1, ?2, ?3)",
-            params![message_id, user, emoji],
-        )?;
-        Ok(())
+        conn.prepare_cached(
+            "INSERT OR IGNORE INTO reactions (message_id, user_name, emoji)              SELECT ?1, ?2, ?3 WHERE EXISTS                (SELECT 1 FROM reactions WHERE message_id = ?1 AND emoji = ?3)              OR (SELECT COUNT(DISTINCT emoji) FROM reactions WHERE message_id = ?1) < ?4",
+        )?
+        .execute(params![message_id, user, emoji, MAX_REACTIONS_PER_MESSAGE])?;
+        // Zero rows changed is either a duplicate (fine) or the cap. Only the
+        // cap leaves the emoji absent from the message.
+        let present: bool = conn
+            .prepare_cached(
+                "SELECT EXISTS (SELECT 1 FROM reactions WHERE message_id = ?1 AND emoji = ?2)",
+            )?
+            .query_row(params![message_id, emoji], |row| row.get(0))?;
+        Ok(present)
     })
     .await
 }

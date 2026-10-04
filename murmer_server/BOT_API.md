@@ -500,6 +500,10 @@ accepted. Shortcodes must refer to a custom emoji registered on the server
 (see [List custom emojis](#list-custom-emojis)); unknown shortcodes return
 `400 invalid-emoji`.
 
+A message holds at most 20 distinct emojis. Adding a new one beyond that
+returns `409 reaction-limit`; reacting with an emoji already on the message
+still works.
+
 ### Remove reaction
 
 ```
@@ -773,6 +777,7 @@ All errors follow a consistent format:
 | 404 | `pin-not-found` | The message is not pinned |
 | 409 | `channel-already-exists` | A channel with that name already exists |
 | 409 | `pin-limit-reached` | The channel already has 25 pinned messages |
+| 409 | `reaction-limit` | The message already carries 20 distinct emojis |
 | 429 | `rate-limit-exceeded` | Too many messages sent in the time window |
 | 500 | various | Internal server error |
 

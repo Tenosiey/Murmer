@@ -293,6 +293,10 @@ pub const INVALID_EMOJI: &str = r#"{"type":"error","message":"invalid-emoji"}"#;
 
 pub const REACTION_FAILED: &str = r#"{"type":"error","message":"reaction-failed"}"#;
 
+/// The message already carries `MAX_REACTIONS_PER_MESSAGE` distinct emojis;
+/// joining one of them still works.
+pub const REACTION_LIMIT: &str = r#"{"type":"error","message":"reaction-limit"}"#;
+
 /// The message a reply targets no longer exists.
 pub const REPLY_TARGET_NOT_FOUND: &str = r#"{"type":"error","message":"reply-target-not-found"}"#;
 

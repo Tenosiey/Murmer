@@ -38,10 +38,6 @@ the idea comes from and what users will expect it to behave like.
       `serde_json::Value` before anything looks at its type. The largest
       legitimate frame is a wiki save (`MAX_WIKI_BODY_BYTES`, 100 kB) or an
       encrypted envelope; the limit belongs just above that
-- [ ] Cap the distinct reactions on one message. `handle_react` accepts any
-      emoji string up to 16 bytes, so one member can hang thousands of rows
-      off a message, and every `reaction-update` re-sends the whole summary
-      to the channel
 - [ ] Rate-limit frames in general, not just chat. Only `chat`, `dm`,
       `forward-message` and wiki writes go through
       `check_message_rate_limit`; `search-history` (a full-text query),
