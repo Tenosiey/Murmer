@@ -27,18 +27,18 @@ volume.subscribe((value) => {
 // turn the notifications up with them.
 const APP_SOUND_VOLUME_KEY = 'murmer_app_sound_volume';
 
-let initialAppSoundVolume = 1;
-if (browser) {
-  const stored = localStorage.getItem(APP_SOUND_VOLUME_KEY);
-  if (stored !== null) {
-    const num = parseFloat(stored);
-    // A media element's volume is a 0-1 fraction; anything else is rejected
-    // rather than clamped, since it can only come from a hand-edited entry.
-    if (!isNaN(num) && num >= 0 && num <= 1) initialAppSoundVolume = num;
-  }
+/**
+ * A stored media volume, a 0-1 fraction. Anything else is rejected rather
+ * than clamped, since it can only come from a hand-edited entry.
+ */
+function loadFraction(key: string): number {
+  if (!browser) return 1;
+  const stored = localStorage.getItem(key);
+  const num = stored === null ? NaN : parseFloat(stored);
+  return !isNaN(num) && num >= 0 && num <= 1 ? num : 1;
 }
 
-export const appSoundVolume = writable<number>(initialAppSoundVolume);
+export const appSoundVolume = writable<number>(loadFraction(APP_SOUND_VOLUME_KEY));
 
 appSoundVolume.subscribe((value) => {
   if (browser) localStorage.setItem(APP_SOUND_VOLUME_KEY, String(value));
@@ -50,21 +50,8 @@ appSoundVolume.subscribe((value) => {
 const SCREENSHARE_VOLUME_KEY = 'murmer_screenshare_volume';
 const SCREENSHARE_MUTE_KEY = 'murmer_screenshare_muted';
 
-let initialScreenShareVolume = 1;
-if (browser) {
-  const stored = localStorage.getItem(SCREENSHARE_VOLUME_KEY);
-  if (stored !== null) {
-    const num = parseFloat(stored);
-    // A media element's volume is a 0-1 fraction; anything else is rejected
-    // rather than clamped, since it can only come from a hand-edited entry.
-    if (!isNaN(num) && num >= 0 && num <= 1) initialScreenShareVolume = num;
-  }
-}
-
-export const screenShareVolume = writable<number>(initialScreenShareVolume);
-export const screenShareMuted = writable<boolean>(
-  browser ? localStorage.getItem(SCREENSHARE_MUTE_KEY) === 'true' : false
-);
+export const screenShareVolume = writable<number>(loadFraction(SCREENSHARE_VOLUME_KEY));
+export const screenShareMuted = writable<boolean>(loadBool(SCREENSHARE_MUTE_KEY, false));
 
 screenShareVolume.subscribe((value) => {
   if (browser) localStorage.setItem(SCREENSHARE_VOLUME_KEY, String(value));
@@ -105,16 +92,8 @@ outputDeviceId.subscribe((value) => {
 const MIC_MUTE_KEY = 'murmer_mic_muted';
 const OUT_MUTE_KEY = 'murmer_output_muted';
 
-let initialMicMuted = false;
-let initialOutputMuted = false;
-
-if (browser) {
-  initialMicMuted = localStorage.getItem(MIC_MUTE_KEY) === 'true';
-  initialOutputMuted = localStorage.getItem(OUT_MUTE_KEY) === 'true';
-}
-
-export const microphoneMuted = writable<boolean>(initialMicMuted);
-export const outputMuted = writable<boolean>(initialOutputMuted);
+export const microphoneMuted = writable<boolean>(loadBool(MIC_MUTE_KEY, false));
+export const outputMuted = writable<boolean>(loadBool(OUT_MUTE_KEY, false));
 
 microphoneMuted.subscribe((value) => {
   if (browser) {
@@ -180,7 +159,7 @@ const ECHO_CANCEL_KEY = 'murmer_echo_cancellation';
 const NOISE_SUPPRESS_MODE_KEY = 'murmer_noise_suppression_mode';
 const AUTO_GAIN_KEY = 'murmer_auto_gain';
 
-function loadBool(key: string, def: boolean): boolean {
+export function loadBool(key: string, def: boolean): boolean {
   if (!browser) return def;
   const stored = localStorage.getItem(key);
   return stored === null ? def : stored === 'true';

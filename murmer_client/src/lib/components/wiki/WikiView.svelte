@@ -16,6 +16,7 @@
   import { customEmojis } from '$lib/stores/customEmojis';
   import { selectedServer } from '$lib/stores/servers';
   import { httpBaseFromWs } from '$lib/server-url';
+  import { formatLocalDateTime } from '$lib/chat/helpers';
   import type { ContextMenuItem } from '$lib/types';
 
   
@@ -213,10 +214,6 @@
   }
 
 
-  function formatTimestamp(value: string): string {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-  }
   let pages = $derived($wiki[channelId] ?? []);
   let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
   // Default to the first page (the list arrives title-sorted).
@@ -325,7 +322,7 @@
           <h3>{currentPage.title}</h3>
           <span class="page-meta">
             updated by {currentPage.updatedBy || currentPage.author || 'unknown'} · rev
-            {currentPage.revision} · {formatTimestamp(currentPage.updatedAt)}
+            {currentPage.revision} · {formatLocalDateTime(currentPage.updatedAt) ?? currentPage.updatedAt}
           </span>
         </div>
         <div class="page-actions">
