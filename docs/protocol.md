@@ -29,7 +29,7 @@ is the first decision when adding a frame.
 | Route | Mechanism | Use for |
 | --- | --- | --- |
 | Server-wide broadcast | `AppState.tx` | Events every connected client needs: profile updates, role changes, emoji edits. |
-| Channel-scoped broadcast | the per-channel sender | Anything that belongs to one channel: messages, reactions, pins, `screenshare-start`/`-stop`, `webcam-start`/`-stop`, `soundboard-play`. |
+| Channel-scoped broadcast | the per-channel sender | Anything that belongs to one channel: messages, reactions, pins, `screenshare-start`/`-stop`, `webcam-start`/`-stop`, `soundboard-play`, `voice-mute`. |
 | Direct | `AppState.direct` | Anything addressed to a single user. |
 
 Frames that concern one account and nobody else take the direct route even
@@ -125,6 +125,11 @@ Notifications for other channels (`*-notify`) are not recovered; an unread
 badge can be missed, a message cannot.
 
 ## Inbound validation
+
+Before any of it, a message larger than `MAX_WS_MESSAGE_BYTES`
+(`ws/constants.rs`) closes the connection unread: every frame is parsed into
+a `serde_json::Value` before its type is known, so the size bound is the
+only thing between a client and an arbitrarily large parse.
 
 Three checks matter, in `ws/helpers.rs` and `ws/handlers/mod.rs`:
 

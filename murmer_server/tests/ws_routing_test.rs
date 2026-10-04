@@ -403,3 +403,107 @@ async fn signaling_does_not_cross_between_voice_channels() {
         .count();
     assert_eq!(from_carol, 0, "carol's offer crossed channels: {seen:?}");
 }
+
+#[tokio::test]
+async fn a_voice_mute_is_rebuilt_and_kept_to_the_senders_channel() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+    let channel = shared_voice_channel(&mut alice, &mut bob).await;
+
+    // Into a channel bob is not in: refused. Then his own, claiming to be
+    // alice and carrying a field of his own: sent as bob, without it.
+    bob.send(json!({ "type": "voice-mute", "channelId": channel + 1, "micMuted": true }))
+        .await;
+    bob.send(json!({
+        "type": "voice-mute",
+        "user": "alice",
+        "channelId": channel,
+        "micMuted": true,
+        "outputMuted": false,
+        "injected": "payload",
+    }))
+    .await;
+    bob.mark("away").await;
+
+    let seen = alice.until_mark("bob", "away").await;
+    let mutes = of_type(&seen, "voice-mute");
+    assert_eq!(mutes.len(), 1, "{seen:?}");
+    assert_eq!(
+        *mutes[0],
+        json!({
+            "type": "voice-mute",
+            "user": "bob",
+            "channelId": channel,
+            "micMuted": true,
+            "outputMuted": false,
+        })
+    );
+}
+
+#[tokio::test]
+async fn a_voice_mute_in_a_private_channel_reaches_only_who_can_see_it() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+
+    alice
+        .send(json!({ "type": "create-voice-channel", "name": "Backroom", "private": true }))
+        .await;
+    let frames = alice
+        .until(|f| f["type"] == "voice-channel-add" && f["name"] == "Backroom")
+        .await;
+    let channel = frames.last().unwrap()["channelId"]
+        .as_i64()
+        .expect("voice channel id");
+    join_voice(&mut alice, channel).await;
+    alice
+        .send(json!({ "type": "voice-mute", "channelId": channel, "micMuted": true }))
+        .await;
+    alice.mark("away").await;
+
+    let own = alice.until_mark("alice", "away").await;
+    assert_eq!(of_type(&own, "voice-mute").len(), 1, "{own:?}");
+
+    let seen = bob.until_mark("alice", "away").await;
+    assert!(
+        of_type(&seen, "voice-mute").is_empty(),
+        "bob saw a mute in a private channel: {seen:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_frame_beyond_the_size_limit_closes_the_connection() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+
+    // A wiki save's worth of padding still gets through.
+    let fits = "x".repeat(200 * 1024);
+    alice
+        .send(json!({ "type": "ping", "id": "fits", "pad": fits }))
+        .await;
+    alice
+        .until(|f| f["type"] == "pong" && f["id"] == "fits")
+        .await;
+
+    let too_big = "x".repeat(300 * 1024);
+    // The server may already have closed by the time the send completes.
+    let _ = alice
+        .ws
+        .send(Message::text(
+            json!({ "type": "ping", "pad": too_big }).to_string(),
+        ))
+        .await;
+    loop {
+        let next = tokio::time::timeout(Duration::from_secs(5), alice.ws.next())
+            .await
+            .expect("connection stayed open");
+        match next {
+            Some(Ok(Message::Text(text))) => {
+                assert!(!text.contains("pong"), "oversized frame was handled");
+            }
+            Some(Ok(Message::Close(_)) | Err(_)) | None => break,
+            Some(Ok(_)) => {}
+        }
+    }
+}

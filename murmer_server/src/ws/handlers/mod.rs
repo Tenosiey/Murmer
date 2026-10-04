@@ -37,7 +37,7 @@ pub use maintenance::spawn_message_retention;
 pub use scheduled::{recover_claimed_scheduled_messages, spawn_scheduler};
 
 use super::{
-    constants::{DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT},
+    constants::{DEFAULT_HISTORY_LIMIT, MAX_HISTORY_LIMIT, MAX_WS_MESSAGE_BYTES},
     errors,
     helpers::*,
     validation::*,
@@ -425,10 +425,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 maintenance::handle_reset_server(&state, &mut sender, &v, &user_name).await;
                             }
                             "voice-mute" => {
-                                if claims_own_user(&v, &user_name) {
-                                    handle_voice_mute(&state, &v).await;
-                                    broadcast_serialized(&state, text, &v);
-                                }
+                                handle_voice_mute(&state, &v, &user_name, voice_channel).await;
                             }
                             "voice-hand" => {
                                 hands::handle_voice_hand(&state, &v, &user_name, voice_channel).await;
@@ -1153,11 +1150,25 @@ async fn end_webcams_for_user(state: &Arc<AppState>, user: &str) {
     }
 }
 
-/// Record a user's current voice mute state (microphone / output).
-async fn handle_voice_mute(state: &Arc<AppState>, v: &Value) {
-    let Some(user) = v.get("user").and_then(|u| u.as_str()) else {
+/// Record the sender's voice mute state (microphone / output) and tell
+/// their voice channel. The outgoing frame is rebuilt from the checked
+/// fields rather than relayed, so nothing else a client adds travels with
+/// it, and it is scoped to the channel so members who cannot see a private
+/// voice channel do not learn who sits in it.
+async fn handle_voice_mute(
+    state: &Arc<AppState>,
+    v: &Value,
+    user_name: &Option<String>,
+    voice_channel: Option<i32>,
+) {
+    let (Some(user), Some(ch_id)) = (user_name.as_deref(), voice_channel) else {
         return;
     };
+    // Only into the channel the connection actually sits in, as for
+    // `voice-hand`: the route follows `channelId`.
+    if i32_field(v, "channelId") != Some(ch_id) {
+        return;
+    }
     let mic_muted = v.get("micMuted").and_then(|m| m.as_bool()).unwrap_or(false);
     let output_muted = v
         .get("outputMuted")
@@ -1168,6 +1179,16 @@ async fn handle_voice_mute(state: &Arc<AppState>, v: &Value) {
         .lock()
         .await
         .insert(user.to_string(), (mic_muted, output_muted));
+    broadcast(
+        state,
+        &serde_json::json!({
+            "type": "voice-mute",
+            "user": user,
+            "channelId": ch_id,
+            "micMuted": mic_muted,
+            "outputMuted": output_muted,
+        }),
+    );
 }
 
 /// Send the current mute states of everyone in a voice channel to a single client.
@@ -1363,5 +1384,7 @@ pub async fn ws_handler(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state, addr))
+    ws.max_message_size(MAX_WS_MESSAGE_BYTES)
+        .max_frame_size(MAX_WS_MESSAGE_BYTES)
+        .on_upgrade(move |socket| handle_socket(socket, state, addr))
 }

@@ -206,6 +206,15 @@ pub const MAX_WIKI_TITLE_LENGTH: usize = 100;
 /// Maximum length in bytes for a wiki page's Markdown body.
 pub const MAX_WIKI_BODY_BYTES: usize = 100_000;
 
+/// Largest WebSocket message the server reads, in bytes. Every frame is
+/// parsed into a `serde_json::Value` before its type is looked at, so
+/// without a bound a client could make the server buffer and parse axum's
+/// default of 64 MiB per message. The largest legitimate frame is a wiki
+/// save: [`MAX_WIKI_BODY_BYTES`] of Markdown, whose newlines and quotes JSON
+/// escaping can double. An over-long wiki body below this still arrives and
+/// gets its proper error; anything above closes the connection.
+pub const MAX_WS_MESSAGE_BYTES: usize = 256 * 1024;
+
 /// Maximum number of wiki pages per channel.
 pub const MAX_WIKI_PAGES_PER_CHANNEL: i64 = 100;
 

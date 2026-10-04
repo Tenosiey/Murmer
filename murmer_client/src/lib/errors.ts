@@ -104,6 +104,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-reaction-action': 'That reaction could not be applied.',
   'invalid-emoji': 'That emoji is not allowed.',
   'reaction-failed': 'The server could not update the reaction. Please try again.',
+  'reaction-limit': 'This message has as many different reactions as it can hold. Join one of them instead.',
   'dm-target-not-found': 'That user is not known on this server.',
   'invalid-dm-payload': 'That direct message could not be sent (malformed encrypted payload).',
   'cannot-dm-self': 'You cannot send a direct message to yourself.',

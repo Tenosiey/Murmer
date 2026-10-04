@@ -635,9 +635,13 @@ async fn add_reaction_handler(
         return json_error(StatusCode::NOT_FOUND, "message-not-found");
     }
 
-    if let Err(e) = db::add_reaction(&state.db, message_id, &bot.name, emoji).await {
-        error!("db reaction error: {e}");
-        return json_error(StatusCode::INTERNAL_SERVER_ERROR, "reaction-failed");
+    match db::add_reaction(&state.db, message_id, &bot.name, emoji).await {
+        Ok(true) => {}
+        Ok(false) => return json_error(StatusCode::CONFLICT, "reaction-limit"),
+        Err(e) => {
+            error!("db reaction error: {e}");
+            return json_error(StatusCode::INTERNAL_SERVER_ERROR, "reaction-failed");
+        }
     }
 
     let reactions = match db::get_reaction_summary(&state.db, message_id).await {

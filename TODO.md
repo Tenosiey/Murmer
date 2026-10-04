@@ -33,15 +33,6 @@ the idea comes from and what users will expect it to behave like.
 
 ## 🔧 Tech debt / hardening
 
-- [ ] Bound the WebSocket message size. `ws_handler` takes axum's default
-      (64 MiB per message), and every frame is parsed into a
-      `serde_json::Value` before anything looks at its type. The largest
-      legitimate frame is a wiki save (`MAX_WIKI_BODY_BYTES`, 100 kB) or an
-      encrypted envelope; the limit belongs just above that
-- [ ] Cap the distinct reactions on one message. `handle_react` accepts any
-      emoji string up to 16 bytes, so one member can hang thousands of rows
-      off a message, and every `reaction-update` re-sends the whole summary
-      to the channel
 - [ ] Rate-limit frames in general, not just chat. Only `chat`, `dm`,
       `forward-message` and wiki writes go through
       `check_message_rate_limit`; `search-history` (a full-text query),
@@ -49,11 +40,6 @@ the idea comes from and what users will expect it to behave like.
       are unthrottled, and all of them queue on the one database thread — a
       single client in a loop slows the server for everyone. One
       per-connection budget in `handle_socket` covers them all at once
-- [ ] Rebuild `voice-mute` instead of relaying it. It goes out byte for byte
-      (`broadcast_serialized`) on `Route::All`, so any field a client adds
-      reaches every connection, including members who cannot see the
-      sender's private voice channel. Build it from the checked fields and
-      scope it to the channel like the other voice frames
 - [ ] Reclaim orphaned uploads. Deleting an emoji, avatar, server icon or
       sound removes its file; deleting a *message* does not, and neither does
       the Danger Zone purge or reset. The dashboard's storage breakdown can
