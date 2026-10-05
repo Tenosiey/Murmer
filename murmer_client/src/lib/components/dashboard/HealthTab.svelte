@@ -99,7 +99,6 @@
             { label: 'Messages', value: $serverMetrics.rejectedMessages },
             { label: 'Authentication', value: $serverMetrics.rejectedAuth },
             { label: 'Uploads', value: $serverMetrics.rejectedUploads },
-            { label: 'Replayed signatures', value: $serverMetrics.rejectedReplays },
             { label: 'Requests', value: $serverMetrics.rejectedFrames }
           ] as row (row.label)}
             <li class="storage-row">

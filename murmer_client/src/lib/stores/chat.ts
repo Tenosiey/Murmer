@@ -35,6 +35,7 @@ import {
   type SealedMessage
 } from '../channel-crypto';
 import { loadKeyPair } from '../keypair';
+import { setUploadSession } from '../upload';
 
 /** Maximum number of search results to request from server */
 const MAX_SEARCH_RESULTS = 200;
@@ -83,6 +84,9 @@ function createChatStore() {
    *  a message written for an encrypted channel is sealed, and its preview can
    *  only be opened once that channel's key has arrived. */
   let rawScheduled: unknown[] = [];
+  /** What to run once the server greets the connection with its challenge;
+   *  the caller's `onOpen`, which signs it into the `presence` frame. */
+  let onChallenge: ((challenge: string) => void) | undefined;
 
   /** In-flight and resolved peer key lookups, cached per connection. */
   const peerKeyRequests = new Map<string, Promise<string | null>>();
@@ -356,6 +360,18 @@ function createChatStore() {
     const current = get(session).user;
 
     switch (msg.type) {
+      // The server's first frame on every connection. The challenge is both
+      // what `presence` signs and, once that succeeds, the session `/upload`
+      // accepts; see docs/security.md.
+      case 'auth-challenge': {
+        if (typeof msg.challenge !== 'string' || !msg.challenge) break;
+        setUploadSession(msg.challenge);
+        const run = onChallenge;
+        onChallenge = undefined;
+        run?.(msg.challenge);
+        break;
+      }
+
       case 'chat': {
         const prepared = decryptChannelFrame(msg);
         update((m) => [...m, prepared].slice(-MAX_LIVE_MESSAGES));
@@ -676,6 +692,7 @@ function createChatStore() {
    */
   function resetSession(): void {
     set([]);
+    setUploadSession(null);
     typing.reset();
     unread.reset();
     threadData.set(null);
@@ -694,8 +711,9 @@ function createChatStore() {
   }
 
   /** Connect to a WebSocket server. */
-  function connect(url: string, onOpen?: () => void): void {
+  function connect(url: string, onOpen?: (challenge: string) => void): void {
     resetSession();
+    onChallenge = onOpen;
     // Per-channel client state (last-read markers, notification preferences)
     // is persisted per server; switch both stores to this server's slice.
     unread.setServer(url);
@@ -715,7 +733,6 @@ function createChatStore() {
       handleMessage,
       () => {
         connection.set('connected');
-        onOpen?.();
       },
       (info) => {
         clearPendingSearches('Connection closed');

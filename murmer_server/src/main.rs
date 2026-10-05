@@ -19,8 +19,8 @@
 //! - `STUN_SERVERS`: comma separated STUN URLs handed to clients for WebRTC
 //!   (default: Google's public server; empty for none).
 //! - `MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
-//!   `MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND`, `NONCE_EXPIRY_SECONDS`:
-//!   rate limiting overrides.
+//!   `MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND`: rate limiting
+//!   overrides.
 //!
 //! Run with `cargo run` or via Docker Compose (`docker compose up --build`).
 use anyhow::{Context, Result};

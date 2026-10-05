@@ -110,14 +110,17 @@ impl Client {
             .expect("connect");
         let mut client = Self { name, ws };
         let key = signing_key(name);
-        let timestamp = chrono::Utc::now().timestamp_millis().to_string();
+        let challenge = client.until(|f| f["type"] == "auth-challenge").await;
+        let challenge = challenge.last().unwrap()["challenge"]
+            .as_str()
+            .unwrap()
+            .to_owned();
         client
             .send(json!({
                 "type": "presence",
                 "user": name,
                 "publicKey": public_key(name),
-                "signature": STANDARD.encode(key.sign(timestamp.as_bytes()).to_bytes()),
-                "timestamp": timestamp,
+                "signature": STANDARD.encode(key.sign(format!("presence:{challenge}").as_bytes()).to_bytes()),
             }))
             .await;
         client.send(json!({ "type": "ping", "id": name })).await;

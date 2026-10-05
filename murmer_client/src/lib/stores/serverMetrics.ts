@@ -41,7 +41,6 @@ export interface ServerMetrics {
   rejectedMessages: number;
   rejectedAuth: number;
   rejectedUploads: number;
-  rejectedReplays: number;
   rejectedFrames: number;
 }
 
@@ -77,7 +76,6 @@ function parse(payload: Record<string, unknown>): ServerMetrics {
     rejectedMessages: count(payload.rejectedMessages),
     rejectedAuth: count(payload.rejectedAuth),
     rejectedUploads: count(payload.rejectedUploads),
-    rejectedReplays: count(payload.rejectedReplays),
     rejectedFrames: count(payload.rejectedFrames)
   };
 }

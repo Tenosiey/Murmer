@@ -1,12 +1,12 @@
 /**
  * Uploads against a server's `/upload` endpoint.
  *
- * The endpoint is authenticated: it only accepts a fresh, single-use Ed25519
- * proof from a key that already has an account on that server, so every
- * caller builds its multipart body with `uploadForm` rather than by hand. The
- * proof travels as ordinary form fields ahead of the file — a custom header
- * would turn the request into a preflighted one, which servers running the
- * recommended configuration (CORS disabled) do not answer.
+ * The endpoint is authenticated: it only accepts the upload session of a
+ * live, authenticated WebSocket connection to that server, so every caller
+ * builds its multipart body with `uploadForm` rather than by hand. The
+ * session travels as an ordinary form field ahead of the file — a custom
+ * header would turn the request into a preflighted one, which servers running
+ * the recommended configuration (CORS disabled) do not answer.
  *
  * Beyond that the endpoint validates type, size and magic bytes itself and
  * every consumer (chat attachment, avatar, profile, server icon, role icon)
@@ -15,7 +15,16 @@
  * text exists so callers can show something better than "failed".
  */
 
-import { loadKeyPair, sign } from './keypair';
+/**
+ * The open connection's upload session: the challenge the server greeted it
+ * with, which the server accepts on `/upload` once `presence` has signed it.
+ * Set by the chat store; there is one connection at a time.
+ */
+let uploadSession: string | null = null;
+
+export function setUploadSession(session: string | null): void {
+  uploadSession = session;
+}
 
 /** Render a byte count the way the upload settings talk about it. */
 export function formatUploadSize(bytes: number): string {
@@ -30,22 +39,15 @@ function formatLimit(bytes: number): string {
 }
 
 /**
- * Build the multipart body for an upload: the identity proof first, then the
- * file.
+ * Build the multipart body for an upload: the session first, then the file.
  *
- * Order matters — the server verifies the credentials as soon as it reaches
- * the file part, so that it never buffers bytes for a caller it has not
- * authenticated. The signature covers `upload:<timestamp>` rather than the
- * bare timestamp a presence frame signs, which keeps the two proofs from
- * being interchangeable.
+ * Order matters — the server checks the session as soon as it reaches the
+ * file part, so that it never buffers bytes for a caller it has not
+ * authenticated.
  */
 export function uploadForm(file: Blob, filename?: string): FormData {
-  const pair = loadKeyPair();
-  const timestamp = Date.now().toString();
   const form = new FormData();
-  form.append('publicKey', pair.publicKey);
-  form.append('timestamp', timestamp);
-  form.append('signature', sign(`upload:${timestamp}`, pair.secretKey));
+  form.append('session', uploadSession ?? '');
   if (filename === undefined) form.append('file', file);
   else form.append('file', file, filename);
   return form;

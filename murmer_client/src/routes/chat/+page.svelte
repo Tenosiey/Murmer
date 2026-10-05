@@ -358,17 +358,15 @@
   function connectToServer() {
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
     const entry = servers.get(url);
-    chat.connect(url, async () => {
+    chat.connect(url, async (challenge) => {
       const u = get(session).user;
       if (u) {
         const kp = loadKeyPair();
-        const ts = Date.now().toString();
         chat.sendRaw({
           type: 'presence',
           user: u,
           publicKey: kp.publicKey,
-          timestamp: ts,
-          signature: sign(ts, kp.secretKey),
+          signature: sign(`presence:${challenge}`, kp.secretKey),
           password: entry?.password,
           invite: entry?.invite
         });

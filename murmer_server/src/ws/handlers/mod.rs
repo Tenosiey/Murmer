@@ -125,6 +125,19 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
     info!("Client connected");
 
     let (mut sender, mut receiver) = socket.split();
+    // What this connection's `presence` must sign. Fresh per socket, so a
+    // proof made for another server — or another connection — is worthless
+    // here; see `auth::verify_key_proof`. Once the proof succeeds it doubles
+    // as the connection's `/upload` session (`AppState::upload_sessions`).
+    let challenge = {
+        use base64::Engine as _;
+        base64::engine::general_purpose::STANDARD.encode(rand::random::<[u8; 32]>())
+    };
+    send_json(
+        &mut sender,
+        &serde_json::json!({ "type": "auth-challenge", "challenge": challenge }),
+    )
+    .await;
     let mut global_rx = state.tx.subscribe();
     // Mailbox for frames addressed to this connection's user specifically;
     // registered once `presence` establishes who that is.
@@ -187,7 +200,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
 
                         match t {
                             "presence" => {
-                                if auth::handle_presence(&mut sender, &state, &mut v, &mut authenticated, &mut user_name, &client_ip, default_channel_id).await.is_err() {
+                                if auth::handle_presence(&mut sender, &state, &mut v, &mut authenticated, &mut user_name, &client_ip, &challenge, default_channel_id).await.is_err() {
                                     break;
                                 }
                                 sync_direct_registration(&state, conn_id, &direct_tx, &user_name, &mut registered_as).await;
@@ -669,6 +682,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
     if let Some(user) = registered_as.as_deref() {
         unregister_direct(&state, user, conn_id).await;
     }
+    state.upload_sessions.lock().await.remove(&challenge);
     handle_disconnect(&state, user_name, voice_channel).await;
     info!(%client_ip, "Client disconnected");
 }
@@ -860,7 +874,6 @@ async fn handle_get_server_metrics(
         "rejectedMessages": m.rejected_messages,
         "rejectedAuth": m.rejected_auth,
         "rejectedUploads": m.rejected_uploads,
-        "rejectedReplays": m.rejected_replays,
         "rejectedFrames": m.rejected_frames,
     });
     send_json(sender, &msg).await;

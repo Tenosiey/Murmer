@@ -9,15 +9,16 @@ Before changing anything in here, read
 
 ## Identity
 
-Authentication is an Ed25519 signature with replay protection. The server
-binds an account name to the **first key that claims it**, permanently.
+Authentication is an Ed25519 signature over a challenge the server issues
+per connection. The server binds an account name to the **first key that
+claims it**, permanently.
 
 That single key does more than log you in:
 
 - it authenticates on *every* server, not just one;
 - it derives (via ed2curve) the X25519 keys DMs are encrypted to;
 - it wraps the per-channel keys of end-to-end encrypted channels;
-- it signs `/upload` proofs.
+- it signs the `presence` proof that opens the `/upload` session.
 
 So losing it loses every account at once, plus the ability to read a single
 DM ever received. **That is why the key is backed up, not merely stored.**
@@ -45,9 +46,21 @@ evaluate more secure storage before calling this production-ready.
 
 ### Replay protection
 
-Nonces combine the public key and the timestamp; replayed signatures are
-rejected. A nonce counts as unused once it is older than
-`NONCE_EXPIRY_SECONDS`, whether or not the periodic sweep has removed it yet.
+Every connection is greeted with `{"type":"auth-challenge","challenge":…}`,
+32 random bytes, and `presence` signs `presence:<challenge>`. The challenge
+is what binds the proof to one server and one socket.
+
+The key being the account on every server is why that matters. The proof
+used to sign only a timestamp, so the operator of any server a user visited
+— or anyone reading its traffic — could replay a fresh proof against another
+server within the freshness window and log in there as them. A proof over a
+value only this server issued, on this socket, is worthless anywhere else.
+
+The ceiling: a malicious server could still *relay* another server's live
+challenge to a visiting client and forward the signature. Closing that
+needs the client to sign which server it believes it is talking to, and the
+server to check that against an address it knows to be its own — which
+behind a reverse proxy it does not reliably know.
 
 ### Before authentication
 
@@ -181,26 +194,25 @@ hear about.
 
 ## Upload authentication
 
-`/upload` is authenticated exactly like the WebSocket is.
+`/upload` rides on the WebSocket's authentication rather than repeating it.
 
-`upload::authorize` requires a fresh, single-use Ed25519 proof signed over
-`upload:<timestamp>` — a different message from the presence signature, so a
-presence proof cannot be spent on an upload — from a key that
-`db::user_for_key` resolves to an account on that server. Banned users are
-rejected. This is how the server password carries over to uploads.
+Once `presence` succeeds with a key, the connection's challenge is registered
+in `AppState::upload_sessions` with the account it proved, and removed when
+the socket closes. `upload::authorize` requires that session as the
+`session` field. Banned users are rejected. This is how the server password,
+the name binding and the challenge's server binding all carry over to
+uploads — a signature the client made by itself could carry none of them.
 
 Three ordering details are the whole point of the design:
 
 - the per-IP `check_upload_rate_limit` runs **before the body is touched**;
-- the proof is verified **before any file bytes are buffered**, which is why
-  the credentials are multipart fields *ahead of* the file;
+- the session is checked **before any file bytes are buffered**, which is
+  why it is a multipart field *ahead of* the file;
 - credentials stay **out of headers**, because a custom header makes the
   request preflighted and production servers run with CORS disabled.
 
 Clients must therefore build the body with `uploadForm` in
 `murmer_client/src/lib/upload.ts`. A hand-rolled `FormData` is rejected.
-`security::verify_key_signature` is shared with the presence path, so both
-transports verify a proof the same way.
 
 ### File validation
 
@@ -248,8 +260,8 @@ Authentication, chat traffic and uploads are all rate limited per IP, so the
 service must run behind a proxy that forwards the real client IP.
 
 The limits (`MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
-`MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND`, `NONCE_EXPIRY_SECONDS` —
-documented in `README.md`)
+`MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND` — documented in
+`README.md`)
 are read once when the `RateLimiter` is built rather than on every check, so
 they take effect at startup.
 

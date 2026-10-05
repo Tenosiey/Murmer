@@ -33,7 +33,7 @@ static DB_CALLS: AtomicU64 = AtomicU64::new(0);
 static DB_NANOS: AtomicU64 = AtomicU64::new(0);
 static DB_MAX_NANOS: AtomicU64 = AtomicU64::new(0);
 /// Requests refused by a rate limit, indexed by [`Limit`].
-static REJECTED: [AtomicU64; 5] = [const { AtomicU64::new(0) }; 5];
+static REJECTED: [AtomicU64; 4] = [const { AtomicU64::new(0) }; 4];
 
 /// Fix the instant uptime is measured from. Call once, at startup.
 ///
@@ -95,8 +95,6 @@ pub enum Limit {
     Auth,
     /// Uploads from one address.
     Uploads,
-    /// A signature presented twice — its nonce was already spent.
-    Replays,
     /// Frames of any kind from one connection.
     Frames,
 }
@@ -122,7 +120,6 @@ pub struct Snapshot {
     pub rejected_messages: u64,
     pub rejected_auth: u64,
     pub rejected_uploads: u64,
-    pub rejected_replays: u64,
     pub rejected_frames: u64,
 }
 
@@ -140,7 +137,6 @@ pub fn snapshot() -> Snapshot {
         rejected_messages: REJECTED[Limit::Messages as usize].load(Relaxed),
         rejected_auth: REJECTED[Limit::Auth as usize].load(Relaxed),
         rejected_uploads: REJECTED[Limit::Uploads as usize].load(Relaxed),
-        rejected_replays: REJECTED[Limit::Replays as usize].load(Relaxed),
         rejected_frames: REJECTED[Limit::Frames as usize].load(Relaxed),
     }
 }

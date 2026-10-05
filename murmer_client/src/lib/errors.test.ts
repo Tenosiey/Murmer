@@ -13,8 +13,6 @@ const FATAL_CODES = [
   'unauthenticated',
   'invalid-password',
   'auth-rate-limit',
-  'invalid-timestamp',
-  'replay-attack',
   'invalid-signature',
   'invalid-signature-format',
   'invalid-public-key',

@@ -1,9 +1,9 @@
 use murmer_server::{
     Clock, RateLimiter,
     security::{
-        FRAME_BURST_SECONDS, FrameBudget, RATE_WINDOW, SWEEP_INTERVAL, check_and_store_nonce,
-        check_auth_rate_limit, check_message_rate_limit, validate_channel_name, validate_timestamp,
-        validate_user_name, voice_channel_has_room,
+        FRAME_BURST_SECONDS, FrameBudget, RATE_WINDOW, SWEEP_INTERVAL, check_auth_rate_limit,
+        check_message_rate_limit, validate_channel_name, validate_user_name,
+        voice_channel_has_room,
     },
 };
 use serial_test::serial;
@@ -49,27 +49,6 @@ fn rejects_auth_when_limit_reached() {
     });
 }
 
-#[test]
-#[serial]
-fn allows_nonce_reuse_after_expiry() {
-    with_var("NONCE_EXPIRY_SECONDS", Some("1"), || {
-        with_runtime(|rt| {
-            rt.block_on(async {
-                let clock = Clock::manual();
-                let limiter = RateLimiter::with_clock(clock.clone());
-                assert!(check_and_store_nonce(&limiter, "nonce-1").await);
-                assert!(!check_and_store_nonce(&limiter, "nonce-1").await);
-
-                clock.advance(Duration::from_secs(2));
-                assert!(check_and_store_nonce(&limiter, "nonce-1").await);
-            });
-        });
-    });
-}
-
-/// The sliding window is pruned per key on every access, so a user who hit the
-/// limit is allowed again as soon as their oldest message falls out of it —
-/// and only the messages that fell out are forgiven.
 #[test]
 #[serial]
 fn frees_the_limit_as_the_window_slides() {
@@ -128,30 +107,6 @@ fn sweeps_keys_that_went_quiet() {
     });
 }
 
-/// The nonce store sweeps on the same timer, and its entries are the ones that
-/// grow with every authentication rather than with every distinct user.
-#[test]
-#[serial]
-fn sweeps_expired_nonces() {
-    with_var("NONCE_EXPIRY_SECONDS", Some("1"), || {
-        with_runtime(|rt| {
-            rt.block_on(async {
-                let clock = Clock::manual();
-                let limiter = RateLimiter::with_clock(clock.clone());
-                assert!(check_and_store_nonce(&limiter, "nonce-1").await);
-                assert!(check_and_store_nonce(&limiter, "nonce-2").await);
-                assert_eq!(limiter.used_nonces.lock().await.entries.len(), 2);
-
-                clock.advance(SWEEP_INTERVAL + Duration::from_secs(1));
-                assert!(check_and_store_nonce(&limiter, "nonce-3").await);
-
-                let nonces = limiter.used_nonces.lock().await;
-                assert_eq!(nonces.entries.keys().collect::<Vec<_>>(), vec!["nonce-3"]);
-            });
-        });
-    });
-}
-
 /// The mesh cost is quadratic in the room, so the cap is what stops the
 /// twentieth joiner from being felt as CPU load rather than as an error.
 #[test]
@@ -188,15 +143,6 @@ fn validates_user_names() {
     assert!(!validate_user_name(
         "TooLongNameThatExceedsThirtyTwoCharacters"
     ));
-}
-
-#[test]
-fn validates_timestamps() {
-    let now = chrono::Utc::now().timestamp_millis();
-    assert!(validate_timestamp(&now.to_string()).is_ok());
-    assert!(validate_timestamp(&(now + 30_000).to_string()).is_ok());
-    assert!(validate_timestamp(&(now - 30_000).to_string()).is_ok());
-    assert!(validate_timestamp("not-a-number").is_err());
 }
 
 #[test]

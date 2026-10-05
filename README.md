@@ -84,7 +84,6 @@ Environment variables recognised by the server:
 | `MAX_AUTH_ATTEMPTS_PER_MINUTE` | No | Per-IP auth rate limit (default: 5) |
 | `MAX_UPLOADS_PER_MINUTE` | No | Per-IP file upload rate limit (default: 20) |
 | `MAX_FRAMES_PER_SECOND` | No | Sustained WebSocket frames one connection may send per second, with ten seconds' worth allowed in a burst (default: 20, `0` for no limit) |
-| `NONCE_EXPIRY_SECONDS` | No | Replay protection window (default: 300) |
 | `STUN_SERVERS` | No | Comma-separated `stun:`/`stuns:` URLs clients use to set up voice and screen share (defaults to `stun:stun.l.google.com:19302`; set it empty to contact no STUN server, which limits calls to peers on the same network) |
 | `MAX_VOICE_CHANNEL_USERS` | No | People allowed in one voice channel (default: 10, `0` for no limit) |
 | `MESSAGE_RETENTION_DAYS` | No | Delete channel messages, with their reactions and pins, once they are this many days old; checked hourly. DMs are kept. Unset or `0` keeps everything |
@@ -177,10 +176,10 @@ cut is [`agents/skills/releasing.md`](agents/skills/releasing.md).
 
 ## Security
 
-Authentication is an Ed25519 signature over a single-use nonce, uploads need
-the same proof, every permission is checked server-side, and DMs and
-encrypted channels are opaque to the server. What that does and does not
-protect against is [`docs/security.md`](docs/security.md).
+Authentication is an Ed25519 signature over a per-connection server
+challenge, uploads ride on that connection, every permission is checked
+server-side, and DMs and encrypted channels are opaque to the server. What
+that does and does not protect against is [`docs/security.md`](docs/security.md).
 
 Please report security problems by email to the maintainer, not as a public
 issue. Everything else goes to <https://github.com/Tenosiey/Murmer/issues>.

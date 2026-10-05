@@ -1,4 +1,4 @@
-//! Security utilities for rate limiting and replay attack prevention.
+//! Security utilities: rate limiting, key proofs and input validation.
 //!
 //! Every refusal below is counted in [`crate::metrics`] as well as logged.
 //! A rejection is the one event here an operator has to see *while* it is
@@ -62,16 +62,6 @@ pub fn get_max_frames_per_second() -> u32 {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(20)
-}
-
-/// Get the nonce expiry time in seconds for replay attack prevention.
-///
-/// Reads from the `NONCE_EXPIRY_SECONDS` environment variable, defaulting to 300 (5 minutes).
-pub fn get_nonce_expiry_seconds() -> u64 {
-    std::env::var("NONCE_EXPIRY_SECONDS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(300) // 5 minutes
 }
 
 /// Whether a voice channel holding `occupants` has room for `user`.
@@ -313,81 +303,8 @@ pub async fn check_message_rate_limit(rate_limiter: &RateLimiter, user: &str) ->
     allowed
 }
 
-/// Check if a nonce has been used and store it for replay attack prevention.
-///
-/// This function implements a sliding window for nonce validation. Nonces expire after
-/// `NONCE_EXPIRY_SECONDS` (default: 300 seconds). If a nonce is already in the cache,
-/// it indicates a replay attack attempt.
-///
-/// # Arguments
-/// * `rate_limiter` - The shared rate limiter state containing used nonces
-/// * `nonce` - The nonce string to check (typically derived from user's public key and timestamp)
-///
-/// # Returns
-/// * `true` if the nonce is valid and has been stored
-/// * `false` if the nonce has already been used (potential replay attack)
-pub async fn check_and_store_nonce(rate_limiter: &RateLimiter, nonce: &str) -> bool {
-    let now = rate_limiter.clock.now();
-    let mut used_nonces = rate_limiter.used_nonces.lock().await;
-
-    let expiry = rate_limiter.nonce_expiry;
-
-    // Expiry is checked per nonce below, so the sweep exists purely to release
-    // memory and can run on a timer instead of on every authentication.
-    if now.duration_since(used_nonces.last_sweep) >= SWEEP_INTERVAL {
-        used_nonces
-            .entries
-            .retain(|_, &mut seen_at| now.saturating_duration_since(seen_at) < expiry);
-        used_nonces.last_sweep = now;
-    }
-
-    // An entry that is still present but older than the expiry window has
-    // already lapsed: the nonce may be used again, so treat it as unseen.
-    if used_nonces
-        .entries
-        .get(nonce)
-        .is_some_and(|seen_at| now.saturating_duration_since(*seen_at) < expiry)
-    {
-        metrics::rejected(metrics::Limit::Replays);
-        warn!("Replay attack detected - nonce already used: {}", nonce);
-        return false;
-    }
-
-    used_nonces.entries.insert(nonce.to_string(), now);
-    true
-}
-
-/// Validate that a timestamp string is within an acceptable time range.
-///
-/// Parses a timestamp (milliseconds since Unix epoch) and requires it to be
-/// within ±60 seconds of the current time. Combined with the nonce store this
-/// bounds the replay window: a signature older than the window is rejected
-/// here, a fresh one can only be used once.
-///
-/// # Arguments
-/// * `timestamp_str` - The timestamp string to validate (milliseconds since Unix epoch)
-///
-/// # Returns
-/// * `Ok(i64)` - The parsed timestamp if valid
-/// * `Err(&str)` - Error message if validation fails
-pub fn validate_timestamp(timestamp_str: &str) -> Result<i64, &'static str> {
-    let timestamp = timestamp_str
-        .parse::<i64>()
-        .map_err(|_| "Invalid timestamp format")?;
-
-    let now = chrono::Utc::now().timestamp_millis();
-    if (now - timestamp).abs() > 60_000 {
-        return Err("Timestamp outside acceptable window");
-    }
-
-    Ok(timestamp)
-}
-
-/// Why a signed key proof was rejected.
-///
-/// The WebSocket presence frame and the `/upload` endpoint prove ownership of
-/// a public key the same way, so the verification lives in one place and each
-/// caller maps the reason onto its own error vocabulary.
+/// Why a signed key proof was rejected, so the presence handler can answer
+/// with a specific error code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProofError {
     /// The public key or the signature was not valid base64.
@@ -405,9 +322,9 @@ pub enum ProofError {
 /// Verify that `signature` is `public_key`'s signature over `message`, with
 /// both the key and the signature given as base64.
 ///
-/// This only proves possession of the private key. Freshness (a recent
-/// timestamp) and single use (the nonce store) are the caller's job — a
-/// signature alone can be replayed forever.
+/// This only proves possession of the private key. Binding the message to
+/// something only this server could have issued is the caller's job — a
+/// signature alone can be replayed forever, on any server.
 pub fn verify_key_signature(
     public_key: &str,
     signature: &str,

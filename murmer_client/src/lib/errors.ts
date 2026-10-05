@@ -9,8 +9,6 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-invite':
     'That invite is no longer valid — it expired, ran out of uses or was withdrawn. Ask for a fresh one.',
   'auth-rate-limit': 'Too many connection attempts. Please wait a moment and try again.',
-  'invalid-timestamp': 'Authentication failed: your system clock appears to be wrong.',
-  'replay-attack': 'Authentication failed. Please try connecting again.',
   'invalid-signature': 'Authentication failed: invalid signature.',
   'invalid-signature-format': 'Authentication failed: invalid signature.',
   'invalid-public-key': 'Authentication failed: invalid key.',
@@ -220,8 +218,6 @@ const FATAL_CONNECTION_ERRORS = new Set([
   'invalid-password',
   'invalid-invite',
   'auth-rate-limit',
-  'invalid-timestamp',
-  'replay-attack',
   'invalid-signature',
   'invalid-signature-format',
   'invalid-public-key',

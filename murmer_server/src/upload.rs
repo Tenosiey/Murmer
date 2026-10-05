@@ -1,13 +1,13 @@
 //! Endpoint for storing uploaded files on disk.
 //!
-//! Every request must prove ownership of a public key that has authenticated
-//! with this server before (see [`authorize`]) and is subject to a per-IP rate
+//! Every request must name the upload session of a live, authenticated
+//! WebSocket connection (see [`authorize`]) and is subject to a per-IP rate
 //! limit: writing a file to disk is the one thing an HTTP caller can make the
 //! server spend storage on, so it may not be reachable by anyone who can open
-//! a socket. Credentials travel as ordinary multipart fields ahead of the file
-//! rather than as headers, which keeps the request a CORS-simple one — a
-//! custom header would add a preflight the server does not answer while CORS
-//! is disabled, i.e. in the recommended production configuration.
+//! a socket. The session travels as an ordinary multipart field ahead of the
+//! file rather than as a header, which keeps the request a CORS-simple one —
+//! a custom header would add a preflight the server does not answer while
+//! CORS is disabled, i.e. in the recommended production configuration.
 //!
 //! Files are sanitized and saved under the `UPLOAD_DIR` directory. Images are
 //! validated by magic bytes; other attachments are restricted to a safe-list
@@ -172,29 +172,11 @@ pub fn classify_extension(filename: &str) -> Option<&'static UploadCategory> {
         .find(|category| category.extensions.contains(&ext.as_str()))
 }
 
-/// Domain separator for the message an upload proof signs.
-///
-/// The signature covers `upload:<timestamp>` rather than the bare timestamp a
-/// presence frame signs, so the two proofs are different messages: one can
-/// never be lifted from a captured frame and spent on the other.
-const UPLOAD_PROOF_PREFIX: &str = "upload:";
-
-/// Upper bound on a single credential field. The values are a base64 key, a
-/// base64 signature and a millisecond timestamp; anything near this cap is
-/// already junk, and the cap is what stops a caller from streaming the whole
-/// request body into memory under the name of a "public key".
+/// Upper bound on the session field. The value is a base64-encoded 32-byte
+/// challenge; anything near this cap is already junk, and the cap is what
+/// stops a caller from streaming the whole request body into memory under
+/// the name of a credential.
 const MAX_CREDENTIAL_BYTES: usize = 1024;
-
-/// The proof of identity a client sends ahead of the file part.
-#[derive(Default)]
-struct Credentials {
-    /// Base64 Ed25519 public key, the same one used for WebSocket presence.
-    public_key: String,
-    /// Milliseconds since the Unix epoch, as a string.
-    timestamp: String,
-    /// Base64 Ed25519 signature over `upload:<timestamp>`.
-    signature: String,
-}
 
 /// Read one small text field, refusing anything larger than `max` bytes.
 ///
@@ -221,59 +203,24 @@ async fn read_text_field(field: &mut Field<'_>, max: usize) -> Result<String, ()
 /// Authenticate an upload and resolve the account making it, or return the
 /// status to answer with.
 ///
-/// The proof is the one presence uses — a fresh, single-use timestamp signed
-/// by the caller's key — plus the requirement that the key already owns an
-/// account here. That last step is what carries the server password over to
-/// this endpoint: a name is only bound to a key by a successful presence, so
-/// on a password-protected server a key that never had the password has no
-/// account to upload under.
-async fn authorize(
-    state: &AppState,
-    client_ip: &str,
-    creds: &Credentials,
-) -> Result<String, StatusCode> {
-    if creds.public_key.is_empty() || creds.timestamp.is_empty() || creds.signature.is_empty() {
+/// The credential is the caller's upload session: the challenge its open
+/// WebSocket connection was greeted with, registered once that connection
+/// proved its key with `presence` and dropped when it closes. That carries
+/// the server password, the name binding and the ban check over to this
+/// endpoint without a second proof — and, unlike a signature the client
+/// makes by itself, it cannot have been issued by any other server.
+async fn authorize(state: &AppState, client_ip: &str, session: &str) -> Result<String, StatusCode> {
+    if session.is_empty() {
         warn!(%client_ip, "Rejected upload without credentials");
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    // A signature on its own only proves possession of the key, so it is
-    // bounded in time (the timestamp must be recent) and to a single use (the
-    // shared nonce store) exactly as in the presence path.
-    if let Err(err) = security::validate_timestamp(&creds.timestamp) {
-        warn!(%client_ip, "Rejected upload - {err}: {}", creds.timestamp);
+    let Some((user, key)) = state.upload_sessions.lock().await.get(session).cloned() else {
+        warn!(%client_ip, "Rejected upload with an unknown session");
         return Err(StatusCode::UNAUTHORIZED);
-    }
-
-    let nonce = format!(
-        "{UPLOAD_PROOF_PREFIX}{}:{}",
-        creds.public_key, creds.timestamp
-    );
-    if !security::check_and_store_nonce(&state.rate_limiter, &nonce).await {
-        warn!(%client_ip, "Rejected upload with a replayed proof");
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-
-    let message = format!("{UPLOAD_PROOF_PREFIX}{}", creds.timestamp);
-    if let Err(err) = security::verify_key_signature(&creds.public_key, &creds.signature, &message)
-    {
-        warn!(%client_ip, ?err, "Rejected upload with an invalid key proof");
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-
-    let user = match db::user_for_key(&state.db, &creds.public_key).await {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            warn!(%client_ip, "Rejected upload from a key with no account on this server");
-            return Err(StatusCode::FORBIDDEN);
-        }
-        Err(e) => {
-            error!("Failed to resolve the account behind an upload key: {e}");
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
     };
 
-    match db::is_banned(&state.db, Some(&creds.public_key), &user).await {
+    match db::is_banned(&state.db, Some(&key), &user).await {
         Ok(true) => {
             warn!(%client_ip, "Rejected upload from banned user: {user}");
             return Err(StatusCode::FORBIDDEN);
@@ -302,8 +249,8 @@ pub async fn upload(
     }
 
     // Credential fields come first and the file part ends the loop, so the
-    // proof is verified before a single byte of the file is buffered.
-    let mut creds = Credentials::default();
+    // session is checked before a single byte of the file is buffered.
+    let mut session = String::new();
     let mut field = loop {
         let mut field = match multipart.next_field().await {
             Ok(Some(field)) => field,
@@ -314,16 +261,12 @@ pub async fn upload(
             }
         };
 
-        let name = field.name().map(str::to_string);
-        let slot = match name.as_deref() {
-            Some("publicKey") => &mut creds.public_key,
-            Some("timestamp") => &mut creds.timestamp,
-            Some("signature") => &mut creds.signature,
-            _ => break field,
-        };
+        if field.name() != Some("session") {
+            break field;
+        }
 
         match read_text_field(&mut field, MAX_CREDENTIAL_BYTES).await {
-            Ok(value) => *slot = value,
+            Ok(value) => session = value,
             Err(()) => {
                 warn!(%client_ip, "Rejected upload with an oversized credential field");
                 return StatusCode::BAD_REQUEST.into_response();
@@ -331,7 +274,7 @@ pub async fn upload(
         }
     };
 
-    let user = match authorize(&state, &client_ip, &creds).await {
+    let user = match authorize(&state, &client_ip, &session).await {
         Ok(user) => user,
         Err(status) => return status.into_response(),
     };

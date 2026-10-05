@@ -18,12 +18,6 @@ pub const INVALID_INVITE: &str = r#"{"type":"error","message":"invalid-invite"}"
 
 pub const AUTH_RATE_LIMIT: &str = r#"{"type":"error","message":"auth-rate-limit"}"#;
 
-/// Timestamp is outside the acceptable window.
-pub const INVALID_TIMESTAMP: &str = r#"{"type":"error","message":"invalid-timestamp"}"#;
-
-/// Nonce has already been used (replay attack detected).
-pub const REPLAY_ATTACK: &str = r#"{"type":"error","message":"replay-attack"}"#;
-
 pub const INVALID_SIGNATURE: &str = r#"{"type":"error","message":"invalid-signature"}"#;
 
 pub const INVALID_SIGNATURE_FORMAT: &str =

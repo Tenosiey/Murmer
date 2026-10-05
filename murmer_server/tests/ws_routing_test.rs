@@ -105,14 +105,17 @@ impl Client {
         };
 
         let key = signing_key(name);
-        let timestamp = chrono::Utc::now().timestamp_millis().to_string();
+        let challenge = client.until(|f| f["type"] == "auth-challenge").await;
+        let challenge = challenge.last().unwrap()["challenge"]
+            .as_str()
+            .unwrap()
+            .to_owned();
         client
             .send(json!({
                 "type": "presence",
                 "user": name,
                 "publicKey": public_key(name),
-                "signature": STANDARD.encode(key.sign(timestamp.as_bytes()).to_bytes()),
-                "timestamp": timestamp,
+                "signature": STANDARD.encode(key.sign(format!("presence:{challenge}").as_bytes()).to_bytes()),
                 "password": password,
             }))
             .await;
@@ -551,7 +554,9 @@ async fn a_client_in_a_loop_is_cut_off_after_its_burst() {
     );
 }
 
-/// Every frame a connection receives before the server closes it.
+/// Every frame a connection receives before the server closes it, except
+/// the challenge every connection is greeted with: it is random, and it is
+/// the one frame a socket is meant to receive before authenticating.
 async fn frames_until_closed(ws: &mut WebSocketStream<MaybeTlsStream<TcpStream>>) -> Vec<Value> {
     let mut seen = Vec::new();
     loop {
@@ -560,7 +565,10 @@ async fn frames_until_closed(ws: &mut WebSocketStream<MaybeTlsStream<TcpStream>>
             .unwrap_or_else(|_| panic!("connection stayed open; saw {seen:?}"));
         match next {
             Some(Ok(Message::Text(text))) => {
-                seen.push(serde_json::from_str(&text).expect("json frame"));
+                let frame: Value = serde_json::from_str(&text).expect("json frame");
+                if frame["type"] != "auth-challenge" {
+                    seen.push(frame);
+                }
             }
             Some(Ok(_)) => {}
             Some(Err(_)) | None => return seen,
@@ -611,6 +619,42 @@ async fn a_keyless_presence_does_not_reveal_whether_the_password_was_right() {
         answers.push(frames_until_closed(&mut ws).await);
     }
     assert_eq!(answers[0], answers[1], "the answer is a password oracle");
+}
+
+/// One identity key is the account on every server, so a proof another
+/// server (or another connection) could have seen must not log in here.
+#[tokio::test]
+async fn a_presence_proof_signed_for_another_connection_is_refused() {
+    let addr = start_server().await;
+    let challenge_of = |frame: Value| frame["challenge"].as_str().unwrap().to_owned();
+    let (mut elsewhere, _) = connect_async(format!("ws://{addr}/ws"))
+        .await
+        .expect("connect");
+    let Some(Ok(Message::Text(greeting))) = elsewhere.next().await else {
+        panic!("no challenge");
+    };
+    let foreign = challenge_of(serde_json::from_str(&greeting).unwrap());
+
+    let (mut ws, _) = connect_async(format!("ws://{addr}/ws"))
+        .await
+        .expect("connect");
+    let signature = signing_key("alice").sign(format!("presence:{foreign}").as_bytes());
+    ws.send(Message::text(
+        json!({
+            "type": "presence",
+            "user": "alice",
+            "publicKey": public_key("alice"),
+            "signature": STANDARD.encode(signature.to_bytes()),
+        })
+        .to_string(),
+    ))
+    .await
+    .expect("send");
+    let seen = frames_until_closed(&mut ws).await;
+    assert_eq!(
+        seen,
+        vec![json!({ "type": "error", "message": "invalid-signature" })]
+    );
 }
 
 #[tokio::test]
