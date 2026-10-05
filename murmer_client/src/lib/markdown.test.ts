@@ -55,6 +55,15 @@ describe('renderMarkdown / rendering', () => {
     expect(host.querySelector('a')?.getAttribute('href')).toBe('https://example.com');
   });
 
+  it('opens external links outside the app, without an opener', () => {
+    // Followed in place, a link would replace the app with somebody else's page.
+    for (const text of ['[link](https://example.com)', '<a href="http://example.com" target="_self">x</a>']) {
+      const anchor = render(text).querySelector('a');
+      expect(anchor?.getAttribute('target'), text).toBe('_blank');
+      expect(anchor?.getAttribute('rel'), text).toBe('noopener noreferrer');
+    }
+  });
+
   it('renders lists, whose markers the inline heuristic does not carry', () => {
     for (const [text, expected] of [
       ['- a\n- b', '<ul>\n<li>a</li>\n<li>b</li>\n</ul>\n'],
@@ -166,7 +175,7 @@ describe('renderMarkdown / sanitisation', () => {
 
   it('cannot be escaped through a markdown link title', () => {
     const host = render('[x](https://example.com "title\\" onmouseover=\\"alert(1)")');
-    expect(attributeNames(host).sort()).toEqual(['href', 'title']);
+    expect(attributeNames(host).sort()).toEqual(['href', 'rel', 'target', 'title']);
   });
 });
 
