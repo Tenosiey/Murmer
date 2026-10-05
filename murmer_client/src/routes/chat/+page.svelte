@@ -103,6 +103,7 @@
     countThreadReplies,
     mergeThreadMessages,
     canEditMessage,
+    lastEditableMessage,
     canDeleteMessage
   } from '$lib/chat/helpers';
   import { dialogs } from '$lib/stores/dialogs';
@@ -1019,6 +1020,11 @@
     if (error) setCommandFeedback(error, 'error');
   }
 
+  function editLastMessage() {
+    const msg = lastEditableMessage(channelMessages, $session.user);
+    if (msg) editChatMessage(msg);
+  }
+
   function isMessagePinned(msg: Message): boolean {
     if (typeof msg.id !== 'number') return false;
     return pinned.isPinned(currentChatChannelId, msg.id);
@@ -1482,6 +1488,7 @@
         onSend={send}
         onInput={handleComposerInput}
         onCancelReply={cancelReply}
+        onEditLast={editLastMessage}
         onFileSelected={setPendingFile}
       />
       {/if}

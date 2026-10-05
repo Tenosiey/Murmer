@@ -85,7 +85,6 @@ the idea comes from and what users will expect it to behave like.
       server fix it, DMs included
 - [ ] Text-to-speech — `/tts` messages read aloud by the platform's
       `speechSynthesis` (Discord), off by default per listener
-- [ ] Up-arrow in an empty composer edits your last message (Discord, Slack)
 - [ ] Voice messages — record a clip in the composer and send it as an audio
       attachment (Skype, WhatsApp). Attachments already travel sealed in DMs
       and encrypted channels, so it inherits that for free

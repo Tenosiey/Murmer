@@ -33,6 +33,8 @@
     onSend: () => void;
     onInput: () => void;
     onCancelReply: () => void;
+    /** Up-arrow in an empty composer: edit the user's last message. */
+    onEditLast?: () => void;
     onFileSelected: (file: File | null) => void;
   }
 
@@ -50,6 +52,7 @@
     onSend,
     onInput,
     onCancelReply,
+    onEditLast,
     onFileSelected
   }: Props = $props();
 
@@ -84,6 +87,18 @@
       if (canSend) onSend();
     } else if (event.key === 'Escape' && replyingTo) {
       onCancelReply();
+    } else if (
+      event.key === 'ArrowUp' &&
+      onEditLast &&
+      value === '' &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.isComposing
+    ) {
+      event.preventDefault();
+      onEditLast();
     }
   }
 

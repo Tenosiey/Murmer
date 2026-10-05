@@ -417,6 +417,14 @@ export function canEditMessage(msg: Message, user: string | null): boolean {
   return msg.user === user;
 }
 
+/**
+ * The message Up-arrow in an empty composer edits: the newest one `user` may
+ * edit. Newest by position, not id, so it matches what the list shows last.
+ */
+export function lastEditableMessage(messages: Message[], user: string | null): Message | null {
+  return messages.findLast((m) => canEditMessage(m, user)) ?? null;
+}
+
 /** Whether `user` may delete `msg`: their own, or any with MANAGE_MESSAGES. */
 export function canDeleteMessage(msg: Message, user: string | null, canManage: boolean): boolean {
   if (!user || typeof msg.id !== 'number') return false;
