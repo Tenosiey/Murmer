@@ -30,16 +30,16 @@ jobs:
     name: Frontend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Bun 1.x is a hard constraint (AGENTS.md); `latest` would move to 2.0
       # on the day it ships. A caret range, not `1.x`: setup-bun's matcher
       # reads `1.x` as an older release.
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "^1.0.0"
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('murmer_client/bun.lock') }}
@@ -61,13 +61,13 @@ jobs:
     name: Tauri shell
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "^1.0.0"
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('murmer_client/bun.lock') }}
@@ -105,7 +105,7 @@ jobs:
       - name: Install pinned Rust toolchain
         run: rustup show
 
-      - uses: swatinem/rust-cache@v2
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: murmer_client/src-tauri
 
@@ -121,7 +121,7 @@ jobs:
     name: Server
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install pinned Rust toolchain
         run: rustup show
@@ -139,7 +139,7 @@ jobs:
             echo "murmer_server/Dockerfile does not build with Rust ${pinned} from rust-toolchain.toml"; exit 1
           fi
 
-      - uses: swatinem/rust-cache@v2
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: murmer_server
 
