@@ -18,12 +18,6 @@ pub const INVALID_INVITE: &str = r#"{"type":"error","message":"invalid-invite"}"
 
 pub const AUTH_RATE_LIMIT: &str = r#"{"type":"error","message":"auth-rate-limit"}"#;
 
-/// Timestamp is outside the acceptable window.
-pub const INVALID_TIMESTAMP: &str = r#"{"type":"error","message":"invalid-timestamp"}"#;
-
-/// Nonce has already been used (replay attack detected).
-pub const REPLAY_ATTACK: &str = r#"{"type":"error","message":"replay-attack"}"#;
-
 pub const INVALID_SIGNATURE: &str = r#"{"type":"error","message":"invalid-signature"}"#;
 
 pub const INVALID_SIGNATURE_FORMAT: &str =
@@ -40,6 +34,10 @@ pub const INVALID_USERNAME: &str = r#"{"type":"error","message":"invalid-usernam
 
 /// The name is already bound to a different public key on this server.
 pub const USERNAME_TAKEN: &str = r#"{"type":"error","message":"username-taken"}"#;
+
+/// A check presence depends on (name binding, ban list) could not be read.
+/// The connection is refused rather than admitted unchecked.
+pub const LOGIN_FAILED: &str = r#"{"type":"error","message":"login-failed"}"#;
 
 pub const INVALID_CHANNEL_NAME: &str = r#"{"type":"error","message":"invalid-channel-name"}"#;
 

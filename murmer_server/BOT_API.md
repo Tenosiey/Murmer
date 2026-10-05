@@ -92,6 +92,13 @@ string list in the API:
 When creating a bot without specifying permissions, it defaults to
 `read_messages` + `send_messages`.
 
+### Private channels
+
+Bots hold no roles, so they see exactly the channels `@everyone` may view.
+A private channel is never listed to a bot, and every channel endpoint
+answers `404 channel-not-found` for it, the same as for a channel that does
+not exist.
+
 ### Bot messages
 
 Messages sent by bots include a `"bot": true` field in the JSON payload.
@@ -146,7 +153,7 @@ Authorization: Bearer <ADMIN_TOKEN>
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `name` | string | yes | Display name (1-32 chars, alphanumeric/dash/underscore/space) |
+| `name` | string | yes | Display name (1-32 chars, alphanumeric/dash/underscore/space); `409 name-taken` if a member or another bot already uses it |
 | `owner_key` | string | no | Public key of the bot's owner (for accountability) |
 | `permissions` | string[] | no | Permission list (defaults to `["read_messages", "send_messages"]`) |
 | `description` | string | no | Short description (max 256 chars) |
@@ -720,12 +727,12 @@ Once authenticated, bots can send messages the same way as regular clients:
 {
   "type": "chat",
   "user": "GreeterBot",
-  "text": "Hello everyone!",
-  "timestamp": "2026-03-10T12:00:00Z"
+  "text": "Hello everyone!"
 }
 ```
 
-The server broadcasts the message to the channel and persists it. Note that
+The server stamps the message with its own time, broadcasts it to the
+channel and persists it. Note that
 WebSocket messages from bots are not automatically tagged with `"bot": true` –
 use the REST API if you need that tag.
 

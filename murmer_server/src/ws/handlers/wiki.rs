@@ -341,10 +341,15 @@ pub(super) async fn handle_wiki_get(
 
 /// Handle `wiki-resolve`: batched existence check for `[[channel/page]]`
 /// links so a rendered document costs one round trip.
+///
+/// A link into a channel the user cannot see resolves as missing. Links name
+/// channels rather than ids, so answering truthfully would let anyone probe a
+/// private channel's pages by guessing slugs.
 pub(super) async fn handle_wiki_resolve(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
     v: &Value,
+    user_name: &Option<String>,
 ) {
     let request_id = v.get("requestId").cloned().unwrap_or(Value::Null);
     let Some(links) = v.get("links").and_then(|l| l.as_array()) else {
@@ -361,6 +366,18 @@ pub(super) async fn handle_wiki_resolve(
         })
         .collect();
 
+    let mut visible: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
+    for (channel, _) in &pairs {
+        if visible.contains_key(channel) {
+            continue;
+        }
+        let seen = match db::get_channel_id_by_name(&state.db, channel).await {
+            Some(id) => can_read_wiki(state, user_name, id).await,
+            None => false,
+        };
+        visible.insert(channel.clone(), seen);
+    }
+
     match db::resolve_wiki_links(&state.db, pairs.clone()).await {
         Ok(exists) => {
             let results: Vec<Value> = pairs
@@ -370,7 +387,7 @@ pub(super) async fn handle_wiki_resolve(
                     serde_json::json!({
                         "channel": channel,
                         "slug": slug,
-                        "exists": exists,
+                        "exists": exists && visible[channel],
                     })
                 })
                 .collect();

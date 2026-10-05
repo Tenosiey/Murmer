@@ -19,20 +19,29 @@ use std::sync::Arc;
 use subtle::ConstantTimeEq;
 use tracing::{error, info, warn};
 
+/// Domain separator for the message a presence proof signs.
+const PRESENCE_PROOF_PREFIX: &str = "presence:";
+
 /// Verify that the presence frame proves ownership of its claimed public key:
-/// the timestamp must be fresh and unused (replay protection) and the Ed25519
-/// signature over it must verify against the key. Sends the matching error to
-/// the client and returns `Err` on failure.
+/// an Ed25519 signature over `presence:<challenge>`, where the challenge is
+/// the random value this connection was greeted with. Sends the matching
+/// error to the client and returns `Err` on failure.
+///
+/// The challenge is what binds the proof to this server and this socket. One
+/// identity key is the account on every server, so a proof over anything the
+/// client picks itself — the old scheme signed a timestamp — could be lifted
+/// by the operator of one server and replayed against another within its
+/// freshness window.
 async fn verify_key_proof(
     sender: &mut SplitSink<WebSocket, Message>,
     state: &Arc<AppState>,
     v: &Value,
     client_ip: &str,
+    challenge: &str,
 ) -> Result<(), ()> {
-    let (Some(pk), Some(sig), Some(ts)) = (
+    let (Some(pk), Some(sig)) = (
         v.get("publicKey").and_then(|p| p.as_str()),
         v.get("signature").and_then(|s| s.as_str()),
-        v.get("timestamp").and_then(|t| t.as_str()),
     ) else {
         send_error(sender, errors::INVALID_SIGNATURE).await;
         return Err(());
@@ -43,24 +52,8 @@ async fn verify_key_proof(
         return Err(());
     }
 
-    let timestamp = match security::validate_timestamp(ts) {
-        Ok(ts) => ts,
-        Err(err) => {
-            error!("Authentication failed - {}: {}", err, ts);
-            send_error(sender, errors::INVALID_TIMESTAMP).await;
-            return Err(());
-        }
-    };
-
-    let nonce = format!("{}:{}", pk, timestamp);
-    if !security::check_and_store_nonce(&state.rate_limiter, &nonce).await {
-        send_error(sender, errors::REPLAY_ATTACK).await;
-        return Err(());
-    }
-
-    // The signature check itself is shared with the `/upload` endpoint, which
-    // authenticates the same way; only the error vocabulary is per-transport.
-    if let Err(err) = security::verify_key_signature(pk, sig, ts) {
+    let message = format!("{PRESENCE_PROOF_PREFIX}{challenge}");
+    if let Err(err) = security::verify_key_signature(pk, sig, &message) {
         error!("Authentication failed - {err:?} for key: {pk}");
         let code = match err {
             security::ProofError::Encoding => errors::INVALID_ENCODING,
@@ -179,6 +172,7 @@ pub(super) async fn send_state_snapshot(
 }
 
 /// Handle user presence (authentication) message.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn handle_presence(
     sender: &mut SplitSink<WebSocket, Message>,
     state: &Arc<AppState>,
@@ -186,6 +180,7 @@ pub(super) async fn handle_presence(
     authenticated: &mut bool,
     user_name: &mut Option<String>,
     client_ip: &str,
+    challenge: &str,
     default_channel_id: i32,
 ) -> Result<(), ()> {
     // A claimed public key must always be proven, even on an open server or a
@@ -194,7 +189,7 @@ pub(super) async fn handle_presence(
     // proven before the credential check because two of the three credentials
     // — an invite membership and an invite code — are bound to the key.
     let verified_key = if v.get("publicKey").is_some() {
-        verify_key_proof(sender, state, v, client_ip).await?;
+        verify_key_proof(sender, state, v, client_ip, challenge).await?;
         v.get("publicKey")
             .and_then(|p| p.as_str())
             .map(str::to_string)
@@ -242,6 +237,27 @@ pub(super) async fn handle_presence(
             // names in memory, so a takeover would let the new connection
             // inherit the previous owner's privileges. The operator can
             // release a binding with the `unbind-name` CLI subcommand.
+            // Bots are named in the same namespace and keyed by name in
+            // memory just as accounts are, so a member must not take one's
+            // name any more than another member's.
+            //
+            // Every check below fails closed: a database hiccup turns a
+            // member away for one attempt, whereas failing open would admit a
+            // banned user or hand a name to the wrong key.
+            match bot::db::bot_name_taken(&state.db, u, None).await {
+                Ok(false) => {}
+                Ok(true) => {
+                    error!("Rejected presence for {u}: name belongs to a bot");
+                    send_error(sender, errors::USERNAME_TAKEN).await;
+                    return Err(());
+                }
+                Err(e) => {
+                    error!("Failed to check bot names for {u}: {e}");
+                    send_error(sender, errors::LOGIN_FAILED).await;
+                    return Err(());
+                }
+            }
+
             match db::get_user_key(&state.db, u).await {
                 Ok(Some(bound)) if verified_key.as_deref() != Some(bound.as_str()) => {
                     error!("Rejected presence for {u}: name is bound to another key");
@@ -251,6 +267,8 @@ pub(super) async fn handle_presence(
                 Ok(_) => {}
                 Err(e) => {
                     error!("Failed to check name binding for {u}: {e}");
+                    send_error(sender, errors::LOGIN_FAILED).await;
+                    return Err(());
                 }
             }
 
@@ -264,6 +282,8 @@ pub(super) async fn handle_presence(
                 Ok(false) => {}
                 Err(e) => {
                     error!("Failed to check ban state for {u}: {e}");
+                    send_error(sender, errors::LOGIN_FAILED).await;
+                    return Err(());
                 }
             }
 
@@ -326,6 +346,11 @@ pub(super) async fn handle_presence(
             *user_name = Some(u.to_string());
 
             if let Some(pk) = verified_key.as_deref() {
+                state
+                    .upload_sessions
+                    .lock()
+                    .await
+                    .insert(challenge.to_string(), (u.to_string(), pk.to_string()));
                 state
                     .user_keys
                     .lock()
@@ -396,6 +421,18 @@ pub(super) async fn handle_bot_presence(
         .is_some_and(|current| current != record.name)
     {
         send_error(sender, errors::INVALID_BOT_TOKEN).await;
+        return Err(());
+    }
+
+    // The bot API refuses a name an account already holds, but a bot created
+    // before that check may still share one, and would connect as that
+    // member's identity in memory — with their roles.
+    if !matches!(db::get_user_key(&state.db, &record.name).await, Ok(None)) {
+        error!(
+            "Rejected bot {}: its name belongs to an account",
+            record.name
+        );
+        send_error(sender, errors::USERNAME_TAKEN).await;
         return Err(());
     }
 

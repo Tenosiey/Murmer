@@ -117,14 +117,31 @@ async fn general_channel_id(state: &Arc<AppState>) -> i32 {
 }
 
 /// Main WebSocket loop handling incoming messages and broadcasting events.
-#[tracing::instrument(skip(socket, state), fields(client_ip = %peer_addr.ip()))]
-async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::net::SocketAddr) {
-    let client_ip = peer_addr.ip().to_string();
+#[tracing::instrument(skip(socket, state), fields(client_ip = %client_ip))]
+async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::net::IpAddr) {
+    let client_ip = client_ip.to_string();
     // Counted for the lifetime of this function, however it ends.
     let _counted = crate::metrics::Connection::open();
     info!("Client connected");
 
+    // Measured from the moment the socket opened, before any of the setup
+    // below has to wait on the database.
+    let login_deadline = tokio::time::sleep(state.auth_timeout);
+    tokio::pin!(login_deadline);
     let (mut sender, mut receiver) = socket.split();
+    // What this connection's `presence` must sign. Fresh per socket, so a
+    // proof made for another server — or another connection — is worthless
+    // here; see `auth::verify_key_proof`. Once the proof succeeds it doubles
+    // as the connection's `/upload` session (`AppState::upload_sessions`).
+    let challenge = {
+        use base64::Engine as _;
+        base64::engine::general_purpose::STANDARD.encode(rand::random::<[u8; 32]>())
+    };
+    send_json(
+        &mut sender,
+        &serde_json::json!({ "type": "auth-challenge", "challenge": challenge }),
+    )
+    .await;
     let mut global_rx = state.tx.subscribe();
     // Mailbox for frames addressed to this connection's user specifically;
     // registered once `presence` establishes who that is.
@@ -152,6 +169,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
 
     loop {
         tokio::select! {
+            () = &mut login_deadline, if user_name.is_none() => {
+                info!("Closing a connection that never authenticated");
+                send_error(&mut sender, errors::UNAUTHENTICATED).await;
+                break;
+            }
             incoming = receiver.next() => {
                 let text = match incoming {
                     Some(Ok(Message::Text(t))) => t,
@@ -187,7 +209,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
 
                         match t {
                             "presence" => {
-                                if auth::handle_presence(&mut sender, &state, &mut v, &mut authenticated, &mut user_name, &client_ip, default_channel_id).await.is_err() {
+                                if auth::handle_presence(&mut sender, &state, &mut v, &mut authenticated, &mut user_name, &client_ip, &challenge, default_channel_id).await.is_err() {
                                     break;
                                 }
                                 sync_direct_registration(&state, conn_id, &direct_tx, &user_name, &mut registered_as).await;
@@ -226,7 +248,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 wiki::handle_wiki_restore(&state, &mut sender, &v, &user_name).await;
                             }
                             "wiki-resolve" => {
-                                wiki::handle_wiki_resolve(&state, &mut sender, &v).await;
+                                wiki::handle_wiki_resolve(&state, &mut sender, &v, &user_name).await;
                             }
                             "wiki-create" => {
                                 wiki::handle_wiki_create(&state, &mut sender, &v, &user_name).await;
@@ -669,6 +691,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
     if let Some(user) = registered_as.as_deref() {
         unregister_direct(&state, user, conn_id).await;
     }
+    state.upload_sessions.lock().await.remove(&challenge);
     handle_disconnect(&state, user_name, voice_channel).await;
     info!(%client_ip, "Client disconnected");
 }
@@ -860,8 +883,8 @@ async fn handle_get_server_metrics(
         "rejectedMessages": m.rejected_messages,
         "rejectedAuth": m.rejected_auth,
         "rejectedUploads": m.rejected_uploads,
-        "rejectedReplays": m.rejected_replays,
         "rejectedFrames": m.rejected_frames,
+        "rejectedPreviews": m.rejected_previews,
     });
     send_json(sender, &msg).await;
 }
@@ -1330,8 +1353,10 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
+    headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
+    let client_ip = crate::security::client_ip(&state.trusted_proxies, addr.ip(), &headers);
     ws.max_message_size(MAX_WS_MESSAGE_BYTES)
         .max_frame_size(MAX_WS_MESSAGE_BYTES)
-        .on_upgrade(move |socket| handle_socket(socket, state, addr))
+        .on_upgrade(move |socket| handle_socket(socket, state, client_ip))
 }

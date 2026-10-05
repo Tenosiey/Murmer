@@ -42,7 +42,6 @@ async fn start_server() -> (SocketAddr, Arc<AppState>) {
         .expect("bootstrap owner");
     let role_defs = db::list_role_defs(&database).await.expect("role defs");
     let state = Arc::new(AppState {
-        admin_token: Some("token".to_string()),
         role_defs: tokio::sync::Mutex::new(role_defs.into_iter().map(|d| (d.id, d)).collect()),
         ..AppState::new(database)
     });
@@ -87,14 +86,17 @@ impl Client {
             .expect("connect");
         let mut client = Self { name, ws };
         let key = signing_key(name);
-        let timestamp = chrono::Utc::now().timestamp_millis().to_string();
+        let challenge = client.until(|f| f["type"] == "auth-challenge").await;
+        let challenge = challenge.last().unwrap()["challenge"]
+            .as_str()
+            .unwrap()
+            .to_owned();
         client
             .send(json!({
                 "type": "presence",
                 "user": name,
                 "publicKey": public_key(name),
-                "signature": STANDARD.encode(key.sign(timestamp.as_bytes()).to_bytes()),
-                "timestamp": timestamp,
+                "signature": STANDARD.encode(key.sign(format!("presence:{challenge}").as_bytes()).to_bytes()),
             }))
             .await;
         client.send(json!({ "type": "ping", "id": name })).await;

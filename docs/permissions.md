@@ -23,9 +23,12 @@ user's effective permissions are the **union** of the built-in `@everyone`
 baseline and every role assigned to them. `ADMINISTRATOR` (the Owner role)
 grants everything.
 
-Without `ADMIN_TOKEN`, channel and wiki management stay open to everyone —
-the historical fallback, kept so a small unadministered server remains
-usable. Every other capability is role-gated regardless.
+Every capability is role-gated, with or without `ADMIN_TOKEN`. Channel and
+wiki management used to fall open to everyone on a server without the token.
+Managing channels also means seeing every private channel and being on every
+encrypted channel's key roster, so on the default deployment — which leaves
+the token unset — private and encrypted channels protected nothing. The
+first Owner comes from the `set-role` CLI subcommand instead.
 
 ## Roles and hierarchy
 

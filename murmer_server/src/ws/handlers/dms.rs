@@ -85,13 +85,7 @@ pub(super) async fn handle_dm(
         "nonce": nonce,
         "ciphertext": ciphertext,
     });
-    if let Some(ts) = v.get("timestamp").and_then(|t| t.as_str()) {
-        out["timestamp"] = Value::String(ts.to_string());
-    }
-    if let Some(time) = v.get("time").and_then(|t| t.as_str()) {
-        out["time"] = Value::String(time.to_string());
-    }
-    let timestamp = sanitize_message_timestamp(&mut out);
+    let timestamp = stamp_message_time(&mut out);
     ensure_time(&mut out, &timestamp);
 
     let content = out.to_string();

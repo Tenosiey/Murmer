@@ -13,8 +13,6 @@ const FATAL_CODES = [
   'unauthenticated',
   'invalid-password',
   'auth-rate-limit',
-  'invalid-timestamp',
-  'replay-attack',
   'invalid-signature',
   'invalid-signature-format',
   'invalid-public-key',
@@ -22,7 +20,8 @@ const FATAL_CODES = [
   'invalid-encoding',
   'invalid-username',
   'username-taken',
-  'banned'
+  'banned',
+  'login-failed'
 ];
 
 describe('describeServerError', () => {

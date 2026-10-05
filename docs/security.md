@@ -9,15 +9,16 @@ Before changing anything in here, read
 
 ## Identity
 
-Authentication is an Ed25519 signature with replay protection. The server
-binds an account name to the **first key that claims it**, permanently.
+Authentication is an Ed25519 signature over a challenge the server issues
+per connection. The server binds an account name to the **first key that
+claims it**, permanently.
 
 That single key does more than log you in:
 
 - it authenticates on *every* server, not just one;
 - it derives (via ed2curve) the X25519 keys DMs are encrypted to;
 - it wraps the per-channel keys of end-to-end encrypted channels;
-- it signs `/upload` proofs.
+- it signs the `presence` proof that opens the `/upload` session.
 
 So losing it loses every account at once, plus the ability to read a single
 DM ever received. **That is why the key is backed up, not merely stored.**
@@ -45,9 +46,21 @@ evaluate more secure storage before calling this production-ready.
 
 ### Replay protection
 
-Nonces combine the public key and the timestamp; replayed signatures are
-rejected. A nonce counts as unused once it is older than
-`NONCE_EXPIRY_SECONDS`, whether or not the periodic sweep has removed it yet.
+Every connection is greeted with `{"type":"auth-challenge","challenge":…}`,
+32 random bytes, and `presence` signs `presence:<challenge>`. The challenge
+is what binds the proof to one server and one socket.
+
+The key being the account on every server is why that matters. The proof
+used to sign only a timestamp, so the operator of any server a user visited
+— or anyone reading its traffic — could replay a fresh proof against another
+server within the freshness window and log in there as them. A proof over a
+value only this server issued, on this socket, is worthless anywhere else.
+
+The ceiling: a malicious server could still *relay* another server's live
+challenge to a visiting client and forward the signature. Closing that
+needs the client to sign which server it believes it is talking to, and the
+server to check that against an address it knows to be its own — which
+behind a reverse proxy it does not reliably know.
 
 ### Before authentication
 
@@ -63,6 +76,10 @@ channel can be revoked while somebody sits in it.
 A keyless presence on a protected server is refused before the password is
 compared. Answering a right and a wrong password differently made it an
 oracle, and the authentication rate limit only sees key proofs.
+
+A socket that has not authenticated within `AUTH_TIMEOUT` (10 s) is closed.
+There is no per-IP cap on connections, so idle sockets were otherwise a
+cheap way to run the server out of file descriptors.
 
 ## Direct messages
 
@@ -181,26 +198,25 @@ hear about.
 
 ## Upload authentication
 
-`/upload` is authenticated exactly like the WebSocket is.
+`/upload` rides on the WebSocket's authentication rather than repeating it.
 
-`upload::authorize` requires a fresh, single-use Ed25519 proof signed over
-`upload:<timestamp>` — a different message from the presence signature, so a
-presence proof cannot be spent on an upload — from a key that
-`db::user_for_key` resolves to an account on that server. Banned users are
-rejected. This is how the server password carries over to uploads.
+Once `presence` succeeds with a key, the connection's challenge is registered
+in `AppState::upload_sessions` with the account it proved, and removed when
+the socket closes. `upload::authorize` requires that session as the
+`session` field. Banned users are rejected. This is how the server password,
+the name binding and the challenge's server binding all carry over to
+uploads — a signature the client made by itself could carry none of them.
 
 Three ordering details are the whole point of the design:
 
 - the per-IP `check_upload_rate_limit` runs **before the body is touched**;
-- the proof is verified **before any file bytes are buffered**, which is why
-  the credentials are multipart fields *ahead of* the file;
+- the session is checked **before any file bytes are buffered**, which is
+  why it is a multipart field *ahead of* the file;
 - credentials stay **out of headers**, because a custom header makes the
   request preflighted and production servers run with CORS disabled.
 
 Clients must therefore build the body with `uploadForm` in
 `murmer_client/src/lib/upload.ts`. A hand-rolled `FormData` is rejected.
-`security::verify_key_signature` is shared with the presence path, so both
-transports verify a proof the same way.
 
 ### File validation
 
@@ -244,12 +260,16 @@ on a different origin than the server.
 
 ## Rate limiting
 
-Authentication, chat traffic and uploads are all rate limited per IP, so the
-service must run behind a proxy that forwards the real client IP.
+Authentication and uploads are rate limited per IP, chat per user. Behind a
+reverse proxy the socket peer is the proxy, so `security::client_ip` reads
+`X-Forwarded-For` — but only from the peers listed in `TRUSTED_PROXIES`.
+Anyone can send that header; believing it from a client would hand it a
+fresh bucket per request. Left unset behind a proxy, every user shares one
+bucket and five failed logins lock the whole server out.
 
 The limits (`MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
-`MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND`, `NONCE_EXPIRY_SECONDS` —
-documented in `README.md`)
+`MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND` — documented in
+`README.md`)
 are read once when the `RateLimiter` is built rather than on every check, so
 they take effect at startup.
 
@@ -287,6 +307,15 @@ limiter** — which is why it is worth a test at all.
   `rel="noopener noreferrer"`. Followed in place, a link replaced the app with
   somebody else's page — inside the desktop window, where a copy of the
   backup screen is a convincing way to ask for a recovery phrase.
+- **Nothing a member writes makes a reader fetch from a host they chose.**
+  Whatever a message embeds, every reader's client loads as it renders, so
+  an embed on the poster's own host is a tracking pixel that reports each
+  reader's IP address and reading time. Markdown images render as links,
+  the DOMPurify config drops every element and attribute that loads a
+  resource, a message's `image` is shown only when `serverFileUrl` places it
+  under the connected server's `/files/`, and `/link-preview` inlines the
+  OpenGraph image as a `data:` URL instead of returning its address. The
+  CSP cannot do this job: `img-src` has to allow any server a user adds.
 - **A Content-Security-Policy is the second line behind DOMPurify.** The
   desktop shell's is in `tauri.conf.json`; a web client served through
   `WEB_CLIENT_DIR` gets the same policy from `web_client.rs`, held equal by

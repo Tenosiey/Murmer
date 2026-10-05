@@ -413,7 +413,7 @@ pub(super) async fn prepare_chat_body(
         // put words under another member's name with the server's own
         // attribution chip on top (see `forwarded_body`), and the others
         // would fake reactions or an edit that never happened.
-        for field in ["forwardedFrom", "reactions", "edited", "editedAt"] {
+        for field in ["forwardedFrom", "reactions", "edited", "editedAt", "time"] {
             map.remove(field);
         }
         // Group pings are authorized by `handle_chat` alone, which puts them
@@ -421,7 +421,7 @@ pub(super) async fn prepare_chat_body(
         // ping on the strength of a permission that may be gone by then.
         map.remove("mentions");
     }
-    let timestamp = sanitize_message_timestamp(v);
+    let timestamp = stamp_message_time(v);
 
     // Replies carry only the target message id from the client; the quoted
     // snippet and thread root are rebuilt from the stored message so a client

@@ -1,9 +1,9 @@
 use murmer_server::{
     Clock, RateLimiter,
     security::{
-        FRAME_BURST_SECONDS, FrameBudget, RATE_WINDOW, SWEEP_INTERVAL, check_and_store_nonce,
-        check_auth_rate_limit, check_message_rate_limit, validate_channel_name, validate_timestamp,
-        validate_user_name, voice_channel_has_room,
+        FRAME_BURST_SECONDS, FrameBudget, RATE_WINDOW, SWEEP_INTERVAL, check_auth_rate_limit,
+        check_message_rate_limit, validate_channel_name, validate_user_name,
+        voice_channel_has_room,
     },
 };
 use serial_test::serial;
@@ -49,27 +49,6 @@ fn rejects_auth_when_limit_reached() {
     });
 }
 
-#[test]
-#[serial]
-fn allows_nonce_reuse_after_expiry() {
-    with_var("NONCE_EXPIRY_SECONDS", Some("1"), || {
-        with_runtime(|rt| {
-            rt.block_on(async {
-                let clock = Clock::manual();
-                let limiter = RateLimiter::with_clock(clock.clone());
-                assert!(check_and_store_nonce(&limiter, "nonce-1").await);
-                assert!(!check_and_store_nonce(&limiter, "nonce-1").await);
-
-                clock.advance(Duration::from_secs(2));
-                assert!(check_and_store_nonce(&limiter, "nonce-1").await);
-            });
-        });
-    });
-}
-
-/// The sliding window is pruned per key on every access, so a user who hit the
-/// limit is allowed again as soon as their oldest message falls out of it —
-/// and only the messages that fell out are forgiven.
 #[test]
 #[serial]
 fn frees_the_limit_as_the_window_slides() {
@@ -128,30 +107,6 @@ fn sweeps_keys_that_went_quiet() {
     });
 }
 
-/// The nonce store sweeps on the same timer, and its entries are the ones that
-/// grow with every authentication rather than with every distinct user.
-#[test]
-#[serial]
-fn sweeps_expired_nonces() {
-    with_var("NONCE_EXPIRY_SECONDS", Some("1"), || {
-        with_runtime(|rt| {
-            rt.block_on(async {
-                let clock = Clock::manual();
-                let limiter = RateLimiter::with_clock(clock.clone());
-                assert!(check_and_store_nonce(&limiter, "nonce-1").await);
-                assert!(check_and_store_nonce(&limiter, "nonce-2").await);
-                assert_eq!(limiter.used_nonces.lock().await.entries.len(), 2);
-
-                clock.advance(SWEEP_INTERVAL + Duration::from_secs(1));
-                assert!(check_and_store_nonce(&limiter, "nonce-3").await);
-
-                let nonces = limiter.used_nonces.lock().await;
-                assert_eq!(nonces.entries.keys().collect::<Vec<_>>(), vec!["nonce-3"]);
-            });
-        });
-    });
-}
-
 /// The mesh cost is quadratic in the room, so the cap is what stops the
 /// twentieth joiner from being felt as CPU load rather than as an error.
 #[test]
@@ -188,15 +143,6 @@ fn validates_user_names() {
     assert!(!validate_user_name(
         "TooLongNameThatExceedsThirtyTwoCharacters"
     ));
-}
-
-#[test]
-fn validates_timestamps() {
-    let now = chrono::Utc::now().timestamp_millis();
-    assert!(validate_timestamp(&now.to_string()).is_ok());
-    assert!(validate_timestamp(&(now + 30_000).to_string()).is_ok());
-    assert!(validate_timestamp(&(now - 30_000).to_string()).is_ok());
-    assert!(validate_timestamp("not-a-number").is_err());
 }
 
 #[test]
@@ -239,4 +185,35 @@ fn frame_budget_of_zero_is_unlimited() {
     for _ in 0..10_000 {
         assert!(budget.take(start));
     }
+}
+
+/// A forwarded address is only believed from a configured proxy: anyone can
+/// send the header, and believing it from a client would give that client a
+/// fresh rate-limit bucket per request.
+#[test]
+fn client_ip_believes_forwarded_for_only_from_a_trusted_proxy() {
+    use axum::http::HeaderMap;
+    use murmer_server::security::client_ip;
+    use std::net::IpAddr;
+
+    let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+    let trusted = vec!["10.0.0.0/8".parse().unwrap()];
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-forwarded-for",
+        "6.6.6.6, 1.2.3.4, 10.0.0.2".parse().unwrap(),
+    );
+
+    // Not from a proxy: the header is the client's own claim.
+    assert_eq!(client_ip(&trusted, ip("9.9.9.9"), &headers), ip("9.9.9.9"));
+    // From a proxy: the rightmost hop that is not itself a proxy. The
+    // leftmost entry was written by the client and is never believed.
+    assert_eq!(client_ip(&trusted, ip("10.0.0.1"), &headers), ip("1.2.3.4"));
+    // No proxies configured: nothing is believed.
+    assert_eq!(client_ip(&[], ip("10.0.0.1"), &headers), ip("10.0.0.1"));
+    // A proxy that forwarded nothing.
+    assert_eq!(
+        client_ip(&trusted, ip("10.0.0.1"), &HeaderMap::new()),
+        ip("10.0.0.1")
+    );
 }

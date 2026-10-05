@@ -9,8 +9,6 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-invite':
     'That invite is no longer valid — it expired, ran out of uses or was withdrawn. Ask for a fresh one.',
   'auth-rate-limit': 'Too many connection attempts. Please wait a moment and try again.',
-  'invalid-timestamp': 'Authentication failed: your system clock appears to be wrong.',
-  'replay-attack': 'Authentication failed. Please try connecting again.',
   'invalid-signature': 'Authentication failed: invalid signature.',
   'invalid-signature-format': 'Authentication failed: invalid signature.',
   'invalid-public-key': 'Authentication failed: invalid key.',
@@ -19,6 +17,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-username': 'That username is not allowed on this server.',
   'username-taken': 'That username is already in use by someone else on this server.',
   banned: 'You are banned from this server.',
+  'login-failed': 'The server could not sign you in right now. Please try again shortly.',
   'invalid-channel-name': 'That channel name is not allowed.',
   'channel-permission-denied': 'You do not have permission to manage channels on this server.',
   'channel-creation-failed': 'The server could not create the channel. Please try again.',
@@ -220,8 +219,6 @@ const FATAL_CONNECTION_ERRORS = new Set([
   'invalid-password',
   'invalid-invite',
   'auth-rate-limit',
-  'invalid-timestamp',
-  'replay-attack',
   'invalid-signature',
   'invalid-signature-format',
   'invalid-public-key',
@@ -229,7 +226,8 @@ const FATAL_CONNECTION_ERRORS = new Set([
   'invalid-encoding',
   'invalid-username',
   'username-taken',
-  'banned'
+  'banned',
+  'login-failed'
 ]);
 
 /** Convert a server error code into a message suitable for display. */

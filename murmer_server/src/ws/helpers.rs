@@ -96,17 +96,16 @@ pub async fn broadcast_voice(state: &Arc<AppState>, channel_id: i32) {
     );
 }
 
-/// Sanitize and normalize a message timestamp.
-pub fn sanitize_message_timestamp(value: &mut Value) -> DateTime<Utc> {
+/// Stamp a message with the time the server received it.
+///
+/// Whatever timestamp the client sent is overwritten, not validated: keeping
+/// any well-formed value let a sender backdate or future-date what every
+/// reader sees, and sort a message in among ones posted long before it.
+/// Clients format the stamp in their own time zone.
+pub fn stamp_message_time(value: &mut Value) -> DateTime<Utc> {
     let now = Utc::now();
-    let parsed = value
-        .get("timestamp")
-        .and_then(|ts| ts.as_str())
-        .and_then(|ts| DateTime::parse_from_rfc3339(ts).ok())
-        .map(|dt| dt.with_timezone(&Utc))
-        .unwrap_or(now);
-    value["timestamp"] = Value::String(parsed.to_rfc3339());
-    parsed
+    value["timestamp"] = Value::String(now.to_rfc3339());
+    now
 }
 
 /// Create a JSON descriptor for a voice channel.
@@ -614,15 +613,12 @@ pub async fn record_audit(
 
 /// Whether `user` is authorised for `required`.
 ///
-/// Without an `ADMIN_TOKEN` configured, channel and wiki management stay open
-/// to everyone so a small unadministered server remains usable (mirrors the
-/// historical fallback). Every other permission is always role-gated.
+/// Every permission is role-gated. Channel and wiki management used to be
+/// open to everyone on a server without `ADMIN_TOKEN`, and since managing
+/// channels also means seeing every private one and holding every encrypted
+/// channel's key, that fallback made private and encrypted channels protect
+/// nothing on the default deployment.
 pub async fn has_permission(state: &Arc<AppState>, user: &str, required: Permissions) -> bool {
-    if state.admin_token.is_none()
-        && (required == permissions::MANAGE_CHANNELS || required == permissions::MANAGE_WIKI)
-    {
-        return true;
-    }
     permissions::mask_allows(effective_permissions(state, user).await, required)
 }
 

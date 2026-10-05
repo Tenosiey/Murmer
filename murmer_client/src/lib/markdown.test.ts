@@ -109,9 +109,39 @@ describe('renderMarkdown / sanitisation', () => {
   });
 
   it('strips event-handler attributes while keeping the element', () => {
-    const host = render('<img src=x onerror="alert(1)">');
-    expect(host.querySelector('img')?.getAttribute('src')).toBe('x');
-    expect(attributeNames(host)).toEqual(['src']);
+    const host = render('<div title="x" onclick="alert(1)">x</div>');
+    expect(host.querySelector('div')?.getAttribute('title')).toBe('x');
+    expect(attributeNames(host)).toEqual(['title']);
+  });
+
+  // Every reader's client fetches what a message embeds, so an embed is a
+  // tracking pixel: its author learns each reader's IP address.
+  it('never makes the reader fetch a URL on their own', () => {
+    for (const text of [
+      '![cat](https://evil.test/pixel.png)',
+      '<img src="https://evil.test/pixel.png">',
+      '<img srcset="https://evil.test/pixel.png 1x">',
+      '<video poster="https://evil.test/p.png"></video>',
+      '<audio src="https://evil.test/a.mp3"></audio>',
+      '<picture><source srcset="https://evil.test/p.png"></picture>',
+      '<input type="image" src="https://evil.test/p.png">',
+      '<div style="background:url(https://evil.test/p.png)">x</div>',
+      '<table background="https://evil.test/p.png"><tr><td>x</td></tr></table>',
+      '<svg><image href="https://evil.test/p.png"></image></svg>'
+    ]) {
+      const host = render(text);
+      const names = attributeNames(host);
+      expect(host.querySelector('img, audio, video, source, input, svg'), text).toBeNull();
+      for (const name of ['src', 'srcset', 'poster', 'style', 'background']) {
+        expect(names, text).not.toContain(name);
+      }
+    }
+  });
+
+  it('renders a markdown image as a link to it', () => {
+    const link = render('![cat](https://example.test/cat.png)').querySelector('a');
+    expect(link?.getAttribute('href')).toBe('https://example.test/cat.png');
+    expect(link?.textContent).toBe('cat');
   });
 
   it('strips event handlers from every element it keeps', () => {

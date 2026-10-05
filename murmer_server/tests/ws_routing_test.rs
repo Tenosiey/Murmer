@@ -40,9 +40,8 @@ fn public_key(name: &str) -> String {
 }
 
 /// Serve `/ws` on an ephemeral port, with the role definitions loaded the way
-/// `main` loads them. `ADMIN_TOKEN` must be set: without it every user holds
-/// `MANAGE_CHANNELS` and so, by design, sees every private channel. Alice is
-/// bootstrapped as Owner, the way `/role` does it, so she may create one.
+/// `main` loads them. Alice is bootstrapped as Owner, the way `/role` does
+/// it, so she may create a private channel.
 async fn start_server() -> SocketAddr {
     start_server_with_password(None).await
 }
@@ -54,15 +53,19 @@ async fn start_server_with_password(password: Option<&str>) -> SocketAddr {
         .await
         .expect("bootstrap owner");
     let role_defs = db::list_role_defs(&database).await.expect("role defs");
-    let state = Arc::new(AppState {
-        admin_token: Some("token".to_string()),
+    serve(AppState {
         password: password.map(str::to_string),
         role_defs: tokio::sync::Mutex::new(role_defs.into_iter().map(|d| (d.id, d)).collect()),
         ..AppState::new(database)
-    });
+    })
+    .await
+}
+
+/// Serve `/ws` for `state` on an ephemeral port.
+async fn serve(state: AppState) -> SocketAddr {
     let router = Router::new()
         .route("/ws", get(ws_handler))
-        .with_state(state);
+        .with_state(Arc::new(state));
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("local addr");
     tokio::spawn(async move {
@@ -105,14 +108,17 @@ impl Client {
         };
 
         let key = signing_key(name);
-        let timestamp = chrono::Utc::now().timestamp_millis().to_string();
+        let challenge = client.until(|f| f["type"] == "auth-challenge").await;
+        let challenge = challenge.last().unwrap()["challenge"]
+            .as_str()
+            .unwrap()
+            .to_owned();
         client
             .send(json!({
                 "type": "presence",
                 "user": name,
                 "publicKey": public_key(name),
-                "signature": STANDARD.encode(key.sign(timestamp.as_bytes()).to_bytes()),
-                "timestamp": timestamp,
+                "signature": STANDARD.encode(key.sign(format!("presence:{challenge}").as_bytes()).to_bytes()),
                 "password": password,
             }))
             .await;
@@ -551,7 +557,9 @@ async fn a_client_in_a_loop_is_cut_off_after_its_burst() {
     );
 }
 
-/// Every frame a connection receives before the server closes it.
+/// Every frame a connection receives before the server closes it, except
+/// the challenge every connection is greeted with: it is random, and it is
+/// the one frame a socket is meant to receive before authenticating.
 async fn frames_until_closed(ws: &mut WebSocketStream<MaybeTlsStream<TcpStream>>) -> Vec<Value> {
     let mut seen = Vec::new();
     loop {
@@ -560,7 +568,10 @@ async fn frames_until_closed(ws: &mut WebSocketStream<MaybeTlsStream<TcpStream>>
             .unwrap_or_else(|_| panic!("connection stayed open; saw {seen:?}"));
         match next {
             Some(Ok(Message::Text(text))) => {
-                seen.push(serde_json::from_str(&text).expect("json frame"));
+                let frame: Value = serde_json::from_str(&text).expect("json frame");
+                if frame["type"] != "auth-challenge" {
+                    seen.push(frame);
+                }
             }
             Some(Ok(_)) => {}
             Some(Err(_)) | None => return seen,
@@ -611,6 +622,42 @@ async fn a_keyless_presence_does_not_reveal_whether_the_password_was_right() {
         answers.push(frames_until_closed(&mut ws).await);
     }
     assert_eq!(answers[0], answers[1], "the answer is a password oracle");
+}
+
+/// One identity key is the account on every server, so a proof another
+/// server (or another connection) could have seen must not log in here.
+#[tokio::test]
+async fn a_presence_proof_signed_for_another_connection_is_refused() {
+    let addr = start_server().await;
+    let challenge_of = |frame: Value| frame["challenge"].as_str().unwrap().to_owned();
+    let (mut elsewhere, _) = connect_async(format!("ws://{addr}/ws"))
+        .await
+        .expect("connect");
+    let Some(Ok(Message::Text(greeting))) = elsewhere.next().await else {
+        panic!("no challenge");
+    };
+    let foreign = challenge_of(serde_json::from_str(&greeting).unwrap());
+
+    let (mut ws, _) = connect_async(format!("ws://{addr}/ws"))
+        .await
+        .expect("connect");
+    let signature = signing_key("alice").sign(format!("presence:{foreign}").as_bytes());
+    ws.send(Message::text(
+        json!({
+            "type": "presence",
+            "user": "alice",
+            "publicKey": public_key("alice"),
+            "signature": STANDARD.encode(signature.to_bytes()),
+        })
+        .to_string(),
+    ))
+    .await
+    .expect("send");
+    let seen = frames_until_closed(&mut ws).await;
+    assert_eq!(
+        seen,
+        vec![json!({ "type": "error", "message": "invalid-signature" })]
+    );
 }
 
 #[tokio::test]
@@ -707,4 +754,93 @@ async fn who_sits_in_a_private_call_is_not_in_a_newcomers_snapshot() {
         .filter(|f| f["channelId"] == channel)
         .collect();
     assert!(leaked.is_empty(), "bob saw the private call: {leaked:?}");
+}
+
+/// A socket that never authenticates only holds a file descriptor, and there
+/// is no per-IP cap on connections, so it is closed after a grace period.
+#[tokio::test]
+async fn a_socket_that_never_authenticates_is_closed() {
+    let addr = serve(AppState {
+        auth_timeout: Duration::from_millis(200),
+        ..AppState::new(db::init(":memory:").await.expect("in-memory db"))
+    })
+    .await;
+    let (mut ws, _) = connect_async(format!("ws://{addr}/ws"))
+        .await
+        .expect("connect");
+    let seen = frames_until_closed(&mut ws).await;
+    assert_eq!(
+        seen,
+        vec![json!({ "type": "error", "message": "unauthenticated" })]
+    );
+}
+
+/// What readers see as a message's time is the server's, not the sender's.
+#[tokio::test]
+async fn a_message_is_stamped_with_the_servers_time() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+    let before = chrono::Utc::now();
+
+    alice
+        .send(json!({
+            "type": "chat",
+            "user": "alice",
+            "text": "from the past",
+            "timestamp": "2001-01-01T00:00:00Z",
+            "time": "00:00:00",
+        }))
+        .await;
+    let seen = bob.until(|f| f["type"] == "chat").await;
+    let chat = seen.last().unwrap();
+    let stamped =
+        chrono::DateTime::parse_from_rfc3339(chat["timestamp"].as_str().unwrap()).expect("rfc3339");
+    assert!(stamped >= before - chrono::Duration::seconds(1), "{chat}");
+    assert_ne!(chat["time"], "00:00:00", "{chat}");
+}
+
+/// Wiki links name their channel, so answering for a private one would let
+/// anyone probe its pages by guessing slugs.
+#[tokio::test]
+async fn wiki_links_into_a_hidden_channel_resolve_as_missing() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+    let general = 1;
+    alice
+        .send(json!({
+            "type": "wiki-create",
+            "channelId": general,
+            "slug": "plans",
+            "title": "Plans",
+            "body": "secret",
+        }))
+        .await;
+    alice.until(|f| f["type"] == "wiki-index").await;
+    alice
+        .send(json!({
+            "type": "set-channel-override",
+            "channelId": general,
+            "target": { "type": "everyone" },
+            "deny": murmer_server::permissions::VIEW_CHANNELS,
+        }))
+        .await;
+    alice.until(|f| f["type"] == "channel-list").await;
+
+    let resolve = json!({
+        "type": "wiki-resolve",
+        "requestId": 1,
+        "links": [{ "channel": "general", "slug": "plans" }],
+    });
+    for (client, expected) in [(&mut alice, true), (&mut bob, false)] {
+        client.send(resolve.clone()).await;
+        let seen = client.until(|f| f["type"] == "wiki-resolved").await;
+        assert_eq!(
+            seen.last().unwrap()["results"][0]["exists"],
+            expected,
+            "{}",
+            client.name
+        );
+    }
 }

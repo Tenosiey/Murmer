@@ -215,6 +215,12 @@ pub const MAX_WIKI_BODY_BYTES: usize = 100_000;
 /// gets its proper error; anything above closes the connection.
 pub const MAX_WS_MESSAGE_BYTES: usize = 256 * 1024;
 
+/// How long a connection may stay open without a successful `presence` or
+/// `bot-presence`. A real client authenticates as soon as the challenge
+/// arrives; a socket left idle past this only holds a file descriptor, and
+/// there is no per-IP cap on connections to stop someone opening thousands.
+pub const AUTH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Maximum number of wiki pages per channel.
 pub const MAX_WIKI_PAGES_PER_CHANNEL: i64 = 100;
 

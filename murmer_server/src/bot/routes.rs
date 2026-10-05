@@ -29,6 +29,7 @@
 //!   - `GET    /api/v1/users`                                         – list users
 //!   - `GET    /api/v1/server/info`                                   – server metadata
 
+use crate::channel_overrides::ChannelKind;
 use crate::ws::constants::{
     DEFAULT_HISTORY_LIMIT, MAX_EPHEMERAL_SECONDS, MAX_PINS_PER_CHANNEL, MAX_REPLY_PREVIEW_CHARS,
     MAX_SEARCH_RESULTS, MAX_THREAD_MESSAGES, MIN_EPHEMERAL_SECONDS,
@@ -104,6 +105,66 @@ async fn require_bot(
     Ok(bot)
 }
 
+/// [`require_bot`] for an endpoint scoped to one text channel, which must
+/// exist and be visible to the bot. Bots hold no roles, so that means visible
+/// to `@everyone`: a private channel is out of reach of every bot. A hidden
+/// channel answers exactly like a missing one, so its id reveals nothing.
+async fn require_bot_in(
+    state: &Arc<AppState>,
+    bearer: &Bearer,
+    channel_id: i32,
+    perm: i32,
+) -> Result<BotRecord, Box<Response>> {
+    let bot = require_bot(state, bearer, perm).await?;
+    if db::get_channel_by_id(&state.db, channel_id).await.is_none()
+        || !ws::helpers::can_view_channel(state, &bot.name, ChannelKind::Text, channel_id).await
+    {
+        return Err(Box::new(json_error(
+            StatusCode::NOT_FOUND,
+            "channel-not-found",
+        )));
+    }
+    Ok(bot)
+}
+
+/// Refuse a bot name that an account or another bot already uses. A bot
+/// sharing a member's name would share everything keyed by it in memory —
+/// their roles first of all.
+async fn check_bot_name_free(
+    state: &AppState,
+    name: &str,
+    except_id: Option<&str>,
+) -> Result<(), Box<Response>> {
+    let taken = match (
+        db::get_user_key(&state.db, name).await,
+        bot_db::bot_name_taken(&state.db, name, except_id).await,
+    ) {
+        (Ok(key), Ok(bot)) => key.is_some() || bot,
+        (Err(e), _) | (_, Err(e)) => {
+            error!("Failed to check whether bot name {name} is free: {e}");
+            return Err(Box::new(json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "name-check-failed",
+            )));
+        }
+    };
+    if taken {
+        return Err(Box::new(json_error(StatusCode::CONFLICT, "name-taken")));
+    }
+    Ok(())
+}
+
+/// The text channels `bot` may see; see [`require_bot_in`].
+async fn visible_channels(state: &Arc<AppState>, bot: &str) -> Vec<db::ChannelRecord> {
+    let mut visible = Vec::new();
+    for ch in db::get_channels(&state.db).await {
+        if ws::helpers::can_view_channel(state, bot, ChannelKind::Text, ch.id).await {
+            visible.push(ch);
+        }
+    }
+    visible
+}
+
 // ---------------------------------------------------------------------------
 // Admin endpoints
 // ---------------------------------------------------------------------------
@@ -120,6 +181,9 @@ async fn create_bot(
     let name = body.name.trim();
     if !security::validate_user_name(name) {
         return json_error(StatusCode::BAD_REQUEST, "invalid-bot-name");
+    }
+    if let Err(denied) = check_bot_name_free(&state, name, None).await {
+        return *denied;
     }
     if body.description.len() > MAX_BOT_DESCRIPTION_LENGTH {
         return json_error(StatusCode::BAD_REQUEST, "description-too-long");
@@ -212,6 +276,9 @@ async fn update_bot_handler(
         if !security::validate_user_name(n) {
             return json_error(StatusCode::BAD_REQUEST, "invalid-bot-name");
         }
+        if let Err(denied) = check_bot_name_free(&state, n, Some(&bot_id)).await {
+            return *denied;
+        }
     }
     if let Some(ref d) = body.description
         && d.len() > MAX_BOT_DESCRIPTION_LENGTH
@@ -297,12 +364,13 @@ async fn list_channels_handler(
     State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
 ) -> Response {
-    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::READ_CHANNELS).await {
-        return *denied;
-    }
+    let bot = match require_bot(&state, &bearer, BotPermissions::READ_CHANNELS).await {
+        Ok(bot) => bot,
+        Err(denied) => return *denied,
+    };
 
-    let channels = db::get_channels(&state.db).await;
-    let data: Vec<Value> = channels
+    let data: Vec<Value> = visible_channels(&state, &bot.name)
+        .await
         .iter()
         .map(|ch| {
             serde_json::json!({
@@ -321,12 +389,10 @@ async fn get_messages(
     Path(channel_id): Path<i32>,
     Query(params): Query<MessageQuery>,
 ) -> Response {
-    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::READ_MESSAGES).await {
+    if let Err(denied) =
+        require_bot_in(&state, &bearer, channel_id, BotPermissions::READ_MESSAGES).await
+    {
         return *denied;
-    }
-
-    if db::get_channel_by_id(&state.db, channel_id).await.is_none() {
-        return json_error(StatusCode::NOT_FOUND, "channel-not-found");
     }
 
     let limit = ws::validation::history_limit(params.limit);
@@ -366,7 +432,8 @@ async fn send_message(
     Path(channel_id): Path<i32>,
     Json(body): Json<SendMessageRequest>,
 ) -> Response {
-    let bot = match require_bot(&state, &bearer, BotPermissions::SEND_MESSAGES).await {
+    let bot = match require_bot_in(&state, &bearer, channel_id, BotPermissions::SEND_MESSAGES).await
+    {
         Ok(bot) => bot,
         Err(denied) => return *denied,
     };
@@ -492,9 +559,11 @@ async fn delete_message_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path((channel_id, message_id)): Path<(i32, i64)>,
 ) -> Response {
-    let bot = match verify_bot(&state, bearer.token()).await {
-        Some(b) => b,
-        None => return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token"),
+    // Which permission applies depends on whose message it is, so only the
+    // token and the channel are checked up front.
+    let bot = match require_bot_in(&state, &bearer, channel_id, 0).await {
+        Ok(bot) => bot,
+        Err(denied) => return *denied,
     };
 
     let perms = BotPermissions(bot.permissions);
@@ -549,7 +618,8 @@ async fn add_reaction_handler(
     Path((channel_id, message_id)): Path<(i32, i64)>,
     Json(body): Json<AddReactionRequest>,
 ) -> Response {
-    let bot = match require_bot(&state, &bearer, BotPermissions::ADD_REACTIONS).await {
+    let bot = match require_bot_in(&state, &bearer, channel_id, BotPermissions::ADD_REACTIONS).await
+    {
         Ok(bot) => bot,
         Err(denied) => return *denied,
     };
@@ -619,7 +689,8 @@ async fn remove_reaction_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path((channel_id, message_id, emoji)): Path<(i32, i64, String)>,
 ) -> Response {
-    let bot = match require_bot(&state, &bearer, BotPermissions::ADD_REACTIONS).await {
+    let bot = match require_bot_in(&state, &bearer, channel_id, BotPermissions::ADD_REACTIONS).await
+    {
         Ok(bot) => bot,
         Err(denied) => return *denied,
     };
@@ -668,7 +739,8 @@ async fn edit_message_handler(
     Path((channel_id, message_id)): Path<(i32, i64)>,
     Json(body): Json<EditMessageRequest>,
 ) -> Response {
-    let bot = match require_bot(&state, &bearer, BotPermissions::SEND_MESSAGES).await {
+    let bot = match require_bot_in(&state, &bearer, channel_id, BotPermissions::SEND_MESSAGES).await
+    {
         Ok(bot) => bot,
         Err(denied) => return *denied,
     };
@@ -749,12 +821,10 @@ async fn search_messages_handler(
     Path(channel_id): Path<i32>,
     Query(params): Query<SearchQuery>,
 ) -> Response {
-    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::READ_MESSAGES).await {
+    if let Err(denied) =
+        require_bot_in(&state, &bearer, channel_id, BotPermissions::READ_MESSAGES).await
+    {
         return *denied;
-    }
-
-    if db::get_channel_by_id(&state.db, channel_id).await.is_none() {
-        return json_error(StatusCode::NOT_FOUND, "channel-not-found");
     }
 
     let query = params.q.trim();
@@ -791,12 +861,10 @@ async fn get_thread_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path((channel_id, message_id)): Path<(i32, i64)>,
 ) -> Response {
-    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::READ_MESSAGES).await {
+    if let Err(denied) =
+        require_bot_in(&state, &bearer, channel_id, BotPermissions::READ_MESSAGES).await
+    {
         return *denied;
-    }
-
-    if db::get_channel_by_id(&state.db, channel_id).await.is_none() {
-        return json_error(StatusCode::NOT_FOUND, "channel-not-found");
     }
 
     match db::fetch_thread(&state.db, channel_id, message_id, MAX_THREAD_MESSAGES).await {
@@ -826,12 +894,10 @@ async fn list_pins_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path(channel_id): Path<i32>,
 ) -> Response {
-    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::READ_MESSAGES).await {
+    if let Err(denied) =
+        require_bot_in(&state, &bearer, channel_id, BotPermissions::READ_MESSAGES).await
+    {
         return *denied;
-    }
-
-    if db::get_channel_by_id(&state.db, channel_id).await.is_none() {
-        return json_error(StatusCode::NOT_FOUND, "channel-not-found");
     }
 
     match db::get_pins_for_channel(&state.db, channel_id).await {
@@ -851,10 +917,11 @@ async fn pin_message_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path((channel_id, message_id)): Path<(i32, i64)>,
 ) -> Response {
-    let bot = match require_bot(&state, &bearer, BotPermissions::MANAGE_MESSAGES).await {
-        Ok(bot) => bot,
-        Err(denied) => return *denied,
-    };
+    let bot =
+        match require_bot_in(&state, &bearer, channel_id, BotPermissions::MANAGE_MESSAGES).await {
+            Ok(bot) => bot,
+            Err(denied) => return *denied,
+        };
 
     let record = match db::get_message_record(&state.db, message_id).await {
         Ok(Some(r)) => r,
@@ -893,16 +960,27 @@ async fn pin_message_handler(
 async fn unpin_message_handler(
     State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
-    Path((_channel_id, message_id)): Path<(i32, i64)>,
+    Path((channel_id, message_id)): Path<(i32, i64)>,
 ) -> Response {
-    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::MANAGE_MESSAGES).await {
+    if let Err(denied) =
+        require_bot_in(&state, &bearer, channel_id, BotPermissions::MANAGE_MESSAGES).await
+    {
         return *denied;
+    }
+
+    // The pin is removed by message id alone, so the message must be shown
+    // to live in the channel just vetted, not in one the bot cannot see.
+    match db::get_message_channel_id(&state.db, message_id).await {
+        Ok(Some(ch)) if ch == channel_id => {}
+        Ok(_) => return json_error(StatusCode::NOT_FOUND, "pin-not-found"),
+        Err(e) => {
+            error!("Failed to look up message channel for unpin: {e}");
+            return json_error(StatusCode::INTERNAL_SERVER_ERROR, "lookup-failed");
+        }
     }
 
     match db::remove_pin(&state.db, message_id).await {
         Ok(Some(pin_channel_id)) => {
-            // Broadcast where the pin actually lived, which may differ
-            // from the channel in the path.
             ws::broadcast_pins(&state, pin_channel_id).await;
             StatusCode::NO_CONTENT.into_response()
         }
@@ -959,7 +1037,9 @@ async fn update_channel_handler(
     Path(channel_id): Path<i32>,
     Json(body): Json<UpdateChannelRequest>,
 ) -> Response {
-    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::MANAGE_CHANNELS).await {
+    if let Err(denied) =
+        require_bot_in(&state, &bearer, channel_id, BotPermissions::MANAGE_CHANNELS).await
+    {
         return *denied;
     }
 
@@ -992,7 +1072,9 @@ async fn delete_channel_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path(channel_id): Path<i32>,
 ) -> Response {
-    if let Err(denied) = require_bot(&state, &bearer, BotPermissions::MANAGE_CHANNELS).await {
+    if let Err(denied) =
+        require_bot_in(&state, &bearer, channel_id, BotPermissions::MANAGE_CHANNELS).await
+    {
         return *denied;
     }
 
@@ -1023,7 +1105,8 @@ async fn typing_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path(channel_id): Path<i32>,
 ) -> Response {
-    let bot = match require_bot(&state, &bearer, BotPermissions::SEND_MESSAGES).await {
+    let bot = match require_bot_in(&state, &bearer, channel_id, BotPermissions::SEND_MESSAGES).await
+    {
         Ok(bot) => bot,
         Err(denied) => return *denied,
     };
@@ -1034,10 +1117,6 @@ async fn typing_handler(
     let rate_key = format!("bot-typing::{}", bot.id);
     if !security::check_message_rate_limit(&state.rate_limiter, &rate_key).await {
         return json_error(StatusCode::TOO_MANY_REQUESTS, "rate-limit-exceeded");
-    }
-
-    if db::get_channel_by_id(&state.db, channel_id).await.is_none() {
-        return json_error(StatusCode::NOT_FOUND, "channel-not-found");
     }
 
     let payload = serde_json::json!({
@@ -1105,13 +1184,13 @@ async fn server_info(
     State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
 ) -> Response {
-    if verify_bot(&state, bearer.token()).await.is_none() {
+    let Some(bot) = verify_bot(&state, bearer.token()).await else {
         return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token");
-    }
+    };
 
     let online_count = state.users.lock().await.len();
-    let channels = db::get_channels(&state.db).await;
-    let data: Vec<Value> = channels
+    let data: Vec<Value> = visible_channels(&state, &bot.name)
+        .await
         .iter()
         .map(|ch| {
             serde_json::json!({
