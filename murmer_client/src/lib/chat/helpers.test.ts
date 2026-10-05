@@ -18,6 +18,7 @@ import {
   formatExpiry,
   formatFileSize,
   formatShortTime,
+  lastEditableMessage,
   latestMessageId,
   mergeStatuses,
   mergeThreadMessages,
@@ -503,6 +504,13 @@ describe('message permissions', () => {
   it('offers nothing on a message the server has not stored yet', () => {
     expect(canEditMessage(message(), 'alice')).toBe(false);
     expect(canDeleteMessage(message(), 'alice', true)).toBe(false);
+  });
+
+  it('picks the newest own editable message for Up-arrow', () => {
+    const forward = message({ id: 4, forwardedFrom: { id: 9, user: 'carol', channel: 'news', channelId: 1 } });
+    const messages = [message({ id: 1 }), message({ id: 2 }), message({ id: 3, user: 'bob' }), forward];
+    expect(lastEditableMessage(messages, 'alice')?.id).toBe(2);
+    expect(lastEditableMessage(messages, 'dave')).toBeNull();
   });
 
   it('lets a moderator delete anyone, a member only themselves', () => {
