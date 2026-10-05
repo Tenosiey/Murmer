@@ -17,6 +17,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-username': 'That username is not allowed on this server.',
   'username-taken': 'That username is already in use by someone else on this server.',
   banned: 'You are banned from this server.',
+  'login-failed': 'The server could not sign you in right now. Please try again shortly.',
   'invalid-channel-name': 'That channel name is not allowed.',
   'channel-permission-denied': 'You do not have permission to manage channels on this server.',
   'channel-creation-failed': 'The server could not create the channel. Please try again.',
@@ -225,7 +226,8 @@ const FATAL_CONNECTION_ERRORS = new Set([
   'invalid-encoding',
   'invalid-username',
   'username-taken',
-  'banned'
+  'banned',
+  'login-failed'
 ]);
 
 /** Convert a server error code into a message suitable for display. */

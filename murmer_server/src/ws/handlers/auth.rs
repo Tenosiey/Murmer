@@ -240,10 +240,22 @@ pub(super) async fn handle_presence(
             // Bots are named in the same namespace and keyed by name in
             // memory just as accounts are, so a member must not take one's
             // name any more than another member's.
-            if matches!(bot::db::bot_name_taken(&state.db, u, None).await, Ok(true)) {
-                error!("Rejected presence for {u}: name belongs to a bot");
-                send_error(sender, errors::USERNAME_TAKEN).await;
-                return Err(());
+            //
+            // Every check below fails closed: a database hiccup turns a
+            // member away for one attempt, whereas failing open would admit a
+            // banned user or hand a name to the wrong key.
+            match bot::db::bot_name_taken(&state.db, u, None).await {
+                Ok(false) => {}
+                Ok(true) => {
+                    error!("Rejected presence for {u}: name belongs to a bot");
+                    send_error(sender, errors::USERNAME_TAKEN).await;
+                    return Err(());
+                }
+                Err(e) => {
+                    error!("Failed to check bot names for {u}: {e}");
+                    send_error(sender, errors::LOGIN_FAILED).await;
+                    return Err(());
+                }
             }
 
             match db::get_user_key(&state.db, u).await {
@@ -255,6 +267,8 @@ pub(super) async fn handle_presence(
                 Ok(_) => {}
                 Err(e) => {
                     error!("Failed to check name binding for {u}: {e}");
+                    send_error(sender, errors::LOGIN_FAILED).await;
+                    return Err(());
                 }
             }
 
@@ -268,6 +282,8 @@ pub(super) async fn handle_presence(
                 Ok(false) => {}
                 Err(e) => {
                     error!("Failed to check ban state for {u}: {e}");
+                    send_error(sender, errors::LOGIN_FAILED).await;
+                    return Err(());
                 }
             }
 

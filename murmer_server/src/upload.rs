@@ -226,9 +226,12 @@ async fn authorize(state: &AppState, client_ip: &str, session: &str) -> Result<S
             return Err(StatusCode::FORBIDDEN);
         }
         Ok(false) => {}
-        // Mirrors presence: a database failure here must not lock everyone out
-        // of uploading, and every other gate above has already been passed.
-        Err(e) => error!("Failed to check ban state for {user}: {e}"),
+        // Fails closed, like presence: a retry costs a member little, a
+        // banned user's upload cannot be taken back.
+        Err(e) => {
+            error!("Failed to check ban state for {user}: {e}");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
     }
 
     Ok(user)

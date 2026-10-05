@@ -35,6 +35,10 @@ pub const INVALID_USERNAME: &str = r#"{"type":"error","message":"invalid-usernam
 /// The name is already bound to a different public key on this server.
 pub const USERNAME_TAKEN: &str = r#"{"type":"error","message":"username-taken"}"#;
 
+/// A check presence depends on (name binding, ban list) could not be read.
+/// The connection is refused rather than admitted unchecked.
+pub const LOGIN_FAILED: &str = r#"{"type":"error","message":"login-failed"}"#;
+
 pub const INVALID_CHANNEL_NAME: &str = r#"{"type":"error","message":"invalid-channel-name"}"#;
 
 /// User lacks permission to manage channels.
