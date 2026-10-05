@@ -121,13 +121,14 @@
   import UserProfileModal from '$lib/components/UserProfileModal.svelte';
   import WikiView from '$lib/components/wiki/WikiView.svelte';
   import { wikilinks } from '$lib/wiki/links';
+  import { fileDrop } from '$lib/chat/fileDrop';
 
 
   let message = $state('');
   let composer: MessageComposer | undefined = $state();
   let previewUrl: string | null = $state(null);
   let pendingFile: File | null = $state(null);
-  let dragDepth = $state(0);
+  let dragActive = $state(false);
 
   let highlightedMessageId: number | null = $state(null);
   let pendingScrollToMessage: number | null = null;
@@ -288,35 +289,6 @@
 
   function clearPendingFile() {
     setPendingFile(null);
-  }
-
-  function dragHasFiles(event: DragEvent): boolean {
-    return Array.from(event.dataTransfer?.types ?? []).includes('Files');
-  }
-
-  function handleDragEnter(event: DragEvent) {
-    if (!dragHasFiles(event)) return;
-    event.preventDefault();
-    dragDepth += 1;
-  }
-
-  function handleDragOver(event: DragEvent) {
-    if (!dragHasFiles(event)) return;
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-  }
-
-  function handleDragLeave(event: DragEvent) {
-    if (!dragHasFiles(event)) return;
-    dragDepth = Math.max(0, dragDepth - 1);
-  }
-
-  function handleDrop(event: DragEvent) {
-    if (!dragHasFiles(event)) return;
-    event.preventDefault();
-    dragDepth = 0;
-    const file = Array.from(event.dataTransfer?.files ?? [])[0] ?? null;
-    if (file) setPendingFile(file);
   }
 
   function toggleReaction(messageId: number | undefined, emoji: string, users: string[]) {
@@ -1246,7 +1218,6 @@
   });
 
   let serverStrength = $derived(pingToStrength($ping));
-  let dragActive = $derived(dragDepth > 0);
   let statusMap = $derived(mergeStatuses($statuses, $onlineUsers, $offlineUsers));
   // Whether the current user can reach the server dashboard at all: any
   // management capability qualifies.
@@ -1347,13 +1318,9 @@
       onToggleOutput={toggleOutput}
     />
     <SidebarResizer width={leftSidebarWidth} side="left" label="Resize channel list" />
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="chat"
-      ondragenter={handleDragEnter}
-      ondragover={handleDragOver}
-      ondragleave={handleDragLeave}
-      ondrop={handleDrop}
+      use:fileDrop={{ onFile: setPendingFile, onActiveChange: (active) => (dragActive = active) }}
     >
       {#if dragActive}
         <div class="drop-overlay" aria-hidden="true">
