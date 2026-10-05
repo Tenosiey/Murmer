@@ -34,6 +34,7 @@
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import RoleIcon from '$lib/components/RoleIcon.svelte';
   import type { RoleDef } from '$lib/types';
+  import { modalFocus } from '$lib/focus';
 
   interface Props {
     open: boolean;
@@ -192,6 +193,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div
+      use:modalFocus
       class="modal-content"
       onclick={(event) => event.stopPropagation()}
       onkeydown={handleKeydown}

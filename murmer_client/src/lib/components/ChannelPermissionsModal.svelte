@@ -21,6 +21,7 @@
     type OverrideState
   } from '$lib/chat/permissions';
   import type { Message } from '$lib/types';
+  import { modalFocus } from '$lib/focus';
 
   interface Props {
     open: boolean;
@@ -34,20 +35,6 @@
 
   let feedback: string | null = $state(null);
   let requestedKey: string | null = $state(null);
-  let content: HTMLDivElement | undefined = $state();
-
-  // Escape is heard on the modal content, so the content has to hold focus
-  // from the moment it opens. Opened from the channel context menu, focus
-  // would otherwise stay on the channel list, and Escape did nothing until
-  // the user clicked into the modal. Focus goes back where it came from on
-  // close, so the keyboard user is not dropped at the top of the page.
-  $effect(() => {
-    if (!content) return;
-    const previous =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    content.focus();
-    return () => previous?.focus();
-  });
 
   // Fetch the channel's overrides when the modal opens.
   $effect(() => {
@@ -213,7 +200,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div
-      bind:this={content}
+      use:modalFocus
       class="modal-content"
       onclick={(event) => event.stopPropagation()}
       onkeydown={handleKeydown}

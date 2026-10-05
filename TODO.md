@@ -146,11 +146,8 @@ the idea comes from and what users will expect it to behave like.
 ### 🛠️ Other Features
 
 - [ ] Accessibility pass — keyboard navigation and screen-reader labels.
-      Context menus only open on right-click, and most modals do not take
-      focus when they open (Settings, the Server Dashboard, the profile and
-      the stats modal ignore Escape until something inside them is clicked;
-      `ChannelPermissionsModal` shows the fix), so most of the app is
-      currently hard to reach without a mouse
+      Context menus only open on right-click and take no arrow keys, so
+      most of the app is currently hard to reach without a mouse
 - [ ] Auto-away — switch to away after N minutes without input and back on
       return (Discord idle, TeamSpeak away). Status is manual only today
 - [ ] Backup and export. For operators: a consistent snapshot of the database

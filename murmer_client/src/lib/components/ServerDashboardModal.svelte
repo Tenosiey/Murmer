@@ -31,6 +31,7 @@
   import ScreenShareTab from './dashboard/ScreenShareTab.svelte';
   import RolesTab from './dashboard/RolesTab.svelte';
   import DangerTab from './dashboard/DangerTab.svelte';
+  import { modalFocus } from '$lib/focus';
 
   interface Props {
     open: boolean;
@@ -89,7 +90,7 @@
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <div class="modal-content" onclick={(event) => event.stopPropagation()} onkeydown={handleKeydown} role="document" tabindex="0">
+    <div use:modalFocus class="modal-content" onclick={(event) => event.stopPropagation()} onkeydown={handleKeydown} role="document" tabindex="0">
       <div class="modal-header">
         <h2 id="server-dashboard-title">Server Dashboard</h2>
         <button class="icon-btn close-btn" onclick={close} aria-label="Close server dashboard">
