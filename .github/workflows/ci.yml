@@ -1,8 +1,11 @@
-# Fast quality gate for the checks listed in AGENTS.md. Runs on pushes to the
-# integration branches (feature branches are merged into `dev` locally, so the
-# push *is* the integration event) and on pull requests, which is how
-# Dependabot updates arrive. Restricting `push` to main/dev keeps Dependabot's
-# own branches from triggering a second, identical run alongside their PR.
+# Fast quality gate for the checks listed in AGENTS.md. Runs on pull
+# requests, which is how every change lands (feature branches and Dependabot
+# alike), and on pushes to the integration branches, so the merged result is
+# checked too. Restricting `push` to main/dev keeps a pull request's own
+# branch from triggering a second, identical run alongside it.
+#
+# Three parallel jobs: the frontend checks finish in a minute or two and
+# should not wait behind the Tauri shell's WebKitGTK install and compile.
 #
 # The slow part — installers, signing, updater manifest — stays in
 # `release.yml`, which is tag-triggered.
@@ -19,21 +22,24 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  client:
-    name: Client
+  frontend:
+    name: Frontend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Bun 1.x is a hard constraint (AGENTS.md); `latest` would move to 2.0
       # on the day it ships. A caret range, not `1.x`: setup-bun's matcher
       # reads `1.x` as an older release.
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: "^1.0.0"
 
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: ${{ runner.os }}-bun-${{ hashFiles('murmer_client/bun.lock') }}
@@ -51,7 +57,27 @@ jobs:
         working-directory: murmer_client
         run: bun run test
 
-      # Also produces `murmer_client/build/`, which the Tauri shell needs:
+  tauri:
+    name: Tauri shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "^1.0.0"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('murmer_client/bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-
+
+      - name: Install frontend dependencies
+        working-directory: murmer_client
+        run: bun install --frozen-lockfile
+
+      # Produces `murmer_client/build/`, which the Tauri shell needs:
       # `frontendDist` points at it and tauri-build fails when it is missing.
       - name: Build frontend
         working-directory: murmer_client
@@ -79,7 +105,7 @@ jobs:
       - name: Install pinned Rust toolchain
         run: rustup show
 
-      - uses: swatinem/rust-cache@v2
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: murmer_client/src-tauri
 
@@ -95,7 +121,7 @@ jobs:
     name: Server
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install pinned Rust toolchain
         run: rustup show
@@ -113,7 +139,7 @@ jobs:
             echo "murmer_server/Dockerfile does not build with Rust ${pinned} from rust-toolchain.toml"; exit 1
           fi
 
-      - uses: swatinem/rust-cache@v2
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: murmer_server
 

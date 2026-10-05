@@ -81,6 +81,11 @@ updates:
     cooldown:
       default-days: 7
 
+  # Workflows pin every action to a commit SHA with the tag in a trailing
+  # comment. A tag can be moved to other code after the fact, and
+  # `release.yml` hands the updater signing key to the actions it runs; a
+  # hijacked tag there ships to every install. Dependabot bumps the SHA and
+  # the comment together.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
