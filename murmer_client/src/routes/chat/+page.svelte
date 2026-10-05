@@ -128,6 +128,7 @@
   import WikiView from '$lib/components/wiki/WikiView.svelte';
   import { wikilinks } from '$lib/wiki/links';
   import { fileDrop } from '$lib/chat/fileDrop';
+  import { groupMentionsIn } from '$lib/chat/mentions';
 
   let message = $state('');
   let composer: MessageComposer | undefined = $state();
@@ -494,6 +495,15 @@
     window.removeEventListener('keydown', handleGlobalShortcut);
   });
 
+  /**
+   * The groups a message pings, for members who may ping groups. Everyone
+   * else's `@here` goes out as the plain words it is: the server would refuse
+   * the message over a ping that was never offered to them.
+   */
+  function outgoingGroupMentions(text: string) {
+    return $can(PERMISSIONS.MENTION_GROUPS) ? groupMentionsIn(text, $roleDefinitions) : null;
+  }
+
   function sendText() {
     const trimmed = message.trim();
     if (trimmed === '') return;
@@ -505,7 +515,13 @@
     const replyTarget = typeof replyingTo?.id === 'number' ? replyingTo.id : undefined;
     // The quoted snippet is passed along because an encrypted channel gives
     // the server no plaintext to build one from; it travels sealed instead.
-    const error = chat.send($session.user ?? 'anon', message, replyTarget, replyingTo?.text);
+    const error = chat.send(
+      $session.user ?? 'anon',
+      message,
+      replyTarget,
+      replyingTo?.text,
+      outgoingGroupMentions(message)
+    );
     if (error) {
       setCommandFeedback(error, 'error');
       return;
@@ -797,7 +813,13 @@
   function sendThreadReply(text: string) {
     if (threadRootId === null) return;
     const root = $chat.find((m) => m.id === threadRootId);
-    const error = chat.send($session.user ?? 'anon', text, threadRootId, root?.text);
+    const error = chat.send(
+      $session.user ?? 'anon',
+      text,
+      threadRootId,
+      root?.text,
+      outgoingGroupMentions(text)
+    );
     if (error) setCommandFeedback(error, 'error');
   }
 

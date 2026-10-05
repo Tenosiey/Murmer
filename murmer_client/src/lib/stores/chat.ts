@@ -12,6 +12,7 @@ import {
   mergeHistory
 } from '../message-utils';
 import { parseWikiSearchHits } from '../chat/search';
+import { parseGroupMentions, pingsMe, type GroupMentions } from '../chat/mentions';
 import { describeServerError } from '../errors';
 import { WebSocketManager } from '../websocket-manager';
 import { connection } from './connection';
@@ -287,6 +288,24 @@ function createChatStore() {
     return sealed ? { epoch: sealed.epoch, nonce: sealed.nonce, ciphertext: sealed.ciphertext } : 'locked';
   }
 
+  /* The signed-in user's role ids, for group mentions. Supplied by
+     `stores/roles.ts`, which imports this module and so cannot be imported
+     by it; until then nobody holds a role and only `@here` pings. */
+  let ownRoleIds: () => number[] = () => [];
+
+  function setOwnRoleIds(lookup: () => number[]): void {
+    ownRoleIds = lookup;
+  }
+
+  /**
+   * Whether a message pings the signed-in user: by name, or through a group
+   * the server authorized. Never through the text of a group mention — anyone
+   * may type `@here`, only the `mentions` field is checked.
+   */
+  function mentionsMe(text: string | undefined, mentions: unknown, current: string): boolean {
+    return containsMention(text, current) || pingsMe(parseGroupMentions(mentions), ownRoleIds());
+  }
+
   /**
    * Raise a desktop notification for a channel message, if the channel's
    * notification preference asks for one.
@@ -320,7 +339,7 @@ function createChatStore() {
         }
 
         if (!current || prepared.user !== current) {
-          const mention = current ? containsMention(prepared.text, current) : false;
+          const mention = current ? mentionsMe(prepared.text, prepared.mentions, current) : false;
           notifyChannelMessage(prepared.channelId ?? 0, prepared.user, prepared.text ?? '', mention);
         }
         break;
@@ -566,7 +585,7 @@ function createChatStore() {
           : typeof msg.text === 'string'
             ? msg.text
             : '';
-        const mention = current ? containsMention(text, current) : false;
+        const mention = current ? mentionsMe(text, msg.mentions, current) : false;
         unread.recordIncoming(channelId, messageId, mention);
 
         notifyChannelMessage(channelId, sender, text, mention);
@@ -708,13 +727,24 @@ function createChatStore() {
    * Send a chat message.
    * @param replyText - Quoted snippet, needed only in encrypted channels where
    *   the server has no plaintext to quote from
+   * @param mentions - Groups the message pings (`groupMentionsIn`); the server
+   *   refuses the whole message if the sender may not ping groups
    * @returns null on success, or an error message for the caller to surface
    */
-  function send(user: string, text: string, replyTo?: number, replyText?: string): string | null {
+  function send(
+    user: string,
+    text: string,
+    replyTo?: number,
+    replyText?: string,
+    mentions?: GroupMentions | null
+  ): string | null {
     const extra: Record<string, unknown> = {};
     if (typeof replyTo === 'number' && Number.isFinite(replyTo)) {
       extra.replyTo = replyTo;
     }
+    // Plaintext beside a sealed message on purpose: the server has to see
+    // which groups are pinged to authorize it, and learns nothing else.
+    if (mentions) extra.mentions = mentions;
     return sendMessage(user, { text, replyText }, extra);
   }
 
@@ -985,6 +1015,7 @@ function createChatStore() {
 
   return {
     subscribe,
+    setOwnRoleIds,
     connect,
     connectionLost,
     join,

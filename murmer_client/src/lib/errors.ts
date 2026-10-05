@@ -204,7 +204,10 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'reminder-limit-reached':
     'You already have the maximum number of reminders. Dismiss one first.',
   'reminder-not-found': 'That reminder no longer exists.',
-  'reminder-failed': 'The server could not save that reminder. Please try again.'
+  'reminder-failed': 'The server could not save that reminder. Please try again.',
+  'group-mention-denied':
+    'You do not have permission to mention @here or roles. The message was not sent.',
+  'invalid-mentions': 'That message mentions a role that no longer exists.'
 };
 
 /**

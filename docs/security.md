@@ -142,6 +142,10 @@ All of this is deliberate, and is also stated in `README.md` for operators:
   inside the ciphertext as text, which makes it the sender's claim rather
   than the server's — see [`features.md`](features.md).
 - **Forward secrecy within an epoch.**
+- **Which groups a message pings.** A group mention's `mentions` field
+  travels in plaintext beside the envelope, because the server has to
+  authorize it — see [`permissions.md`](permissions.md#group-mentions). It
+  reveals that a message pinged `@here` or a role, never what it said.
 - **Reminders.** A reminder's note is written by its owner and stored in
   plaintext, like a channel topic — a reminder set on a message in an
   encrypted channel therefore only ever holds what its owner typed, never a

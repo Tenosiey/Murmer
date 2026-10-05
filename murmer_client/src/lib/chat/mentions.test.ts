@@ -6,7 +6,16 @@
  */
 import { describe, expect, it } from 'vitest';
 import { containsMention } from '../message-utils';
-import { insertMention, mentionCandidates, mentionQuery } from './mentions';
+import type { RoleDef } from '../types';
+import {
+  groupCandidates,
+  groupMentionsIn,
+  insertMention,
+  mentionCandidates,
+  mentionQuery,
+  parseGroupMentions,
+  pingsMe
+} from './mentions';
 
 const NAMES: Record<string, string> = {
   anna_s: 'Anna Smith',
@@ -42,7 +51,7 @@ describe('mentionQuery', () => {
 
 describe('mentionCandidates', () => {
   const pick = (query: string, online: string[], offline: string[] = []) =>
-    mentionCandidates(query, online, offline, shown, 'me').map((c) => c.user);
+    mentionCandidates(query, online, offline, shown, 'me').map((c) => c.insert);
 
   it('finds members by the name the UI shows, not only the account name', () => {
     expect(pick('cap', ['bob', 'anna_s'])).toEqual(['bob']);
@@ -88,5 +97,52 @@ describe('insertMention', () => {
     const result = insertMention(text, mentionQuery(text, 7)!, 7, 'anna_s');
     expect(result.text).toBe('ask @anna_s about it');
     expect(result.caret).toBe('ask @anna_s '.length);
+  });
+});
+
+function role(id: number, name: string, isDefault = false): RoleDef {
+  return { id, name, permissions: 0, position: id, isDefault, isOwner: false };
+}
+
+const ROLES = [role(1, '@everyone', true), role(2, 'Mod'), role(3, 'Event Team')];
+
+describe('groupCandidates', () => {
+  const names = (query: string) => groupCandidates(query, ROLES).map((c) => c.label);
+
+  it('offers @here and roles by name, never @everyone', () => {
+    expect(names('')).toEqual(['here', 'Event Team', 'Mod']);
+    expect(names('h')).toEqual(['here']);
+    expect(names('te')).toEqual(['Event Team']);
+    expect(names('every')).toEqual([]);
+  });
+});
+
+describe('group mentions', () => {
+  it('derives the field from the text the way a member mention is matched', () => {
+    expect(groupMentionsIn('@here and @mod', ROLES)).toEqual({ here: true, roles: [2] });
+    expect(groupMentionsIn('ping @Event Team now', ROLES)).toEqual({ here: false, roles: [3] });
+    expect(groupMentionsIn('mail me@here.example', ROLES)).toBeNull();
+    expect(groupMentionsIn('@heresy', ROLES)).toBeNull();
+    // @everyone is not a group anyone can ping.
+    expect(groupMentionsIn('@@everyone', ROLES)).toBeNull();
+  });
+
+  it('an inserted group is one the sender\'s field picks up', () => {
+    const result = insertMention('@eve', { start: 0, query: 'eve' }, 4, 'Event Team');
+    expect(groupMentionsIn(`${result.text}meet at 5`, ROLES)).toEqual({ here: false, roles: [3] });
+  });
+
+  it('reads only the shape the server builds off the wire', () => {
+    expect(parseGroupMentions({ here: true, roles: [2] })).toEqual({ here: true, roles: [2] });
+    expect(parseGroupMentions({ here: 'yes', roles: ['2'] })).toBeNull();
+    expect(parseGroupMentions(['here'])).toBeNull();
+    expect(parseGroupMentions(null)).toBeNull();
+  });
+
+  it('pings everyone for @here and role holders for a role', () => {
+    expect(pingsMe({ here: true, roles: [] }, [])).toBe(true);
+    expect(pingsMe({ here: false, roles: [2] }, [2, 3])).toBe(true);
+    expect(pingsMe({ here: false, roles: [2] }, [3])).toBe(false);
+    expect(pingsMe(null, [2])).toBe(false);
   });
 });

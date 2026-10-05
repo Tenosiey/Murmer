@@ -66,9 +66,6 @@ the idea comes from and what users will expect it to behave like.
       knows everything at once
 - [ ] Copy a link to a message, which opens the right server and channel and
       scrolls to it. `highlightMessageById` already does the jumping
-- [ ] Group mentions — `@here` and `@role`, behind a permission so they
-      cannot become spam (Discord). The `@` completion (`chat/mentions.ts`)
-      is where they would be offered
 - [ ] Mentions inbox — one list of recent mentions across all channels
       (Discord's inbox). A per-channel badge says *where*, not *what*
 - [ ] Outbound webhooks. The bot REST API covers "something else drives

@@ -1,5 +1,6 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { chat } from './chat';
+import { session } from './session';
 import { roleDefinitions } from './roleDefinitions';
 import type { Message, RoleDef, RoleInfo } from '../types';
 
@@ -23,6 +24,13 @@ function createUserRoleIdsStore() {
 }
 
 export const userRoleIds = createUserRoleIdsStore();
+
+// A role mention pings whoever holds the role. The chat store decides about
+// pings but cannot import this module back, so it is handed the lookup.
+chat.setOwnRoleIds(() => {
+  const user = get(session).user;
+  return user ? (get(userRoleIds)[user] ?? []) : [];
+});
 
 /**
  * The role a user is displayed as: their highest-position assigned role.

@@ -372,6 +372,9 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         // And the same for the invite flag, which shipped with server-issued
         // invite codes. Marker-guarded, runs once.
         roles::migrate_invite_permissions(conn)?;
+        // And for group mentions, which shipped after them. Marker-guarded,
+        // runs once.
+        roles::migrate_group_mention_permissions(conn)?;
 
         // Columns added after a table first shipped; CREATE TABLE IF NOT
         // EXISTS does not extend existing tables.

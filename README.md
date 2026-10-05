@@ -84,6 +84,9 @@ small team can deploy a private chat space quickly.
 - Ephemeral messaging, search across messages and wiki pages, server-synced
   pinned messages and message editing
 - Message replies with quoted previews and lightweight threads
+- `@` mentions that complete members by the name you see them as, plus
+  `@here` and role mentions for members with the **Mention @here and roles**
+  permission (the built-in Mod role and above)
 - Message forwarding to another channel or a direct message, keeping the
   original author and the channel it came from. A forward into a channel is
   copied by the server, so the attribution is not something the sender can

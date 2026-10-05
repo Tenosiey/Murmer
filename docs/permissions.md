@@ -159,6 +159,33 @@ operator finds out about weeks later.
 
 Like the profanity filter, rules are a no-op in an encrypted channel.
 
+## Group mentions
+
+`@here` and `@<role>` ping people who did not join the conversation, so they
+need `MENTION_GROUPS` (seeded on Mod and above, never on `@everyone`).
+
+The permission is checked on a chat frame's `mentions` field —
+`{ here, roles }` — and **never on the text**. Anyone may type `@here`; it
+pings nobody unless the field says so, and recipients ping on the field
+alone (`chat/mentions.ts`). That shape is what lets the rule hold in an
+encrypted channel, where the server cannot read the text it would otherwise
+have to check. `group_mentions` in `ws/handlers/messages.rs`:
+
+- **refuses** the whole message (`group-mention-denied`) rather than sending
+  it without the ping, so the sender never believes they notified anyone;
+- rebuilds the field from known parts, and refuses an unknown role or
+  `@everyone` (`invalid-mentions`) — `@everyone` would reach offline members
+  too and is deliberately not something one can ping;
+- copies it onto the `message-notify`, which is how members looking at
+  another channel hear about it.
+
+Every other path that stores a message body drops the field:
+`prepare_chat_body` strips it, so a **scheduled** message never pings — the
+permission is checked when it is written, and could be gone by the time it is
+posted — and a **forward** copies content fields only. A mention of a single
+member is unaffected by all this; it needs no permission and still matches on
+the account name in the text.
+
 ## Manager-only answers
 
 Some data is an answer to a request, never a broadcast, because it is

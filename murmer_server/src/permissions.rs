@@ -59,6 +59,12 @@ pub const VIEW_AUDIT_LOG: Permissions = 1 << 17;
 /// behind it are not; on a password-protected server this flag is what lets
 /// somebody admit a new member without the password being passed around.
 pub const CREATE_INVITES: Permissions = 1 << 18;
+/// Ping a group: `@here` (everyone connected who can see the channel) or a
+/// role. Gated because a group mention reaches people who did not join the
+/// conversation, so in the wrong hands it is spam with a notification sound.
+/// Checked on the frame's `mentions` field rather than the text, which is
+/// what lets it work in an encrypted channel, where the server reads none.
+pub const MENTION_GROUPS: Permissions = 1 << 19;
 
 /// Union of every defined permission flag. Used to reject unknown bits from
 /// clients and to expand [`ADMINISTRATOR`] into a concrete mask.
@@ -80,7 +86,8 @@ pub const ALL: Permissions = VIEW_CHANNELS
     | MANAGE_SOUNDS
     | MANAGE_NICKNAMES
     | VIEW_AUDIT_LOG
-    | CREATE_INVITES;
+    | CREATE_INVITES
+    | MENTION_GROUPS;
 
 /// Baseline permissions granted to every user through the `@everyone` role.
 /// Keeps a fresh or unadministered server usable: everyone can read, chat and
@@ -100,7 +107,8 @@ pub const DEFAULT_MOD: Permissions = DEFAULT_EVERYONE
     | BAN_MEMBERS
     | MUTE_MEMBERS
     | MANAGE_NICKNAMES
-    | CREATE_INVITES;
+    | CREATE_INVITES
+    | MENTION_GROUPS;
 
 /// Default permissions seeded for the built-in `Admin` role: everything a Mod
 /// can do plus server settings and read-only server/connection insight.

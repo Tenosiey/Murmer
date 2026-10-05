@@ -184,6 +184,8 @@ it cannot say who was meant. People type the name they *see*, though, so the
 composer and thread replies complete `@`: members are found by their shown
 name (`chat/mentions.ts`) and the account name is what gets inserted. Typing
 `@Nick` by hand without picking from the list still notifies nobody.
+Group mentions — `@here` and roles — are permission-gated and work
+differently; see [`permissions.md`](permissions.md#group-mentions).
 
 Rendering rules for the client are in [`client-state.md`](client-state.md).
 

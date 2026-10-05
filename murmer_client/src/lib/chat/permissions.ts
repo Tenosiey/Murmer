@@ -26,7 +26,8 @@ export const PERMISSIONS = {
   MANAGE_SOUNDS: 1 << 15,
   MANAGE_NICKNAMES: 1 << 16,
   VIEW_AUDIT_LOG: 1 << 17,
-  CREATE_INVITES: 1 << 18
+  CREATE_INVITES: 1 << 18,
+  MENTION_GROUPS: 1 << 19
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;
@@ -148,6 +149,12 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         flag: PERMISSIONS.MANAGE_MESSAGES,
         label: 'Manage messages',
         description: "Delete and pin other members' messages."
+      },
+      {
+        key: 'MENTION_GROUPS',
+        flag: PERMISSIONS.MENTION_GROUPS,
+        label: 'Mention @here and roles',
+        description: 'Ping everyone online in a channel, or every member of a role, at once.'
       }
     ]
   },

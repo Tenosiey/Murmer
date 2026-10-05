@@ -442,3 +442,20 @@ pub fn migrate_invite_permissions(conn: &rusqlite::Connection) -> rusqlite::Resu
         )
     })
 }
+
+/// Grant [`MENTION_GROUPS`](crate::permissions::MENTION_GROUPS) to every role
+/// that already moderates members, matching `DEFAULT_MOD` on a freshly seeded
+/// server. `KICK_MEMBERS` marks a moderating role once more, and `@everyone`
+/// must not gain the flag: keeping group pings away from every member is the
+/// whole point of it.
+///
+/// Marker-guarded, so an owner who takes the flag away again keeps it away.
+pub fn migrate_group_mention_permissions(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    once(conn, "group_mention_perms", || {
+        grant_to_holders(
+            conn,
+            crate::permissions::MENTION_GROUPS,
+            crate::permissions::KICK_MEMBERS,
+        )
+    })
+}

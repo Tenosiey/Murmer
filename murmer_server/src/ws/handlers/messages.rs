@@ -1,6 +1,13 @@
 //! Handlers for chat messages, message deletion, editing, forwarding,
 //! reactions, history and search.
 //!
+//! A chat frame may carry a `mentions` field naming groups to ping — `@here`
+//! and roles. Recipients ping on that field alone, never on the text, so it
+//! is authorized here against `MENTION_GROUPS` and rebuilt from known parts;
+//! see [`group_mentions`]. Every other path that stores a message body (a
+//! scheduled message, a forward) drops it, because none of them re-checks the
+//! permission at the moment the message is posted.
+//!
 //! Forwarding is the odd one out: the copy is made *here*, from the row the
 //! server stored, so that the original author's name on it is not something
 //! the sender could write. The rules it has to clear live in
@@ -230,6 +237,62 @@ pub(super) async fn handle_search_history(
     }
 }
 
+/// Read and authorize a `chat` frame's `mentions` field: the groups it pings.
+///
+/// The field is plaintext metadata even in an encrypted channel. That is the
+/// trade that makes the permission enforceable there at all — the server
+/// cannot read `@here` out of a ciphertext — and it reveals that a message
+/// pinged a group, never what it said. Returns the rebuilt field, or `None`
+/// when the frame pings no group; a malformed field or an unknown role is an
+/// error rather than ignored, so a buggy client hears about it.
+async fn group_mentions(
+    state: &Arc<AppState>,
+    v: &Value,
+    user: &str,
+) -> Result<Option<Value>, &'static str> {
+    let Some(raw) = v.get("mentions").filter(|value| !value.is_null()) else {
+        return Ok(None);
+    };
+    let Some(raw) = raw.as_object() else {
+        return Err(errors::INVALID_MENTIONS);
+    };
+    let here = match raw.get("here") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(here)) => *here,
+        Some(_) => return Err(errors::INVALID_MENTIONS),
+    };
+    let mut roles: Vec<i64> = Vec::new();
+    match raw.get("roles") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(ids)) => {
+            let defs = state.role_defs.lock().await;
+            for id in ids {
+                let Some(id) = id.as_i64() else {
+                    return Err(errors::INVALID_MENTIONS);
+                };
+                // `@everyone` is every member, offline ones included: pinging
+                // it is not a role mention, and it is deliberately not offered.
+                match defs.get(&id) {
+                    Some(def) if !def.is_default => {
+                        if !roles.contains(&id) {
+                            roles.push(id);
+                        }
+                    }
+                    _ => return Err(errors::INVALID_MENTIONS),
+                }
+            }
+        }
+        Some(_) => return Err(errors::INVALID_MENTIONS),
+    }
+    if !here && roles.is_empty() {
+        return Ok(None);
+    }
+    if !has_permission(state, user, crate::permissions::MENTION_GROUPS).await {
+        return Err(errors::GROUP_MENTION_DENIED);
+    }
+    Ok(Some(serde_json::json!({ "here": here, "roles": roles })))
+}
+
 /// Whether `user` may put a message into `channel_id` at all: the channel's
 /// rules, the message rate limit and the mute list. Replies to the client with
 /// the reason and returns `false` when they may not.
@@ -345,6 +408,10 @@ pub(super) async fn prepare_chat_body(
     v["channelId"] = Value::from(channel_id);
     if let Some(map) = v.as_object_mut() {
         map.remove("channel");
+        // Group pings are authorized by `handle_chat` alone, which puts them
+        // back once checked. A scheduled body must never carry one: it would
+        // ping on the strength of a permission that may be gone by then.
+        map.remove("mentions");
     }
     let timestamp = sanitize_message_timestamp(v);
 
@@ -439,9 +506,20 @@ pub(super) async fn handle_chat(
         return;
     }
 
+    let mentions = match group_mentions(state, v, user).await {
+        Ok(mentions) => mentions,
+        Err(code) => {
+            send_error(sender, code).await;
+            return;
+        }
+    };
+
     let Ok(timestamp) = prepare_chat_body(state, sender, v, channel_id, user).await else {
         return;
     };
+    if let Some(mentions) = mentions {
+        v["mentions"] = mentions;
+    }
 
     let mut ephemeral_expiry: Option<DateTime<Utc>> = None;
     if let Some(raw_expiry) = v.get("expiresAt").and_then(|value| value.as_str()) {
@@ -514,6 +592,11 @@ pub(super) async fn publish_message(
             });
             if let Some(enc) = v.get("enc") {
                 notify["enc"] = enc.clone();
+            }
+            // Group pings matter most to exactly these clients: members who
+            // are elsewhere and would otherwise not hear about the message.
+            if let Some(mentions) = v.get("mentions") {
+                notify["mentions"] = mentions.clone();
             }
             broadcast(state, &notify);
 

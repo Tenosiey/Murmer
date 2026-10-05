@@ -528,3 +528,12 @@ pub const REMINDER_LIMIT_REACHED: &str = r#"{"type":"error","message":"reminder-
 pub const REMINDER_NOT_FOUND: &str = r#"{"type":"error","message":"reminder-not-found"}"#;
 
 pub const REMINDER_FAILED: &str = r#"{"type":"error","message":"reminder-failed"}"#;
+
+/// A message pinged `@here` or a role without `MENTION_GROUPS`. The whole
+/// message is refused rather than sent without the ping, so the sender learns
+/// that nobody was notified instead of assuming they were.
+pub const GROUP_MENTION_DENIED: &str = r#"{"type":"error","message":"group-mention-denied"}"#;
+
+/// A message's `mentions` field was malformed or named a role that does not
+/// exist (or `@everyone`, which is not a role one can ping).
+pub const INVALID_MENTIONS: &str = r#"{"type":"error","message":"invalid-mentions"}"#;
