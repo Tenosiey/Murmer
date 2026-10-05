@@ -14,6 +14,7 @@ import {
   DEFAULT_UPLOAD_MAX_BYTES,
   UPLOAD_CATEGORIES
 } from '../chat/constants';
+import { formatUploadSize } from '../upload';
 import type { Message } from '../types';
 
 export interface UploadPolicy {
@@ -64,13 +65,6 @@ export const allowedUploadExtensions = derived(uploadConfig, ($config) =>
 export const uploadAccept = derived(allowedUploadExtensions, ($extensions) =>
   $extensions.map((ext) => `.${ext}`).join(',')
 );
-
-/** Render a byte count the way the upload settings talk about it. */
-export function formatUploadSize(bytes: number): string {
-  const mb = bytes / (1024 * 1024);
-  if (mb >= 1) return `${Number.isInteger(mb) ? mb : mb.toFixed(1)} MB`;
-  return `${Math.round(bytes / 1024)} KB`;
-}
 
 /**
  * Check a file against the current policy. Returns a user-facing reason when

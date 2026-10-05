@@ -9,13 +9,20 @@
  * recommended configuration (CORS disabled) do not answer.
  *
  * Beyond that the endpoint validates type, size and magic bytes itself and
- * every consumer (avatar, profile, server icon, role icon) re-registers the
- * returned URL over the authenticated WebSocket, where the server checks it
- * again. The size check here only avoids a pointless round trip, and the error
+ * every consumer (chat attachment, avatar, profile, server icon, role icon)
+ * re-registers the returned URL over the authenticated WebSocket, where the
+ * server checks it again. The size check here only avoids a pointless round trip, and the error
  * text exists so callers can show something better than "failed".
  */
 
 import { loadKeyPair, sign } from './keypair';
+
+/** Render a byte count the way the upload settings talk about it. */
+export function formatUploadSize(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  if (mb >= 1) return `${Number.isInteger(mb) ? mb : mb.toFixed(1)} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
+}
 
 /** Human-readable form of a byte cap, for the size-limit message. */
 function formatLimit(bytes: number): string {
@@ -94,5 +101,60 @@ export async function uploadImage(
   } catch (e) {
     console.error('image upload failed', e);
     return { ok: false, message: 'Upload failed. Please try again.' };
+  }
+}
+
+/** What a chat message carries for an uploaded file. */
+export type UploadedContent =
+  | { image: string }
+  | { attachment: { url: string; name: string; size: number } };
+
+export type AttachmentResult =
+  | { ok: true; content: UploadedContent }
+  | { ok: false; message: string };
+
+/**
+ * Upload a chat attachment to `httpBase`. Images come back as `{ image }`,
+ * which renders inline; anything else as a download card named after what
+ * the server stored. `maxBytes` is the server's current limit, named in the
+ * message when the server refuses the size after all — the policy can change
+ * between picking the file and sending it. Never throws: failures come back
+ * as `{ ok: false, message }`.
+ */
+export async function uploadAttachment(
+  httpBase: string,
+  file: File,
+  maxBytes: number
+): Promise<AttachmentResult> {
+  try {
+    const res = await fetch(httpBase + '/upload', { method: 'POST', body: uploadForm(file) });
+    if (res.status === 413) {
+      return {
+        ok: false,
+        message: `File is too large to upload (limit: ${formatUploadSize(maxBytes)}).`
+      };
+    }
+    const message = uploadErrorMessage(res.status);
+    if (message) return { ok: false, message };
+    if (!res.ok) throw new Error(`upload failed with status ${res.status}`);
+    const data = await res.json();
+    if (typeof data.url !== 'string') throw new Error('upload response missing url');
+    const url = data.url.startsWith('http') ? data.url : httpBase + data.url;
+    if (data.kind === 'image' || file.type.startsWith('image/')) {
+      return { ok: true, content: { image: url } };
+    }
+    return {
+      ok: true,
+      content: {
+        attachment: {
+          url,
+          name: typeof data.name === 'string' ? data.name : file.name,
+          size: typeof data.size === 'number' ? data.size : file.size
+        }
+      }
+    };
+  } catch (e) {
+    console.error('upload failed', e);
+    return { ok: false, message: 'File upload failed.' };
   }
 }

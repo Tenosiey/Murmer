@@ -13,7 +13,7 @@
   import { can, myTopPosition, myPermissions } from '$lib/stores/permissions';
   import { PERMISSIONS, computeTopPosition } from '$lib/chat/permissions';
   import { session } from '$lib/stores/session';
-  import { uploadForm, uploadErrorMessage } from '$lib/upload';
+  import { uploadAttachment } from '$lib/upload';
   import { displayNames, profiles } from '$lib/stores/profiles';
   import { voice, voiceVideo } from '$lib/stores/voice';
   import { selectedServer, servers } from '$lib/stores/servers';
@@ -84,11 +84,7 @@
   import { loadKeyPair, sign } from '$lib/keypair';
   import { httpBaseFromWs } from '$lib/server-url';
   import { connection, connectionError } from '$lib/stores/connection';
-  import {
-    uploadConfig,
-    describeUploadRejection,
-    formatUploadSize
-  } from '$lib/stores/uploadConfig';
+  import { uploadConfig, describeUploadRejection } from '$lib/stores/uploadConfig';
   import { voiceDefaults } from '$lib/stores/voiceDefaults';
   import { slowModeWait } from '$lib/stores/chatSettings';
   import { describeServerError, isFatalConnectionError } from '$lib/errors';
@@ -558,52 +554,14 @@
 
   async function sendFile() {
     const file = pendingFile;
-    if (!file) {
-      if (import.meta.env.DEV) console.log('sendFile: no file selected');
-      return;
-    }
-    const selected = get(selectedServer) ?? 'ws://localhost:3001/ws';
-    const base = httpBaseFromWs(selected);
-    if (import.meta.env.DEV) console.log('Uploading file to', base + '/upload', file);
-    try {
-      const res = await fetch(base + '/upload', { method: 'POST', body: uploadForm(file) });
-      if (import.meta.env.DEV) console.log('Upload response status:', res.status);
-      if (res.status === 413) {
-        setCommandFeedback(
-          `File is too large to upload (limit: ${formatUploadSize($uploadConfig.maxBytes)}).`,
-          'error'
-        );
-        return;
-      }
-      const uploadError = uploadErrorMessage(res.status);
-      if (uploadError) {
-        setCommandFeedback(uploadError, 'error');
-        return;
-      }
-      if (!res.ok) {
-        throw new Error(`upload failed with status ${res.status}`);
-      }
-      const data = await res.json();
-      if (import.meta.env.DEV) console.log('Upload response data:', data);
-      const url = data.url as string;
-      const absolute = url.startsWith('http') ? url : base + url;
-      const sendError =
-        data.kind === 'image' || file.type.startsWith('image/')
-          ? chat.sendUpload($session.user ?? 'anon', { image: absolute })
-          : chat.sendUpload($session.user ?? 'anon', {
-              attachment: {
-                url: absolute,
-                name: typeof data.name === 'string' ? data.name : file.name,
-                size: typeof data.size === 'number' ? data.size : file.size
-              }
-            });
-      if (sendError) setCommandFeedback(sendError, 'error');
-    } catch (e) {
-      console.error('upload failed', e);
-      setCommandFeedback('File upload failed.', 'error');
-    } finally {
-      clearPendingFile();
-    }
+    if (!file) return;
+    const base = httpBaseFromWs(get(selectedServer) ?? 'ws://localhost:3001/ws');
+    const result = await uploadAttachment(base, file, $uploadConfig.maxBytes);
+    clearPendingFile();
+    const error = result.ok
+      ? chat.sendUpload($session.user ?? 'anon', result.content)
+      : result.message;
+    if (error) setCommandFeedback(error, 'error');
   }
 
   async function send() {

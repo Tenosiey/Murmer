@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import nacl from 'tweetnacl';
 import { fromBase64, loadKeyPair } from './keypair';
-import { uploadForm, uploadErrorMessage } from './upload';
+import { uploadAttachment, uploadForm, uploadErrorMessage } from './upload';
 
 describe('uploadForm', () => {
   it('signs upload:<timestamp> with the stored identity key', () => {
@@ -60,5 +60,48 @@ describe('uploadErrorMessage', () => {
   it('leaves other statuses to the caller', () => {
     expect(uploadErrorMessage(200)).toBeNull();
     expect(uploadErrorMessage(500)).toBeNull();
+  });
+});
+
+describe('uploadAttachment', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function answer(status: number, body: unknown = {}) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(body), { status }))
+    );
+  }
+
+  it('resolves the stored path against the server and keeps images inline', async () => {
+    answer(200, { url: '/files/abc.png', kind: 'image' });
+    const result = await uploadAttachment('http://srv', new File(['x'], 'a.png'), 1024);
+    expect(result).toEqual({ ok: true, content: { image: 'http://srv/files/abc.png' } });
+  });
+
+  it('names an attachment after what the server stored', async () => {
+    answer(200, { url: '/files/k', name: 'report.pdf', size: 3 });
+    const result = await uploadAttachment('http://srv', new File(['x'], 'local.pdf'), 1024);
+    expect(result).toEqual({
+      ok: true,
+      content: { attachment: { url: 'http://srv/files/k', name: 'report.pdf', size: 3 } }
+    });
+  });
+
+  it('names the current limit when the server refuses the size', async () => {
+    answer(413);
+    const result = await uploadAttachment('http://srv', new File(['x'], 'a.bin'), 8 * 1024 * 1024);
+    expect(result).toEqual({ ok: false, message: 'File is too large to upload (limit: 8 MB).' });
+  });
+
+  it('fails rather than posting a message with no URL in it', async () => {
+    // Otherwise the chat would carry a link to "http://srvundefined".
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    answer(200, { kind: 'image' });
+    const result = await uploadAttachment('http://srv', new File(['x'], 'a.png'), 1024);
+    expect(result).toEqual({ ok: false, message: 'File upload failed.' });
   });
 });
