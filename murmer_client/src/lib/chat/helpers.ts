@@ -321,3 +321,85 @@ export function ensureStatus(
   return (map[user] ?? fallback) as UserStatus;
 }
 
+
+/**
+ * Everyone's presence for the member list: the status a member set, else
+ * online or offline depending on which list the server put them in.
+ */
+export function mergeStatuses(
+  statuses: Record<string, UserStatus>,
+  online: string[],
+  offline: string[]
+): Record<string, UserStatus> {
+  const map: Record<string, UserStatus> = { ...statuses };
+  for (const user of online) {
+    if (!map[user]) map[user] = 'online';
+  }
+  for (const user of offline) {
+    if (!map[user]) map[user] = 'offline';
+  }
+  return map;
+}
+
+/** The newest message id in `messages`, or null when none carries one. */
+export function latestMessageId(messages: Message[]): number | null {
+  let max: number | null = null;
+  for (const m of messages) {
+    if (typeof m.id === 'number' && (max === null || m.id > max)) max = m.id;
+  }
+  return max;
+}
+
+/**
+ * The "… is typing" line under the composer. `typers` maps each account to
+ * the moment its typing indicator expires; the viewer never sees themselves.
+ */
+export function describeTyping(
+  typers: Record<string, number>,
+  currentUser: string | null,
+  now: number,
+  displayName: (user: string) => string
+): string | null {
+  const users = Object.entries(typers)
+    .filter(([user, expiry]) => user !== currentUser && expiry > now)
+    .map(([user]) => displayName(user));
+  if (users.length === 0) return null;
+  if (users.length === 1) return `${users[0]} is typing…`;
+  if (users.length === 2) return `${users[0]} and ${users[1]} are typing…`;
+  return 'Several people are typing…';
+}
+
+/** Number of loaded replies per thread root id. */
+export function countThreadReplies(messages: Message[]): Map<number, number> {
+  const map = new Map<number, number>();
+  for (const m of messages) {
+    if (typeof m.threadId === 'number') {
+      map.set(m.threadId, (map.get(m.threadId) ?? 0) + 1);
+    }
+  }
+  return map;
+}
+
+/**
+ * The messages of one thread, oldest first: the server's snapshot merged with
+ * the live channel messages, so replies arriving while the thread is open
+ * show up without another request. A snapshot for a different root is
+ * ignored — it is the answer to a thread the user already left.
+ */
+export function mergeThreadMessages(
+  rootId: number,
+  snapshot: { rootId: number; messages: Message[] } | null,
+  live: Message[]
+): Message[] {
+  const byId = new Map<number, Message>();
+  if (snapshot && snapshot.rootId === rootId) {
+    for (const m of snapshot.messages) {
+      if (typeof m.id === 'number') byId.set(m.id, m);
+    }
+  }
+  for (const m of live) {
+    if (typeof m.id !== 'number') continue;
+    if (m.id === rootId || m.threadId === rootId) byId.set(m.id, m);
+  }
+  return [...byId.values()].sort((a, b) => (a.id as number) - (b.id as number));
+}

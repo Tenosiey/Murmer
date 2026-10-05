@@ -92,11 +92,16 @@
   import { voiceDefaults } from '$lib/stores/voiceDefaults';
   import { slowModeWait } from '$lib/stores/chatSettings';
   import { describeServerError, isFatalConnectionError } from '$lib/errors';
-  import type { Message, UserStatus, WatchedScreenShare, WebcamTile } from '$lib/types';
+  import type { Message, WatchedScreenShare, WebcamTile } from '$lib/types';
   import {
     pingToStrength,
     buildMessageBlocks,
-    describeDuration
+    describeDuration,
+    mergeStatuses,
+    latestMessageId,
+    describeTyping,
+    countThreadReplies,
+    mergeThreadMessages
   } from '$lib/chat/helpers';
   import { dialogs } from '$lib/stores/dialogs';
   import {
@@ -378,15 +383,6 @@
      it at index 0. The fallback only covers servers seeded without "general". */
   function defaultChannel(list: ChannelInfo[]): ChannelInfo {
     return list.find((c) => c.name === DEFAULT_CHANNEL_NAME) ?? list[0];
-  }
-
-
-  function latestMessageId(messages: Message[]): number | null {
-    let max: number | null = null;
-    for (const m of messages) {
-      if (typeof m.id === 'number' && (max === null || m.id > max)) max = m.id;
-    }
-    return max;
   }
 
 
@@ -1720,20 +1716,7 @@
   });
   let serverStrength = $derived(pingToStrength($ping));
   let dragActive = $derived(dragDepth > 0);
-  let statusMap: Record<string, UserStatus> = $derived.by(() => {
-    const map: Record<string, UserStatus> = { ...$statuses };
-    for (const user of $onlineUsers) {
-      if (!map[user]) {
-        map[user] = 'online';
-      }
-    }
-    for (const user of $offlineUsers) {
-      if (!map[user]) {
-        map[user] = 'offline';
-      }
-    }
-    return map;
-  });
+  let statusMap = $derived(mergeStatuses($statuses, $onlineUsers, $offlineUsers));
   // Whether the current user can reach the server dashboard at all: any
   // management capability qualifies.
   let currentUserCanManage = $derived(
@@ -1833,41 +1816,13 @@
     const latest = latestMessageId(channelMessages);
     if (latest !== null) unread.markRead(currentChatChannelId, latest);
   });
-  let typingLabel = $derived.by(() => {
-    const users = Object.entries($typing[currentChatChannelId] ?? {})
-      .filter(([user, expiry]) => user !== $session.user && expiry > now)
-      .map(([user]) => $displayNames(user));
-    if (users.length === 0) return null;
-    if (users.length === 1) return `${users[0]} is typing…`;
-    if (users.length === 2) return `${users[0]} and ${users[1]} are typing…`;
-    return 'Several people are typing…';
-  });
-  let threadReplyCounts = $derived.by(() => {
-    const map = new Map<number, number>();
-    for (const m of channelMessages) {
-      if (typeof m.threadId === 'number') {
-        map.set(m.threadId, (map.get(m.threadId) ?? 0) + 1);
-      }
-    }
-    return map;
-  });
-  /* The panel merges the server's thread snapshot with live messages from the
-     store, so replies arriving while the thread is open show up immediately. */
-  let threadMessages = $derived.by(() => {
-    if (threadRootId === null) return [];
-    const byId = new Map<number, Message>();
-    const data = $threadData;
-    if (data && data.rootId === threadRootId) {
-      for (const m of data.messages) {
-        if (typeof m.id === 'number') byId.set(m.id, m);
-      }
-    }
-    for (const m of channelMessages) {
-      if (typeof m.id !== 'number') continue;
-      if (m.id === threadRootId || m.threadId === threadRootId) byId.set(m.id, m);
-    }
-    return [...byId.values()].sort((a, b) => (a.id as number) - (b.id as number));
-  });
+  let typingLabel = $derived(
+    describeTyping($typing[currentChatChannelId] ?? {}, $session.user, now, $displayNames)
+  );
+  let threadReplyCounts = $derived(countThreadReplies(channelMessages));
+  let threadMessages = $derived(
+    threadRootId === null ? [] : mergeThreadMessages(threadRootId, $threadData, channelMessages)
+  );
   let currentTopic = $derived($channelTopics[currentChatChannelId] ?? '');
   let dmMessages = $derived($dmActivePeer ? ($dmConversations[$dmActivePeer] ?? []) : []);
   // Roles the current user may grant: below their own position and no more

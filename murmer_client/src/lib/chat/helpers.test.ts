@@ -9,11 +9,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Message, VoiceChannelInfo } from '../types';
 import {
   buildMessageBlocks,
+  countThreadReplies,
   describeDuration,
+  describeTyping,
   ephemeralInfo,
   formatExpiry,
   formatFileSize,
   formatShortTime,
+  latestMessageId,
+  mergeStatuses,
+  mergeThreadMessages,
   orderVoiceChannels,
   pingToStrength,
   parseTimestampValue,
@@ -422,5 +427,65 @@ describe('orderVoiceChannels', () => {
     const rows = orderVoiceChannels([voice(2, 'Games', 1), voice(1, 'Lounge', 0)]);
     expect(rows.map((row) => row.channel.id)).toEqual([1, 2]);
     expect(rows.every((row) => !row.room)).toBe(true);
+  });
+});
+
+describe('mergeStatuses', () => {
+  it('keeps a status the member set over the list they are in', () => {
+    // An away member is still in the online list; collapsing them to
+    // "online" would quietly drop what they told everyone.
+    const map = mergeStatuses({ alice: 'away' }, ['alice', 'bob'], ['carol']);
+    expect(map).toEqual({ alice: 'away', bob: 'online', carol: 'offline' });
+  });
+});
+
+describe('latestMessageId', () => {
+  it('finds the newest id regardless of order and skips unsent messages', () => {
+    expect(latestMessageId([message({ id: 7 }), message(), message({ id: 3 })])).toBe(7);
+    expect(latestMessageId([message()])).toBeNull();
+  });
+});
+
+describe('describeTyping', () => {
+  const name = (user: string) => user.toUpperCase();
+
+  it('never lists the viewer and drops expired indicators', () => {
+    const label = describeTyping({ me: 200, bob: 200, carol: 50 }, 'me', 100, name);
+    expect(label).toBe('BOB is typing…');
+  });
+
+  it('names two typers and summarises more', () => {
+    expect(describeTyping({ a: 200, b: 200 }, null, 100, name)).toBe('A and B are typing…');
+    expect(describeTyping({ a: 200, b: 200, c: 200 }, null, 100, name)).toBe(
+      'Several people are typing…'
+    );
+    expect(describeTyping({}, null, 100, name)).toBeNull();
+  });
+});
+
+describe('thread messages', () => {
+  it('counts replies per root', () => {
+    const counts = countThreadReplies([
+      message({ id: 2, threadId: 1 }),
+      message({ id: 3, threadId: 1 }),
+      message({ id: 4 })
+    ]);
+    expect([...counts]).toEqual([[1, 2]]);
+  });
+
+  it('merges live replies into the snapshot, oldest first', () => {
+    const merged = mergeThreadMessages(
+      1,
+      { rootId: 1, messages: [message({ id: 1 }), message({ id: 2, threadId: 1 })] },
+      [message({ id: 5, threadId: 1 }), message({ id: 2, threadId: 1, text: 'edited' }), message({ id: 6 })]
+    );
+    expect(merged.map((m) => m.id)).toEqual([1, 2, 5]);
+    // The live copy wins: it carries edits and reactions made since.
+    expect(merged[1].text).toBe('edited');
+  });
+
+  it('ignores a snapshot that answers a thread the user already left', () => {
+    const merged = mergeThreadMessages(1, { rootId: 9, messages: [message({ id: 9 })] }, []);
+    expect(merged).toEqual([]);
   });
 });
