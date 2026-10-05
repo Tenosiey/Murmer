@@ -14,7 +14,7 @@ most here — what deliberately is **not** tested. To write a test, follow
 | `cargo test` | `murmer_server/` | Integration tests against a real in-memory database |
 | `cargo clippy --all-targets -- -D warnings` | both Rust crates | Lint, as a gate |
 
-`.github/workflows/ci.yml` runs all of them in two parallel jobs on every
+`.github/workflows/ci.yml` runs all of them in three parallel jobs on every
 push to `main`/`dev` and every pull request. It also checks that the
 server's Docker builder image names the Rust release pinned in
 `rust-toolchain.toml`; `.github/workflows/docker.yml` builds that image

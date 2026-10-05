@@ -286,8 +286,8 @@ cargo clippy -- -D warnings
 ## Quality checks
 
 `.github/workflows/ci.yml` runs these on every push to `main`/`dev` and on
-every pull request (two parallel jobs, client and server). Run them before
-pushing so you find breakage before CI does:
+every pull request (three parallel jobs: frontend, Tauri shell and server).
+Run them before pushing so you find breakage before CI does:
 
 ```bash
 cd murmer_server

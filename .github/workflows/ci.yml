@@ -1,8 +1,11 @@
-# Fast quality gate for the checks listed in AGENTS.md. Runs on pushes to the
-# integration branches (feature branches are merged into `dev` locally, so the
-# push *is* the integration event) and on pull requests, which is how
-# Dependabot updates arrive. Restricting `push` to main/dev keeps Dependabot's
-# own branches from triggering a second, identical run alongside their PR.
+# Fast quality gate for the checks listed in AGENTS.md. Runs on pull
+# requests, which is how every change lands (feature branches and Dependabot
+# alike), and on pushes to the integration branches, so the merged result is
+# checked too. Restricting `push` to main/dev keeps a pull request's own
+# branch from triggering a second, identical run alongside it.
+#
+# Three parallel jobs: the frontend checks finish in a minute or two and
+# should not wait behind the Tauri shell's WebKitGTK install and compile.
 #
 # The slow part — installers, signing, updater manifest — stays in
 # `release.yml`, which is tag-triggered.
@@ -19,9 +22,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
-  client:
-    name: Client
+  frontend:
+    name: Frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -51,7 +57,27 @@ jobs:
         working-directory: murmer_client
         run: bun run test
 
-      # Also produces `murmer_client/build/`, which the Tauri shell needs:
+  tauri:
+    name: Tauri shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "^1.0.0"
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('murmer_client/bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-
+
+      - name: Install frontend dependencies
+        working-directory: murmer_client
+        run: bun install --frozen-lockfile
+
+      # Produces `murmer_client/build/`, which the Tauri shell needs:
       # `frontendDist` points at it and tauri-build fails when it is missing.
       - name: Build frontend
         working-directory: murmer_client
