@@ -248,7 +248,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                                 wiki::handle_wiki_restore(&state, &mut sender, &v, &user_name).await;
                             }
                             "wiki-resolve" => {
-                                wiki::handle_wiki_resolve(&state, &mut sender, &v).await;
+                                wiki::handle_wiki_resolve(&state, &mut sender, &v, &user_name).await;
                             }
                             "wiki-create" => {
                                 wiki::handle_wiki_create(&state, &mut sender, &v, &user_name).await;

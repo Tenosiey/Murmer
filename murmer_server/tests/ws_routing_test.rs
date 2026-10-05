@@ -799,3 +799,48 @@ async fn a_message_is_stamped_with_the_servers_time() {
     assert!(stamped >= before - chrono::Duration::seconds(1), "{chat}");
     assert_ne!(chat["time"], "00:00:00", "{chat}");
 }
+
+/// Wiki links name their channel, so answering for a private one would let
+/// anyone probe its pages by guessing slugs.
+#[tokio::test]
+async fn wiki_links_into_a_hidden_channel_resolve_as_missing() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+    let general = 1;
+    alice
+        .send(json!({
+            "type": "wiki-create",
+            "channelId": general,
+            "slug": "plans",
+            "title": "Plans",
+            "body": "secret",
+        }))
+        .await;
+    alice.until(|f| f["type"] == "wiki-index").await;
+    alice
+        .send(json!({
+            "type": "set-channel-override",
+            "channelId": general,
+            "target": { "type": "everyone" },
+            "deny": murmer_server::permissions::VIEW_CHANNELS,
+        }))
+        .await;
+    alice.until(|f| f["type"] == "channel-list").await;
+
+    let resolve = json!({
+        "type": "wiki-resolve",
+        "requestId": 1,
+        "links": [{ "channel": "general", "slug": "plans" }],
+    });
+    for (client, expected) in [(&mut alice, true), (&mut bob, false)] {
+        client.send(resolve.clone()).await;
+        let seen = client.until(|f| f["type"] == "wiki-resolved").await;
+        assert_eq!(
+            seen.last().unwrap()["results"][0]["exists"],
+            expected,
+            "{}",
+            client.name
+        );
+    }
+}
