@@ -7,12 +7,9 @@
 
 <h1 align="center">Murmer</h1>
 
-Murmer is a self-hostable voice and text chat prototype. The project is split
-into a Rust WebSocket server and a cross-platform desktop client powered by
-Tauri and SvelteKit. Both halves are designed with security-first defaults so a
-small team can deploy a private chat space quickly.
-
-## Screenshots
+Murmer is a self-hostable voice and text chat for small groups: a Rust
+WebSocket server with an embedded SQLite database, and one SvelteKit client
+that runs both as a Tauri desktop app and, unchanged, in the browser.
 
 <p align="center">
   <img src="docs/screenshots/server-select.png" alt="Server selection screen" width="800">
@@ -31,290 +28,44 @@ small team can deploy a private chat space quickly.
 
 ## Features
 
-- Persistent text chat stored in an embedded SQLite database
-- WebRTC voice rooms with presence tracking. Opus runs with DTX and in-band
-  FEC: a silent or muted participant costs a fraction of the packets an open
-  microphone does — which adds up, since every client holds a connection to
-  every other — and a single lost packet is reconstructed rather than concealed
-- Ed25519 signature authentication with nonce-based replay protection
-- Identity backup and restore (Settings → Identity): your key is your account
-  on every server and the only thing that can read the direct messages sent to
-  you, so it can be saved as a passphrase-encrypted recovery file or written
-  down as a 24-word recovery phrase, and restored on another machine
-- Rate limiting on authentication and chat events
-- Markdown rendering with DOMPurify sanitisation and syntax highlighting
-- Custom roles with granular per-permission control and colour accents, managed from the Server Dashboard
-- Private text and voice channels with per-channel View / Write-Talk overrides for roles and members
-- Secure file and image sharing (extension safe-list, content-type checks, size limits and path sanitisation)
-- Desktop client with auto-reconnect and connection quality indicators
-- The same build also runs as a **web client** in the browser, which the
-  server can host itself; invite links are ordinary URLs that open it, and
-  paste straight into the desktop client's address field (see
-  [Web client](#web-client))
-- Connection stats panel (server ping, voice RTT, jitter, packet loss); Owners
-  and Admins can additionally view every user's self-reported stats (quality
-  numbers only — no IPs or device details, kept in memory and dropped on
-  disconnect)
-- Slash commands (`/help`, `/me`, `/shrug`, `/topic`, `/status`,
-  `/ephemeral`, `/search`, `/remind`, `/schedule`, `/reminders`)
-- Reminders and scheduled messages: `/remind 15m stretch` (or "Remind me about
-  this" on any message) sets a private note the server hands back at the time
-  you asked for, even if you were offline when it came due; `/schedule 2h …`
-  queues a message to post into the channel later. Both live in the Reminders
-  panel in the channel header, and a scheduled message for an end-to-end
-  encrypted channel is sealed before it is queued
-- Link previews with server-side OpenGraph fetching (client IPs stay hidden from linked sites)
-- Configurable input volume, noise suppression, echo cancellation and automatic
-  gain control, with a live input level meter and a record-and-play-back
-  microphone test
-- RNNoise noise suppression (the default): a neural filter running locally in an
-  audio worklet that removes keyboards, fans and background voices the platform's
-  own suppressor leaves in. Selectable per user against the built-in suppressor
-  or none at all, and comparable with the microphone test
-- Independent playback volumes for voices, the app's own join/leave/mute blips,
-  screen share audio and the soundboard, so turning one down leaves the rest
-  where they were
-- Voice activation with automatic sensitivity: the client tracks the background
-  noise level and keeps the threshold just above it, with a manual slider for
-  the cases it gets wrong, plus a release delay controlling how long you keep
-  transmitting after you stop talking
-- Customizable hotkeys (mute, deafen, join/leave voice, search, settings, help)
-  under Settings → Hotkeys; the voice hotkeys also work system-wide while the
-  app is in the background (can be disabled)
-- Ephemeral messaging, search across messages and wiki pages, server-synced
-  pinned messages and message editing
-- Message replies with quoted previews and lightweight threads
-- `@` mentions that complete members by the name you see them as, plus
-  `@here` and role mentions for members with the **Mention @here and roles**
-  permission (the built-in Mod role and above), and a mentions inbox that
-  lists recent mentions across every channel
-- Message forwarding to another channel or a direct message, keeping the
-  original author and the channel it came from. A forward into a channel is
-  copied by the server, so the attribution is not something the sender can
-  write; encrypted channels are excluded at both ends, because the server has
-  no copy to make there
-- Typing indicators and per-channel unread badges with new-message markers
-- Per-conversation drafts: unsent text stays with the channel, thread or DM
-  it was typed in, so switching away mid-sentence and coming back keeps it.
-  Drafts are held for the session only and never written to disk
-- Moderation tools: role-gated kick, ban and timed mutes, recorded in a
-  server-side audit log
-- End-to-end encrypted direct messages with persistent history and unread
-  badges: message text is encrypted on-device (NaCl box over the users'
-  identity keys), so the server only ever stores and relays ciphertext
-- End-to-end encrypted private channels: a private text channel can be switched
-  to E2EE, after which every message is sealed under a shared channel key that
-  only members hold, and the server keeps ciphertext alone
-- Screen sharing in voice channels with adjustable resolution, frame rate and
-  bitrate; Owners/Admins can set a server-wide bitrate cap from the dashboard.
-  The sharer gets a floating self-preview to check what is actually being sent,
-  which can be hidden (it costs CPU/GPU to render) and stays hidden until
-  turned back on. System audio can be shared along with the picture (a checkbox
-  in the OS picker); viewers get their own volume slider and mute for it,
-  separate from the voice volume. Everyone in a voice channel can share at
-  once, and a viewer can watch any number of those shares at the same time:
-  each share opens as its own window floating over the app — move it, resize it
-  from any corner, shrink it into a corner as picture-in-picture, maximize it or
-  go fullscreen, with its own volume and mute. Nothing is blocked while a share
-  is on screen, so chatting on keeps working next to it; "Tile" arranges every
-  open window into a grid, and each window's position and size are remembered
-  per person
-- Camera video in voice channels: switch your webcam on and everyone in the
-  channel sees it, in a tile grid above the conversation that appears with the
-  first camera and disappears with the last. Pick the camera and the
-  resolution (up to 720p) from the voice controls; both apply to a running
-  camera straight away and are remembered. Your own tile is mirrored (a
-  preference, and only the preview — the others see the picture as the camera
-  saw it), each tile can go fullscreen, the grid collapses to a one-line
-  summary, and a member with their camera on is marked in the channel list.
-  The video travels over the same peer-to-peer connections as the voice, so
-  the server never sees it
-- Breakout rooms: split a voice channel into two to six temporary rooms
-  (right-click the channel → *Split into Breakout Rooms*). Everyone in the
-  call is dealt out evenly and moved into a room, which appears indented under
-  the channel it came from; *Close Breakout Rooms* sends everybody back and
-  deletes the rooms again. A private channel's rooms are private too, and
-  rooms never outlive the split — a server restart clears any left behind.
-  Opening and closing a split needs *Manage channels*
-- Soundboard: a shared library of short clips anyone in a voice channel can
-  play for everyone present. Uploading is gated by *Manage sounds*, playing by
-  *Use soundboard*, and a server-side cooldown keeps it from becoming a spam
-  toy. Each listener gets their own master volume, per-sound volume/mute and a
-  per-person "mute their sounds" switch — sounds play locally on every client
-  rather than through the speaker's microphone
-- Per-channel Markdown wiki with revisions and `[[wikilinks]]` (also across
-  channels via `[[channel/page]]`); wiki pages are full-text indexed and show
-  up in the search overlay alongside the message hits. Every page keeps a
-  revision history: compare any two versions line by line and restore an
-  older one — restoring appends a new revision rather than rewinding, so it
-  is itself undoable
-- Lifetime stats and achievements (messages, voice minutes, GIFs, favorite
-  reactions and more) with double opt-in privacy: nothing is recorded unless
-  a server Owner/Admin enables tracking server-wide *and* the user opts in
-  themselves; only aggregate counters are stored and users can purge their
-  own stats at any time
-- User profiles: click a member (or their avatar/name on a message) to see
-  their avatar, display name, roles, member since and "about" text; your own
-  profile is the editor for all three. Avatars are uploaded per server and
-  shown in messages, the member list and direct messages
-- Per-server nicknames: a member with **Manage nicknames** can relabel anyone
-  they outrank on that server, and every member can set their own; the
-  nickname is shown instead of the display name everywhere
-- Server identity configurable from the dashboard (Admin/Owner): server name,
-  description and icon shown to every member, plus a welcome message delivered
-  to first-time members
-- Server Dashboard beyond identity: a chat policy (slow mode, message length
-  cap, profanity filter), the ban list, an audit log of moderation and
-  permission changes, the upload policy with a storage-usage breakdown, voice
-  defaults for new channels, the screen-share bitrate cap, who is online right
-  now, and a Danger Zone that purges all messages or resets the server's
-  structure
-- REST API for bots (see [`murmer_server/BOT_API.md`](murmer_server/BOT_API.md))
+- **Text chat** with Markdown, replies and threads, edits, pins, reactions,
+  forwarding, `@` mentions with a mentions inbox, search, link previews,
+  file and image sharing, slash commands, reminders and scheduled messages
+- **Voice** over peer-to-peer WebRTC with RNNoise noise suppression,
+  voice activation or push-to-talk, camera video, screen sharing (several
+  at once, each in its own window), breakout rooms and a soundboard
+- **End-to-end encryption** for direct messages and, optionally, for private
+  text channels: the server only ever stores ciphertext there
+- **Roles and permissions** with private channels, per-channel overrides,
+  nicknames, moderation (kick, ban, timed mutes, slow mode, profanity filter,
+  auto-moderation rules) and an audit log, all managed from the Server
+  Dashboard
+- **Per-channel wikis** with revision history and `[[wikilinks]]`
+- **Accounts are keys**: Ed25519 identities instead of passwords, with a
+  recovery file or 24-word phrase to move them to another machine
+- **Invite links** that open the web client or paste into the desktop app
+- **A REST API for bots** — [`murmer_server/BOT_API.md`](murmer_server/BOT_API.md)
 
-## Repository layout
+Opt-in lifetime stats and achievements, user profiles, customizable hotkeys
+and per-source volume controls round it out.
 
-```
-murmer_client/       SvelteKit client (TypeScript): Tauri desktop shell and web client
-murmer_server/       Axum-based WebSocket server (Rust)
-agents/skills/       task guides for contributors and AI coding agents
-docs/                architecture and subsystem reference
-plans/               design notes for work that is not built yet
-docker-compose.yml   boots the server (database is embedded)
-```
+## Quick start
 
-Documentation is split by audience. This README and
-[`murmer_server/BOT_API.md`](murmer_server/BOT_API.md) are for **users and
-operators**; everything below is for **contributors**:
-
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) – how to get set up and what makes a
-  change easy to merge
-- [`AGENTS.md`](AGENTS.md) – conventions, hard constraints and the index of
-  task guides. Written for humans and AI coding agents alike; the `CLAUDE.md`
-  files are one-line pointers to it
-- [`docs/architecture.md`](docs/architecture.md) – how the system fits
-  together, and the entry point to the rest of `docs/`
-- [`agents/skills/`](agents/skills/) – procedure for a specific kind of work
-  (adding a frame, writing a test, touching crypto, cutting a release)
-- [`plans/turn-support.md`](plans/turn-support.md) – design note on
-  TURN/relay support (not implemented)
-
-## Brand
-
-The logo is an "M" cut as negative space out of a rounded tile. It ships in two
-variants that follow the app's theme: a lime tile with a dark mark for dark
-mode, and a near-white tile with a green mark for light mode.
-
-| | Tile | Mark |
-| --- | --- | --- |
-| Dark | `#c8ff3e` | `#141a05` |
-| Light | `#f7faee` | `#84b800` |
-
-Both variants sit on the same hue, which is also the app's default theme color —
-picking any other color on the theme wheel re-tints the UI but never the logo.
-
-Where the assets live:
-
-- `murmer_client/static/logo/murmer-{dark,light}.svg` – favicon and README
-- `murmer_client/src/lib/components/MurmerLogo.svelte` – in-app logo; reads the
-  `--color-brand-*` tokens, so it switches with the theme on its own
-- `murmer_client/src-tauri/icons/` – installer, window and tray icons
-
-The window/installer icons are generated from the SVG rather than hand-edited.
-After changing the artwork, regenerate them from `murmer_client/`:
+You need Docker, [Rust](https://www.rust-lang.org/tools/install) (the
+toolchain is pinned by `rust-toolchain.toml`) and [Bun](https://bun.sh) 1.x.
 
 ```bash
-bunx tauri icon static/logo/murmer-dark.svg -o src-tauri/icons
+cp .env.example .env        # adjust as needed
+docker compose up --build   # server on http://localhost:3001, WebSocket at /ws
 ```
-
-That command also emits `android/`, `ios/` and `64x64.png`, which this
-desktop-only project does not bundle — delete them again. The tray PNGs
-(`icons/tray-{dark,light}.png`) are separate; regenerate each with
-`bunx tauri icon static/logo/murmer-<variant>.svg -o <tmp> -p 64`.
-
-## Requirements
-
-- [Rust](https://www.rust-lang.org/tools/install) (managed automatically via
-  `rust-toolchain.toml`)
-- [Bun](https://bun.sh) 1.x
-- Docker and Docker Compose (for container-based workflows)
-
-## Quick start (Docker)
-
-1. Install Docker and Docker Compose.
-2. Copy `.env.example` to `.env` and update values as needed.
-3. From the repository root run:
-
-```bash
-docker compose up --build
-```
-
-4. The server listens on `http://localhost:3001` (WebSocket at `/ws`).
-5. Launch the client locally:
 
 ```bash
 cd murmer_client
 bun install
-bun run tauri dev
+bun run tauri dev           # desktop app with a development build of the UI
 ```
 
-The desktop shell opens with a development build of the Svelte UI. Added servers
-are stored locally by the client so your favourite instances remain available
-after restarts.
-
-## Local development
-
-### Client
-
-```bash
-cd murmer_client
-bun install          # install dependencies / refresh bun.lock
-bun run dev          # hot module reloading for the Svelte UI
-bun run tauri dev    # launch the native shell
-bun run check        # TypeScript + Svelte diagnostics
-bun run test         # Vitest unit tests (bun run test:watch to iterate)
-```
-
-### Server
-
-```bash
-cd murmer_server
-cargo check          # compile-time checks
-cargo fmt            # format Rust code
-cargo clippy -- -D warnings
-```
-
-## Quality checks
-
-`.github/workflows/ci.yml` runs these on every push to `main`/`dev` and on
-every pull request (two parallel jobs, client and server). Run them before
-pushing so you find breakage before CI does:
-
-```bash
-cd murmer_server
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
-cargo audit          # requires cargo-audit (cargo install cargo-audit)
-
-cd ../murmer_client
-bun run check
-bun run test
-bun audit
-```
-
-The two `audit` lines are the only ones you do not have to remember:
-`.github/workflows/audit.yml` runs them every Monday against every committed
-lockfile — the Tauri shell's included — and fails on nothing else. It is a separate weekly job because an
-advisory is published against code that has not changed, so there is no push
-to hang the check on. Run them by hand when you change a dependency rather
-than waiting for the sweep.
-
-Client unit tests use [Vitest](https://vitest.dev) and live next to the module
-they cover (`src/lib/**/*.test.ts`); server tests are integration tests under
-`murmer_server/tests/`. Both target logic that is easy to get subtly wrong and
-hard to spot by clicking around — not UI rendering, which is verified by
-looking at the running app. How the suites are shaped and what belongs in one
-is [`docs/testing.md`](docs/testing.md).
+Add `localhost:3001` as a server in the app and you are in.
 
 ## Configuration
 
@@ -342,478 +93,96 @@ Without `ADMIN_TOKEN` configured, channel and wiki management stay open to
 everyone so a small unadministered server remains usable; every other
 capability is still gated by roles.
 
-## Web client
+## Running a server
 
-The same SvelteKit build that ships inside the Tauri shell also runs as an
-ordinary web page — there is no separate web bundle. Everything works except
-the parts that need the desktop shell: OS-level global hotkeys (in-app hotkeys
-still work) and the built-in updater, both of which the settings UI hides when
-it is not running inside Tauri.
-
-```bash
-cd murmer_client
-bun install
-bun run build        # writes murmer_client/build/
-```
-
-Point a server at that directory and it is a web client. The simplest
-deployment is the Murmer server itself:
-
-```bash
-WEB_CLIENT_DIR=/path/to/murmer_client/build murmer_server
-```
-
-The client is then served on the same origin as `/ws`, `/upload` and `/files`,
-which is why it needs no `CORS_ALLOW_ORIGINS` entry — CORS stays off, the
-production default. Hosting it anywhere else works too (it is static files),
-but then every Murmer server it talks to has to name that origin in
-`CORS_ALLOW_ORIGINS`.
-
-Two things the browser enforces that the desktop shell does not:
-
-- **Serve it over HTTPS.** Microphone and screen capture need a secure context,
-  so voice is unavailable over plain `http://` (except on `localhost`).
-- **HTTPS pages may only talk to `wss://` servers.** A page served over HTTPS
-  cannot open a `ws://` socket or load `http://` attachments; the server hub
-  says so when you add such an address instead of letting the connection fail
-  silently. Put the Murmer server behind TLS as well.
-
-Serve the build with a **single-page-app fallback**: the routes are prerendered
-(`servers.html`, `invite.html`, …), but a host that has no file for a path
-should answer with `build/200.html` rather than a 404, which is what makes a
-deep link like `/invite#…` resolve. `WEB_CLIENT_DIR` does this; for nginx it
-is `try_files $uri $uri.html /200.html;`.
-
-Served through `WEB_CLIENT_DIR`, every page carries the same
-Content-Security-Policy as the desktop app. Another host serves the files
-without one; copying the policy is not enough there, because each page boots
-from an inline script whose hash changes with every build.
-
-### Invite links
-
-An invite link is an ordinary URL pointing at the invite route of a web client:
-
-```
-https://chat.example.com/invite#url=wss%3A%2F%2Fchat.example.com%2Fws&name=Example
-```
-
-There are two ways to make one, and on a password-protected server they are
-not equivalent.
-
-**Server-issued invite codes** (Server Dashboard → **Invites**) are the ones
-to hand out. Pick a lifetime and a number of uses, and the server mints a code
-the link carries in place of the password. **Revoke** withdraws it: the link
-stops working immediately, without changing `SERVER_PASSWORD` for everybody.
-Minting and revoking need the **Create invites** permission, which the
-built-in Mod role and above have.
-
-Redeeming a code records the joining member's key, so their later
-reconnections are admitted on that membership — they neither spend another of
-the invite's uses nor stop working when it expires or is revoked. Revoking
-therefore stops *future* joins; someone who already joined is removed with a
-ban, which is bound to the same key.
-
-The **Copy invite link** button on the server hub builds the other kind: a
-link for a saved server, carrying whatever password you stored for it. It
-works without being connected, which is its point, but such a link is valid
-forever and can only be withdrawn by changing the password. It uses the origin
-of the web client you are on, or — in the desktop app, which has no origin of
-its own — the server's own, which is where a server started with
-`WEB_CLIENT_DIR` serves its client from.
-
-Clicking either link opens the web client, which shows the invite on the server
-hub for confirmation before anything is saved; signed-out visitors go through
-the login screen first and the invite is still waiting afterwards. The same
-link pasted into the hub's **Address** field is recognised there, so one link
-serves web and desktop users alike.
-
-The server details live in the URL **fragment** rather than the query string
-because an invite carries a credential: a fragment is never sent to the web
-server, so it stays out of access logs, proxy logs and `Referer` headers. It
-is still a secret in a shared link — treat an invite like the credential it
-carries.
-
-## Profiles, display names and nicknames
-
-Every member has a profile, opened by clicking them in the member list, their
-avatar or name on a message, or **View Profile** in the user context menu. It
-shows the avatar, display name, account name, roles, the date they joined and
-their "about" text. Opening your own profile (via your name in the header)
-turns it into the editor for your avatar, display name, nickname and about
-text.
-
-The **account name is not editable**: it is bound to your public key on first
-connect and is what the server addresses everywhere — authentication, role
-assignment, moderation, direct messages and message authorship. The display
-name is a per-server label the UI shows in its place, so it may be empty (the
-account name is used then) and may collide with someone else's. Every profile
-shows the account name underneath the display name, which is how you tell two
-members with the same display name apart.
-
-A **nickname** sits on top of the display name and is this server's label for
-you. You set your own in the profile editor; a member with the **Manage
-nicknames** permission can set or clear anyone's through **Change Nickname** in
-the user context menu, as long as they outrank them — which is what stops a
-moderator from renaming the owner. The name shown anywhere in the app is the
-nickname, else the display name, else the account name; clearing a nickname
-falls back to the next one down. Nicknames are as cosmetic as display names:
-nothing is ever addressed by one, so they are free to collide, and a moderator
-setting one cannot make the server treat a member as somebody else.
-
-## Roles and permissions
-
-Authorization is permission-based. A **role** is a named, colored bundle of
-permission toggles (view channels, send messages, use soundboard, manage
-channels, kick, ban, manage roles, manage nicknames, manage sounds, manage
-server, …) with a
-hierarchy position. Every user
-implicitly has the built-in **@everyone** role; any additional roles they hold
-stack, and their effective permissions are the union. The built-in **Owner**
-role is an administrator (all permissions) and sits at the top; **Admin** and
-**Mod** are seeded as convenient starting points and can be edited or deleted.
-
-Server owners create custom roles and tune each permission from the **Roles**
-tab of the Server Dashboard. A role can also carry an **icon** — a custom
-server emoji or an uploaded image (up to 512 KB) — which is shown next to the
-name of every member holding it, in the member list, the voice channel list and
-on their messages. Members display the icon of the highest role they hold that
-has one. Because server-wide roles only *grant*, restrict a
-capability by lowering the **@everyone** baseline and granting it through a
-role — e.g. turn **Send messages** off for @everyone and give a "Member" role
-that has it, so anyone with only a view-only role cannot post.
-
-### Private channels
-
-Text and voice channels can be made **private** so only chosen roles and members
-can see or use them. Managers (anyone with **Manage channels**) create a private
-channel from the sidebar's "Create" menu, or open **Edit Permissions** on any
-channel to configure per-channel overrides.
-
-Each override is a tri-state (**allow / inherit / deny**) for two permissions:
-**View** (see the channel; for voice, see + join + listen) and **Write/Talk**
-(post messages; for voice, speak). A channel is private when **View** is denied
-for `@everyone`; grant it back to specific roles or members. Denying only
-Write/Talk to a role or member makes them read-only (or listen-only in voice).
-
-The server hides private channels from users who cannot see them and enforces
-View and text Write server-side. Voice **talk** is enforced by the client
-(the microphone is disabled for listen-only members); because voice audio is
-peer-to-peer, a modified client could bypass the mute, so treat View/join as the
-real boundary.
-
-#### End-to-end encryption
-
-A private **text** channel can additionally be switched to **end-to-end
-encrypted** in the same Edit Permissions dialog. From then on the server stores
-and relays ciphertext only: it keeps who posted, when, and how long the message
-was — never what it said.
-
-How it works: the channel has one symmetric key, generated on a member's
-machine. Each member gets their own copy of it, sealed to the X25519 key derived
-from their Ed25519 identity — the same key pair that encrypts DMs — so the
-server stores one opaque blob per member and can open none of them. Keys are
-versioned by an **epoch**: adding a member hands them the current key, removing
-one starts a fresh epoch that is never wrapped for them. Old epochs stay
-available to the members who had them, so history keeps opening. Clients do all
-of this themselves whenever they see the channel's membership change, so no
-operator action is needed — but the key can only reach a new member while a
-current member is online, which is why a fresh member sometimes sees "waiting
-for this channel's key" for a while.
-
-The trade-offs are real and worth knowing before switching it on:
-
-- **Server-side search does not cover the channel**, because there is no text to
-  index. The search overlay says so.
-- **Bots cannot post there.** A bot has no identity key, so it is not on the key
-  roster and has nothing to encrypt with.
-- **Uploaded files are not encrypted.** Their bytes go through `/upload` as
-  usual; only the attachment's name and URL travel sealed, so who shared what is
-  hidden but the file itself is not.
-- **Link previews, the profanity filter, the auto-moderation rules and
-  content-derived stats stop.** All of them are server-side and see nothing.
-  Slow mode and the message length cap still apply.
-- **Messages cannot be forwarded into or out of the channel.** Forwarding is a
-  copy the server makes so that the original author's name on it is not
-  something the sender wrote, and there is nothing for it to copy here.
-  Forwarding into a direct message still works.
-- **The server is still the directory.** It decides who is on the member roster
-  and hands out the identity keys the key is wrapped for, so a malicious server
-  could put a key it controls on the roster. Clients pin every member's identity
-  key on first sight and refuse to share the channel key with a key that changed
-  — the same bound DMs have. The dialog shows the current key's fingerprint;
-  two members reading the same groups aloud hold the same key.
-- **No forward secrecy within an epoch.** Whoever holds an epoch's key reads
-  everything sent under it, permanently.
-- Turning encryption back off does not decrypt what is already stored — those
-  messages stay unreadable, and their key material is dropped.
-
-### Bootstrapping the Owner from Docker
-
-The first Owner must be assigned from the server terminal because no one has
-permission to grant roles yet. Run the CLI subcommand inside the Docker
-container:
+**The first Owner** has to be assigned from the server, because nobody can
+grant roles yet. Copy your public key from the client settings, then:
 
 ```bash
 docker exec <server-container> murmer_server set-role <public_key> Owner
 ```
 
-Replace `<public_key>` with the user's Ed25519 public key (shown in the client
-settings) and `<server-container>` with the container name (e.g.
-`murmer-server-1`). You can also pass an optional hex colour as a third
-argument. The command adds the named role, creating it if it does not exist.
+The role is created if it does not exist; an optional hex colour can follow
+as a third argument. From then on, roles are managed in the client's Server
+Dashboard. With `ADMIN_TOKEN` set, `POST /role` does the same over HTTP for
+scripts.
 
-### Managing roles from the client
-
-Users with the **Manage roles** permission define roles in the Server Dashboard
-(Roles tab) and assign them by right-clicking a member in the sidebar user list
-and toggling roles in the **Roles** submenu. You can only manage roles and
-members positioned below your own highest role, and can never grant a
-permission you do not hold yourself. Changes take effect immediately for all
-connected clients.
-
-### Using the HTTP endpoint
-
-The `POST /role` endpoint (guarded by `ADMIN_TOKEN`) still works for scripted or
-external integrations. See the configuration table above for details.
-
-## Server Dashboard
-
-Everything server-wide lives in the Server Dashboard (the server name in the
-sidebar header). Each tab is gated by the permission it controls, and every
-setting is re-checked and enforced server-side — the UI only decides what to
-show.
-
-| Tab | Permission | What it holds |
-| --- | --- | --- |
-| Overview | Manage server | Server name, description, welcome message and icon, plus who is online right now |
-| Health | Manage server | Live connection count, frames per second, database latency and rate-limit rejections |
-| Emojis | Manage emojis | The server's custom emoji library |
-| Moderation | Ban members | The ban list (lift a ban from here); with Manage server also slow mode, the message length cap, the profanity filter and the auto-moderation rules |
-| Audit Log | View audit log | Who kicked, banned or muted a member, changed a role or a channel's permissions, or ran a Danger Zone action |
-| Stats | Manage server | The server-wide half of the double opt-in stat tracking |
-| Files & Uploads | Manage server | Per-file size cap, which file categories are accepted, and how much disk the uploads directory is using per category |
-| Voice | Manage server | Quality preset and bitrate new voice channels start with |
-| Screen Share | Manage server | The server-wide outgoing bitrate cap |
-| Roles | Manage roles | Role definitions, permissions, colours, icons and hierarchy |
-| Danger Zone | Administrator | Purge all messages, or reset the server's structure |
-
-A few details worth knowing before you use them:
-
-- **Slow mode** makes each member wait between messages. Members who can
-  manage messages are exempt, so moderators can still answer a busy room.
-- **Max message length** can only lower the built-in 4000-character limit.
-- **The profanity filter** replaces listed words with asterisks on the server,
-  before a message is stored or broadcast, and applies to edits too. Matching
-  is per whole word and case-insensitive, so filtering `ass` leaves `class`
-  alone.
-- **Auto-moderation rules** are the same idea with more to say about it. Each
-  rule is a pattern — a whole word, a substring, or a regular expression —
-  plus what to do with a message that matches: **warn** the sender and let it
-  through, **delete** it so nobody else ever sees it, or delete it and
-  **mute** the sender for a set time. Rules are checked on new messages and on
-  edits, before anything is stored, and when several match the most severe one
-  wins. Members who can manage messages are exempt, so a rule cannot silence
-  the people who would have to lift it. A rule's pattern is only ever visible
-  in this dashboard; someone the rule warns is told its *name*, nothing more.
-- **The audit log** records each of those actions as it succeeds — a refused
-  action leaves no entry. It is not granted to the Mod role by default,
-  because it is the record *of* the moderators; give the **View audit log**
-  permission to any role that should read it. A server reset deliberately
-  does not clear it, and the oldest entries drop off once the log fills up.
-- **Voice defaults** apply to newly created voice channels; existing channels
-  keep whatever they were created with.
-- **Health** is the one live readout: it re-asks the server every few seconds
-  while the tab is open. The counters live in the server's memory and start
-  again from zero at every restart, so they describe the current run and
-  nothing before it. Database latency is measured from the caller's side and
-  includes the wait for the single connection thread every query shares —
-  which is the number that climbs first when a server starts struggling. The
-  rejection counts are the four rate limits under
-  [Configuration](#configuration); a climbing authentication count is
-  somebody guessing keys, while climbing messages or uploads is either a
-  member flooding or a limit set too low for the room.
-- **Storage used** is measured when the tab is opened rather than counted as
-  files arrive, so it covers uploads, emojis, avatars and soundboard clips
-  alike. Deleting a message or an emoji does not delete its file.
-- **Purge all messages** deletes every message, pin and reaction on the server
-  for everyone; the uploaded files behind attachments stay on disk.
-- **Reset server** additionally deletes every channel except `general`, all
-  categories, channel permission overrides, wiki pages and every role other
-  than `@everyone` and `Owner` — those two stay so the server still has an
-  administrator. Members, bans, emojis, sounds and recorded stats are kept.
-
-Both Danger Zone actions are irreversible and ask you to type a confirmation
-phrase, which the server requires in the request as well.
-
-### Releasing a claimed user name
-
-A user name is permanently bound to the first Ed25519 key that authenticates
-with it, so nobody can impersonate an offline user. If someone loses their
-keypair (e.g. after a reinstall), release the name so their new key can claim
-it:
+**A lost key** cannot reclaim its name: a name binds permanently to the first
+key that uses it, so nobody can impersonate an offline user. Release it so the
+new key can claim it:
 
 ```bash
 docker exec <server-container> murmer_server unbind-name <user_name>
 ```
 
-## Windows build instructions
+**Invites.** Hand out invite codes minted in Server Dashboard → **Invites**:
+they carry a lifetime and a use limit and can be revoked without changing
+`SERVER_PASSWORD`. Revoking stops future joins; someone who already joined is
+removed with a ban. The hub's **Copy invite link** instead embeds the saved
+password and stays valid until the password changes. Either way the details
+sit in the URL fragment, which never reaches a web server's logs — but the
+link is still a credential.
 
-1. Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
-   for Windows (Visual Studio Build Tools, WebView2, etc.).
-2. Install [Rust](https://www.rust-lang.org/tools/install) and
-   [Bun 1.x](https://bun.sh) and ensure both are available in `PATH`.
-3. Build the client from `murmer_client/`:
+**Encrypted channels** are a per-channel choice with real trade-offs: no
+server-side search, no bot posting, no forwarding, link previews or
+moderation filters, and uploaded file bytes stay unencrypted. The full list
+is in [`docs/security.md`](docs/security.md#what-encryption-does-not-cover).
 
-```bash
-bun install
-bun run build
-bun run tauri build
-```
+## Web client
 
-Bundles are produced in `murmer_client/src-tauri/target/release/bundle`.
-
-Note: because the app ships auto-updates (see below), `bun run tauri build`
-signs the updater artifacts and therefore needs the signing key in the
-environment:
-
-```powershell
-$env:TAURI_SIGNING_PRIVATE_KEY = Get-Content "$env:USERPROFILE\.tauri\murmer.key" -Raw
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "<password>"
-```
-
-4. (Optional) Produce an optimised server binary:
+The same build runs in a browser. Everything works except OS-wide hotkeys
+and the built-in updater. The simplest deployment is to let the Murmer server
+host it:
 
 ```bash
-cd ../murmer_server
-cargo build --release
+cd murmer_client && bun install && bun run build      # writes build/
+WEB_CLIENT_DIR=/path/to/murmer_client/build murmer_server
 ```
 
-## Releases and auto-updates
+Served that way it shares an origin with `/ws`, so CORS stays off, and every
+page carries the desktop app's Content-Security-Policy. Any other static host
+works too, as long as it:
 
-The desktop client updates itself via the Tauri updater: **Settings → Updates →
-Check for Updates** downloads and installs the latest GitHub release without a
-manual download. This requires every release to ship signed updater artifacts
-and a `latest.json`, which the `Release` GitHub Actions workflow
-([`.github/workflows/release.yml`](.github/workflows/release.yml)) produces
-automatically.
+- serves **HTTPS** — browsers only allow microphone and screen capture in a
+  secure context, and an HTTPS page can only reach `wss://` servers;
+- answers unknown paths with `build/200.html` (nginx:
+  `try_files $uri $uri.html /200.html;`), so deep links like `/invite#…`
+  resolve;
+- is named in `CORS_ALLOW_ORIGINS` on every Murmer server it talks to.
 
-One-time setup (already done for this repository once the secrets exist):
+## Building the desktop app
 
-1. Generate the updater signing keypair:
+Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/),
+then from `murmer_client/`:
 
-   ```bash
-   cd murmer_client
-   bun run tauri signer generate -- -w ~/.tauri/murmer.key
-   ```
+```bash
+bun run build && bun run tauri build    # bundles land in src-tauri/target/release/bundle
+```
 
-   Keep the private key safe — if it is lost, existing installs can no longer
-   receive updates and users must reinstall manually.
-2. Put the public key into `plugins.updater.pubkey` in
-   `murmer_client/src-tauri/tauri.conf.json`.
-3. Add the repository secrets `TAURI_SIGNING_PRIVATE_KEY` (contents of the key
-   file) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (the password chosen during
-   generation) under GitHub → Settings → Secrets → Actions.
+The build signs the updater artifacts, so it needs `TAURI_SIGNING_PRIVATE_KEY`
+and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` in the environment. Installed apps
+update themselves from GitHub releases (Settings → Updates); how a release is
+cut is [`agents/skills/releasing.md`](agents/skills/releasing.md).
 
-Publishing a release:
+## Security
 
-1. Merge the finished work into `dev` (by pull request), then bump the
-   version on `dev`:
+Authentication is an Ed25519 signature over a single-use nonce, uploads need
+the same proof, every permission is checked server-side, and DMs and
+encrypted channels are opaque to the server. What that does and does not
+protect against is [`docs/security.md`](docs/security.md).
 
-   ```bash
-   cd murmer_client
-   bun run bump
-   ```
-
-   Versions follow the date-based scheme `YYYY.MDD.N` (year, month+day,
-   counter for multiple releases on the same day), e.g. `2026.710.0` for the
-   first release on 2026-07-10. Client and server share one version: the
-   script writes it into the client's `package.json`,
-   `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and
-   `src-tauri/Cargo.lock` as well as the server's `Cargo.toml` and
-   `Cargo.lock` — do not bump the server separately.
-   The scheme stays semver-ordered — required, because installed clients only
-   offer an update when the new version compares greater than theirs.
-2. Commit the bump and merge `dev` into `main`.
-3. Push the tag from `main`, or run **Actions → Release → Run workflow** on
-   `main`, which creates the tag itself:
-
-   ```bash
-   git tag v<version>
-   git push origin v<version>
-   ```
-
-The workflow builds the NSIS installer, signs the updater artifacts and
-publishes everything as a regular (non-prerelease) GitHub release. The
-release notes are generated automatically: a list of every pull request
-merged since the previous release, by its title, plus a link to the full
-diff. Nothing has to be written by hand, but it means a pull request's title
-is what users read, so write it as a user-facing change ("Fix echo in voice
-channels", not "fix vad.ts"). To reword the notes after publishing, edit the
-release on GitHub. Releases
-must not be marked as pre-release — the updater endpoint
-`releases/latest/download/latest.json` ignores prereleases.
-
-## Security highlights
-
-- Authentication uses Ed25519 signatures; timestamps are validated and bound to
-  per-user nonces. A claimed public key is always verified — also on servers
-  without a password — so roles and moderation identity cannot be spoofed.
-- A user name stays permanently bound to the public key that first used it
-  (persisted in the database), so another client cannot take over an offline
-  user's name and inherit their role. The `unbind-name` CLI subcommand
-  releases a name when a user loses their keypair.
-- Direct messages are end-to-end encrypted: both sides derive X25519 keys from
-  their Ed25519 identity keys and encrypt with NaCl box, so the server never
-  sees DM plaintext (metadata — sender, recipient, timestamps — remains
-  visible for routing). Clients pin a peer's key on first contact, warn and
-  block sending when it changes, and offer a fingerprint for out-of-band
-  verification. Note the trade-offs: there is no forward secrecy (a stolen
-  keypair decrypts past DMs), a lost keypair makes old conversations
-  unreadable, and users without a key binding (e.g. bots) cannot receive DMs.
-- Private text channels can be end-to-end encrypted: a symmetric channel key,
-  generated client-side and wrapped per member with the same identity keys DMs
-  use, seals every message before it reaches the server. Removing a member
-  rotates the key to a new epoch they are never given, so the removal is
-  cryptographic rather than cosmetic. See [Private channels](#private-channels)
-  for the trade-offs — no server-side search, unencrypted upload payloads, no
-  bot posting and no forward secrecy within an epoch.
-- IP-based rate limiting protects authentication, chat message throughput and
-  file uploads. On top of it, **Server Dashboard → Moderation** adds a per-user
-  slow mode, a message length cap, a profanity filter and auto-moderation
-  rules. All of them are enforced server-side: the filter masks matched words
-  and a rule refuses or mutes before a message is stored or broadcast (edits
-  included), so the original never reaches another client, and the length cap
-  can only narrow the built-in 4000-character limit.
-- Uploading requires the same Ed25519 proof as connecting: the `/upload`
-  endpoint accepts only a freshly signed, single-use timestamp from a key that
-  already has an account on that server, so a stranger who can merely reach the
-  port cannot write files to the operator's disk (and on a password-protected
-  server has no account to upload under at all).
-- Filenames are sanitised, uploads are limited to a safe-list of extensions and image contents are inspected before saving. Owners narrow that further in **Server Dashboard → Files & Uploads** (per-file size cap, plus which of the image/document/archive/audio/video categories are accepted); active content such as HTML, SVG or scripts is never on the safe-list and cannot be enabled. Files are served back sandboxed, and anything but images, audio and video downloads instead of opening.
-- Admin token and server password checks use constant-time comparisons to
-  mitigate timing attacks.
-- Every capability is gated by a server-side permission check against the
-  user's roles; client-side gating is only cosmetic.
+Please report security problems by email to the maintainer, not as a public
+issue. Everything else goes to <https://github.com/Tenosiey/Murmer/issues>.
 
 ## Third-party components
 
-Most dependencies are pulled in as source, but the client ships one prebuilt
-binary in its installer and it is worth naming:
-
-- Noise suppression is [RNNoise](https://github.com/xiph/rnnoise) (Xiph.Org,
-  BSD-3-Clause), as the WebAssembly build from
-  [shiguredo/rnnoise-wasm](https://github.com/shiguredo/rnnoise-wasm)
-  (Apache-2.0), wrapped by
-  [@sapphi-red/web-noise-suppressor](https://github.com/sapphi-red/web-noise-suppressor)
-  (MIT) for the audio-worklet plumbing.
+Noise suppression is [RNNoise](https://github.com/xiph/rnnoise) (Xiph.Org,
+BSD-3-Clause), shipped as the WebAssembly build from
+[shiguredo/rnnoise-wasm](https://github.com/shiguredo/rnnoise-wasm)
+(Apache-2.0) and wrapped by
+[@sapphi-red/web-noise-suppressor](https://github.com/sapphi-red/web-noise-suppressor)
+(MIT).
 
 ## Contributing
 
-[`CONTRIBUTING.md`](CONTRIBUTING.md) covers setup, the checks to run and what
-makes a change easy to merge. Once you are past that,
-[`docs/architecture.md`](docs/architecture.md) is the map of the system and
-[`AGENTS.md`](AGENTS.md) indexes the task guides in
-[`agents/skills/`](agents/skills/).
-
-Bug reports go to <https://github.com/Tenosiey/Murmer/issues>. Please do not
-open a public issue for a security problem — email the maintainer instead.
+Start with [`CONTRIBUTING.md`](CONTRIBUTING.md).

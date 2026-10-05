@@ -101,12 +101,18 @@ cd murmer_client && bun run check && bun run test && bun run build
 
 ## The signing key
 
-Updater artifacts are signed with a keypair generated once
-(`bun run tauri signer generate`). The public half lives in
+Updater artifacts are signed with a keypair generated once, from
+`murmer_client/`:
+
+```bash
+bun run tauri signer generate -- -w ~/.tauri/murmer.key
+```
+
+The public half lives in
 `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`; the private half and
 its password are the `TAURI_SIGNING_PRIVATE_KEY` and
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets.
 
 **If the private key is lost, every existing install stops receiving updates
-and users must reinstall manually.** Full setup instructions are in the
-Releases section of [`../../README.md`](../../README.md).
+and users must reinstall manually.** A local `bun run tauri build` signs too,
+so it needs both variables set to the same values.
