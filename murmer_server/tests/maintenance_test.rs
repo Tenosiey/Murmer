@@ -202,3 +202,55 @@ async fn retention_deletes_only_messages_past_the_limit() {
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn retention_cutoff_is_shared_by_reactions_pins_and_messages() {
+    let db = setup().await;
+    let channel = general_id(&db).await;
+
+    // Either side of a fixed cutoff, a message and its reactions and pins go
+    // or stay together — none may be left behind without its message.
+    let before = db::insert_message(
+        &db,
+        channel,
+        r#"{"user":"a","text":"before","timestamp":"2024-05-01T11:59:59.999+00:00"}"#,
+    )
+    .await
+    .expect("insert");
+    let at = db::insert_message(
+        &db,
+        channel,
+        r#"{"user":"a","text":"at","timestamp":"2024-05-01T12:00:00+00:00"}"#,
+    )
+    .await
+    .expect("insert");
+    for id in [before, at] {
+        db::add_pin(&db, id, channel, "mod", 25).await.expect("pin");
+        db::add_reaction(&db, id, "a", "👍").await.expect("react");
+    }
+
+    let cutoff = "2024-05-01T12:00:00Z".parse().expect("cutoff");
+    assert_eq!(
+        db::delete_messages_before(&db, cutoff)
+            .await
+            .expect("sweep"),
+        1
+    );
+
+    let pins = db::get_pins_for_channel(&db, channel).await.expect("pins");
+    assert_eq!(pins.len(), 1);
+    assert_eq!(
+        db::get_reaction_summary(&db, before)
+            .await
+            .expect("reactions")
+            .len(),
+        0
+    );
+    assert_eq!(
+        db::get_reaction_summary(&db, at)
+            .await
+            .expect("reactions")
+            .len(),
+        1
+    );
+}
