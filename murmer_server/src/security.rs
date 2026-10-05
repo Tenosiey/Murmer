@@ -303,6 +303,42 @@ pub async fn check_message_rate_limit(rate_limiter: &RateLimiter, user: &str) ->
     allowed
 }
 
+/// The address a request really came from, which every per-IP limit keys on.
+///
+/// Behind a reverse proxy — which TLS all but requires — the socket peer is
+/// the proxy, so without this every user shares one bucket and a handful of
+/// failed logins locks the whole server out. `X-Forwarded-For` is only
+/// believed when the peer is one of `trusted` (`TRUSTED_PROXIES`): anyone can
+/// send the header, so reading it from an untrusted peer would let a client
+/// pick a fresh address per request. The list is walked from the right, the
+/// end each proxy appends to, and the first hop that is not itself a trusted
+/// proxy is the client; everything left of it was written by the client.
+pub fn client_ip(
+    trusted: &[ipnet::IpNet],
+    peer: std::net::IpAddr,
+    headers: &axum::http::HeaderMap,
+) -> std::net::IpAddr {
+    let is_trusted = |ip: &std::net::IpAddr| trusted.iter().any(|net| net.contains(ip));
+    if !is_trusted(&peer) {
+        return peer;
+    }
+    let hops: Vec<&str> = headers
+        .get_all("x-forwarded-for")
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .collect();
+    let mut client = peer;
+    for hop in hops.into_iter().rev() {
+        let Ok(ip) = hop.trim().parse() else { break };
+        client = ip;
+        if !is_trusted(&ip) {
+            break;
+        }
+    }
+    client
+}
+
 /// Why a signed key proof was rejected, so the presence handler can answer
 /// with a specific error code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -234,13 +234,15 @@ async fn authorize(state: &AppState, client_ip: &str, session: &str) -> Result<S
     Ok(user)
 }
 
-#[tracing::instrument(skip(state, addr, multipart), fields(client_ip = %addr.ip()))]
+#[tracing::instrument(skip_all, fields(client_ip = tracing::field::Empty))]
 pub async fn upload(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
     mut multipart: Multipart,
 ) -> Response {
-    let client_ip = addr.ip().to_string();
+    let client_ip = security::client_ip(&state.trusted_proxies, addr.ip(), &headers).to_string();
+    tracing::Span::current().record("client_ip", &client_ip);
 
     // Checked before the body is touched: the limit exists to cap the work one
     // caller can make the server do, so it must not sit behind that work.

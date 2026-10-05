@@ -18,6 +18,7 @@
 //!   `/upload` -- which is what lets a browser use it with CORS disabled.
 //! - `STUN_SERVERS`: comma separated STUN URLs handed to clients for WebRTC
 //!   (default: Google's public server; empty for none).
+//! - `TRUSTED_PROXIES`: reverse proxies whose `X-Forwarded-For` is believed.
 //! - `MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
 //!   `MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND`: rate limiting
 //!   overrides.
@@ -148,6 +149,7 @@ async fn main() -> Result<()> {
         password: config.password.clone(),
         admin_token: config.admin_token.clone(),
         stun_servers: config.stun_servers.clone(),
+        trusted_proxies: config.trusted_proxies.clone(),
         stats_enabled: std::sync::atomic::AtomicBool::new(stats_enabled),
         chat_settings: Mutex::new(chat_settings),
         automod: Mutex::new(automod::RuleSet::compile(automod_rules)),

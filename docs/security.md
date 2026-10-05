@@ -256,8 +256,12 @@ on a different origin than the server.
 
 ## Rate limiting
 
-Authentication, chat traffic and uploads are all rate limited per IP, so the
-service must run behind a proxy that forwards the real client IP.
+Authentication and uploads are rate limited per IP, chat per user. Behind a
+reverse proxy the socket peer is the proxy, so `security::client_ip` reads
+`X-Forwarded-For` — but only from the peers listed in `TRUSTED_PROXIES`.
+Anyone can send that header; believing it from a client would hand it a
+fresh bucket per request. Left unset behind a proxy, every user shares one
+bucket and five failed logins lock the whole server out.
 
 The limits (`MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
 `MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND` — documented in

@@ -186,3 +186,34 @@ fn frame_budget_of_zero_is_unlimited() {
         assert!(budget.take(start));
     }
 }
+
+/// A forwarded address is only believed from a configured proxy: anyone can
+/// send the header, and believing it from a client would give that client a
+/// fresh rate-limit bucket per request.
+#[test]
+fn client_ip_believes_forwarded_for_only_from_a_trusted_proxy() {
+    use axum::http::HeaderMap;
+    use murmer_server::security::client_ip;
+    use std::net::IpAddr;
+
+    let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+    let trusted = vec!["10.0.0.0/8".parse().unwrap()];
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-forwarded-for",
+        "6.6.6.6, 1.2.3.4, 10.0.0.2".parse().unwrap(),
+    );
+
+    // Not from a proxy: the header is the client's own claim.
+    assert_eq!(client_ip(&trusted, ip("9.9.9.9"), &headers), ip("9.9.9.9"));
+    // From a proxy: the rightmost hop that is not itself a proxy. The
+    // leftmost entry was written by the client and is never believed.
+    assert_eq!(client_ip(&trusted, ip("10.0.0.1"), &headers), ip("1.2.3.4"));
+    // No proxies configured: nothing is believed.
+    assert_eq!(client_ip(&[], ip("10.0.0.1"), &headers), ip("10.0.0.1"));
+    // A proxy that forwarded nothing.
+    assert_eq!(
+        client_ip(&trusted, ip("10.0.0.1"), &HeaderMap::new()),
+        ip("10.0.0.1")
+    );
+}

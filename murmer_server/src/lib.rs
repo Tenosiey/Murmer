@@ -420,6 +420,9 @@ pub struct AppState {
     /// the account on every server, so any other server it signed for could
     /// replay the proof here. Removed when the connection closes.
     pub upload_sessions: Mutex<HashMap<String, (String, String)>>,
+    /// Reverse proxies whose `X-Forwarded-For` is believed; see
+    /// [`security::client_ip`].
+    pub trusted_proxies: Vec<ipnet::IpNet>,
 }
 
 impl AppState {
@@ -460,6 +463,7 @@ impl AppState {
             slow_mode_sends: Mutex::default(),
             visibility_epoch: AtomicU64::new(0),
             upload_sessions: Mutex::default(),
+            trusted_proxies: Vec::new(),
         }
     }
 }

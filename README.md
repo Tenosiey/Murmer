@@ -83,6 +83,7 @@ Environment variables recognised by the server:
 | `MAX_MESSAGES_PER_MINUTE` | No | Per-user message rate limit (default: 30) |
 | `MAX_AUTH_ATTEMPTS_PER_MINUTE` | No | Per-IP auth rate limit (default: 5) |
 | `MAX_UPLOADS_PER_MINUTE` | No | Per-IP file upload rate limit (default: 20) |
+| `TRUSTED_PROXIES` | Behind a reverse proxy | Comma-separated addresses or CIDR ranges of your reverse proxies (e.g. `127.0.0.1` or `172.16.0.0/12` for Docker). Only requests from these may set the client IP through `X-Forwarded-For`; without it every user behind the proxy shares one per-IP rate limit, so a few failed logins lock everyone out |
 | `MAX_FRAMES_PER_SECOND` | No | Sustained WebSocket frames one connection may send per second, with ten seconds' worth allowed in a burst (default: 20, `0` for no limit) |
 | `STUN_SERVERS` | No | Comma-separated `stun:`/`stuns:` URLs clients use to set up voice and screen share (defaults to `stun:stun.l.google.com:19302`; set it empty to contact no STUN server, which limits calls to peers on the same network) |
 | `MAX_VOICE_CHANNEL_USERS` | No | People allowed in one voice channel (default: 10, `0` for no limit) |

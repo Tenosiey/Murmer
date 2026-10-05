@@ -117,9 +117,9 @@ async fn general_channel_id(state: &Arc<AppState>) -> i32 {
 }
 
 /// Main WebSocket loop handling incoming messages and broadcasting events.
-#[tracing::instrument(skip(socket, state), fields(client_ip = %peer_addr.ip()))]
-async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::net::SocketAddr) {
-    let client_ip = peer_addr.ip().to_string();
+#[tracing::instrument(skip(socket, state), fields(client_ip = %client_ip))]
+async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::net::IpAddr) {
+    let client_ip = client_ip.to_string();
     // Counted for the lifetime of this function, however it ends.
     let _counted = crate::metrics::Connection::open();
     info!("Client connected");
@@ -1343,8 +1343,10 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
+    headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
+    let client_ip = crate::security::client_ip(&state.trusted_proxies, addr.ip(), &headers);
     ws.max_message_size(MAX_WS_MESSAGE_BYTES)
         .max_frame_size(MAX_WS_MESSAGE_BYTES)
-        .on_upgrade(move |socket| handle_socket(socket, state, addr))
+        .on_upgrade(move |socket| handle_socket(socket, state, client_ip))
 }

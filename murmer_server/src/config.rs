@@ -30,6 +30,8 @@ pub struct Config {
     /// Delete channel messages older than this many days (None keeps them
     /// forever).
     pub message_retention_days: Option<u32>,
+    /// Reverse proxies whose `X-Forwarded-For` header is believed.
+    pub trusted_proxies: Vec<ipnet::IpNet>,
 }
 
 /// Used when `STUN_SERVERS` is unset. Dropping it would break direct
@@ -52,6 +54,8 @@ impl Config {
     /// - `STUN_SERVERS` (optional): Comma-separated STUN URLs; empty for none
     /// - `MESSAGE_RETENTION_DAYS` (optional): Age after which channel messages
     ///   are deleted; unset or `0` keeps them forever
+    /// - `TRUSTED_PROXIES` (optional): Comma-separated proxy addresses or
+    ///   CIDR ranges whose `X-Forwarded-For` is believed
     pub fn from_env() -> Result<Self> {
         let database_path = env::var("DATABASE_PATH").unwrap_or_else(|_| "murmer.db".to_string());
 
@@ -92,6 +96,8 @@ impl Config {
             _ => None,
         };
 
+        let trusted_proxies = parse_trusted_proxies(env::var("TRUSTED_PROXIES").ok().as_deref())?;
+
         Ok(Self {
             bind_addr,
             database_path,
@@ -102,6 +108,7 @@ impl Config {
             web_client_dir,
             stun_servers,
             message_retention_days,
+            trusted_proxies,
         })
     }
 
@@ -178,6 +185,26 @@ fn parse_stun_servers(raw: Option<&str>) -> Result<Vec<String>> {
         .collect()
 }
 
+/// Parse `TRUSTED_PROXIES`: addresses or CIDR ranges, comma separated. A typo
+/// is fatal rather than skipped — a proxy silently missing from the list puts
+/// every user behind it back into one rate-limit bucket.
+fn parse_trusted_proxies(value: Option<&str>) -> Result<Vec<ipnet::IpNet>> {
+    value
+        .unwrap_or("")
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| {
+            entry
+                .parse::<ipnet::IpNet>()
+                .or_else(|_| entry.parse::<std::net::IpAddr>().map(ipnet::IpNet::from))
+                .with_context(|| {
+                    format!("TRUSTED_PROXIES entry {entry:?} is not an address or CIDR range")
+                })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,5 +223,14 @@ mod tests {
     fn stun_servers_rejects_other_schemes() {
         assert!(parse_stun_servers(Some("turn:relay:3478")).is_err());
         assert!(parse_stun_servers(Some("stun:a,https://x")).is_err());
+    }
+
+    #[test]
+    fn trusted_proxies_take_addresses_and_ranges() {
+        assert!(parse_trusted_proxies(None).unwrap().is_empty());
+        let nets = parse_trusted_proxies(Some("10.0.0.1, 172.16.0.0/12,::1")).unwrap();
+        assert_eq!(nets.len(), 3);
+        assert!(nets[1].contains(&"172.18.0.5".parse::<std::net::IpAddr>().unwrap()));
+        assert!(parse_trusted_proxies(Some("proxy.local")).is_err());
     }
 }

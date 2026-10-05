@@ -1227,6 +1227,7 @@ dependencies = [
  "ed25519-dalek",
  "futures",
  "hyper",
+ "ipnet",
  "rand 0.10.3",
  "regex",
  "reqwest",
