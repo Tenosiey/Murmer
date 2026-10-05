@@ -10,6 +10,7 @@
   import { MAX_AVATAR_BYTES } from '$lib/chat/constants';
   import { uploadImage } from '$lib/upload';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
+  import { AUTO_AWAY_OPTIONS, autoAwayMinutes } from '$lib/stores/autoAway';
 
   interface Props {
     active: boolean;
@@ -131,6 +132,25 @@
       </div>
       <div class="setting-description">
         Your Ed25519 public key identifies you on the server. Share it with the server admin to receive a role.
+      </div>
+    </div>
+    <div class="setting-group">
+      <label for="auto-away-select" class="setting-label">Away when idle</label>
+      <div class="select-container">
+        <select id="auto-away-select" class="device-select" bind:value={$autoAwayMinutes}>
+          {#each AUTO_AWAY_OPTIONS as minutes}
+            <option value={minutes}>{minutes === 0 ? 'Never' : `After ${minutes} minutes`}</option>
+          {/each}
+        </select>
+        <div class="select-arrow">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6,9 12,15 18,9"></polyline>
+          </svg>
+        </div>
+      </div>
+      <div class="setting-description">
+        Sets your status to away when Murmer gets no mouse or keyboard input for that long, and
+        back to online when you return. A status you picked yourself is left alone.
       </div>
     </div>
     <IdentityBackup />

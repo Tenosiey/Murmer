@@ -123,8 +123,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Accessibility pass — keyboard navigation and screen-reader labels.
       Context menus only open on right-click and take no arrow keys, so
       most of the app is currently hard to reach without a mouse
-- [ ] Auto-away — switch to away after N minutes without input and back on
-      return (Discord idle, TeamSpeak away). Status is manual only today
 - [ ] Backup and export. For operators: a consistent snapshot of the database
       (`VACUUM INTO`) plus `uploads/` without stopping the server. For users:
       an export of their own DMs, which only their client can decrypt

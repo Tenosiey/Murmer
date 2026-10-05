@@ -59,6 +59,7 @@
   import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
   import { statuses } from '$lib/stores/status';
+  import { startAutoAway } from '$lib/stores/autoAway';
   import { parseSlashCommand } from '$lib/chat/commands';
   import { pinned } from '$lib/stores/pins';
   import { scheduledAttention } from '$lib/stores/scheduled';
@@ -498,12 +499,16 @@
     clearGlobalHotkeyActions();
   });
 
+  let stopAutoAway: (() => void) | null = null;
+
   onMount(() => {
     window.addEventListener('keydown', handleGlobalShortcut);
+    stopAutoAway = startAutoAway();
   });
 
   onDestroy(() => {
     window.removeEventListener('keydown', handleGlobalShortcut);
+    stopAutoAway?.();
   });
 
   /**
