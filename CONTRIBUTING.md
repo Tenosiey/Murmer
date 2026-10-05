@@ -119,7 +119,9 @@ And two things no command can do for you:
 
 Feature branches merge into `dev`; `main` is the release branch. Dependabot
 targets `dev`. Releases are cut from a version tag — see
-[`agents/skills/releasing.md`](agents/skills/releasing.md).
+[`agents/skills/releasing.md`](agents/skills/releasing.md). Each release's
+notes list the pull requests merged since the last one by title, so give
+yours a title a user would understand.
 
 ## Reporting bugs
 
