@@ -1,6 +1,7 @@
 # Builds, signs and publishes a Windows release (NSIS installer + updater
 # artifacts + latest.json) whenever a version tag like v2026.710.0 is
 # pushed. The in-app updater reads latest.json from the latest GitHub release.
+# Once that succeeds, the server image goes to GHCR under the same version.
 name: Release
 
 on:
@@ -66,3 +67,32 @@ jobs:
           # endpoint releases/latest/download/latest.json skips prereleases.
           releaseDraft: false
           prerelease: false
+
+  # Publishes ghcr.io/tenosiey/murmer-server:<version> and :latest so
+  # operators can pull a server matching the desktop release instead of
+  # building it. Waits for the desktop release: `latest` should never point
+  # at a version whose installer failed to publish. Plain docker CLI, so no
+  # further third-party action sees a write token.
+  server-image:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Client and server share one version (agents/skills/releasing.md), and
+      # a manual run has no tag to read it from.
+      - name: Build and push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' murmer_server/Cargo.toml | head -n1)
+          if [ -z "$version" ]; then
+            echo "No version found in murmer_server/Cargo.toml"; exit 1
+          fi
+          image=ghcr.io/tenosiey/murmer-server
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker build -t "$image:$version" -t "$image:latest" murmer_server
+          docker push --all-tags "$image"

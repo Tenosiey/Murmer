@@ -95,6 +95,17 @@ capability is still gated by roles.
 
 ## Running a server
 
+**Without a checkout**, every release also publishes the server as an image,
+tagged with its version and `latest`:
+
+```bash
+docker pull ghcr.io/tenosiey/murmer-server:latest
+```
+
+In `docker-compose.yml`, swap `build:` for the commented `image:` line to use
+it. Pin a version tag rather than `latest` to upgrade on your own schedule;
+the server's version should match the desktop app's.
+
 **The first Owner** has to be assigned from the server, because nobody can
 grant roles yet. Copy your public key from the client settings, then:
 
