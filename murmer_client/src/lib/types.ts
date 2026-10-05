@@ -31,6 +31,8 @@ export interface Message {
   user?: string;
   text?: string;
   attachment?: AttachmentInfo;
+  /** The image is a spoiler, blurred until clicked. */
+  spoiler?: boolean;
   time?: string;
   timestamp?: string;
   channelId?: number;

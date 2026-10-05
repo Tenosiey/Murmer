@@ -66,6 +66,8 @@ export interface ChannelMessagePayload {
   text?: string;
   image?: string;
   attachment?: AttachmentInfo;
+  /** The image is a spoiler. Sealed with it, since it says something about it. */
+  spoiler?: boolean;
   /** Quoted snippet of the message being replied to. */
   replyText?: string;
 }

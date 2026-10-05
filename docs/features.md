@@ -158,6 +158,27 @@ The link names a channel, not a permission: one into a channel the reader
 cannot see stops at "a channel you cannot see", and the history request
 behind the jump is checked by the server like any other.
 
+## Spoilers
+
+Client: `src/lib/spoilers.ts`, the `||…||` extension in `markdown.ts`.
+Server: `spoiler` in `PLAINTEXT_MESSAGE_FIELDS`.
+
+Revealing is one document-wide listener rather than a handler per surface,
+so the channel, threads, DMs and wiki pages all honour `||…||` the moment
+they render markdown. The first click on a hidden spoiler only reveals it:
+a link inside one must not be followed sight unseen.
+
+**Plain-text previews blank spoilers instead of rendering them.** OS
+notifications, reply quotes and the pinned bar show text the app cannot
+blur, so `hideSpoilers` replaces each one with `[spoiler]`. `notify()`
+applies it itself, which keeps a new notification from forgetting to.
+
+**An image spoiler is a flag on the message, sealed like the image.** In an
+encrypted channel it travels inside the envelope — it says something about
+the content — so the server rejects it in the clear there, as it does the
+image itself. It is one of the fields a forward copies; a forward that
+dropped it would show the image unblurred in the next channel.
+
 ## Profiles, display names and nicknames
 
 Server: `ws/handlers/profile.rs`, `db/users.rs`. Client:

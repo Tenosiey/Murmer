@@ -1166,8 +1166,12 @@ pub fn reply_preview(text: &str, max_chars: usize) -> String {
 /// client that got this wrong has a bug its user needs to hear about, not a
 /// message that silently loses its attachment.
 ///
+/// `spoiler` belongs with them: it says the image is one, which is a fact
+/// about the content, and a forward that dropped it would show the image
+/// unblurred in the next channel.
+///
 /// They are also exactly what a forward copies — see [`forwarded_body`].
-pub const PLAINTEXT_MESSAGE_FIELDS: [&str; 3] = ["text", "image", "attachment"];
+pub const PLAINTEXT_MESSAGE_FIELDS: [&str; 4] = ["text", "image", "attachment", "spoiler"];
 
 /// Build the body of a forwarded message from the stored copy of its source.
 ///

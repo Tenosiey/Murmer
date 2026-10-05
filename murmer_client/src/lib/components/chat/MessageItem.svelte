@@ -13,6 +13,7 @@
   import { displayNames } from '$lib/stores/profiles';
   import { session } from '$lib/stores/session';
   import { renderMarkdown } from '$lib/markdown';
+  import { hideSpoilers } from '$lib/spoilers';
   import { emojifyHtml, isEmojiOnlyText } from '$lib/emoji';
   import {
     ephemeralInfo,
@@ -161,7 +162,7 @@
       >
         <span class="reply-quote-arrow" aria-hidden="true">↪</span>
         <span class="reply-quote-user">{$displayNames(reply.user)}</span>
-        <span class="reply-quote-text">{reply.text || 'Original message'}</span>
+        <span class="reply-quote-text">{reply.text ? hideSpoilers(reply.text) : 'Original message'}</span>
       </button>
     {/if}
 
@@ -215,7 +216,11 @@
           {/each}
         </div>
       {/if}
-      {#if imageUrl}
+      {#if imageUrl && message.spoiler}
+        <span class="spoiler spoiler-media" role="button" tabindex="0" aria-label="Spoiler image, select to reveal">
+          <img src={imageUrl} alt="" loading="lazy" />
+        </span>
+      {:else if imageUrl}
         <img src={imageUrl} alt="" loading="lazy" />
       {/if}
       {#if message.attachment}

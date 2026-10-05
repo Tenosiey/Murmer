@@ -145,6 +145,7 @@
   let composer: MessageComposer | undefined = $state();
   let previewUrl: string | null = $state(null);
   let pendingFile: File | null = $state(null);
+  let pendingSpoiler = $state(false);
   let dragActive = $state(false);
 
   let highlightedMessageId: number | null = $state(null);
@@ -309,6 +310,7 @@
       previewUrl = null;
     }
     pendingFile = file;
+    pendingSpoiler = false;
     if (pendingFile && pendingFile.type.startsWith('image/')) {
       previewUrl = URL.createObjectURL(pendingFile);
     }
@@ -569,9 +571,13 @@
     if (!file) return;
     const base = httpBaseFromWs(get(selectedServer) ?? 'ws://localhost:3001/ws');
     const result = await uploadAttachment(base, file, $uploadConfig.maxBytes);
+    const spoiler = pendingSpoiler;
     clearPendingFile();
     const error = result.ok
-      ? chat.sendUpload($session.user ?? 'anon', result.content)
+      ? chat.sendUpload($session.user ?? 'anon', {
+          ...result.content,
+          ...(spoiler && 'image' in result.content ? { spoiler: true } : {})
+        })
       : result.message;
     if (error) setCommandFeedback(error, 'error');
   }
@@ -1572,6 +1578,7 @@
         {commandFeedbackType}
         {pendingFile}
         {previewUrl}
+        bind:spoiler={pendingSpoiler}
         canSend={$can(PERMISSIONS.SEND_MESSAGES)}
         encrypted={currentChannelEncrypted}
         keyPending={currentChannelKeyPending}

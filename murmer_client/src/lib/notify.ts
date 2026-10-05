@@ -1,8 +1,11 @@
 import { browser } from '$app/environment';
 import { isTauri } from '$lib/platform';
+import { hideSpoilers } from '$lib/spoilers';
 
-export async function notify(title: string, body?: string) {
+export async function notify(title: string, rawBody?: string) {
   if (!browser) return;
+  // Shown outside the app, where nothing can blur a spoiler.
+  const body = rawBody === undefined ? undefined : hideSpoilers(rawBody);
 
   // Prefer Tauri's notification API when available. The import is dynamic so
   // the plugin never reaches the web bundle, where it could not work anyway.

@@ -126,6 +126,13 @@ fn copy_carries_content_and_a_server_built_attribution() {
 }
 
 #[test]
+fn copy_keeps_an_image_a_spoiler() {
+    let source = json!({ "user": "alice", "image": "/files/a.png", "spoiler": true });
+    let copy = forwarded_body(42, &source, 3, "general").expect("body");
+    assert_eq!(copy["spoiler"], json!(true));
+}
+
+#[test]
 fn forwarding_a_forward_keeps_the_first_author() {
     let first = json!({ "user": "alice", "text": "the original" });
     let once = forwarded_body(42, &first, 3, "general").expect("body");

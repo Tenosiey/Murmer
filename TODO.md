@@ -68,8 +68,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Search filters — `from:`, `in:`, `has:file`, `before:`/`after:` in the
       search overlay (`chat/search.ts`), the way Discord and Slack search
       works
-- [ ] Spoilers — `||text||` markup and a "spoiler" toggle on image uploads
-      that blurs them until clicked (Discord)
 - [ ] Synced read state. Last-read ids live in `localStorage`
       (`stores/unread.ts`), so the desktop app and the web client each think
       the other's reading is still unread. Per-user read markers on the

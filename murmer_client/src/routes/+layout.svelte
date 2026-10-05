@@ -18,6 +18,7 @@
   import { APP_VERSION } from '$lib/version';
   import { theme } from '$lib/stores/theme';
   import DialogHost from '$lib/components/DialogHost.svelte';
+  import { installSpoilerReveal } from '$lib/spoilers';
 
   // Fonts are bundled locally so startup never blocks on a network fetch
   // and the desktop client works fully offline.
@@ -33,6 +34,7 @@
 
   onMount(() => {
     theme.init();
+    return installSpoilerReveal();
   });
 </script>
 
@@ -261,6 +263,51 @@
     color: var(--color-error);
     text-decoration: underline dashed;
     text-underline-offset: 0.2em;
+  }
+
+  /* Spoilers (`spoilers.ts`): text is covered by a solid block, an image is
+     blurred, until clicked. */
+  :global(.spoiler:not(.revealed)) {
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+  }
+
+  :global(span.spoiler:not(.revealed):not(.spoiler-media)) {
+    background: var(--color-on-surface-variant);
+    color: transparent;
+  }
+
+  :global(span.spoiler:not(.revealed):not(.spoiler-media) *) {
+    color: transparent;
+    background: transparent;
+  }
+
+  :global(span.spoiler.revealed:not(.spoiler-media)) {
+    background: var(--color-surface-raised);
+    border-radius: var(--radius-sm);
+  }
+
+  :global(.spoiler-media) {
+    display: inline-block;
+    position: relative;
+    overflow: hidden;
+  }
+
+  :global(.spoiler-media:not(.revealed) img) {
+    filter: blur(24px);
+  }
+
+  :global(.spoiler-media:not(.revealed)::after) {
+    content: 'Spoiler';
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--color-on-surface);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
   }
 
   /* Markdown typography for wiki page bodies (viewer and editor preview). */

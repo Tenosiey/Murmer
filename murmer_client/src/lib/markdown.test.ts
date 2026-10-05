@@ -276,6 +276,29 @@ describe('renderMarkdown / wiki links', () => {
   });
 });
 
+describe('renderMarkdown / spoilers', () => {
+  it('wraps the content in a focusable spoiler that survives sanitisation', () => {
+    // `spoilers.ts` finds these by class and reveals them; a sanitiser that
+    // dropped the class or tabindex would leave the text either always
+    // visible or unreachable from the keyboard.
+    const spoiler = render('the butler did it: ||**he** was the cook||').querySelector('.spoiler');
+    expect(spoiler?.getAttribute('role')).toBe('button');
+    expect(spoiler?.getAttribute('tabindex')).toBe('0');
+    expect(spoiler?.querySelector('strong')?.textContent).toBe('he');
+    expect(spoiler?.textContent).toBe('he was the cook');
+  });
+
+  it('leaves bars that are not a spoiler as text', () => {
+    for (const text of ['a || b', 'a ||| b', '|| padded ||', '||||']) {
+      expect(render(text).querySelector('.spoiler'), text).toBeNull();
+    }
+  });
+
+  it('does not reach into code', () => {
+    expect(render('`||not hidden||`').querySelector('.spoiler')).toBeNull();
+  });
+});
+
 describe('renderMarkdown / render cache', () => {
   /** Mirrors `MAX_RENDER_CACHE_ENTRIES` in markdown.ts. */
   const MAX_RENDER_CACHE_ENTRIES = 500;

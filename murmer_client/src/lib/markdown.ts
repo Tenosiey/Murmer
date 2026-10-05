@@ -85,6 +85,35 @@ const wikilinkExtension = {
   }
 };
 
+/**
+ * Inline extension for `||spoiler||`. The content is ordinary inline
+ * markdown; `spoilers.ts` reveals it on click or Enter. Needs a non-space
+ * right inside both bars, so a `||` used as "or" in prose stays text.
+ */
+const spoilerExtension = {
+  name: 'spoiler',
+  level: 'inline' as const,
+  start(src: string) {
+    const index = src.indexOf('||');
+    return index === -1 ? undefined : index;
+  },
+  tokenizer(this: { lexer: { inlineTokens(src: string): Tokens.Generic[] } }, src: string) {
+    const match = /^\|\|(?=\S)([\s\S]*?\S)\|\|/.exec(src);
+    if (!match) return undefined;
+    return {
+      type: 'spoiler',
+      raw: match[0],
+      tokens: this.lexer.inlineTokens(match[1])
+    };
+  },
+  renderer(
+    this: { parser: { parseInline(tokens: Tokens.Generic[]): string } },
+    token: { tokens: Tokens.Generic[] }
+  ) {
+    return `<span class="spoiler" role="button" tabindex="0" aria-label="Spoiler, select to reveal">${this.parser.parseInline(token.tokens)}</span>`;
+  }
+};
+
 /* An image in a message is fetched by every reader's client the moment it
    renders, so its author learns each reader's IP address, and when they read
    it. Markdown images therefore render as a plain link to the image; pictures
@@ -92,7 +121,7 @@ const wikilinkExtension = {
 renderer.image = ({ href, text }: Tokens.Image) =>
   `<a href="${escapeHtml(href)}">${escapeHtml(text || href)}</a>`;
 
-marked.use({ renderer, extensions: [wikilinkExtension as any] });
+marked.use({ renderer, extensions: [wikilinkExtension as any, spoilerExtension as any] });
 
 /* A link in a message is somebody else's URL. Followed in place it replaces
    the app itself — in the desktop shell the page then sits inside the Murmer
