@@ -1,0 +1,11 @@
+# Shapes the generated release notes that `workflows/release.yml` publishes
+# as the patch notes (see agents/skills/releasing.md). They are read by
+# people using Murmer, so pull requests that change nothing they would
+# notice are left out: Dependabot's updates (it labels every one
+# `dependencies`) and the `Release v…` and `dev` → `main` pull requests,
+# which carry `ignore-for-release`.
+changelog:
+  exclude:
+    labels:
+      - dependencies
+      - ignore-for-release
