@@ -137,9 +137,12 @@ impl Client {
             .to_string()
     }
 
-    /// Send `frame`, then a status change everyone receives. Whatever the
-    /// frame caused reaches the others before the mark does, so "nothing
-    /// arrived before the mark" is a meaningful assertion without sleeping.
+    /// Send `frame`, then a status change everyone receives. Every server-wide
+    /// frame the first one caused — a `message-notify` — reaches the others
+    /// before the mark does, so "nothing arrived before the mark" is a
+    /// meaningful assertion without sleeping. The `chat` frame itself travels
+    /// on the channel's own broadcast and is *not* ordered with the mark; see
+    /// [`Client::until_mark_and_chat`].
     async fn send_then_mark(&mut self, frame: Value, status: &str) {
         self.send(frame).await;
         self.send(json!({ "type": "status-update", "status": status }))
@@ -149,6 +152,22 @@ impl Client {
     async fn until_mark(&mut self, sender: &str, status: &str) -> Vec<Value> {
         self.until(|f| f["type"] == "status-update" && f["user"] == sender && f["status"] == status)
             .await
+    }
+
+    /// Frames up to `sender`'s mark, plus the `chat` frame from `sender` if
+    /// the channel broadcast delivered it after the mark.
+    async fn until_mark_and_chat(&mut self, sender: &str, status: &str) -> Vec<Value> {
+        let mut seen = self.until_mark(sender, status).await;
+        if !seen
+            .iter()
+            .any(|f| f["type"] == "chat" && f["user"] == sender)
+        {
+            seen.extend(
+                self.until(|f| f["type"] == "chat" && f["user"] == sender)
+                    .await,
+            );
+        }
+        seen
     }
 }
 
@@ -194,7 +213,7 @@ async fn a_permitted_ping_reaches_everyone_rebuilt_from_known_parts() {
         )
         .await;
 
-    let seen = bob.until_mark("alice", "away").await;
+    let seen = bob.until_mark_and_chat("alice", "away").await;
     let expected = json!({ "here": true, "roles": [mod_role] });
     let chat = of_type(&seen, "chat");
     assert_eq!(chat.len(), 1, "{seen:?}");
@@ -235,7 +254,7 @@ async fn the_text_alone_pings_nobody() {
     // Typing "@here" is allowed to anyone; it is only words without the field.
     bob.send_then_mark(json!({ "type": "chat", "text": "@here hi" }), "away")
         .await;
-    let seen = alice.until_mark("bob", "away").await;
+    let seen = alice.until_mark_and_chat("bob", "away").await;
     let chat = of_type(&seen, "chat");
     assert_eq!(chat.len(), 1, "{seen:?}");
     assert!(chat[0].get("mentions").is_none(), "{chat:?}");
@@ -246,7 +265,7 @@ async fn the_text_alone_pings_nobody() {
         "busy",
     )
     .await;
-    let seen = alice.until_mark("bob", "busy").await;
+    let seen = alice.until_mark_and_chat("bob", "busy").await;
     let chat = of_type(&seen, "chat");
     assert_eq!(chat.len(), 1, "{seen:?}");
     assert!(chat[0].get("mentions").is_none(), "{chat:?}");
