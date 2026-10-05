@@ -10,8 +10,8 @@
   import { roleDefinitions } from '$lib/stores/roleDefinitions';
   import { channelOverrides } from '$lib/stores/channelOverrides';
   import { canSpeak, resetVoicePermissions } from '$lib/stores/voicePermissions';
-  import { can, myTopPosition, myPermissions } from '$lib/stores/permissions';
-  import { PERMISSIONS, computeTopPosition } from '$lib/chat/permissions';
+  import { can, myPermissions } from '$lib/stores/permissions';
+  import { PERMISSIONS } from '$lib/chat/permissions';
   import { session } from '$lib/stores/session';
   import { uploadAttachment } from '$lib/upload';
   import { displayNames, profiles } from '$lib/stores/profiles';
@@ -38,6 +38,7 @@
   import ConnectionOverlay from '$lib/components/chat/ConnectionOverlay.svelte';
   import SidebarResizer from '$lib/components/chat/SidebarResizer.svelte';
   import DmPanel from '$lib/components/chat/DmPanel.svelte';
+  import UserMenu from '$lib/components/chat/UserMenu.svelte';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
@@ -117,12 +118,10 @@
     VOICE_QUALITY_PRESETS,
     DEFAULT_VOICE_PRESET,
     DEFAULT_CHANNEL_NAME,
-    MAX_NICKNAME_LENGTH,
     MAX_REMINDER_TEXT_LENGTH
   } from '$lib/chat/constants';
   import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
   import ChannelPermissionsModal from '$lib/components/ChannelPermissionsModal.svelte';
-  import UserStatsModal from '$lib/components/UserStatsModal.svelte';
   import SchedulePanel from '$lib/components/SchedulePanel.svelte';
   import UserProfileModal from '$lib/components/UserProfileModal.svelte';
   import WikiView from '$lib/components/wiki/WikiView.svelte';
@@ -986,6 +985,8 @@
     scrollBottom();
   }
 
+  let userMenu: UserMenu | undefined = $state();
+
   let menuChannelId: number | null = $state(null);
   let menuVoiceChannelId: number | null = $state(null);
   let menuCategoryId: number | null = $state(null);
@@ -997,92 +998,6 @@
   function closeVolumeMenu() {
     volumeMenuOpen = false;
     volumeMenuUser = null;
-  }
-
-  let userRoleMenuOpen = $state(false);
-  let userRoleMenuX = $state(0);
-  let userRoleMenuY = $state(0);
-  let userRoleMenuTarget: string | null = $state(null);
-
-  /** Highest hierarchy position of a target user (Infinity for admins). */
-  function targetTopPosition(target: string): number {
-    return computeTopPosition($roleDefinitions, $userRoleIds[target] ?? []);
-  }
-
-  /** Whether the current user strictly outranks `target`. */
-  function outranks(target: string): boolean {
-    if (target === $session.user) return false;
-    return $myTopPosition > targetTopPosition(target);
-  }
-
-  function openUserRoleMenu(event: MouseEvent, user: string) {
-    if (user === $session.user) return;
-    event.preventDefault();
-    event.stopPropagation();
-    userRoleMenuX = event.clientX;
-    userRoleMenuY = event.clientY;
-    userRoleMenuTarget = user;
-    userRoleMenuOpen = true;
-  }
-
-  /** Replace a user's assigned roles (server validates the hierarchy). */
-  function setUserRoles(user: string, roleIds: number[]) {
-    chat.sendRaw({ type: 'set-user-roles', user, roleIds });
-  }
-
-  /** Toggle a single role on a user, preserving their other assignments. */
-  function toggleUserRole(user: string, roleId: number) {
-    const current = $userRoleIds[user] ?? [];
-    const next = current.includes(roleId)
-      ? current.filter((id) => id !== roleId)
-      : [...current, roleId];
-    setUserRoles(user, next);
-  }
-
-  function kickUser(user: string) {
-    chat.sendRaw({ type: 'kick-user', user });
-  }
-
-  async function banUser(user: string) {
-    const confirmed = await dialogs.confirm({
-      title: `Ban ${user}?`,
-      message: 'They will be disconnected and unable to rejoin until unbanned.',
-      confirmLabel: 'Ban user',
-      danger: true
-    });
-    if (!confirmed) return;
-    chat.sendRaw({ type: 'ban-user', user });
-  }
-
-  function unbanUser(user: string) {
-    chat.sendRaw({ type: 'unban-user', user });
-  }
-
-  function muteUser(user: string, durationSeconds?: number) {
-    const payload: Record<string, unknown> = { type: 'mute-user', user };
-    if (typeof durationSeconds === 'number') payload.durationSeconds = durationSeconds;
-    chat.sendRaw(payload);
-  }
-
-  function unmuteUser(user: string) {
-    chat.sendRaw({ type: 'unmute-user', user });
-  }
-
-  /** Set or clear another member's nickname on this server. */
-  async function changeNicknamePrompt(user: string) {
-    const current = $profiles[user]?.nickname ?? '';
-    const nickname = await dialogs.prompt({
-      title: `Nickname for ${user}`,
-      message: 'Shown instead of their display name on this server. Leave empty to clear it.',
-      label: 'Nickname',
-      initial: current,
-      maxLength: MAX_NICKNAME_LENGTH,
-      confirmLabel: 'Save',
-      required: false
-    });
-    // `null` is a cancelled dialog; an empty string is a deliberate clear.
-    if (nickname === null) return;
-    profiles.setNickname(user, nickname.trim());
   }
 
 
@@ -1161,16 +1076,6 @@
 
   function closeChannelPermissions() {
     channelPermsOpen = false;
-  }
-
-  let statsUser: string | null = $state(null);
-
-  function openUserStats(user: string) {
-    statsUser = user;
-  }
-
-  function closeUserStats() {
-    statsUser = null;
   }
 
   /** The member whose profile is open, or null. Works for the own profile
@@ -1626,58 +1531,6 @@
     threadRootId === null ? [] : mergeThreadMessages(threadRootId, $threadData, channelMessages)
   );
   let currentTopic = $derived($channelTopics[currentChatChannelId] ?? '');
-  // Roles the current user may grant: below their own position and no more
-  // powerful than themselves (the server enforces the same bounds).
-  let assignableRoles = $derived(
-    $roleDefinitions.filter(
-      (def) =>
-        !def.isDefault &&
-        def.position < $myTopPosition &&
-        ($can(PERMISSIONS.ADMINISTRATOR) || (def.permissions & ~$myPermissions) === 0)
-    )
-  );
-  let userRoleMenuItems = $derived((() => {
-    if (!userRoleMenuTarget) return [];
-    const target = userRoleMenuTarget;
-    const items: ContextMenuItem[] = [];
-    items.push({ label: 'View Profile', action: () => openProfile(target) });
-    items.push({ label: 'Send Message', action: () => openDm(target) });
-    items.push({ label: 'View Stats', action: () => openUserStats(target) });
-    // Role assignment: a checklist of grantable roles, shown only to managers
-    // who outrank the target.
-    if ($can(PERMISSIONS.MANAGE_ROLES) && outranks(target) && assignableRoles.length) {
-      const assigned = new Set($userRoleIds[target] ?? []);
-      const roleItems: ContextMenuItem[] = assignableRoles.map((def) => ({
-        label: assigned.has(def.id) ? `${def.name} (assigned)` : def.name,
-        action: () => toggleUserRole(target, def.id)
-      }));
-      items.push({ label: 'Roles', children: roleItems });
-    }
-    if (outranks(target)) {
-      if ($can(PERMISSIONS.MUTE_MEMBERS)) {
-        items.push({
-          label: 'Mute',
-          children: [
-            { label: '10 minutes', action: () => muteUser(target, 600) },
-            { label: '1 hour', action: () => muteUser(target, 3600) },
-            { label: 'Until lifted', action: () => muteUser(target) },
-            { label: 'Unmute', action: () => unmuteUser(target) }
-          ]
-        });
-      }
-      if ($can(PERMISSIONS.MANAGE_NICKNAMES)) {
-        items.push({ label: 'Change Nickname', action: () => changeNicknamePrompt(target) });
-      }
-      if ($can(PERMISSIONS.KICK_MEMBERS) && $onlineUsers.includes(target)) {
-        items.push({ label: 'Kick User', danger: true, action: () => kickUser(target) });
-      }
-      if ($can(PERMISSIONS.BAN_MEMBERS)) {
-        items.push({ label: 'Ban User', danger: true, action: () => banUser(target) });
-        items.push({ label: 'Unban User', action: () => unbanUser(target) });
-      }
-    }
-    return items;
-  })());
   let channelMenuItems = $derived(!$can(PERMISSIONS.MANAGE_CHANNELS) ? [] : [
     {
       label: 'Create',
@@ -1810,7 +1663,6 @@
         voice={channelPermsVoice}
         channelName={channelPermsName}
       />
-      <UserStatsModal open={statsUser !== null} user={statsUser} close={closeUserStats} />
       <SchedulePanel
         open={remindersOpen}
         close={closeReminders}
@@ -1951,13 +1803,13 @@
     <SidebarResizer width={rightSidebarWidth} side="right" label="Resize user list" />
     <UserList
       {statusMap}
-      onUserContextMenu={openUserRoleMenu}
+      onUserContextMenu={(event, user) => userMenu?.open(event, user)}
       onOpenProfile={openProfile}
     />
 </div>
 
 <ContextMenu bind:open={menuOpen} x={menuX} y={menuY} items={channelMenuItems} />
-<ContextMenu bind:open={userRoleMenuOpen} x={userRoleMenuX} y={userRoleMenuY} items={userRoleMenuItems} />
+<UserMenu bind:this={userMenu} onOpenProfile={openProfile} onOpenDm={openDm} />
 
 <VolumeMenu
   open={volumeMenuOpen}
