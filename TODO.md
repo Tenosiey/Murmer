@@ -66,8 +66,6 @@ the idea comes from and what users will expect it to behave like.
       knows everything at once
 - [ ] Copy a link to a message, which opens the right server and channel and
       scrolls to it. `highlightMessageById` already does the jumping
-- [ ] Mentions inbox — one list of recent mentions across all channels
-      (Discord's inbox). A per-channel badge says *where*, not *what*
 - [ ] Outbound webhooks. The bot REST API covers "something else drives
       Murmer"; there is no way round for Murmer to notify something else when
       a message arrives

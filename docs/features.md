@@ -187,6 +187,28 @@ name (`chat/mentions.ts`) and the account name is what gets inserted. Typing
 Group mentions — `@here` and roles — are permission-gated and work
 differently; see [`permissions.md`](permissions.md#group-mentions).
 
+The **mentions inbox** lists recent mentions across every channel, for the
+reader who comes back to a red badge and wants the *what*, not just the
+*where*. It is the server's answer to `load-mentions`
+(`ws/handlers/mentions.rs`), built from channels the reader can see right
+now, so losing access to a private channel takes its mentions along. Two
+choices in it are deliberate:
+
+- **The rule is stated twice.** Clients decide live pings with
+  `containsMention`; the server decides the inbox with
+  `mentions::mentions_user`. A mention one of them sees and the other does
+  not looks like a lost message, so the Rust tests run the client's own
+  cases.
+- **`@here` is not kept.** It reached whoever was connected when it was
+  sent; listing it later to someone who was not would make every `@here` an
+  `@everyone`. Role pings are kept — holding the role is the whole point.
+
+In an encrypted channel the server has no text, so it can only find role
+pings there. Name mentions in one reach the inbox live, from the client's own
+decrypted copy, while the reader is connected (`stores/mentionInbox.ts`).
+The inbox is held in memory and reset per connection, like the drafts: it
+carries the plaintext of encrypted channels, which must never land on disk.
+
 Rendering rules for the client are in [`client-state.md`](client-state.md).
 
 ## Reminders and scheduled messages

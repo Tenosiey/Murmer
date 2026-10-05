@@ -31,6 +31,9 @@
     onEditTopic: () => void;
     onOpenSearch: () => void;
     onOpenReminders: () => void;
+    onOpenMentions: () => void;
+    /** Mentions from other channels since the inbox was last opened. */
+    mentionsUnseen?: number;
     /** Reminders that have fired plus scheduled messages the server refused. */
     reminderAttention?: number;
     onOpenSettings: () => void;
@@ -54,6 +57,8 @@
     onEditTopic,
     onOpenSearch,
     onOpenReminders,
+    onOpenMentions,
+    mentionsUnseen = 0,
     reminderAttention = 0,
     onOpenSettings,
     wikiOpen = false,
@@ -364,8 +369,30 @@
       </svg>
       <span class="sr-only">Toggle channel wiki</span>
     </button>
+    <button class="icon-btn attention-btn" onclick={onOpenMentions} title="Mentions">
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="4" />
+        <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
+      </svg>
+      {#if mentionsUnseen > 0}
+        <span class="attention mention" aria-hidden="true"></span>
+      {/if}
+      <span class="sr-only">
+        Mentions{mentionsUnseen > 0 ? ` (${mentionsUnseen} new)` : ''}
+      </span>
+    </button>
     <button
-      class="icon-btn reminder-btn"
+      class="icon-btn attention-btn"
       onclick={onOpenReminders}
       title="Reminders and scheduled messages"
     >
@@ -493,11 +520,11 @@
 <style>
   /* A count would not fit in an icon button, and the number is not the point:
      the dot says "something in there is waiting for you". */
-  .reminder-btn {
+  .attention-btn {
     position: relative;
   }
 
-  .reminder-btn .attention {
+  .attention-btn .attention {
     position: absolute;
     top: var(--space-1);
     right: var(--space-1);
@@ -506,6 +533,11 @@
     border-radius: 50%;
     background: var(--color-primary);
     border: 2px solid var(--color-surface);
+  }
+
+  /* The same red as a channel's mention badge: somebody wants you. */
+  .attention-btn .attention.mention {
+    background: var(--color-error);
   }
 
   /* Compact toolbar: channel identity left, grouped actions right. */

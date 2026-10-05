@@ -13,6 +13,7 @@ import {
 } from '../message-utils';
 import { parseWikiSearchHits } from '../chat/search';
 import { parseGroupMentions, pingsMe, type GroupMentions } from '../chat/mentions';
+import { mentionInbox, type InboxEntry } from './mentionInbox';
 import { describeServerError } from '../errors';
 import { WebSocketManager } from '../websocket-manager';
 import { connection } from './connection';
@@ -301,9 +302,35 @@ function createChatStore() {
    * Whether a message pings the signed-in user: by name, or through a group
    * the server authorized. Never through the text of a group mention — anyone
    * may type `@here`, only the `mentions` field is checked.
+   *
+   * `findable` is whether the server's mentions inbox could list it again:
+   * it reads plaintext names and role pings, never a sealed text or `@here`.
    */
-  function mentionsMe(text: string | undefined, mentions: unknown, current: string): boolean {
-    return containsMention(text, current) || pingsMe(parseGroupMentions(mentions), ownRoleIds());
+  function mentionOf(
+    text: string | undefined,
+    mentions: unknown,
+    current: string,
+    sealed: boolean
+  ): { mention: boolean; findable: boolean } {
+    const groups = parseGroupMentions(mentions);
+    const roles = ownRoleIds();
+    const byRole = !!groups && groups.roles.some((id) => roles.includes(id));
+    const byName = containsMention(text, current);
+    return { mention: byName || pingsMe(groups, roles), findable: byRole || (byName && !sealed) };
+  }
+
+  /** A message as a mentions-inbox entry, or null when it lacks the ids. */
+  function inboxEntry(msg: Message, liveOnly = false): InboxEntry | null {
+    if (typeof msg.id !== 'number' || typeof msg.channelId !== 'number') return null;
+    if (typeof msg.user !== 'string') return null;
+    return {
+      id: msg.id,
+      channelId: msg.channelId,
+      user: msg.user,
+      text: typeof msg.text === 'string' && msg.text.trim() !== '' ? msg.text : null,
+      timestamp: typeof msg.timestamp === 'string' ? msg.timestamp : null,
+      liveOnly
+    };
   }
 
   /**
@@ -339,8 +366,13 @@ function createChatStore() {
         }
 
         if (!current || prepared.user !== current) {
-          const mention = current ? mentionsMe(prepared.text, prepared.mentions, current) : false;
+          const { mention, findable } = current
+            ? mentionOf(prepared.text, prepared.mentions, current, parseSealedMessage(msg.enc) !== null)
+            : { mention: false, findable: false };
           notifyChannelMessage(prepared.channelId ?? 0, prepared.user, prepared.text ?? '', mention);
+          // In the open channel, so read as it lands: listed, not counted.
+          const entry = mention ? inboxEntry(prepared, !findable) : null;
+          if (entry) mentionInbox.add(entry, false);
         }
         break;
       }
@@ -413,7 +445,21 @@ function createChatStore() {
         const messageId = (msg.id as number | undefined) ?? (msg.messageId as number | undefined);
         if (typeof messageId === 'number') {
           update((messages) => messages.filter((m) => m.id !== messageId));
+          mentionInbox.remove(messageId);
         }
+        break;
+      }
+
+      // The answer to `load-mentions`. Opened here, where the channel keys
+      // are, so role pings in an encrypted channel list readable text when
+      // this client holds the key.
+      case 'mentions-inbox': {
+        const list = Array.isArray(msg.messages) ? (msg.messages as Message[]) : [];
+        const entries = list
+          .filter((item): item is Message => !!item && typeof item === 'object')
+          .map((item) => inboxEntry(decryptChannelFrame(item)))
+          .filter((entry): entry is InboxEntry => entry !== null);
+        mentionInbox.load(entries);
         break;
       }
 
@@ -585,8 +631,23 @@ function createChatStore() {
           : typeof msg.text === 'string'
             ? msg.text
             : '';
-        const mention = current ? mentionsMe(text, msg.mentions, current) : false;
+        const { mention, findable } = current
+          ? mentionOf(text, msg.mentions, current, sealed !== null)
+          : { mention: false, findable: false };
         unread.recordIncoming(channelId, messageId, mention);
+        if (mention && sender) {
+          mentionInbox.add(
+            {
+              id: messageId,
+              channelId,
+              user: sender,
+              text: text.trim() !== '' ? text : null,
+              timestamp: new Date().toISOString(),
+              liveOnly: !findable
+            },
+            true
+          );
+        }
 
         notifyChannelMessage(channelId, sender, text, mention);
         break;
@@ -628,6 +689,7 @@ function createChatStore() {
     rawPins.clear();
     rawScheduled = [];
     scheduled.reset();
+    mentionInbox.reset();
     clearPeerKeyRequests();
   }
 
@@ -903,6 +965,13 @@ function createChatStore() {
   }
 
   /** Re-ask for both queues; the panel does this when it opens. */
+  /** Ask the server for the mentions inbox; answered by `mentions-inbox`. */
+  function loadMentions(): void {
+    if (!wsManager.isConnected()) return;
+    mentionInbox.setLoading(true);
+    sendRaw({ type: 'load-mentions' });
+  }
+
   function refreshScheduled(): void {
     sendRaw({ type: 'get-reminders' });
     sendRaw({ type: 'get-scheduled-messages' });
@@ -1029,6 +1098,7 @@ function createChatStore() {
     setReminder,
     cancelReminder,
     refreshScheduled,
+    loadMentions,
     sendTyping,
     sendRaw,
     loadHistory,

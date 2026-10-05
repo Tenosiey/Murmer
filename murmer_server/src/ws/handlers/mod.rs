@@ -20,6 +20,7 @@ mod hands;
 mod identity;
 mod invites;
 mod maintenance;
+mod mentions;
 mod messages;
 mod moderation;
 mod pins;
@@ -230,6 +231,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "typing" => {
                                 messages::handle_typing(&state, channel_id, &user_name, &mut last_typing_broadcast).await;
+                            }
+                            "load-mentions" => {
+                                mentions::handle_load_mentions(&state, &mut sender, &user_name).await;
                             }
                             "search-history" => {
                                 messages::handle_search_history(&state, &mut sender, &v, channel_id, &user_name).await;

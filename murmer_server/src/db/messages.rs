@@ -155,6 +155,47 @@ pub async fn search_messages(
     .await
 }
 
+/// The newest messages in `channel_ids` that may mention `user`, as
+/// `(id, channel_id, content)` rows, newest first.
+///
+/// A prefilter only, like [`fetch_thread`]'s: LIKE finds `@user` anywhere in
+/// the stored JSON (case-insensitively for ASCII, as the client's rule is)
+/// plus every message that pinged a group, and the caller decides with
+/// [`crate::mentions::is_mention_of`]. The channel list arrives as a JSON
+/// array because a variable-length `IN (...)` cannot be a cached statement.
+pub async fn recent_mention_candidates(
+    db: &Db,
+    channel_ids: &[i32],
+    user: &str,
+    limit: i64,
+) -> Result<Vec<(i64, i32, String)>, DbError> {
+    let channels = serde_json::to_string(channel_ids).unwrap_or_else(|_| "[]".to_string());
+    // Account names may contain `_`, a LIKE wildcard; escape it and its kin.
+    let escaped: String = user
+        .chars()
+        .flat_map(|c| match c {
+            '%' | '_' | '\\' => vec!['\\', c],
+            _ => vec![c],
+        })
+        .collect();
+    let named = format!("%@{escaped}%");
+    db.call_db(move |conn| {
+        let mut stmt = conn.prepare_cached(
+            "SELECT id, channel_id, content FROM messages \
+             WHERE channel_id IN (SELECT value FROM json_each(?1)) \
+             AND (content LIKE ?2 ESCAPE '\\' OR content LIKE '%\"mentions\":{%') \
+             ORDER BY id DESC LIMIT ?3",
+        )?;
+        let rows = stmt
+            .query_map(params![channels, named, limit], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })
+    .await
+}
+
 /// Fetch a thread: the root message plus every reply that carries the root's
 /// id as its `threadId`, ordered oldest first.
 ///

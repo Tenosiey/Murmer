@@ -43,6 +43,8 @@
   import DmPanel from '$lib/components/chat/DmPanel.svelte';
   import UserMenu from '$lib/components/chat/UserMenu.svelte';
   import ChannelMenu from '$lib/components/chat/ChannelMenu.svelte';
+  import MentionsInbox from '$lib/components/chat/MentionsInbox.svelte';
+  import { mentionInbox } from '$lib/stores/mentionInbox';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
@@ -156,6 +158,7 @@
   let helpOverlay: HelpOverlay | undefined = $state();
 
   let remindersOpen = $state(false);
+  let mentionsOpen = $state(false);
 
   let now = $state(Date.now());
   let expiryTicker: number | null = null;
@@ -205,6 +208,15 @@
 
   function closeReminders() {
     remindersOpen = false;
+  }
+
+  function openMentions() {
+    clearCommandFeedback();
+    mentionsOpen = true;
+  }
+
+  function closeMentions() {
+    mentionsOpen = false;
   }
 
   /**
@@ -265,8 +277,8 @@
     setCommandFeedback(`Reminder set for ${describeWhen(at.toISOString())}.`);
   }
 
-  /** Jump to the message a reminder was set on, switching channels if needed. */
-  function openReminderTarget(channelId: number, messageId: number) {
+  /** Jump to a message in any channel — a reminder's or a mention's. */
+  function openMessageIn(channelId: number, messageId: number) {
     if (!$channels.some((channel) => channel.id === channelId)) return;
     joinChannel(channelId);
     focusMessage(messageId);
@@ -1334,6 +1346,8 @@
         onEditTopic={editTopic}
         onOpenSearch={() => openSearch()}
         onOpenReminders={openReminders}
+        onOpenMentions={openMentions}
+        mentionsUnseen={$mentionInbox.unseen}
         reminderAttention={$scheduledAttention}
         onOpenSettings={openSettings}
         {wikiOpen}
@@ -1353,8 +1367,9 @@
       <SchedulePanel
         open={remindersOpen}
         close={closeReminders}
-        onOpenMessage={openReminderTarget}
+        onOpenMessage={openMessageIn}
       />
+      <MentionsInbox open={mentionsOpen} close={closeMentions} onOpenMessage={openMessageIn} />
       <UserProfileModal
         open={profileUser !== null}
         user={profileUser}
