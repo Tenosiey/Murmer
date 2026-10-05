@@ -62,6 +62,7 @@ function frame(overrides: Record<string, unknown> = {}) {
     rejectedAuth: 0,
     rejectedUploads: 0,
     rejectedReplays: 0,
+    rejectedFrames: 0,
     ...overrides
   };
 }

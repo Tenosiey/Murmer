@@ -51,6 +51,19 @@ pub fn get_max_uploads_per_minute() -> usize {
         .unwrap_or(20)
 }
 
+/// Get the sustained number of WebSocket frames one connection may send per
+/// second.
+///
+/// Reads from the `MAX_FRAMES_PER_SECOND` environment variable, defaulting to
+/// 20; `0` disables the limit. Resolved once per [`RateLimiter`], like the
+/// limits above.
+pub fn get_max_frames_per_second() -> u32 {
+    std::env::var("MAX_FRAMES_PER_SECOND")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(20)
+}
+
 /// Get the nonce expiry time in seconds for replay attack prevention.
 ///
 /// Reads from the `NONCE_EXPIRY_SECONDS` environment variable, defaulting to 300 (5 minutes).
@@ -90,6 +103,59 @@ pub const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 
 /// The sliding window the message and authentication limits are measured over.
 pub const RATE_WINDOW: Duration = Duration::from_secs(60);
+
+/// How many seconds of the sustained frame rate a connection may spend at
+/// once. See [`FrameBudget`].
+pub const FRAME_BURST_SECONDS: u32 = 10;
+
+/// A token bucket over every frame one connection sends.
+///
+/// The per-account message limit covers only the frames that post something.
+/// Everything else — a full-text search, a history page, a reaction — still
+/// queues on the one database thread, so a single client in a loop slowed the
+/// server down for everyone. This caps all of them at once.
+///
+/// A bucket rather than the sliding window the other limits use, because a
+/// well-behaved client is bursty: connecting sends a dozen requests, joining a
+/// full voice mesh sends an offer and a run of ICE candidates to every peer,
+/// and both can coincide on a reconnect. The bucket lets
+/// [`FRAME_BURST_SECONDS`] worth of frames through at once and only caps the
+/// sustained rate. It lives in the socket loop, one per connection, so it
+/// needs no lock and disappears with the connection.
+pub struct FrameBudget {
+    tokens: f64,
+    capacity: f64,
+    per_second: f64,
+    last: Instant,
+}
+
+impl FrameBudget {
+    /// A full bucket refilling at `per_second`; `0` never refuses a frame.
+    pub fn new(per_second: u32, now: Instant) -> Self {
+        let capacity = f64::from(per_second.saturating_mul(FRAME_BURST_SECONDS));
+        Self {
+            tokens: capacity,
+            capacity,
+            per_second: f64::from(per_second),
+            last: now,
+        }
+    }
+
+    /// Spend one frame's worth of budget, reporting whether there was any.
+    pub fn take(&mut self, now: Instant) -> bool {
+        if self.per_second == 0.0 {
+            return true;
+        }
+        let elapsed = now.saturating_duration_since(self.last).as_secs_f64();
+        self.last = now;
+        self.tokens = (self.tokens + elapsed * self.per_second).min(self.capacity);
+        if self.tokens < 1.0 {
+            return false;
+        }
+        self.tokens -= 1.0;
+        true
+    }
+}
 
 /// Drop timestamps older than `max_age` from the front of a window.
 ///

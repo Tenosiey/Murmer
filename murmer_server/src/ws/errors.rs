@@ -63,6 +63,10 @@ pub const CHANNEL_RENAME_FAILED: &str = r#"{"type":"error","message":"channel-re
 
 pub const MESSAGE_RATE_LIMIT: &str = r#"{"type":"error","message":"message-rate-limit"}"#;
 
+/// The connection spent its frame budget; frames are dropped until it
+/// refills. Sent once per run of refusals, not per dropped frame.
+pub const FRAME_RATE_LIMIT: &str = r#"{"type":"error","message":"frame-rate-limit"}"#;
+
 /// Sender's roles do not grant permission to send messages.
 pub const SEND_PERMISSION_DENIED: &str = r#"{"type":"error","message":"send-permission-denied"}"#;
 

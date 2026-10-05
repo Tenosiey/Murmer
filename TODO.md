@@ -22,13 +22,6 @@ the idea comes from and what users will expect it to behave like.
 
 ## 🔧 Tech debt / hardening
 
-- [ ] Rate-limit frames in general, not just chat. Only `chat`, `dm`,
-      `forward-message` and wiki writes go through
-      `check_message_rate_limit`; `search-history` (a full-text query),
-      `load-history`, `react`, `set-profile`, `create-invite` and the rest
-      are unthrottled, and all of them queue on the one database thread — a
-      single client in a loop slows the server for everyone. One
-      per-connection budget in `handle_socket` covers them all at once
 - [ ] Reclaim orphaned uploads. Deleting an emoji, avatar, server icon or
       sound removes its file; deleting a *message* does not, and neither does
       the Danger Zone purge or reset. The dashboard's storage breakdown can

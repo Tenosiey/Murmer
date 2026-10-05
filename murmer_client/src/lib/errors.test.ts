@@ -70,6 +70,7 @@ describe('isFatalConnectionError', () => {
     // user back to the server list mid-conversation.
     const recoverable = [
       'message-rate-limit',
+      'frame-rate-limit',
       'message-too-long',
       'slow-mode',
       'muted',

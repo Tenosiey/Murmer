@@ -507,3 +507,24 @@ async fn a_frame_beyond_the_size_limit_closes_the_connection() {
         }
     }
 }
+
+#[tokio::test]
+async fn a_client_in_a_loop_is_cut_off_after_its_burst() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+
+    // Pings are the cheapest frame there is, which is the point: the budget
+    // covers every frame, not just the ones that post something. The default
+    // allows 200 at once, two of which the connect already spent.
+    for id in 0..300 {
+        alice.send(json!({ "type": "ping", "id": id })).await;
+    }
+    let seen = alice
+        .until(|f| f["type"] == "error" && f["message"] == "frame-rate-limit")
+        .await;
+    let pongs = of_type(&seen, "pong").len();
+    assert!(
+        (198..300).contains(&pongs),
+        "{pongs} pongs before the limit"
+    );
+}

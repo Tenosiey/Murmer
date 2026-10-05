@@ -1,14 +1,14 @@
 use murmer_server::{
     Clock, RateLimiter,
     security::{
-        RATE_WINDOW, SWEEP_INTERVAL, check_and_store_nonce, check_auth_rate_limit,
-        check_message_rate_limit, validate_channel_name, validate_timestamp, validate_user_name,
-        voice_channel_has_room,
+        FRAME_BURST_SECONDS, FrameBudget, RATE_WINDOW, SWEEP_INTERVAL, check_and_store_nonce,
+        check_auth_rate_limit, check_message_rate_limit, validate_channel_name, validate_timestamp,
+        validate_user_name, voice_channel_has_room,
     },
 };
 use serial_test::serial;
 use std::collections::HashSet;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use temp_env::with_var;
 use tokio::runtime::Runtime;
 
@@ -197,4 +197,46 @@ fn validates_timestamps() {
     assert!(validate_timestamp(&(now + 30_000).to_string()).is_ok());
     assert!(validate_timestamp(&(now - 30_000).to_string()).is_ok());
     assert!(validate_timestamp("not-a-number").is_err());
+}
+
+#[test]
+fn frame_budget_allows_a_burst_then_only_the_sustained_rate() {
+    let start = Instant::now();
+    let mut budget = FrameBudget::new(5, start);
+
+    // A reconnect's worth of frames goes through at once...
+    for _ in 0..5 * FRAME_BURST_SECONDS {
+        assert!(budget.take(start));
+    }
+    // ...and then nothing until the bucket refills.
+    assert!(!budget.take(start));
+
+    let one_second = start + Duration::from_secs(1);
+    for _ in 0..5 {
+        assert!(budget.take(one_second));
+    }
+    assert!(!budget.take(one_second));
+}
+
+#[test]
+fn frame_budget_refills_only_up_to_the_burst() {
+    let start = Instant::now();
+    let mut budget = FrameBudget::new(5, start);
+    assert!(budget.take(start));
+
+    // An hour idle must not bank an hour of frames.
+    let later = start + Duration::from_secs(3600);
+    for _ in 0..5 * FRAME_BURST_SECONDS {
+        assert!(budget.take(later));
+    }
+    assert!(!budget.take(later));
+}
+
+#[test]
+fn frame_budget_of_zero_is_unlimited() {
+    let start = Instant::now();
+    let mut budget = FrameBudget::new(0, start);
+    for _ in 0..10_000 {
+        assert!(budget.take(start));
+    }
 }

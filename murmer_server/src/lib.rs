@@ -252,6 +252,9 @@ pub struct RateLimiter {
     pub max_auth_attempts_per_minute: usize,
     /// Uploads one IP may make per minute.
     pub max_uploads_per_minute: usize,
+    /// Frames one connection may send per second, sustained; see
+    /// [`security::FrameBudget`].
+    pub max_frames_per_second: u32,
     /// How long a used nonce stays remembered.
     pub nonce_expiry: std::time::Duration,
     /// Where every window and expiry check reads "now" from.
@@ -275,6 +278,7 @@ impl RateLimiter {
             max_messages_per_minute: security::get_max_messages_per_minute(),
             max_auth_attempts_per_minute: security::get_max_auth_attempts_per_minute(),
             max_uploads_per_minute: security::get_max_uploads_per_minute(),
+            max_frames_per_second: security::get_max_frames_per_second(),
             nonce_expiry: std::time::Duration::from_secs(security::get_nonce_expiry_seconds()),
             clock,
         }

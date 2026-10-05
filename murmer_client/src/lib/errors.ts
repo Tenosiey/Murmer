@@ -29,6 +29,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'channel-rename-failed': 'The server could not rename the channel. Please try again.',
   'unknown-channel': 'That channel no longer exists.',
   'message-rate-limit': 'You are sending messages too quickly. Please slow down.',
+  'frame-rate-limit': 'Too many requests at once; some were dropped. Please slow down.',
   'message-too-long': 'That message is too long to send.',
   'invalid-voice-quality': 'Invalid voice quality setting.',
   'invalid-voice-bitrate': 'Invalid voice bitrate setting.',
