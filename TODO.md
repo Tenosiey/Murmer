@@ -22,12 +22,6 @@ the idea comes from and what users will expect it to behave like.
       the transmission gate now ramps instead of stepping, which removed the
       clicks at the start and end of each burst; needs a re-test to see
       whether anything remains mid-speech
-- [ ] Mentions only fire on the account name. `containsMention`
-      (`message-utils.ts`) matches `@accountname`, but the UI shows nicknames
-      and display names everywhere and the composer offers no completion, so
-      a user typing the name they actually see (`@Nick`) notifies nobody.
-      Fixed by the mention completion under Chat Features, which inserts the
-      account name
 
 ---
 
@@ -77,10 +71,9 @@ the idea comes from and what users will expect it to behave like.
       knows everything at once
 - [ ] Copy a link to a message, which opens the right server and channel and
       scrolls to it. `highlightMessageById` already does the jumping
-- [ ] Mention completion and group mentions — typing `@` suggests members by
-      what the UI shows them as and inserts the account name; `@here` and
-      `@role` behind a permission so they cannot become spam (Discord). Fixes
-      the mention bug above
+- [ ] Group mentions — `@here` and `@role`, behind a permission so they
+      cannot become spam (Discord). The `@` completion (`chat/mentions.ts`)
+      is where they would be offered
 - [ ] Mentions inbox — one list of recent mentions across all channels
       (Discord's inbox). A per-channel badge says *where*, not *what*
 - [ ] Outbound webhooks. The bot REST API covers "something else drives

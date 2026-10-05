@@ -1,8 +1,8 @@
 <!--
   Message composer: auto-growing textarea, file picker with preview chip,
-  reply banner, typing indicator and slash-command feedback. Owns only input
-  presentation — send/reply/file state live in the chat page, which passes
-  callbacks down.
+  reply banner, typing indicator, slash-command feedback and `@` mention
+  completion (`MentionSuggestions`). Owns only input presentation —
+  send/reply/file state live in the chat page, which passes callbacks down.
 -->
 <script lang="ts">
   import { displayNames } from '$lib/stores/profiles';
@@ -12,6 +12,7 @@
   import { MESSAGE_INPUT_MAX_HEIGHT } from '$lib/chat/constants';
   import { uploadAccept } from '$lib/stores/uploadConfig';
   import { chatSettings } from '$lib/stores/chatSettings';
+  import MentionSuggestions from './MentionSuggestions.svelte';
 
 
   interface Props {
@@ -54,6 +55,7 @@
 
   let fileInput: HTMLInputElement | undefined = $state();
   let textarea: HTMLTextAreaElement | undefined = $state();
+  let mentions: MentionSuggestions | undefined = $state();
   let scrollable = $state(false);
 
   export function focusInput() {
@@ -75,6 +77,8 @@
   });
 
   function handleKeydown(event: KeyboardEvent) {
+    // An open mention list takes Enter, Tab, the arrows and Escape first.
+    if (mentions?.handleKey(event)) return;
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       if (canSend) onSend();
@@ -128,24 +132,27 @@
     </div>
   {/if}
 
-  <textarea
-    bind:this={textarea}
-    bind:value
-    class:scrollable
-    rows="1"
-    maxlength={$chatSettings.maxMessageLength}
-    placeholder={!canSend
-      ? 'You do not have permission to send messages'
-      : keyPending
-        ? 'Waiting for this channel’s encryption key…'
-        : encrypted
-          ? 'Message (end-to-end encrypted)'
-          : 'Message'}
-    disabled={!canSend || keyPending}
-    oninput={onInput}
-    onpaste={handlePaste}
-    onkeydown={handleKeydown}
-  ></textarea>
+  <div class="field">
+    <MentionSuggestions bind:this={mentions} bind:value field={textarea} />
+    <textarea
+      bind:this={textarea}
+      bind:value
+      class:scrollable
+      rows="1"
+      maxlength={$chatSettings.maxMessageLength}
+      placeholder={!canSend
+        ? 'You do not have permission to send messages'
+        : keyPending
+          ? 'Waiting for this channel’s encryption key…'
+          : encrypted
+            ? 'Message (end-to-end encrypted)'
+            : 'Message'}
+      disabled={!canSend || keyPending}
+      oninput={onInput}
+      onpaste={handlePaste}
+      onkeydown={handleKeydown}
+    ></textarea>
+  </div>
 
   <!-- Hidden native input; the visible "Upload file" button proxies to it.
        `accept` follows the server's upload policy, which the chat page also
@@ -320,6 +327,12 @@
       transform: translateY(-3px);
       opacity: 1;
     }
+  }
+
+  /* Anchors the mention list just above the text. */
+  .field {
+    position: relative;
+    min-width: 0;
   }
 
   textarea {

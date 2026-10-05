@@ -178,6 +178,13 @@ own frame for the same reason: the two are authorized differently.
 `KICK_MEMBERS` once, marker-guarded, so an existing server's moderators match
 a freshly seeded one. `@everyone` never gains it.
 
+**Mentions name the account, too.** `containsMention` (`message-utils.ts`)
+matches `@accountname` only — a display name or nickname is not unique, so
+it cannot say who was meant. People type the name they *see*, though, so the
+composer and thread replies complete `@`: members are found by their shown
+name (`chat/mentions.ts`) and the account name is what gets inserted. Typing
+`@Nick` by hand without picking from the list still notifies nobody.
+
 Rendering rules for the client are in [`client-state.md`](client-state.md).
 
 ## Reminders and scheduled messages

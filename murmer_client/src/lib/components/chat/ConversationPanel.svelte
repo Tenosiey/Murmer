@@ -19,6 +19,7 @@
   import { formatFullTimestamp, formatShortTime } from '$lib/chat/helpers';
   import { drafts } from '$lib/stores/drafts';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
+  import MentionSuggestions from './MentionSuggestions.svelte';
 
   interface Props {
     title: string;
@@ -56,6 +57,8 @@
   }: Props = $props();
 
   let draft = $state('');
+  let input: HTMLInputElement | undefined = $state();
+  let mentions: MentionSuggestions | undefined = $state();
   /* The conversation this panel's `draft` belongs to. One instance serves
      every thread and DM — the `{#if}` around it stays true when the peer
      changes — so the text has to move with the key, or a sentence meant for
@@ -161,7 +164,21 @@
   </div>
 
   <form class="reply" onsubmit={(event) => { event.preventDefault(); submit(); }}>
-    <input type="text" bind:value={draft} {placeholder} aria-label={placeholder} />
+    <div class="field">
+      <!-- A DM has one other reader, who is notified anyway; only a thread
+           — a channel conversation — has anyone to mention. -->
+      {#if kind === 'thread'}
+        <MentionSuggestions bind:this={mentions} bind:value={draft} field={input} />
+      {/if}
+      <input
+        bind:this={input}
+        type="text"
+        bind:value={draft}
+        {placeholder}
+        aria-label={placeholder}
+        onkeydown={(event) => mentions?.handleKey(event)}
+      />
+    </div>
   </form>
 </aside>
 
@@ -315,6 +332,11 @@
   .reply {
     padding: var(--space-3);
     border-top: 1px solid var(--color-surface-outline);
+  }
+
+  /* Anchors the mention list just above the input. */
+  .field {
+    position: relative;
   }
 
   .reply input {
