@@ -7,9 +7,13 @@
  * one voice channel at a time, so one entry per user is enough. The server
  * lowers a hand itself when its owner leaves, and the snapshot sent on joining
  * a channel replaces whatever is still held for it from an earlier visit.
+ * Everything is dropped when the connection goes: channel ids are only unique
+ * per server, so a leftover hand would sit in the queue of whichever channel
+ * on the next server shares its id.
  */
 import { writable } from 'svelte/store';
 import { chat } from './chat';
+import { connection } from './connection';
 import type { Message } from '../types';
 
 export interface RaisedHand {
@@ -33,7 +37,11 @@ export function sendHand(channelId: number, raised: boolean) {
 }
 
 function createVoiceHandsStore() {
-  const { subscribe, update } = writable<Hands>({});
+  const { subscribe, set, update } = writable<Hands>({});
+
+  connection.subscribe((state) => {
+    if (state !== 'connected') set({});
+  });
 
   chat.on('voice-hand', (msg: Message) => {
     const { user, channelId, raised, at } = msg;

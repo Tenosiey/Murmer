@@ -65,4 +65,13 @@ describe('voiceHands', () => {
       bob: { channelId: 1, at: 9 }
     });
   });
+
+  it('drops every hand when the connection goes', async () => {
+    const { connection } = await import('./connection');
+    connection.set('connected');
+    const { voiceHands } = await import('./voiceHands');
+    bus.emit('voice-hand', { user: 'bob', channelId: 1, raised: true, at: 7 });
+    connection.set('disconnected');
+    expect(get(voiceHands)).toEqual({});
+  });
 });
