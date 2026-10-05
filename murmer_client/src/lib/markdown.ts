@@ -87,6 +87,19 @@ const wikilinkExtension = {
 
 marked.use({ renderer, extensions: [wikilinkExtension as any] });
 
+/* A link in a message is somebody else's URL. Followed in place it replaces
+   the app itself — in the desktop shell the page then sits inside the Murmer
+   window, where a copy of the login or backup screen is a convincing way to
+   ask for a recovery phrase. So every external link opens outside the app
+   (the opener plugin hands `_blank` to the system browser), and without an
+   opener or referrer. Wikilinks (`href="#"`) are left to their click handler. */
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'A' && /^(https?|mailto):/i.test(node.getAttribute('href') ?? '')) {
+    node.setAttribute('target', '_blank');
+    node.setAttribute('rel', 'noopener noreferrer');
+  }
+});
+
 /** Characters that can only appear as markdown syntax often enough to be worth
  *  a full parse: emphasis, code, strikethrough, links, headings, quotes,
  *  tables, escapes. */

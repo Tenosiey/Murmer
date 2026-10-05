@@ -447,10 +447,19 @@ pub async fn voice_channel_list_frame(
     }))
 }
 
-/// Send all voice channel member lists to a client.
-pub async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+/// Send the member lists of every voice channel `user` can see to a client.
+/// Who sits in a private call is as private as the call: the live
+/// `voice-users` broadcast is filtered the same way (see `Route::of`).
+pub async fn send_all_voice(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    user: &str,
+) {
     let map = state.voice_channels.lock().await.clone();
     for (id, info) in map {
+        if !can_view_channel(state, user, ChannelKind::Voice, id).await {
+            continue;
+        }
         let frame = serde_json::json!({
             "type": "voice-users",
             "channelId": id,
@@ -621,24 +630,40 @@ pub async fn has_permission(state: &Arc<AppState>, user: &str, required: Permiss
 /// the default role's position as the floor. Administrators sit above everyone
 /// (used so moderation and role management require strictly outranking the
 /// target). Returns [`i64::MAX`] for administrators.
+///
+/// The target of a ban or a role change is often offline, and `user_roles`
+/// only holds the accounts that connected since the server started. Reading
+/// an absent entry as "no roles" put every such Owner at the bottom of the
+/// hierarchy, where any moderator outranked them — so a user missing from
+/// memory is resolved from the database instead.
 pub async fn top_position(state: &Arc<AppState>, user: &str) -> i64 {
+    let loaded = state.user_roles.lock().await.get(user).cloned();
+    let ids = match loaded {
+        Some(ids) => ids,
+        None => match lookup_user_key(state, user).await {
+            Some(key) => match db::get_user_role_ids(&state.db, &key).await {
+                Ok(ids) => ids,
+                // Only an offline target gets here (a requester is always
+                // loaded), so failing closed means "nobody outranks them".
+                Err(e) => {
+                    error!("Failed to load the roles of {user}: {e}");
+                    return i64::MAX;
+                }
+            },
+            None => Vec::new(),
+        },
+    };
+
     let defs = state.role_defs.lock().await;
     let default = defs.values().find(|d| d.is_default);
     let mut pos = default.map(|d| d.position).unwrap_or(0);
     let mut is_admin = default
         .map(|d| d.permissions & permissions::ADMINISTRATOR != 0)
         .unwrap_or(false);
-    {
-        let assignments = state.user_roles.lock().await;
-        if let Some(ids) = assignments.get(user) {
-            for id in ids {
-                if let Some(def) = defs.get(id) {
-                    pos = pos.max(def.position);
-                    if def.permissions & permissions::ADMINISTRATOR != 0 {
-                        is_admin = true;
-                    }
-                }
-            }
+    for def in ids.iter().filter_map(|id| defs.get(id)) {
+        pos = pos.max(def.position);
+        if def.permissions & permissions::ADMINISTRATOR != 0 {
+            is_admin = true;
         }
     }
     if is_admin { i64::MAX } else { pos }

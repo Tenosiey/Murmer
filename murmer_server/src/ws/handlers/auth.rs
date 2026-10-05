@@ -8,6 +8,7 @@
 //! invite still existing — which is what lets an invite be revoked without
 //! evicting the people who joined through it. See `db::invites`.
 
+use crate::channel_overrides::ChannelKind;
 use crate::ws::{constants::*, errors, helpers::*};
 use crate::{AppState, bot, db, security};
 use axum::extract::ws::{Message, WebSocket};
@@ -95,21 +96,18 @@ async fn admit(
     required: &str,
     verified_key: Option<&str>,
 ) -> Result<Admission, ()> {
-    let provided = v.get("password").and_then(|p| p.as_str()).unwrap_or("");
-    let password_ok = bool::from(provided.as_bytes().ct_eq(required.as_bytes()));
-
     // A password-protected server has always required a proven key, and all
     // three credentials below are bound to one, so a keyless connection stops
-    // here whether or not it knew the password.
+    // here — before the password is even looked at. Answering it differently
+    // for a right and a wrong password made this an oracle, and one outside
+    // the authentication rate limit, which only a key proof passes through.
     let Some(key) = verified_key else {
-        let reason = if password_ok {
-            errors::INVALID_SIGNATURE
-        } else {
-            errors::INVALID_PASSWORD
-        };
-        send_error(sender, reason).await;
+        send_error(sender, errors::INVALID_SIGNATURE).await;
         return Err(());
     };
+
+    let provided = v.get("password").and_then(|p| p.as_str()).unwrap_or("");
+    let password_ok = bool::from(provided.as_bytes().ct_eq(required.as_bytes()));
 
     if password_ok {
         return Ok(Admission::Granted);
@@ -173,7 +171,7 @@ pub(super) async fn send_state_snapshot(
     send_sounds(state, sender).await;
     send_voice_channels(state, sender, Some(u)).await;
     send_users(state, sender).await;
-    send_all_voice(state, sender).await;
+    send_all_voice(state, sender, u).await;
     super::screenshare::send_screenshare_config(state, sender).await;
     super::uploads::send_upload_config(state, sender).await;
     super::chat_settings::send_chat_settings(state, sender).await;
@@ -301,6 +299,18 @@ pub(super) async fn handle_presence(
                     Ok(newly_bound) => first_connection = newly_bound,
                     Err(e) => error!("Failed to persist name binding for {u}: {e}"),
                 }
+                // The binding check above ran before this insert, so two
+                // keys racing for a fresh name both pass it and only one
+                // insert wins. The loser must not go on as that name: it
+                // would replace the owner's key in memory, which is what DMs
+                // and channel keys are encrypted to.
+                if !first_connection
+                    && !matches!(db::get_user_key(&state.db, u).await, Ok(Some(bound)) if bound == pk)
+                {
+                    error!("Rejected presence for {u}: lost the race for the name");
+                    send_error(sender, errors::USERNAME_TAKEN).await;
+                    return Err(());
+                }
             }
 
             state.users.lock().await.insert(u.to_string());
@@ -345,17 +355,7 @@ pub(super) async fn handle_presence(
             super::scheduled::send_scheduled_messages(state, sender, u).await;
             super::scheduled::send_reminders(state, sender, u).await;
             super::send_ice_config(state, sender).await;
-            db::send_history(
-                &state.db,
-                sender,
-                default_channel_id,
-                None,
-                DEFAULT_HISTORY_LIMIT,
-            )
-            .await;
-            // The connection starts in the default channel without an
-            // explicit join, so its wiki snapshot has to be sent here.
-            super::wiki::send_wiki_index(state, sender, default_channel_id).await;
+            send_default_channel(state, sender, u, default_channel_id).await;
         }
     } else {
         send_error(sender, errors::INVALID_SIGNATURE).await;
@@ -424,8 +424,25 @@ pub(super) async fn handle_bot_presence(
     send_sounds(state, sender).await;
     send_voice_channels(state, sender, user_name.as_deref()).await;
     send_users(state, sender).await;
-    send_all_voice(state, sender).await;
+    send_all_voice(state, sender, &record.name).await;
     super::identity::send_server_identity(state, sender).await;
+    send_default_channel(state, sender, &record.name, default_channel_id).await;
+
+    Ok(())
+}
+
+/// Send the default channel's history and wiki index, which a connection gets
+/// without an explicit join. Gated like a join: the default channel can be
+/// made private like any other.
+async fn send_default_channel(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    user: &str,
+    default_channel_id: i32,
+) {
+    if !can_view_channel(state, user, ChannelKind::Text, default_channel_id).await {
+        return;
+    }
     db::send_history(
         &state.db,
         sender,
@@ -435,6 +452,4 @@ pub(super) async fn handle_bot_presence(
     )
     .await;
     super::wiki::send_wiki_index(state, sender, default_channel_id).await;
-
-    Ok(())
 }
