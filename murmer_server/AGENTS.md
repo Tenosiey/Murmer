@@ -69,10 +69,9 @@ Environment variables are documented in the Configuration section of
 
 Two of them change behaviour in ways worth knowing while developing:
 
-- **`ADMIN_TOKEN`** gates `/role`, the bootstrap path for the first Owner.
-  Without it, channel and wiki management stay open to everyone — the
-  historical fallback that keeps a small unadministered server usable. Every
-  other capability is role-gated regardless.
+- **`ADMIN_TOKEN`** gates `/role`, the HTTP bootstrap path for the first
+  Owner (the `set-role` CLI subcommand is the other). It grants nothing
+  else: every capability is role-gated whether or not it is set.
 - **`WEB_CLIENT_DIR`** makes the router serve the built client as its
   fallback, with unmatched paths falling back to `200.html` so the
   prerendered SPA routes its own deep links. That puts the client on the same
@@ -99,10 +98,10 @@ The crate version is bumped in lockstep with the client by `bun run bump` in
 ## QA checklist
 
 - `cargo fmt`, `cargo clippy --all-targets -- -D warnings` and `cargo test`.
-- Exercise WebSocket authentication: invalid signatures, stale timestamps.
+- Exercise WebSocket authentication: invalid signatures, and signatures over
+  another connection's challenge.
 - Verify uploads reject invalid MIME types, oversize payloads and categories
   disabled by the current upload policy.
-- Confirm channel and voice channel management respects role permissions when
-  `ADMIN_TOKEN` is configured.
+- Confirm channel and voice channel management respects role permissions.
 - For anything authorization-shaped, test the **denial** — that is the
   assertion that matters.

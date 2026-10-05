@@ -1,11 +1,12 @@
 //! Integration tests for the in-memory permission resolver: effective
 //! permissions (union of `@everyone` + assigned roles), the hierarchy position,
-//! and the no-`ADMIN_TOKEN` channel/wiki fallback.
+//! and the absence of any no-`ADMIN_TOKEN` fallback.
 
 use std::sync::Arc;
 
 use murmer_server::permissions::{
-    ADMINISTRATOR, DEFAULT_EVERYONE, MANAGE_CHANNELS, MANAGE_EMOJIS, SEND_MESSAGES, VIEW_CHANNELS,
+    ADMINISTRATOR, DEFAULT_EVERYONE, MANAGE_CHANNELS, MANAGE_EMOJIS, MANAGE_WIKI, SEND_MESSAGES,
+    VIEW_CHANNELS,
 };
 use murmer_server::ws::helpers::{effective_permissions, has_permission, top_position};
 use murmer_server::{AppState, RoleDef, db};
@@ -105,14 +106,15 @@ async fn permissions_stack_and_administrator_grants_all() {
 }
 
 #[tokio::test]
-async fn channel_management_is_open_without_admin_token() {
+async fn channel_management_stays_role_gated_without_admin_token() {
     let state = make_state(None).await;
     seed(&state, vec![role(1, VIEW_CHANNELS, 0, true, false)], &[]).await;
 
-    // No ADMIN_TOKEN: channel and wiki management fall open, but other
-    // capabilities stay role-gated.
-    assert!(has_permission(&state, "anyone", MANAGE_CHANNELS).await);
-    assert!(!has_permission(&state, "anyone", MANAGE_EMOJIS).await);
+    // Managing channels means seeing every private one and holding every
+    // encrypted channel's key, so it must not fall open on a server that
+    // simply never set ADMIN_TOKEN.
+    assert!(!has_permission(&state, "anyone", MANAGE_CHANNELS).await);
+    assert!(!has_permission(&state, "anyone", MANAGE_WIKI).await);
 }
 
 #[tokio::test]

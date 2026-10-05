@@ -70,7 +70,7 @@ fn public_key(name: &str) -> String {
 }
 
 /// Serve `/ws` with Alice bootstrapped as Owner, so she can make a private
-/// channel. `ADMIN_TOKEN` is set, or every member would see every channel.
+/// channel.
 async fn start_server() -> SocketAddr {
     let database = db::init(":memory:").await.expect("in-memory db");
     db::assign_named_role(&database, &public_key("alice"), "Owner", None)
@@ -78,7 +78,6 @@ async fn start_server() -> SocketAddr {
         .expect("bootstrap owner");
     let role_defs = db::list_role_defs(&database).await.expect("role defs");
     let state = Arc::new(AppState {
-        admin_token: Some("token".to_string()),
         role_defs: tokio::sync::Mutex::new(role_defs.into_iter().map(|d| (d.id, d)).collect()),
         ..AppState::new(database)
     });

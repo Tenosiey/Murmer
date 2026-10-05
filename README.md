@@ -88,9 +88,9 @@ Environment variables recognised by the server:
 | `MAX_VOICE_CHANNEL_USERS` | No | People allowed in one voice channel (default: 10, `0` for no limit) |
 | `MESSAGE_RETENTION_DAYS` | No | Delete channel messages, with their reactions and pins, once they are this many days old; checked hourly. DMs are kept. Unset or `0` keeps everything |
 
-Without `ADMIN_TOKEN` configured, channel and wiki management stay open to
-everyone so a small unadministered server remains usable; every other
-capability is still gated by roles.
+Every capability, channel and wiki management included, is gated by roles
+whether or not `ADMIN_TOKEN` is set, so a new server needs its first Owner
+assigned (below) before anyone can create channels.
 
 ## Running a server
 

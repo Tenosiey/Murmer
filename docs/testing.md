@@ -126,15 +126,12 @@ the sweep interval are both a minute long, so
 Most files call handlers and helpers directly. `tests/ws_routing_test.rs`
 instead serves `/ws` on an ephemeral port and signs in real clients, because
 the per-recipient filter it covers lives in the socket loop itself and is
-reachable no other way. Two things there are easy to get wrong:
+reachable no other way. One thing there is easy to get wrong:
 
 - **Asserting absence without a sleep.** After the action under test, one
   client broadcasts a status change. The global broadcast is ordered, so a
   frame the filter let through arrives before that mark; reading up to it is
   a complete check.
-- **Leaving `ADMIN_TOKEN` unset.** Without it every user holds
-  `MANAGE_CHANNELS` and so sees every private channel — a test of private
-  visibility then fails for a reason that is not a leak.
 
 ## Conventions worth keeping
 

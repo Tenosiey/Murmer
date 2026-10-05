@@ -614,15 +614,12 @@ pub async fn record_audit(
 
 /// Whether `user` is authorised for `required`.
 ///
-/// Without an `ADMIN_TOKEN` configured, channel and wiki management stay open
-/// to everyone so a small unadministered server remains usable (mirrors the
-/// historical fallback). Every other permission is always role-gated.
+/// Every permission is role-gated. Channel and wiki management used to be
+/// open to everyone on a server without `ADMIN_TOKEN`, and since managing
+/// channels also means seeing every private one and holding every encrypted
+/// channel's key, that fallback made private and encrypted channels protect
+/// nothing on the default deployment.
 pub async fn has_permission(state: &Arc<AppState>, user: &str, required: Permissions) -> bool {
-    if state.admin_token.is_none()
-        && (required == permissions::MANAGE_CHANNELS || required == permissions::MANAGE_WIKI)
-    {
-        return true;
-    }
     permissions::mask_allows(effective_permissions(state, user).await, required)
 }
 

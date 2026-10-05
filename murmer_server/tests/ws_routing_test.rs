@@ -40,9 +40,8 @@ fn public_key(name: &str) -> String {
 }
 
 /// Serve `/ws` on an ephemeral port, with the role definitions loaded the way
-/// `main` loads them. `ADMIN_TOKEN` must be set: without it every user holds
-/// `MANAGE_CHANNELS` and so, by design, sees every private channel. Alice is
-/// bootstrapped as Owner, the way `/role` does it, so she may create one.
+/// `main` loads them. Alice is bootstrapped as Owner, the way `/role` does
+/// it, so she may create a private channel.
 async fn start_server() -> SocketAddr {
     start_server_with_password(None).await
 }
@@ -55,7 +54,6 @@ async fn start_server_with_password(password: Option<&str>) -> SocketAddr {
         .expect("bootstrap owner");
     let role_defs = db::list_role_defs(&database).await.expect("role defs");
     let state = Arc::new(AppState {
-        admin_token: Some("token".to_string()),
         password: password.map(str::to_string),
         role_defs: tokio::sync::Mutex::new(role_defs.into_iter().map(|d| (d.id, d)).collect()),
         ..AppState::new(database)
