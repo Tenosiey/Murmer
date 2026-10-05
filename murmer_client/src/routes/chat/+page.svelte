@@ -36,6 +36,7 @@
   import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
   import ConversationPanel from '$lib/components/chat/ConversationPanel.svelte';
   import ConnectionOverlay from '$lib/components/chat/ConnectionOverlay.svelte';
+  import SidebarResizer from '$lib/components/chat/SidebarResizer.svelte';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
@@ -528,6 +529,14 @@
       expiryTicker = null;
     }
     clearGlobalHotkeyActions();
+  });
+
+  onMount(() => {
+    window.addEventListener('keydown', handleGlobalShortcut);
+  });
+
+  onDestroy(() => {
+    window.removeEventListener('keydown', handleGlobalShortcut);
   });
 
   function sendText() {
@@ -1578,48 +1587,6 @@
     }
   });
 
-  let startX = 0;
-  let resizingLeft = false;
-  let resizingRight = false;
-
-  function startLeftResize(e: MouseEvent) {
-    resizingLeft = true;
-    startX = e.clientX;
-  }
-
-  function startRightResize(e: MouseEvent) {
-    resizingRight = true;
-    startX = e.clientX;
-  }
-
-  function stopResize() {
-    resizingLeft = false;
-    resizingRight = false;
-  }
-
-  function handleMouseMove(e: MouseEvent) {
-    if (resizingLeft) {
-      const diff = e.clientX - startX;
-      startX = e.clientX;
-      leftSidebarWidth.update((w) => Math.max(80, w + diff));
-    } else if (resizingRight) {
-      const diff = startX - e.clientX;
-      startX = e.clientX;
-      rightSidebarWidth.update((w) => Math.max(80, w + diff));
-    }
-  }
-
-  onMount(() => {
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', stopResize);
-    window.addEventListener('keydown', handleGlobalShortcut);
-  });
-
-  onDestroy(() => {
-    window.removeEventListener('mousemove', handleMouseMove);
-    window.removeEventListener('mouseup', stopResize);
-    window.removeEventListener('keydown', handleGlobalShortcut);
-  });
   let serverStrength = $derived(pingToStrength($ping));
   let dragActive = $derived(dragDepth > 0);
   let statusMap = $derived(mergeStatuses($statuses, $onlineUsers, $offlineUsers));
@@ -1841,8 +1808,7 @@
       onToggleMicrophone={toggleMicrophone}
       onToggleOutput={toggleOutput}
     />
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="resizer" role="separator" aria-label="Resize channel list" onmousedown={startLeftResize}></div>
+    <SidebarResizer width={leftSidebarWidth} side="left" label="Resize channel list" />
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="chat"
@@ -2042,8 +2008,7 @@
         <audio autoplay use:remoteAudio={{ stream: peer.stream, userId: peer.id }}></audio>
       {/each}
     </div>
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="resizer" role="separator" aria-label="Resize user list" onmousedown={startRightResize}></div>
+    <SidebarResizer width={rightSidebarWidth} side="right" label="Resize user list" />
     <UserList
       {statusMap}
       onUserContextMenu={openUserRoleMenu}
@@ -2093,19 +2058,6 @@
     height: 100vh;
     background: var(--color-bg);
     overflow: hidden;
-  }
-
-  .resizer {
-    width: 5px;
-    margin: 0 -2px;
-    cursor: col-resize;
-    position: relative;
-    flex-shrink: 0;
-    z-index: 5;
-  }
-
-  .resizer:hover {
-    background: color-mix(in srgb, var(--color-primary) 35%, transparent);
   }
 
   .chat {
@@ -2227,10 +2179,6 @@
       max-height: 40vh;
       order: 0;
       border-bottom: 1px solid var(--color-surface-outline);
-    }
-
-    .resizer {
-      display: none;
     }
 
     .chat {
