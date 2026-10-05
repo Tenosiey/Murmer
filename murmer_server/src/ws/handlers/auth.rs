@@ -237,6 +237,15 @@ pub(super) async fn handle_presence(
             // names in memory, so a takeover would let the new connection
             // inherit the previous owner's privileges. The operator can
             // release a binding with the `unbind-name` CLI subcommand.
+            // Bots are named in the same namespace and keyed by name in
+            // memory just as accounts are, so a member must not take one's
+            // name any more than another member's.
+            if matches!(bot::db::bot_name_taken(&state.db, u, None).await, Ok(true)) {
+                error!("Rejected presence for {u}: name belongs to a bot");
+                send_error(sender, errors::USERNAME_TAKEN).await;
+                return Err(());
+            }
+
             match db::get_user_key(&state.db, u).await {
                 Ok(Some(bound)) if verified_key.as_deref() != Some(bound.as_str()) => {
                     error!("Rejected presence for {u}: name is bound to another key");
@@ -396,6 +405,18 @@ pub(super) async fn handle_bot_presence(
         .is_some_and(|current| current != record.name)
     {
         send_error(sender, errors::INVALID_BOT_TOKEN).await;
+        return Err(());
+    }
+
+    // The bot API refuses a name an account already holds, but a bot created
+    // before that check may still share one, and would connect as that
+    // member's identity in memory — with their roles.
+    if !matches!(db::get_user_key(&state.db, &record.name).await, Ok(None)) {
+        error!(
+            "Rejected bot {}: its name belongs to an account",
+            record.name
+        );
+        send_error(sender, errors::USERNAME_TAKEN).await;
         return Err(());
     }
 
