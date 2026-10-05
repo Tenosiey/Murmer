@@ -403,3 +403,22 @@ export function mergeThreadMessages(
   }
   return [...byId.values()].sort((a, b) => (a.id as number) - (b.id as number));
 }
+
+/**
+ * Whether `user` may edit `msg`: only their own text. Mirrors the server,
+ * which refuses the rest; this only keeps the menu from offering it.
+ */
+export function canEditMessage(msg: Message, user: string | null): boolean {
+  if (!user || typeof msg.id !== 'number') return false;
+  if (typeof msg.text !== 'string' || msg.text.trim() === '') return false;
+  // A forward's words are the original author's; the server refuses to let
+  // the forwarder rewrite them under their own attribution.
+  if (msg.forwardedFrom) return false;
+  return msg.user === user;
+}
+
+/** Whether `user` may delete `msg`: their own, or any with MANAGE_MESSAGES. */
+export function canDeleteMessage(msg: Message, user: string | null, canManage: boolean): boolean {
+  if (!user || typeof msg.id !== 'number') return false;
+  return msg.user === user || canManage;
+}

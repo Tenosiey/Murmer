@@ -9,6 +9,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Message, VoiceChannelInfo } from '../types';
 import {
   buildMessageBlocks,
+  canDeleteMessage,
+  canEditMessage,
   countThreadReplies,
   describeDuration,
   describeTyping,
@@ -487,5 +489,25 @@ describe('thread messages', () => {
   it('ignores a snapshot that answers a thread the user already left', () => {
     const merged = mergeThreadMessages(1, { rootId: 9, messages: [message({ id: 9 })] }, []);
     expect(merged).toEqual([]);
+  });
+});
+
+describe('message permissions', () => {
+  it('lets the author edit their own text but not a forward they posted', () => {
+    expect(canEditMessage(message({ id: 1 }), 'alice')).toBe(true);
+    expect(canEditMessage(message({ id: 1 }), 'bob')).toBe(false);
+    const forward = message({ id: 2, forwardedFrom: { id: 9, user: 'carol', channel: 'news', channelId: 1 } });
+    expect(canEditMessage(forward, 'alice')).toBe(false);
+  });
+
+  it('offers nothing on a message the server has not stored yet', () => {
+    expect(canEditMessage(message(), 'alice')).toBe(false);
+    expect(canDeleteMessage(message(), 'alice', true)).toBe(false);
+  });
+
+  it('lets a moderator delete anyone, a member only themselves', () => {
+    expect(canDeleteMessage(message({ id: 1 }), 'bob', false)).toBe(false);
+    expect(canDeleteMessage(message({ id: 1 }), 'bob', true)).toBe(true);
+    expect(canDeleteMessage(message({ id: 1 }), 'alice', false)).toBe(true);
   });
 });

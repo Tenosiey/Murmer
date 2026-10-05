@@ -95,7 +95,9 @@
     latestMessageId,
     describeTyping,
     countThreadReplies,
-    mergeThreadMessages
+    mergeThreadMessages,
+    canEditMessage,
+    canDeleteMessage
   } from '$lib/chat/helpers';
   import { dialogs } from '$lib/stores/dialogs';
   import {
@@ -978,23 +980,6 @@
     channelTopics.setTopic(currentChatChannelId, input);
   }
 
-  function canDeleteMessage(msg: Message): boolean {
-    const current = $session.user;
-    if (!current || typeof msg.id !== 'number') return false;
-    if (msg.user === current) return true;
-    return $can(PERMISSIONS.MANAGE_MESSAGES);
-  }
-
-  function canEditMessage(msg: Message): boolean {
-    const current = $session.user;
-    if (!current || typeof msg.id !== 'number') return false;
-    if (typeof msg.text !== 'string' || msg.text.trim() === '') return false;
-    // A forward's words are the original author's; the server refuses to let
-    // the forwarder rewrite them under their own attribution.
-    if (msg.forwardedFrom) return false;
-    return msg.user === current;
-  }
-
   async function editChatMessage(msg: Message) {
     if (typeof msg.id !== 'number' || typeof msg.text !== 'string') return;
     const input = await dialogs.prompt({
@@ -1427,8 +1412,12 @@
                 replyCount={typeof block.message.id === 'number'
                   ? (threadReplyCounts.get(block.message.id) ?? 0)
                   : 0}
-                canEdit={canEditMessage(block.message)}
-                canDelete={canDeleteMessage(block.message)}
+                canEdit={canEditMessage(block.message, $session.user)}
+                canDelete={canDeleteMessage(
+                  block.message,
+                  $session.user,
+                  $can(PERMISSIONS.MANAGE_MESSAGES)
+                )}
                 onFocusMessage={focusMessage}
                 onFocusForwarded={focusForwardedSource}
                 onReply={startReply}
