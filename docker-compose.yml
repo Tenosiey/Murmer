@@ -1,6 +1,8 @@
 services:
   server:
     build: ./murmer_server
+    # Or skip the build and run a released server; README.md has the details.
+    # image: ghcr.io/tenosiey/murmer-server:latest
     restart: unless-stopped
     # Load optional settings like ADMIN_TOKEN from a `.env` file
     env_file:

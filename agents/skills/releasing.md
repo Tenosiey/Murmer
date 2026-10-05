@@ -57,7 +57,9 @@ six versioned files:
    must already be on `main`.
 
 Either way `.github/workflows/release.yml` builds the NSIS installer, signs
-the updater artifacts and publishes a regular GitHub release.
+the updater artifacts and publishes a regular GitHub release. Once that
+succeeds it pushes the server image to `ghcr.io/tenosiey/murmer-server`,
+tagged with the version and `latest`.
 
 **Agent sessions stop after step 2.** A cloud agent cannot push tags or
 start workflows, so it bumps, opens the pull requests and then tells the
