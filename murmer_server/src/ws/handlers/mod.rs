@@ -142,6 +142,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
     let mut last_typing_broadcast: Option<std::time::Instant> = None;
     // This connection's memo of which channels it may receive frames for.
     let mut visibility = VisibilityCache::default();
+    let mut frame_budget = crate::security::FrameBudget::new(
+        state.rate_limiter.max_frames_per_second,
+        state.rate_limiter.clock.now(),
+    );
+    // Whether the previous frame was refused too, so a client stuck in a loop
+    // gets one error and one log line per run rather than one per frame.
+    let mut throttled = false;
 
     loop {
         tokio::select! {
@@ -155,6 +162,19 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                     _ => break,
                 };
                 crate::metrics::frame_received();
+
+                // Checked before the frame is even parsed: parsing is part of
+                // the work the budget exists to bound.
+                if !frame_budget.take(state.rate_limiter.clock.now()) {
+                    crate::metrics::rejected(crate::metrics::Limit::Frames);
+                    if !throttled {
+                        throttled = true;
+                        warn!("Frame rate limit exceeded for {}", user_name.as_deref().unwrap_or("unauthenticated client"));
+                        send_error(&mut sender, errors::FRAME_RATE_LIMIT).await;
+                    }
+                    continue;
+                }
+                throttled = false;
 
                 if let Ok(mut v) = serde_json::from_str::<Value>(&text) {
                     if let Some(t) = v.get("type").and_then(|t| t.as_str()) {
@@ -826,6 +846,7 @@ async fn handle_get_server_metrics(
         "rejectedAuth": m.rejected_auth,
         "rejectedUploads": m.rejected_uploads,
         "rejectedReplays": m.rejected_replays,
+        "rejectedFrames": m.rejected_frames,
     });
     send_json(sender, &msg).await;
 }

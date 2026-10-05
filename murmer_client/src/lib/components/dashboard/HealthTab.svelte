@@ -87,8 +87,9 @@
       <div class="setting-description">
         Requests turned away since the server started. A climbing auth count is
         somebody guessing keys; climbing messages or uploads is either a member
-        flooding or a limit set too low for the room. All four limits are set by
-        the server's environment, not from here.
+        flooding or a limit set too low for the room; climbing requests is a
+        client stuck in a loop. All five limits are set by the server's
+        environment, not from here.
       </div>
       {#if $serverMetrics === null}
         <div class="setting-description">Waiting for the server…</div>
@@ -98,7 +99,8 @@
             { label: 'Messages', value: $serverMetrics.rejectedMessages },
             { label: 'Authentication', value: $serverMetrics.rejectedAuth },
             { label: 'Uploads', value: $serverMetrics.rejectedUploads },
-            { label: 'Replayed signatures', value: $serverMetrics.rejectedReplays }
+            { label: 'Replayed signatures', value: $serverMetrics.rejectedReplays },
+            { label: 'Requests', value: $serverMetrics.rejectedFrames }
           ] as row (row.label)}
             <li class="storage-row">
               <span class="storage-label">{row.label}</span>

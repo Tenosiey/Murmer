@@ -228,9 +228,21 @@ Authentication, chat traffic and uploads are all rate limited per IP, so the
 service must run behind a proxy that forwards the real client IP.
 
 The limits (`MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
-`MAX_UPLOADS_PER_MINUTE`, `NONCE_EXPIRY_SECONDS` — documented in `README.md`)
+`MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND`, `NONCE_EXPIRY_SECONDS` —
+documented in `README.md`)
 are read once when the `RateLimiter` is built rather than on every check, so
 they take effect at startup.
+
+Underneath those, every connection has a frame budget (`FrameBudget` in
+`security.rs`) covering every frame it sends, whatever its type. The message
+limit only covers frames that post something; searches, history pages and
+reactions still queue on the one database thread, so without the budget a
+single client in a loop slowed the server for everyone. It is a token bucket
+rather than a window because honest clients are bursty — a reconnect that
+rejoins a full voice mesh sends dozens of frames at once — and it is per
+connection, not per IP, so a LAN party behind one address does not share it.
+A throttled connection gets one `frame-rate-limit` error per run of dropped
+frames, not one per frame.
 
 Each limiter map is swept end to end on a timer, and the window for the key
 being checked is always pruned on access, so the limit itself stays exact.
