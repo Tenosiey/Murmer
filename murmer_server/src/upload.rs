@@ -408,7 +408,17 @@ pub async fn upload(
         return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
     }
 
-    let key = format!("{}-{}", chrono::Utc::now().timestamp_millis(), filename);
+    // `/files` answers anyone who has the URL, password or not, and that
+    // includes files shared in private and encrypted channels. A timestamp
+    // and a filename alone are guessable, so the key carries 128 random bits:
+    // knowing a file was posted is not enough to fetch it.
+    let secret: [u8; 16] = rand::random();
+    let secret: String = secret.iter().map(|b| format!("{b:02x}")).collect();
+    let key = format!(
+        "{}-{secret}-{}",
+        chrono::Utc::now().timestamp_millis(),
+        filename
+    );
     let path = state.upload_dir.join(&key);
     // Append ".tmp" rather than replacing the extension: with_extension()
     // would map same-millisecond uploads of "a.pdf" and "a.zip" onto the same
