@@ -1,7 +1,11 @@
 <!--
-  Primary chat surface. Handles WebSocket lifecycle, message rendering, voice
-  channel state and peripheral UI such as sidebars and context menus. The
-  module coordinates many Svelte stores to keep the interface reactive.
+  Primary chat surface: the connection lifecycle, which channel is open,
+  the voice session, the composer and the message list with its scroll
+  behaviour. The sections around it live in `$lib/components/chat/` and
+  report back through callbacks; logic worth testing lives in
+  `$lib/chat/`. The scroll handling stays here on purpose: it reacts to
+  history pages, channel switches and jumps to a message, all of which this
+  page drives (see agents/skills/svelte-ui.md before moving it).
 -->
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
@@ -124,7 +128,6 @@
   import WikiView from '$lib/components/wiki/WikiView.svelte';
   import { wikilinks } from '$lib/wiki/links';
   import { fileDrop } from '$lib/chat/fileDrop';
-
 
   let message = $state('');
   let composer: MessageComposer | undefined = $state();
@@ -324,16 +327,11 @@
     chat.react(emojiPickerMessageId, emoji, 'add');
   }
 
-
-
   let inVoice = $state(false);
   let settingsOpen = $state(false);
   let currentChatChannelId: number = $state(0);
   let initialChannelSet = $state(false);
   let currentVoiceChannelId: number | null = $state(null);
-
-
-
 
   /* The server drops every connection into "general" and sends its history with
      the presence response, so the initial pick has to be "general" too — the
@@ -342,11 +340,6 @@
   function defaultChannel(list: ChannelInfo[]): ChannelInfo {
     return list.find((c) => c.name === DEFAULT_CHANNEL_NAME) ?? list[0];
   }
-
-
-
-
-
 
   function connectToServer() {
     const url = get(selectedServer) ?? 'ws://localhost:3001/ws';
@@ -815,13 +808,11 @@
     chat.loadDmHistory(user);
   }
 
-
   function handleComposerInput() {
     if (message.trim().length > 0) {
       chat.sendTyping();
     }
   }
-
 
   function leaveVoice() {
     if (currentVoiceChannelId !== null) {
@@ -919,7 +910,6 @@
     volumeMenuOpen = false;
     volumeMenuUser = null;
   }
-
 
   function openUserVolumeMenu(event: MouseEvent, user: string) {
     event.preventDefault();
