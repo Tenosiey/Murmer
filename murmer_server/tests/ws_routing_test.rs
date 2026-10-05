@@ -44,6 +44,11 @@ fn public_key(name: &str) -> String {
 /// `MANAGE_CHANNELS` and so, by design, sees every private channel. Alice is
 /// bootstrapped as Owner, the way `/role` does it, so she may create one.
 async fn start_server() -> SocketAddr {
+    start_server_with_password(None).await
+}
+
+/// [`start_server`], optionally behind `SERVER_PASSWORD`.
+async fn start_server_with_password(password: Option<&str>) -> SocketAddr {
     let database = db::init(":memory:").await.expect("in-memory db");
     db::assign_named_role(&database, &public_key("alice"), "Owner", None)
         .await
@@ -51,6 +56,7 @@ async fn start_server() -> SocketAddr {
     let role_defs = db::list_role_defs(&database).await.expect("role defs");
     let state = Arc::new(AppState {
         admin_token: Some("token".to_string()),
+        password: password.map(str::to_string),
         role_defs: tokio::sync::Mutex::new(role_defs.into_iter().map(|d| (d.id, d)).collect()),
         ..AppState::new(database)
     });
@@ -73,15 +79,30 @@ async fn start_server() -> SocketAddr {
 struct Client {
     name: &'static str,
     ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    /// Everything the server sent while authenticating, up to the pong.
+    greeting: Vec<Value>,
 }
 
 impl Client {
     /// Connect and authenticate as `name`.
     async fn connect(addr: SocketAddr, name: &'static str) -> Self {
+        Self::connect_with_password(addr, name, None).await
+    }
+
+    /// [`Client::connect`], presenting `password` to a protected server.
+    async fn connect_with_password(
+        addr: SocketAddr,
+        name: &'static str,
+        password: Option<&str>,
+    ) -> Self {
         let (ws, _) = connect_async(format!("ws://{addr}/ws"))
             .await
             .expect("connect");
-        let mut client = Self { name, ws };
+        let mut client = Self {
+            name,
+            ws,
+            greeting: Vec::new(),
+        };
 
         let key = signing_key(name);
         let timestamp = chrono::Utc::now().timestamp_millis().to_string();
@@ -92,12 +113,13 @@ impl Client {
                 "publicKey": public_key(name),
                 "signature": STANDARD.encode(key.sign(timestamp.as_bytes()).to_bytes()),
                 "timestamp": timestamp,
+                "password": password,
             }))
             .await;
         // Frames are handled in order, so the pong lands after the whole
         // post-auth snapshot.
         client.send(json!({ "type": "ping", "id": name })).await;
-        client.until(|f| f["type"] == "pong").await;
+        client.greeting = client.until(|f| f["type"] == "pong").await;
         client
     }
 
@@ -527,4 +549,162 @@ async fn a_client_in_a_loop_is_cut_off_after_its_burst() {
         (198..300).contains(&pongs),
         "{pongs} pongs before the limit"
     );
+}
+
+/// Every frame a connection receives before the server closes it.
+async fn frames_until_closed(ws: &mut WebSocketStream<MaybeTlsStream<TcpStream>>) -> Vec<Value> {
+    let mut seen = Vec::new();
+    loop {
+        let next = tokio::time::timeout(Duration::from_secs(5), ws.next())
+            .await
+            .unwrap_or_else(|_| panic!("connection stayed open; saw {seen:?}"));
+        match next {
+            Some(Ok(Message::Text(text))) => {
+                seen.push(serde_json::from_str(&text).expect("json frame"));
+            }
+            Some(Ok(_)) => {}
+            Some(Err(_)) | None => return seen,
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_socket_that_never_authenticated_hears_nothing() {
+    let addr = start_server_with_password(Some("hunter2")).await;
+    // Connected first, so it would be subscribed to everything below.
+    let (mut intruder, _) = connect_async(format!("ws://{addr}/ws"))
+        .await
+        .expect("connect");
+    let mut alice = Client::connect_with_password(addr, "alice", Some("hunter2")).await;
+
+    alice
+        .send(json!({ "type": "chat", "user": "alice", "text": "members only" }))
+        .await;
+    alice.mark("away").await;
+    alice.until_mark("alice", "away").await;
+
+    // Any frame from an unauthenticated socket ends it, after an error.
+    intruder
+        .send(Message::text(json!({ "type": "ping" }).to_string()))
+        .await
+        .expect("send");
+    let seen = frames_until_closed(&mut intruder).await;
+    assert!(
+        seen.iter().all(|f| f["type"] == "error"),
+        "an unauthenticated socket received server traffic: {seen:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_keyless_presence_does_not_reveal_whether_the_password_was_right() {
+    let addr = start_server_with_password(Some("hunter2")).await;
+    let mut answers = Vec::new();
+    for password in ["hunter2", "wrong"] {
+        let (mut ws, _) = connect_async(format!("ws://{addr}/ws"))
+            .await
+            .expect("connect");
+        ws.send(Message::text(
+            json!({ "type": "presence", "user": "mallory", "password": password }).to_string(),
+        ))
+        .await
+        .expect("send");
+        answers.push(frames_until_closed(&mut ws).await);
+    }
+    assert_eq!(answers[0], answers[1], "the answer is a password oracle");
+}
+
+#[tokio::test]
+async fn a_chat_frame_cannot_carry_a_forwarding_stamp_or_reactions() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+
+    alice
+        .send(json!({
+            "type": "chat",
+            "user": "alice",
+            "text": "I never said this",
+            "forwardedFrom": { "id": 1, "user": "bob", "channel": "general", "channelId": 1 },
+            "reactions": { "👍": ["bob", "carol"] },
+            "edited": true,
+        }))
+        .await;
+    let seen = bob.until(|f| f["type"] == "chat").await;
+    let chat = seen.last().unwrap();
+    assert!(chat.get("forwardedFrom").is_none(), "{chat}");
+    assert!(chat.get("edited").is_none(), "{chat}");
+    assert_eq!(chat["reactions"], json!({}), "{chat}");
+}
+
+#[tokio::test]
+async fn a_member_who_cannot_see_the_default_channel_gets_none_of_it() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    // `general` is the first channel the schema creates.
+    let general = 1;
+    alice
+        .send(json!({
+            "type": "set-channel-override",
+            "channelId": general,
+            "target": { "type": "everyone" },
+            "deny": murmer_server::permissions::VIEW_CHANNELS,
+        }))
+        .await;
+    alice.until(|f| f["type"] == "channel-list").await;
+    alice
+        .send(json!({ "type": "chat", "user": "alice", "text": "old secret" }))
+        .await;
+    alice.until(|f| f["type"] == "chat").await;
+
+    let mut bob = Client::connect(addr, "bob").await;
+    let history: Vec<_> = of_type(&bob.greeting, "history")
+        .into_iter()
+        .filter(|f| f["messages"].as_array().is_some_and(|m| !m.is_empty()))
+        .collect();
+    assert!(
+        history.is_empty(),
+        "bob got the hidden history: {history:?}"
+    );
+
+    alice
+        .send(json!({ "type": "chat", "user": "alice", "text": "new secret" }))
+        .await;
+    alice
+        .send(json!({ "type": "load-thread", "rootId": 1 }))
+        .await;
+    alice.mark("away").await;
+    bob.send(json!({ "type": "load-thread", "rootId": 1 }))
+        .await;
+    bob.send(json!({ "type": "ping", "id": "after-thread" }))
+        .await;
+    let mut seen = bob.until_mark("alice", "away").await;
+    seen.extend(bob.until(|f| f["type"] == "pong").await);
+    let leaked: Vec<_> = seen
+        .iter()
+        .filter(|f| f["type"] == "chat" || f["type"] == "thread")
+        .collect();
+    assert!(leaked.is_empty(), "bob read the hidden channel: {leaked:?}");
+}
+
+#[tokio::test]
+async fn who_sits_in_a_private_call_is_not_in_a_newcomers_snapshot() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    alice
+        .send(json!({ "type": "create-voice-channel", "name": "Backroom", "private": true }))
+        .await;
+    let frames = alice
+        .until(|f| f["type"] == "voice-channel-add" && f["name"] == "Backroom")
+        .await;
+    let channel = frames.last().unwrap()["channelId"]
+        .as_i64()
+        .expect("voice channel id");
+    join_voice(&mut alice, channel).await;
+
+    let bob = Client::connect(addr, "bob").await;
+    let leaked: Vec<_> = of_type(&bob.greeting, "voice-users")
+        .into_iter()
+        .filter(|f| f["channelId"] == channel)
+        .collect();
+    assert!(leaked.is_empty(), "bob saw the private call: {leaked:?}");
 }

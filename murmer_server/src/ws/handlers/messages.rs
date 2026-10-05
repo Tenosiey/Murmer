@@ -408,6 +408,14 @@ pub(super) async fn prepare_chat_body(
     v["channelId"] = Value::from(channel_id);
     if let Some(map) = v.as_object_mut() {
         map.remove("channel");
+        // The frame is stored as sent, so every field the *server* stamps on
+        // a message is dropped here: a client-written `forwardedFrom` would
+        // put words under another member's name with the server's own
+        // attribution chip on top (see `forwarded_body`), and the others
+        // would fake reactions or an edit that never happened.
+        for field in ["forwardedFrom", "reactions", "edited", "editedAt"] {
+            map.remove(field);
+        }
         // Group pings are authorized by `handle_chat` alone, which puts them
         // back once checked. A scheduled body must never carry one: it would
         // ping on the strength of a permission that may be gone by then.
@@ -926,7 +934,11 @@ pub(super) async fn handle_load_thread(
     sender: &mut SplitSink<WebSocket, Message>,
     v: &Value,
     channel_id: i32,
+    user_name: &Option<String>,
 ) {
+    if !can_view_text(state, user_name, channel_id).await {
+        return;
+    }
     let root_id = match v.get("rootId").and_then(|r| r.as_i64()) {
         Some(id) => id,
         None => {

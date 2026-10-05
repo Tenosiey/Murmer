@@ -49,6 +49,21 @@ Nonces combine the public key and the timestamp; replayed signatures are
 rejected. A nonce counts as unused once it is older than
 `NONCE_EXPIRY_SECONDS`, whether or not the periodic sweep has removed it yet.
 
+### Before authentication
+
+Every socket is subscribed to the server-wide broadcast and to the default
+channel the moment it connects, before anyone knows who it is. On a
+password-protected server the socket loop therefore delivers nothing until
+`presence` succeeds — the subscription is not the gate, and a connection that
+simply never authenticated used to read every public message live. For the
+same reason channel frames are filtered by visibility as they are delivered,
+not only at `join`: the default channel can be private, and access to a
+channel can be revoked while somebody sits in it.
+
+A keyless presence on a protected server is refused before the password is
+compared. Answering a right and a wrong password differently made it an
+oracle, and the authentication rate limit only sees key proofs.
+
 ## Direct messages
 
 DMs are end-to-end encrypted with NaCl `box` over the X25519 keys derived
@@ -217,7 +232,12 @@ to be the only thing between an upload and script execution there. Every
 response carries `Content-Security-Policy: sandbox` — a file that somehow
 rendered as a document would get an opaque origin and no scripts — and
 anything that is not an image, audio or video is sent with
-`Content-Disposition: attachment`. That second header is also what makes an
+`Content-Disposition: attachment`.
+
+`/files` itself is unauthenticated, password or not, and serves files shared
+in private and encrypted channels too. What keeps them private is the key:
+`upload` puts 128 random bits into every one, so knowing that a file was
+posted, and when, is not enough to fetch it. That second header is also what makes an
 attachment download at all: the client marks the link `download`, but
 browsers ignore that attribute across origins, and the desktop app is always
 on a different origin than the server.
@@ -262,6 +282,11 @@ limiter** — which is why it is worth a test at all.
   DOMPurify needs a DOM). Not happy-dom: it mis-drives DOMPurify's tree walk
   and lets `<script>` through, so the tests would pass on broken output.
 - **Avoid `{@html …}`** unless the content is explicitly sanitised.
+- **Links in rendered Markdown open outside the app.** A DOMPurify hook in
+  `markdown.ts` gives every external link `target="_blank"` and
+  `rel="noopener noreferrer"`. Followed in place, a link replaced the app with
+  somebody else's page — inside the desktop window, where a copy of the
+  backup screen is a convincing way to ask for a recovery phrase.
 - **A Content-Security-Policy is the second line behind DOMPurify.** The
   desktop shell's is in `tauri.conf.json`; a web client served through
   `WEB_CLIENT_DIR` gets the same policy from `web_client.rs`, held equal by

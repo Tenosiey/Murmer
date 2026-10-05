@@ -205,7 +205,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 messages::handle_load_history(&state, &mut sender, &v, channel_id, &user_name).await;
                             }
                             "load-thread" => {
-                                messages::handle_load_thread(&state, &mut sender, &v, channel_id).await;
+                                messages::handle_load_thread(&state, &mut sender, &v, channel_id, &user_name).await;
                             }
                             "pin-message" => {
                                 pins::handle_pin_message(&state, &mut sender, &v, &user_name).await;
@@ -574,6 +574,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                 if sender.send(Message::Text(frame)).await.is_err() { break; }
             }
             result = chan_rx.recv() => {
+                // Every connection starts subscribed to the default channel
+                // before anyone knows who it is, and stays subscribed to the
+                // channel it joined after its access to it is taken away. So
+                // the subscription is not the gate: nothing is delivered
+                // before authentication, and nothing from a channel the user
+                // may not (or no longer) see.
+                if !authenticated
+                    || !visibility.can_receive(&state, user_name.as_deref(), ChannelKind::Text, channel_id).await
+                {
+                    continue;
+                }
                 match result {
                     Ok(msg) => {
                         // The frame arrives ready to send: `recv` handed us a
@@ -594,6 +605,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                 }
             }
             result = global_rx.recv() => {
+                // The password protects reading as much as posting.
+                if !authenticated {
+                    continue;
+                }
                 match result {
                     Ok(routed) => {
                         // The sender decided who this frame is for; nothing

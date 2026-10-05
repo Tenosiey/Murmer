@@ -114,3 +114,22 @@ async fn channel_management_is_open_without_admin_token() {
     assert!(has_permission(&state, "anyone", MANAGE_CHANNELS).await);
     assert!(!has_permission(&state, "anyone", MANAGE_EMOJIS).await);
 }
+
+#[tokio::test]
+async fn an_offline_owner_still_outranks_a_moderator() {
+    let state = make_state(Some("token")).await;
+    // Bound and assigned in the database, but not connected since the server
+    // started, so absent from the in-memory assignments.
+    db::bind_user_key(&state.db, "owner", "owner-key")
+        .await
+        .expect("bind");
+    db::assign_named_role(&state.db, "owner-key", "Owner", None)
+        .await
+        .expect("assign owner");
+    let mut defs = db::list_role_defs(&state.db).await.expect("role defs");
+    defs.push(role(100, MANAGE_EMOJIS, 50, false, false));
+    seed(&state, defs, &[("mod", vec![100])]).await;
+
+    assert_eq!(top_position(&state, "owner").await, i64::MAX);
+    assert!(top_position(&state, "mod").await < top_position(&state, "owner").await);
+}

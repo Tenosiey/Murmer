@@ -36,6 +36,11 @@ what a manager can do, and both exist to prevent escalation:
 - moderation and role management require **strictly outranking** the target;
 - a manager can never grant a permission it does not itself hold.
 
+The target is usually offline, and the in-memory `user_roles` only holds
+accounts that connected since the server started. `top_position` reads a
+missing account from the database rather than as "no roles" — otherwise
+every Owner who had not logged in since a restart sat below any moderator.
+
 Role CRUD and assignment flow through the `create-role`/`update-role`/
 `delete-role`/`reorder-roles`/`set-user-roles` frames
 (`ws/handlers/roles.rs`), all requiring `MANAGE_ROLES`.
