@@ -13,6 +13,7 @@
 //! precisely when somebody needs it. Both actions add an entry of their own —
 //! see [`super::audit`].
 
+use chrono::{DateTime, TimeDelta, Utc};
 use rusqlite::params;
 
 use super::{Db, DbCall, DbError};
@@ -54,12 +55,22 @@ pub async fn purge_all_messages(db: &Db) -> Result<usize, DbError> {
 /// future-dated one late — acceptable for a storage bound, which is all this
 /// is. A row without a parseable timestamp is kept rather than guessed at.
 pub async fn delete_messages_older_than(db: &Db, days: u32) -> Result<usize, DbError> {
+    delete_messages_before(db, Utc::now() - TimeDelta::days(days.into())).await
+}
+
+/// Delete every channel message timestamped before `cutoff`, with its
+/// reactions and pins. See [`delete_messages_older_than`].
+///
+/// The cutoff is one fixed instant bound to all three deletes. Each statement
+/// evaluating `julianday('now', ..)` for itself let a message cross the line
+/// between them: its reactions and pins were kept, then the message deleted,
+/// leaving orphans that no later sweep would ever select.
+pub async fn delete_messages_before(db: &Db, cutoff: DateTime<Utc>) -> Result<usize, DbError> {
     // `CASE` rather than `AND json_valid(..)`: SQLite does not promise to
     // short-circuit `AND`, and `json_extract` on one malformed row would fail
     // the whole statement — and with it every future sweep.
     const EXPIRED: &str = "SELECT id FROM messages WHERE julianday(CASE WHEN json_valid(content) \
-         THEN json_extract(content, '$.timestamp') END) < julianday('now', ?1)";
-    let cutoff = format!("-{days} days");
+         THEN json_extract(content, '$.timestamp') END) < julianday(?1)";
     db.call_db(move |conn| {
         let tx = conn.transaction()?;
         // `EXPIRED` parses the JSON of every message, so it runs once into a
