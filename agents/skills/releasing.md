@@ -83,6 +83,12 @@ GitHub instead.
 Merges straight to a branch without a pull request do not appear, which is
 one more reason everything lands by pull request.
 
+`.github/release.yml` drops what a user would not notice: Dependabot's
+pull requests (labelled `dependencies`) and anything labelled
+`ignore-for-release`. Put that label on the `Release v<version>` pull
+request and the `dev` → `main` one when opening them; otherwise each shows
+up as a patch-notes line.
+
 **The release must not be marked pre-release.** The updater endpoint
 `releases/latest/download/latest.json` ignores prereleases, so a prerelease
 publishes artifacts nobody receives.
