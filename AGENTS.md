@@ -190,6 +190,9 @@ Beyond the automated checks:
   mixed in.
 - Commit messages are succinct and describe the change being made.
 - Feature branches merge into `dev`; `main` is the release branch.
+- Pull request titles become the release's patch notes verbatim, so title
+  each one as the user-facing change — see
+  [`agents/skills/releasing.md`](agents/skills/releasing.md).
 
 ## Where things live
 

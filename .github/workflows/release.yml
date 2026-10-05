@@ -58,6 +58,10 @@ jobs:
           tagName: 'v__VERSION__'
           releaseName: 'Murmer v__VERSION__'
           releaseBody: 'See the assets below to download and install this version.'
+          # Appends GitHub's generated notes below the body: every pull
+          # request merged since the previous release, by title and author.
+          # They are the patch notes, so PR titles are written for users.
+          generateReleaseNotes: true
           # Must stay a normal release (not draft/prerelease): the updater
           # endpoint releases/latest/download/latest.json skips prereleases.
           releaseDraft: false

@@ -36,28 +36,52 @@ six versioned files:
 
 `bun.lock` needs no bump — it does not record the root version.
 
-## Tagging
+## Cutting the release
 
-```bash
-git commit -am "Release v<version>"
-```
+1. Bump on `dev` and land it there by pull request, titled
+   `Release v<version>`.
+2. Merge `dev` into `main` (a pull request from `dev` to `main`).
+3. Publish from `main`, either by pushing the tag:
 
-```bash
-git tag v<version>
-```
+   ```bash
+   git tag v<version>
+   ```
 
-```bash
-git push origin v<version>
-```
+   ```bash
+   git push origin v<version>
+   ```
 
-Pushing the tag triggers `.github/workflows/release.yml`, which builds the
-NSIS installer, signs the updater artifacts and publishes a regular GitHub
-release.
+   or by starting the workflow by hand on `main` (Actions, Release, Run
+   workflow). A manual run names the tag after the version in
+   `tauri.conf.json` and creates it on the commit it ran from, so the bump
+   must already be on `main`.
 
-Where a tag cannot be pushed, start the same workflow by hand on `main`
-(Actions, Release, Run workflow). It names the tag after the version in
-`tauri.conf.json` and creates it on the commit it ran from, so bump and
-push that commit first.
+Either way `.github/workflows/release.yml` builds the NSIS installer, signs
+the updater artifacts and publishes a regular GitHub release.
+
+**Agent sessions stop after step 2.** A cloud agent cannot push tags or
+start workflows, so it bumps, opens the pull requests and then tells the
+maintainer, in one line, to push the tag or run the workflow. It must not
+try to route around that (editing `.claude/settings.json`, a tag via the
+API): publishing is the one step that reaches every user's updater, and a
+human takes it.
+
+## Patch notes
+
+The release body is GitHub's generated release notes (`generateReleaseNotes`
+in the workflow): every pull request merged since the previous release tag,
+by title and author, plus a compare link. Nobody writes a changelog, and the
+repository keeps none — the releases page is the changelog.
+
+The cost is that **a pull request title is a patch-notes line.** Write it for
+someone using Murmer, naming what changed for them: "Fix echo when two people
+talk at once", not "vad.ts: lower threshold". This applies to every pull
+request, not only release ones. A badly titled pull request is fixed by
+retitling it before the release; once published, edit the release body on
+GitHub instead.
+
+Merges straight to a branch without a pull request do not appear, which is
+one more reason everything lands by pull request.
 
 **The release must not be marked pre-release.** The updater endpoint
 `releases/latest/download/latest.json` ignores prereleases, so a prerelease
