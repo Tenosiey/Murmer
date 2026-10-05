@@ -426,6 +426,10 @@ pub struct AppState {
     /// Reverse proxies whose `X-Forwarded-For` is believed; see
     /// [`security::client_ip`].
     pub trusted_proxies: Vec<ipnet::IpNet>,
+    /// How long a connection may stay unauthenticated; see
+    /// [`ws::constants::AUTH_TIMEOUT`]. A field only so tests need not wait
+    /// out the real ten seconds.
+    pub auth_timeout: std::time::Duration,
 }
 
 impl AppState {
@@ -467,6 +471,7 @@ impl AppState {
             visibility_epoch: AtomicU64::new(0),
             upload_sessions: Mutex::default(),
             trusted_proxies: Vec::new(),
+            auth_timeout: ws::constants::AUTH_TIMEOUT,
         }
     }
 }

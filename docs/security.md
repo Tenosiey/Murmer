@@ -77,6 +77,10 @@ A keyless presence on a protected server is refused before the password is
 compared. Answering a right and a wrong password differently made it an
 oracle, and the authentication rate limit only sees key proofs.
 
+A socket that has not authenticated within `AUTH_TIMEOUT` (10 s) is closed.
+There is no per-IP cap on connections, so idle sockets were otherwise a
+cheap way to run the server out of file descriptors.
+
 ## Direct messages
 
 DMs are end-to-end encrypted with NaCl `box` over the X25519 keys derived

@@ -124,6 +124,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
     let _counted = crate::metrics::Connection::open();
     info!("Client connected");
 
+    // Measured from the moment the socket opened, before any of the setup
+    // below has to wait on the database.
+    let login_deadline = tokio::time::sleep(state.auth_timeout);
+    tokio::pin!(login_deadline);
     let (mut sender, mut receiver) = socket.split();
     // What this connection's `presence` must sign. Fresh per socket, so a
     // proof made for another server — or another connection — is worthless
@@ -165,6 +169,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
 
     loop {
         tokio::select! {
+            () = &mut login_deadline, if user_name.is_none() => {
+                info!("Closing a connection that never authenticated");
+                send_error(&mut sender, errors::UNAUTHENTICATED).await;
+                break;
+            }
             incoming = receiver.next() => {
                 let text = match incoming {
                     Some(Ok(Message::Text(t))) => t,

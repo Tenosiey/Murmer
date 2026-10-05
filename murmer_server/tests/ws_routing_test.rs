@@ -53,14 +53,19 @@ async fn start_server_with_password(password: Option<&str>) -> SocketAddr {
         .await
         .expect("bootstrap owner");
     let role_defs = db::list_role_defs(&database).await.expect("role defs");
-    let state = Arc::new(AppState {
+    serve(AppState {
         password: password.map(str::to_string),
         role_defs: tokio::sync::Mutex::new(role_defs.into_iter().map(|d| (d.id, d)).collect()),
         ..AppState::new(database)
-    });
+    })
+    .await
+}
+
+/// Serve `/ws` for `state` on an ephemeral port.
+async fn serve(state: AppState) -> SocketAddr {
     let router = Router::new()
         .route("/ws", get(ws_handler))
-        .with_state(state);
+        .with_state(Arc::new(state));
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("local addr");
     tokio::spawn(async move {
@@ -749,4 +754,23 @@ async fn who_sits_in_a_private_call_is_not_in_a_newcomers_snapshot() {
         .filter(|f| f["channelId"] == channel)
         .collect();
     assert!(leaked.is_empty(), "bob saw the private call: {leaked:?}");
+}
+
+/// A socket that never authenticates only holds a file descriptor, and there
+/// is no per-IP cap on connections, so it is closed after a grace period.
+#[tokio::test]
+async fn a_socket_that_never_authenticates_is_closed() {
+    let addr = serve(AppState {
+        auth_timeout: Duration::from_millis(200),
+        ..AppState::new(db::init(":memory:").await.expect("in-memory db"))
+    })
+    .await;
+    let (mut ws, _) = connect_async(format!("ws://{addr}/ws"))
+        .await
+        .expect("connect");
+    let seen = frames_until_closed(&mut ws).await;
+    assert_eq!(
+        seen,
+        vec![json!({ "type": "error", "message": "unauthenticated" })]
+    );
 }
