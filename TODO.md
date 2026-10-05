@@ -50,9 +50,6 @@ the idea comes from and what users will expect it to behave like.
       would delete every attachment of every encrypted channel. The options
       that remain are the author's client naming the files when it deletes
       its own message, or an operator-chosen age limit for attachments
-- [ ] Split `routes/chat/+page.svelte` (2.4k lines). The dashboard and
-      settings modals have been split into tabs; the chat page is the one
-      file left that has outgrown being read end to end
 - [ ] TURN support — voice does not connect at all behind symmetric NAT or a
       network that blocks UDP. The ICE configuration already comes from the
       server (`STUN_SERVERS`, the `ice-config` frame); what is missing is the
@@ -148,9 +145,11 @@ the idea comes from and what users will expect it to behave like.
 
 ### 🛠️ Other Features
 
-- [ ] Accessibility pass — keyboard navigation and screen-reader labels. The
-      main chat page carries five `aria-` attributes across 2.4k lines, so
-      most of the app is currently hard to reach without a mouse
+- [ ] Accessibility pass — keyboard navigation and screen-reader labels.
+      Context menus only open on right-click, and some modals do not take
+      focus when they open (`ChannelPermissionsModal` ignores Escape until
+      something inside it is clicked), so most of the app is currently hard
+      to reach without a mouse
 - [ ] Auto-away — switch to away after N minutes without input and back on
       return (Discord idle, TeamSpeak away). Status is manual only today
 - [ ] Backup and export. For operators: a consistent snapshot of the database
