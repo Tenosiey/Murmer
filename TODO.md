@@ -57,8 +57,6 @@ the idea comes from and what users will expect it to behave like.
       or everything one member posted in the last hour, with the ban
       (Discord's purge and "delete message history"). The Danger Zone only
       knows everything at once
-- [ ] Copy a link to a message, which opens the right server and channel and
-      scrolls to it. `highlightMessageById` already does the jumping
 - [ ] Outbound webhooks. The bot REST API covers "something else drives
       Murmer"; there is no way round for Murmer to notify something else when
       a message arrives

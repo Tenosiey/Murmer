@@ -138,6 +138,26 @@ honest shape for it and not a weakening: in a two-person conversation the
 sender could type the same words anyway, so there is nothing a stamp would
 protect. See [`security.md`](security.md).
 
+## Message links
+
+Client: `src/lib/message-link.ts`, with the jump itself in
+`routes/chat/+page.svelte` (`openMessageLink`).
+
+A link is an ordinary `https://<host>/chat#server=…&channel=…&message=…`,
+shaped like an invite link so one link works in a browser and inside the
+app. Clicked in a message, the chat page catches it before the desktop
+shell's opener would hand it to the system browser.
+
+**A link only opens a server the user already added.** Connecting hands a
+server the account name, the public key and the user's address, so a link
+anyone can post must not be able to start that. A link for an unknown
+server is refused with a message instead of offering to add it — adding a
+server is what invite links are for.
+
+The link names a channel, not a permission: one into a channel the reader
+cannot see stops at "a channel you cannot see", and the history request
+behind the jump is checked by the server like any other.
+
 ## Profiles, display names and nicknames
 
 Server: `ws/handlers/profile.rs`, `db/users.rs`. Client:
