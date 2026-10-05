@@ -37,6 +37,7 @@
   import ConversationPanel from '$lib/components/chat/ConversationPanel.svelte';
   import ConnectionOverlay from '$lib/components/chat/ConnectionOverlay.svelte';
   import SidebarResizer from '$lib/components/chat/SidebarResizer.svelte';
+  import DmPanel from '$lib/components/chat/DmPanel.svelte';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
@@ -59,10 +60,8 @@
   import { unread } from '$lib/stores/unread';
   import { threadData } from '$lib/stores/thread';
   import { dm } from '$lib/stores/dm';
-  import { channelDraft, dmDraft, drafts, threadDraft } from '$lib/stores/drafts';
-  import { peerKeys } from '$lib/stores/peerKeys';
+  import { channelDraft, drafts, threadDraft } from '$lib/stores/drafts';
   import { channelKeys } from '$lib/stores/channelKeys';
-  import { dmFingerprint } from '$lib/dm-crypto';
   import {
     watchedScreenShares,
     screenShareTiles,
@@ -166,8 +165,6 @@
   let replyingTo: Message | null = $state(null);
   let threadRootId: number | null = $state(null);
   const dmConversations = dm.conversations;
-  const dmActivePeer = dm.activePeer;
-  const peerKeyConflicts = peerKeys.conflicts;
   /* Last-read message id captured when entering the channel; the "New"
      divider stays anchored there until the user switches channels. */
   let unreadMarkerAfterId = $state(0);
@@ -851,47 +848,6 @@
     closeThread();
     dm.open(user);
     chat.loadDmHistory(user);
-  }
-
-  function closeDm() {
-    dm.close();
-  }
-
-  function sendDmMessage(text: string) {
-    const peer = $dmActivePeer;
-    if (!peer) return;
-    void chat.sendDm(peer, text).then((error) => {
-      if (error) void dialogs.alert({ title: 'Message not sent', message: error });
-    });
-  }
-
-  /** Accept a DM peer's changed identity key after the user confirmed it. */
-  function trustDmKey() {
-    const peer = $dmActivePeer;
-    if (peer) peerKeys.trust(peer);
-  }
-
-  /** Show the conversation's key fingerprint for out-of-band comparison. */
-  function verifyDmKeys() {
-    const peer = $dmActivePeer;
-    if (!peer) return;
-    // Verify the key actually in use: the unconfirmed new key if there is
-    // a conflict, the pinned one otherwise.
-    const peerKey = $peerKeyConflicts[peer] ?? peerKeys.pinned(peer);
-    if (!peerKey) {
-      void dialogs.alert({
-        title: 'No key yet',
-        message: `No encryption key is known for ${peer} on this server.`
-      });
-      return;
-    }
-    void dialogs.alert({
-      title: `Verify keys with ${peer}`,
-      message:
-        `Fingerprint: ${dmFingerprint(loadKeyPair().publicKey, peerKey)} — ` +
-        `compare it with ${peer} over another channel (in person, a call, …). ` +
-        `It must match exactly on both ends.`
-    });
   }
 
 
@@ -1670,7 +1626,6 @@
     threadRootId === null ? [] : mergeThreadMessages(threadRootId, $threadData, channelMessages)
   );
   let currentTopic = $derived($channelTopics[currentChatChannelId] ?? '');
-  let dmMessages = $derived($dmActivePeer ? ($dmConversations[$dmActivePeer] ?? []) : []);
   // Roles the current user may grant: below their own position and no more
   // powerful than themselves (the server enforces the same bounds).
   let assignableRoles = $derived(
@@ -1987,22 +1942,7 @@
         />
       {/if}
 
-      {#if $dmActivePeer}
-        <ConversationPanel
-          kind="dm"
-          title={$displayNames($dmActivePeer)}
-          messages={dmMessages}
-          emptyText="No messages yet. Say hi!"
-          placeholder={`Message ${$displayNames($dmActivePeer)}…`}
-          onSend={sendDmMessage}
-          onClose={closeDm}
-          draftKey={dmDraft($dmActivePeer)}
-          emphasize={(msg) => msg.from === $session.user}
-          keyWarning={$dmActivePeer in $peerKeyConflicts}
-          onTrustKey={trustDmKey}
-          onVerify={verifyDmKeys}
-        />
-      {/if}
+      <DmPanel />
 
       {#each $voice as peer (peer.id)}
         <audio autoplay use:remoteAudio={{ stream: peer.stream, userId: peer.id }}></audio>
