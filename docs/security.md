@@ -119,7 +119,7 @@ would protect nothing.
 
 ### What encryption does not cover
 
-All of this is deliberate, and is also stated in `README.md` for operators:
+All of this is deliberate, and `README.md` points operators here:
 
 - **Server-side search** — there is no text to index.
 - **Bots** — `POST /channels/:id/messages` refuses; a bot has no identity key

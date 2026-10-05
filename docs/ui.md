@@ -64,5 +64,14 @@ consumed outside the DOM. Keep all three in sync:
 | `static/logo/murmer-{dark,light}.svg` | favicon, README |
 | `src-tauri/icons/` | installer, window, tray |
 
-Regenerating the icons after changing the artwork is documented in the Brand
-section of [`../README.md`](../README.md).
+The `src-tauri/icons/` set is generated, never hand-edited. After changing
+the artwork, from `murmer_client/`:
+
+```bash
+bunx tauri icon static/logo/murmer-dark.svg -o src-tauri/icons
+```
+
+Delete the `android/`, `ios/` and `64x64.png` it also emits; this desktop-only
+app does not bundle them. The tray icons (`icons/tray-{dark,light}.png`) are
+separate: regenerate each with
+`bunx tauri icon static/logo/murmer-<variant>.svg -o <tmp> -p 64`.
