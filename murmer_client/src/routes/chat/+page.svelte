@@ -24,7 +24,6 @@
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
-  import ContextMenu from '$lib/components/ContextMenu.svelte';
   import SearchOverlay from '$lib/components/SearchOverlay.svelte';
   import HelpOverlay from '$lib/components/HelpOverlay.svelte';
   import VolumeMenu from '$lib/components/VolumeMenu.svelte';
@@ -39,11 +38,11 @@
   import SidebarResizer from '$lib/components/chat/SidebarResizer.svelte';
   import DmPanel from '$lib/components/chat/DmPanel.svelte';
   import UserMenu from '$lib/components/chat/UserMenu.svelte';
+  import ChannelMenu from '$lib/components/chat/ChannelMenu.svelte';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
-  import { categories } from '$lib/stores/categories';
-  import type { CategoryInfo, ChannelInfo, ContextMenuItem, ForwardInfo } from '$lib/types';
+  import type { ChannelInfo, ForwardInfo } from '$lib/types';
   import { forwardOptions, forwardedDmText, parseForwardTarget } from '$lib/chat/forward';
   import {
     parseWhen,
@@ -84,7 +83,6 @@
   import { httpBaseFromWs } from '$lib/server-url';
   import { connection, connectionError } from '$lib/stores/connection';
   import { uploadConfig, describeUploadRejection } from '$lib/stores/uploadConfig';
-  import { voiceDefaults } from '$lib/stores/voiceDefaults';
   import { slowModeWait } from '$lib/stores/chatSettings';
   import { describeServerError, isFatalConnectionError } from '$lib/errors';
   import { NOTICES, describeForceDisconnect } from '$lib/chat/notices';
@@ -115,13 +113,10 @@
   import {
     MAX_TOPIC_LENGTH,
     STATUS_LABELS,
-    VOICE_QUALITY_PRESETS,
-    DEFAULT_VOICE_PRESET,
     DEFAULT_CHANNEL_NAME,
     MAX_REMINDER_TEXT_LENGTH
   } from '$lib/chat/constants';
   import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
-  import ChannelPermissionsModal from '$lib/components/ChannelPermissionsModal.svelte';
   import SchedulePanel from '$lib/components/SchedulePanel.svelte';
   import UserProfileModal from '$lib/components/UserProfileModal.svelte';
   import WikiView from '$lib/components/wiki/WikiView.svelte';
@@ -133,9 +128,6 @@
   let previewUrl: string | null = $state(null);
   let pendingFile: File | null = $state(null);
   let dragDepth = $state(0);
-  let menuOpen = $state(false);
-  let menuX = $state(0);
-  let menuY = $state(0);
 
   let highlightedMessageId: number | null = $state(null);
   let pendingScrollToMessage: number | null = null;
@@ -916,50 +908,6 @@
     goto('/servers');
   }
 
-  async function createChannelPrompt(categoryId: number | null = null, isPrivate = false) {
-    const name = await dialogs.prompt({
-      title: isPrivate ? 'Create private text channel' : 'Create text channel',
-      label: 'Channel name',
-      placeholder: 'e.g. general',
-      confirmLabel: 'Create'
-    });
-    if (name) channels.create(name.trim(), categoryId, isPrivate);
-  }
-
-  async function selectVoicePreset(): Promise<{ quality: string; bitrate: number | null } | null> {
-    const quality = await dialogs.select({
-      title: 'Voice quality',
-      options: VOICE_QUALITY_PRESETS.map((preset) => ({
-        value: preset.quality,
-        label: preset.label,
-        description:
-          preset.bitrate && preset.bitrate > 0
-            ? `${Math.round(preset.bitrate / 1000)} kbps`
-            : 'Uncompressed audio'
-      })),
-      // The server's configured default, so a channel created without a
-      // thought still lands on what the operator wanted.
-      initial: $voiceDefaults.quality,
-      confirmLabel: 'Apply'
-    });
-    if (quality === null) return null;
-    const preset = VOICE_QUALITY_PRESETS.find((p) => p.quality === quality) ?? DEFAULT_VOICE_PRESET;
-    return { quality: preset.quality, bitrate: preset.bitrate };
-  }
-
-  async function createVoiceChannelPrompt(categoryId: number | null = null, isPrivate = false) {
-    const name = await dialogs.prompt({
-      title: isPrivate ? 'Create private voice channel' : 'Create voice channel',
-      label: 'Channel name',
-      placeholder: 'e.g. Lounge',
-      confirmLabel: 'Next'
-    });
-    if (!name) return;
-    const preset = await selectVoicePreset();
-    if (!preset) return;
-    voiceChannels.create(name.trim(), preset, categoryId, isPrivate);
-  }
-
   async function joinVoiceChannel(id: number) {
     if (!$session.user) return;
     if (inVoice && currentVoiceChannelId !== null) {
@@ -986,10 +934,8 @@
   }
 
   let userMenu: UserMenu | undefined = $state();
+  let channelMenu: ChannelMenu | undefined = $state();
 
-  let menuChannelId: number | null = $state(null);
-  let menuVoiceChannelId: number | null = $state(null);
-  let menuCategoryId: number | null = $state(null);
   let volumeMenuOpen = $state(false);
   let volumeMenuX = $state(0);
   let volumeMenuY = $state(0);
@@ -1000,34 +946,6 @@
     volumeMenuUser = null;
   }
 
-
-  function openChannelMenu(event: MouseEvent, channelId?: number, voice?: boolean) {
-    if (!$can(PERMISSIONS.MANAGE_CHANNELS)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    menuX = event.clientX;
-    menuY = event.clientY;
-    menuChannelId = null;
-    menuVoiceChannelId = null;
-    menuCategoryId = null;
-    if (channelId != null) {
-      if (voice) menuVoiceChannelId = channelId;
-      else menuChannelId = channelId;
-    }
-    menuOpen = true;
-  }
-
-  function openCategoryMenu(event: MouseEvent, category: CategoryInfo) {
-    if (!$can(PERMISSIONS.MANAGE_CHANNELS)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    menuX = event.clientX;
-    menuY = event.clientY;
-    menuChannelId = null;
-    menuVoiceChannelId = null;
-    menuCategoryId = category.id;
-    menuOpen = true;
-  }
 
   function openUserVolumeMenu(event: MouseEvent, user: string) {
     event.preventDefault();
@@ -1059,23 +977,6 @@
 
   function closeServerDashboard() {
     serverDashboardOpen = false;
-  }
-
-  // Per-channel permissions editor (private channels).
-  let channelPermsOpen = $state(false);
-  let channelPermsId: number | null = $state(null);
-  let channelPermsVoice = $state(false);
-  let channelPermsName = $state('');
-
-  function openChannelPermissions(id: number, voice: boolean, name: string) {
-    channelPermsId = id;
-    channelPermsVoice = voice;
-    channelPermsName = name;
-    channelPermsOpen = true;
-  }
-
-  function closeChannelPermissions() {
-    channelPermsOpen = false;
   }
 
   /** The member whose profile is open, or null. Works for the own profile
@@ -1248,110 +1149,6 @@
         openHelp();
         break;
     }
-  }
-
-  async function createCategoryPrompt() {
-    const name = await dialogs.prompt({
-      title: 'Create category',
-      label: 'Category name',
-      placeholder: 'e.g. Projects',
-      confirmLabel: 'Create'
-    });
-    if (name) categories.create(name.trim());
-  }
-
-  async function renameCategoryPrompt(id: number) {
-    const cat = $categories.find((c) => c.id === id);
-    const name = await dialogs.prompt({
-      title: 'Rename category',
-      label: 'Category name',
-      initial: cat?.name ?? '',
-      confirmLabel: 'Rename'
-    });
-    if (name) categories.rename(id, name.trim());
-  }
-
-  async function renameChannelPrompt(id: number) {
-    const ch = $channels.find((c) => c.id === id);
-    const name = await dialogs.prompt({
-      title: 'Rename channel',
-      label: 'Channel name',
-      initial: ch?.name ?? '',
-      confirmLabel: 'Rename'
-    });
-    if (name) channels.rename(id, name.trim());
-  }
-
-  async function renameVoiceChannelPrompt(id: number) {
-    const ch = $voiceChannels.find((c) => c.id === id);
-    const name = await dialogs.prompt({
-      title: 'Rename voice channel',
-      label: 'Channel name',
-      initial: ch?.name ?? '',
-      confirmLabel: 'Rename'
-    });
-    if (name) voiceChannels.rename(id, name.trim());
-  }
-
-  /** Builds the "Move to" submenu; empty when there is nowhere to move to. */
-  function buildMoveToItems(channelId: number, voice: boolean): ContextMenuItem[] {
-    const targets: ContextMenuItem[] = [];
-    const currentCh = voice
-      ? $voiceChannels.find((c) => c.id === channelId)
-      : $channels.find((c) => c.id === channelId);
-    const currentCatId = currentCh?.categoryId ?? null;
-
-    if (currentCatId !== null) {
-      targets.push({
-        label: '(no category)',
-        action: () => channels.move(channelId, null, voice)
-      });
-    }
-
-    for (const cat of $categories) {
-      if (cat.id !== currentCatId) {
-        targets.push({
-          label: cat.name,
-          action: () => channels.move(channelId, cat.id, voice)
-        });
-      }
-    }
-
-    return targets.length ? [{ label: 'Move to', children: targets }] : [];
-  }
-
-  /* Room counts offered when splitting a call. Not a mirror of the server's
-     cap — that one is the authority and validates every request; this is the
-     handful of splits worth one click. */
-  const BREAKOUT_ROOM_CHOICES = [2, 3, 4, 5, 6];
-
-  /**
-   * Builds the breakout entry for a voice channel: either splitting it, or
-   * closing the split it is part of. A channel is never both.
-   */
-  function buildBreakoutItems(channelId: number): ContextMenuItem[] {
-    const channel = $voiceChannels.find((c) => c.id === channelId);
-    if (!channel) return [];
-    const openOn = channel.breakoutParent ?? channelId;
-    const splitIsOpen =
-      channel.breakoutParent != null || $voiceChannels.some((c) => c.breakoutParent === channelId);
-    if (splitIsOpen) {
-      return [
-        {
-          label: 'Close Breakout Rooms',
-          action: () => voiceChannels.closeBreakouts(openOn)
-        }
-      ];
-    }
-    return [
-      {
-        label: 'Split into Breakout Rooms',
-        children: BREAKOUT_ROOM_CHOICES.map((rooms) => ({
-          label: `${rooms} rooms`,
-          action: () => voiceChannels.openBreakouts(channelId, rooms)
-        }))
-      }
-    ];
   }
 
   let messagesContainer: HTMLDivElement | undefined = $state();
@@ -1531,73 +1328,6 @@
     threadRootId === null ? [] : mergeThreadMessages(threadRootId, $threadData, channelMessages)
   );
   let currentTopic = $derived($channelTopics[currentChatChannelId] ?? '');
-  let channelMenuItems = $derived(!$can(PERMISSIONS.MANAGE_CHANNELS) ? [] : [
-    {
-      label: 'Create',
-      children: [
-        { label: 'Text Channel', action: () => createChannelPrompt() },
-        { label: 'Voice Channel', action: () => createVoiceChannelPrompt() },
-        { label: 'Private Text Channel', action: () => createChannelPrompt(null, true) },
-        { label: 'Private Voice Channel', action: () => createVoiceChannelPrompt(null, true) },
-        { label: 'Category', action: createCategoryPrompt }
-      ]
-    },
-    ...(menuChannelId != null
-      ? [
-          {
-            label: 'Edit Permissions',
-            action: () =>
-              openChannelPermissions(
-                menuChannelId!,
-                false,
-                $channels.find((c) => c.id === menuChannelId)?.name ?? ''
-              )
-          },
-          { label: 'Rename Channel', action: () => renameChannelPrompt(menuChannelId!) },
-          ...buildMoveToItems(menuChannelId, false),
-          { label: 'Delete Channel', action: () => channels.remove(menuChannelId!), danger: true }
-        ]
-      : []),
-    ...(menuVoiceChannelId != null
-      ? [
-          {
-            label: 'Edit Permissions',
-            action: () =>
-              openChannelPermissions(
-                menuVoiceChannelId!,
-                true,
-                $voiceChannels.find((c) => c.id === menuVoiceChannelId)?.name ?? ''
-              )
-          },
-          {
-            label: 'Set Voice Quality',
-            children: VOICE_QUALITY_PRESETS.map((preset) => ({
-              label:
-                preset.bitrate && preset.bitrate > 0
-                  ? `${preset.label} (${Math.round(preset.bitrate / 1000)} kbps)`
-                  : preset.label,
-              action: () =>
-                voiceChannels.configure(menuVoiceChannelId!, {
-                  quality: preset.quality,
-                  bitrate: preset.bitrate
-                })
-            }))
-          },
-          ...buildBreakoutItems(menuVoiceChannelId),
-          { label: 'Rename Voice Channel', action: () => renameVoiceChannelPrompt(menuVoiceChannelId!) },
-          ...buildMoveToItems(menuVoiceChannelId, true),
-          { label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannelId!), danger: true }
-        ]
-      : []),
-    ...(menuCategoryId != null
-      ? [
-          { label: 'Create Text Channel Here', action: () => createChannelPrompt(menuCategoryId) },
-          { label: 'Create Voice Channel Here', action: () => createVoiceChannelPrompt(menuCategoryId) },
-          { label: 'Rename Category', action: () => renameCategoryPrompt(menuCategoryId!) },
-          { label: 'Delete Category', action: () => categories.remove(menuCategoryId!), danger: true }
-        ]
-      : [])
-  ]);
 </script>
 
   <div class="page">
@@ -1608,8 +1338,8 @@
       {serverStrength}
       onJoinChannel={joinChannel}
       onJoinVoiceChannel={joinVoiceChannel}
-      onOpenChannelMenu={openChannelMenu}
-      onOpenCategoryMenu={openCategoryMenu}
+      onOpenChannelMenu={(event, id, voice) => channelMenu?.openChannel(event, id, voice)}
+      onOpenCategoryMenu={(event, category) => channelMenu?.openCategory(event, category)}
       onOpenUserVolumeMenu={openUserVolumeMenu}
       onViewScreenShare={handleViewScreenShare}
       onLeaveVoice={leaveVoice}
@@ -1655,13 +1385,6 @@
         open={serverDashboardOpen}
         close={closeServerDashboard}
         permissions={$myPermissions}
-      />
-      <ChannelPermissionsModal
-        open={channelPermsOpen}
-        close={closeChannelPermissions}
-        channelId={channelPermsId}
-        voice={channelPermsVoice}
-        channelName={channelPermsName}
       />
       <SchedulePanel
         open={remindersOpen}
@@ -1808,7 +1531,7 @@
     />
 </div>
 
-<ContextMenu bind:open={menuOpen} x={menuX} y={menuY} items={channelMenuItems} />
+<ChannelMenu bind:this={channelMenu} />
 <UserMenu bind:this={userMenu} onOpenProfile={openProfile} onOpenDm={openDm} />
 
 <VolumeMenu
