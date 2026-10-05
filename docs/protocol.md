@@ -159,7 +159,7 @@ a 24-byte nonce, a bounded size. The server never sees inside them. See
 | --- | --- | --- |
 | `/upload` | `upload.rs` | The connection's upload session (its `auth-challenge`, once `presence` proved it) as a multipart field ahead of the file, plus per-IP rate limit |
 | `/files/<key>` | `upload.rs` | none (unguessable key) |
-| `/link-preview` | `link_preview.rs` | none |
+| `/link-preview` | `link_preview.rs` | none; per-IP limit on uncached fetches |
 | `/role` | `admin.rs` | `ADMIN_TOKEN` bearer, constant-time compared |
 | `/api/…` | `bot/` | bot token — [`../murmer_server/BOT_API.md`](../murmer_server/BOT_API.md) |
 

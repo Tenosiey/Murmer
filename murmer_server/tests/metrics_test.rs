@@ -61,11 +61,13 @@ fn each_rate_limit_is_counted_under_its_own_name() {
     metrics::rejected(Limit::Messages);
     metrics::rejected(Limit::Auth);
     metrics::rejected(Limit::Frames);
+    metrics::rejected(Limit::Previews);
 
     let after = metrics::snapshot();
     assert_eq!(after.rejected_messages, before.rejected_messages + 2);
     assert_eq!(after.rejected_auth, before.rejected_auth + 1);
     assert_eq!(after.rejected_frames, before.rejected_frames + 1);
+    assert_eq!(after.rejected_previews, before.rejected_previews + 1);
     assert_eq!(after.rejected_uploads, before.rejected_uploads);
 }
 

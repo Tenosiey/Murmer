@@ -276,6 +276,27 @@ pub async fn check_upload_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bo
     allowed
 }
 
+/// Link previews one IP may have fetched per minute. Cached previews are
+/// free; this caps the pages a caller can make the server go and fetch, which
+/// is what keeps `/link-preview` from being a free anonymous fetch proxy.
+pub const MAX_PREVIEWS_PER_MINUTE: usize = 30;
+
+/// Check if an IP may make the server fetch another link preview.
+pub async fn check_preview_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool {
+    let allowed = check_window(
+        &rate_limiter.preview_attempts,
+        &rate_limiter.clock,
+        ip,
+        MAX_PREVIEWS_PER_MINUTE,
+    )
+    .await;
+    if !allowed {
+        metrics::rejected(metrics::Limit::Previews);
+        warn!("Rate limit exceeded for link previews from IP: {}", ip);
+    }
+    allowed
+}
+
 /// Check if a user is rate limited for messages.
 ///
 /// This function implements a sliding window rate limiter that allows up to

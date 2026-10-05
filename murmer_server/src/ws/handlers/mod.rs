@@ -875,6 +875,7 @@ async fn handle_get_server_metrics(
         "rejectedAuth": m.rejected_auth,
         "rejectedUploads": m.rejected_uploads,
         "rejectedFrames": m.rejected_frames,
+        "rejectedPreviews": m.rejected_previews,
     });
     send_json(sender, &msg).await;
 }

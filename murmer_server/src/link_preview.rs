@@ -10,11 +10,15 @@
 //! first, every resolved address must be public, and the connection is pinned
 //! to the vetted address so a DNS rebind cannot redirect the request into the
 //! local network. Redirects are followed manually and re-vetted per hop.
+//!
+//! The endpoint is unauthenticated (previews render before and outside any
+//! socket), so uncached fetches are rate limited per IP: without that the
+//! server is a free anonymous fetch proxy for anyone who finds it.
 
 use axum::{
     Json,
-    extract::Query,
-    http::{StatusCode, header},
+    extract::{ConnectInfo, Query, State},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use reqwest::{Url, redirect};
@@ -22,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 use tracing::debug;
@@ -71,7 +75,12 @@ fn lock_cache() -> std::sync::MutexGuard<'static, HashMap<String, (Instant, Prev
 }
 
 #[tracing::instrument(skip_all, fields(url = %q.url))]
-pub async fn link_preview(Query(q): Query<PreviewQuery>) -> Response {
+pub async fn link_preview(
+    State(state): State<Arc<crate::AppState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(q): Query<PreviewQuery>,
+) -> Response {
     let url = match validate_url(&q.url) {
         Ok(url) => url,
         Err(reason) => {
@@ -89,6 +98,12 @@ pub async fn link_preview(Query(q): Query<PreviewQuery>) -> Response {
             .map(|(_, preview)| preview.clone())
     } {
         return Json(hit).into_response();
+    }
+
+    let client_ip = crate::security::client_ip(&state.trusted_proxies, addr.ip(), &headers);
+    if !crate::security::check_preview_rate_limit(&state.rate_limiter, &client_ip.to_string()).await
+    {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
     }
 
     match fetch_preview(url).await {
@@ -187,7 +202,19 @@ fn is_public_v6(ip: Ipv6Addr) -> bool {
         // fc00::/7 (unique local)
         || (segments[0] & 0xfe00) == 0xfc00
         // fe80::/10 (link-local unicast)
-        || (segments[0] & 0xffc0) == 0xfe80)
+        || (segments[0] & 0xffc0) == 0xfe80
+        // The ranges below carry an IPv4 address inside the IPv6 one, which a
+        // gateway on the path may unwrap into the local network: NAT64
+        // (64:ff9b::/96 and the local-use 64:ff9b:1::/48), 6to4 (2002::/16),
+        // Teredo (2001::/32) and the deprecated IPv4-compatible ::/96. None
+        // is needed to reach a real web page.
+        || (segments[0] == 0x64 && segments[1] == 0xff9b)
+        || segments[0] == 0x2002
+        || (segments[0] == 0x2001 && segments[1] == 0)
+        || segments[..6].iter().all(|s| *s == 0)
+        // 2001:db8::/32 (documentation), 100::/64 (discard)
+        || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+        || (segments[0] == 0x100 && segments[1..4].iter().all(|s| *s == 0)))
 }
 
 /// Fetch the page, following redirects manually so every hop is re-vetted.
@@ -518,6 +545,13 @@ mod tests {
             "fc00::1",
             "fe80::1",
             "::ffff:192.168.1.1",
+            "64:ff9b::a00:1",
+            "64:ff9b:1::1",
+            "2002:c0a8:101::1",
+            "2001:0:4136:e378::1",
+            "::7f00:1",
+            "2001:db8::1",
+            "100::1",
         ] {
             assert!(!is_public_ip(ip.parse().unwrap()), "{ip} should be blocked");
         }

@@ -243,6 +243,8 @@ pub struct RateLimiter {
     pub auth_attempts: Mutex<SlidingWindows<VecDeque<Instant>>>,
     /// Upload attempt timestamps per IP (ip -> timestamps).
     pub upload_attempts: Mutex<SlidingWindows<VecDeque<Instant>>>,
+    /// Link preview fetches per IP (ip -> timestamps).
+    pub preview_attempts: Mutex<SlidingWindows<VecDeque<Instant>>>,
     /// Messages one user may send per minute.
     pub max_messages_per_minute: usize,
     /// Authentication attempts one IP may make per minute.
@@ -269,6 +271,7 @@ impl RateLimiter {
             message_times: Mutex::new(SlidingWindows::new(now)),
             auth_attempts: Mutex::new(SlidingWindows::new(now)),
             upload_attempts: Mutex::new(SlidingWindows::new(now)),
+            preview_attempts: Mutex::new(SlidingWindows::new(now)),
             max_messages_per_minute: security::get_max_messages_per_minute(),
             max_auth_attempts_per_minute: security::get_max_auth_attempts_per_minute(),
             max_uploads_per_minute: security::get_max_uploads_per_minute(),
