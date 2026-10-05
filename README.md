@@ -716,7 +716,8 @@ One-time setup (already done for this repository once the secrets exist):
 
 Publishing a release:
 
-1. Bump the version:
+1. Merge the finished work into `dev` (by pull request), then bump the
+   version on `dev`:
 
    ```bash
    cd murmer_client
@@ -732,16 +733,23 @@ Publishing a release:
    `Cargo.lock` — do not bump the server separately.
    The scheme stays semver-ordered — required, because installed clients only
    offer an update when the new version compares greater than theirs.
-2. Commit, tag and push:
+2. Commit the bump and merge `dev` into `main`.
+3. Push the tag from `main`, or run **Actions → Release → Run workflow** on
+   `main`, which creates the tag itself:
 
    ```bash
-   git commit -am "Release v<version>"
    git tag v<version>
    git push origin v<version>
    ```
 
 The workflow builds the NSIS installer, signs the updater artifacts and
-publishes everything as a regular (non-prerelease) GitHub release. Releases
+publishes everything as a regular (non-prerelease) GitHub release. The
+release notes are generated automatically: a list of every pull request
+merged since the previous release, by its title, plus a link to the full
+diff. Nothing has to be written by hand, but it means a pull request's title
+is what users read, so write it as a user-facing change ("Fix echo in voice
+channels", not "fix vad.ts"). To reword the notes after publishing, edit the
+release on GitHub. Releases
 must not be marked as pre-release — the updater endpoint
 `releases/latest/download/latest.json` ignores prereleases.
 
