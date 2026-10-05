@@ -92,6 +92,7 @@
   import { voiceDefaults } from '$lib/stores/voiceDefaults';
   import { slowModeWait } from '$lib/stores/chatSettings';
   import { describeServerError, isFatalConnectionError } from '$lib/errors';
+  import { NOTICES, describeForceDisconnect } from '$lib/chat/notices';
   import type { Message, WatchedScreenShare, WebcamTile } from '$lib/types';
   import {
     pingToStrength,
@@ -452,57 +453,20 @@
   chat.on('error', handleServerError);
 
   const handleForceDisconnect = (msg: Message) => {
-    if (!msg.user || msg.user !== get(session).user) return;
-    const action = msg.action === 'banned' ? 'banned from' : 'kicked from';
-    const by = typeof msg.by === 'string' && msg.by ? ` by ${msg.by}` : '';
-    leaveToServers(`You were ${action} this server${by}.`);
+    const reason = describeForceDisconnect(msg, get(session).user);
+    if (reason) leaveToServers(reason);
   };
   chat.on('force-disconnect', handleForceDisconnect);
 
-  const handleUserMuted = (msg: Message) => {
-    if (typeof msg.user !== 'string') return;
-    if (msg.user === get(session).user) {
-      const until = typeof msg.until === 'string' ? ` until ${new Date(msg.until).toLocaleString()}` : '';
-      setCommandFeedback(`You have been muted${until}.`, 'error');
-      return;
-    }
-    setCommandFeedback(`${msg.user} has been muted.`);
-  };
-  chat.on('user-muted', handleUserMuted);
-
-  const handleUserUnmuted = (msg: Message) => {
-    if (typeof msg.user !== 'string') return;
-    if (msg.user === get(session).user) {
-      setCommandFeedback('You are no longer muted.');
-      return;
-    }
-    setCommandFeedback(`${msg.user} has been unmuted.`);
-  };
-  chat.on('user-unmuted', handleUserUnmuted);
-
-  // A `warn` rule lets the message through and tells the sender privately.
-  // It carries the rule's name, never its pattern — what the server filters
-  // is not something everyone gets to read.
-  const handleAutomodWarning = (msg: Message) => {
-    const name = typeof msg.rule === 'string' ? msg.rule.trim() : '';
-    const rule = name ? `the “${name}” rule` : 'an auto-moderation rule';
-    setCommandFeedback(`Your message was flagged by ${rule}.`, 'error');
-  };
-  chat.on('automod-warning', handleAutomodWarning);
-
-  const handleUserUnbanned = (msg: Message) => {
-    if (typeof msg.user !== 'string') return;
-    setCommandFeedback(`${msg.user} has been unbanned.`);
-  };
-  chat.on('user-unbanned', handleUserUnbanned);
-
-  // Danger Zone actions rearrange the app under everyone at once: without a
-  // word, the history and half the channels simply vanish mid-sentence.
-  const handleMessagesPurged = (msg: Message) => {
-    const by = typeof msg.by === 'string' && msg.by ? ` by ${msg.by}` : '';
-    setCommandFeedback(`Every message on this server was deleted${by}.`, 'error');
-  };
-  chat.on('messages-purged', handleMessagesPurged);
+  // Moderation and maintenance announcements, which only need saying.
+  const noticeHandlers = Object.entries(NOTICES).map(([type, describe]) => {
+    const handler = (msg: Message) => {
+      const notice = describe(msg, get(session).user);
+      if (notice) setCommandFeedback(notice.text, notice.type);
+    };
+    chat.on(type, handler);
+    return [type, handler] as const;
+  });
 
   /* A breakout split moves people between voice channels, and the server can
      only ask: the audio is peer-to-peer, so the client is what tears down the
@@ -515,15 +479,6 @@
     void joinVoiceChannel(target);
   };
   chat.on('breakout-move', handleBreakoutMove);
-
-  const handleServerReset = (msg: Message) => {
-    const by = typeof msg.by === 'string' && msg.by ? ` by ${msg.by}` : '';
-    // The channel this client was viewing may be gone. The server re-sends
-    // the channel lists, and the effect that watches them drops back to
-    // `general` and rejoins, so all that is left here is saying why.
-    setCommandFeedback(`This server was reset${by}.`, 'error');
-  };
-  chat.on('server-reset', handleServerReset);
 
   onMount(() => {
     if (!get(session).user) {
@@ -555,12 +510,7 @@
     chat.off('message-deleted', handleMessageDeleted);
     chat.off('error', handleServerError);
     chat.off('force-disconnect', handleForceDisconnect);
-    chat.off('user-muted', handleUserMuted);
-    chat.off('user-unmuted', handleUserUnmuted);
-    chat.off('automod-warning', handleAutomodWarning);
-    chat.off('user-unbanned', handleUserUnbanned);
-    chat.off('messages-purged', handleMessagesPurged);
-    chat.off('server-reset', handleServerReset);
+    for (const [type, handler] of noticeHandlers) chat.off(type, handler);
     chat.off('breakout-move', handleBreakoutMove);
     chat.disconnect();
     if (currentVoiceChannelId !== null) {
