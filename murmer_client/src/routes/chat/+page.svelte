@@ -63,15 +63,13 @@
   import { channelKeys } from '$lib/stores/channelKeys';
   import { dmFingerprint } from '$lib/dm-crypto';
   import {
-    screenSharePeers,
     watchedScreenShares,
+    screenShareTiles,
     openScreenShare,
     closeScreenShare,
     closeAllScreenShares,
     leaveScreenShareAsViewer,
     stopScreenShare,
-    localScreenShareStream,
-    screenSharePreview,
     toggleScreenSharePreview
   } from '$lib/stores/screenShare';
   import ScreenShareLayer from '$lib/components/ScreenShareLayer.svelte';
@@ -89,7 +87,7 @@
   import { slowModeWait } from '$lib/stores/chatSettings';
   import { describeServerError, isFatalConnectionError } from '$lib/errors';
   import { NOTICES, describeForceDisconnect } from '$lib/chat/notices';
-  import type { Message, WatchedScreenShare, WebcamTile } from '$lib/types';
+  import type { Message, WebcamTile } from '$lib/types';
   import {
     pingToStrength,
     buildMessageBlocks,
@@ -1665,33 +1663,6 @@
     currentChannelEncrypted &&
       !($channelKeys[currentChatChannelId]?.keys?.[$channelKeys[currentChatChannelId]?.epoch ?? -1])
   );
-  // One window per share being watched, plus our own capture while the
-  // self-preview is on. The peer is looked up on every change rather than
-  // captured once: it is absent while the connection comes up, and the manager
-  // republishes it when the share changes (audio arriving alongside the video,
-  // say).
-  let screenShareTiles = $derived.by<WatchedScreenShare[]>(() => {
-    const tiles: WatchedScreenShare[] = $watchedScreenShares.map((userId) => ({
-      key: `peer:${userId}`,
-      userId,
-      peer: $screenSharePeers.find((p) => p.userId === userId) ?? null,
-      isSelf: false,
-      onClose: () => closeScreenShare(userId)
-    }));
-    if ($localScreenShareStream && $screenSharePreview) {
-      const stream = $localScreenShareStream;
-      tiles.push({
-        key: 'self',
-        userId: $session.user ?? 'You',
-        peer: { userId: $session.user ?? 'You', stream, hasAudio: stream.getAudioTracks().length > 0 },
-        isSelf: true,
-        // Closing the preview window is the same thing as switching the
-        // preview off — nothing renders the capture a second time then.
-        onClose: () => screenSharePreview.set(false)
-      });
-    }
-    return tiles;
-  });
   // Every camera on in the voice channel we are in: our own preview first,
   // then each peer whose camera the server announced. A peer with no stream
   // yet is still listed — the tile says "Connecting…" rather than appearing a
@@ -2101,8 +2072,8 @@
 
 <!-- Every share being watched, each in its own floating window over the app;
      our own capture joins them as a corner preview while sharing. -->
-{#if screenShareTiles.length > 0}
-  <ScreenShareLayer tiles={screenShareTiles} onCloseAll={closeAllScreenShares} />
+{#if $screenShareTiles.length > 0}
+  <ScreenShareLayer tiles={$screenShareTiles} onCloseAll={closeAllScreenShares} />
 {/if}
 
 {#if $connection === 'connecting' || $connection === 'disconnected' || $connection === 'failed'}

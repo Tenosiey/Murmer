@@ -10,10 +10,12 @@ import { ScreenShareManager } from '../screenshare/manager';
 import type {
   ScreenSharePeer,
   ScreenShareAudio,
-  ScreenShareSettings
+  ScreenShareSettings,
+  WatchedScreenShare
 } from '../types';
 import { chat } from './chat';
 import { connection } from './connection';
+import { session } from './session';
 import { screenShareMuted, screenShareVolume } from './settings';
 import type { Message } from '../types';
 
@@ -292,6 +294,39 @@ export function leaveScreenShareAsViewer(): void {
 export const screenSharePeers = {
   subscribe: screenSharePeersStore.subscribe
 };
+
+/**
+ * One window per share being watched, plus our own capture while the
+ * self-preview is on. The peer is looked up on every change rather than
+ * captured once: it is absent while the connection comes up, and the manager
+ * republishes it when the share changes (audio arriving alongside the video,
+ * say).
+ */
+export const screenShareTiles = derived(
+  [watchedScreenShares, screenSharePeersStore, localScreenShareStream, screenSharePreview, session],
+  ([$watched, $peers, $local, $preview, $session]) => {
+    const tiles: WatchedScreenShare[] = $watched.map((userId) => ({
+      key: `peer:${userId}`,
+      userId,
+      peer: $peers.find((p) => p.userId === userId) ?? null,
+      isSelf: false,
+      onClose: () => closeScreenShare(userId)
+    }));
+    if ($local && $preview) {
+      const self = $session.user ?? 'You';
+      tiles.push({
+        key: 'self',
+        userId: self,
+        peer: { userId: self, stream: $local, hasAudio: $local.getAudioTracks().length > 0 },
+        isSelf: true,
+        // Closing the preview window is the same thing as switching the
+        // preview off — nothing renders the capture a second time then.
+        onClose: () => screenSharePreview.set(false)
+      });
+    }
+    return tiles;
+  }
+);
 
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
