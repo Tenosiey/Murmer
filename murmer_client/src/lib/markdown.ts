@@ -85,6 +85,13 @@ const wikilinkExtension = {
   }
 };
 
+/* An image in a message is fetched by every reader's client the moment it
+   renders, so its author learns each reader's IP address, and when they read
+   it. Markdown images therefore render as a plain link to the image; pictures
+   meant for the chat go through `/upload`, whose files live on the server. */
+renderer.image = ({ href, text }: Tokens.Image) =>
+  `<a href="${escapeHtml(href)}">${escapeHtml(text || href)}</a>`;
+
 marked.use({ renderer, extensions: [wikilinkExtension as any] });
 
 /* A link in a message is somebody else's URL. Followed in place it replaces
@@ -148,7 +155,15 @@ export function renderMarkdown(text: string): string {
      rendered content. */
   const sanitized = DOMPurify.sanitize(html, {
     ALLOW_DATA_ATTR: false,
-    ADD_ATTR: ['data-wiki-channel', 'data-wiki-slug']
+    ADD_ATTR: ['data-wiki-channel', 'data-wiki-slug'],
+    /* Nothing in a message may make the reader's client fetch a URL on its
+       own: that turns any member into a tracker of who read what, from where
+       (see `renderer.image`). Raw HTML is the other way in, so the elements
+       and attributes that load a resource are dropped — SVG and MathML with
+       them, which markdown never emits. */
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ['img', 'audio', 'video', 'source', 'track', 'picture', 'input'],
+    FORBID_ATTR: ['style', 'src', 'srcset', 'poster', 'background']
   });
 
   if (renderCache.size >= MAX_RENDER_CACHE_ENTRIES) {

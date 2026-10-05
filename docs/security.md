@@ -303,6 +303,15 @@ limiter** — which is why it is worth a test at all.
   `rel="noopener noreferrer"`. Followed in place, a link replaced the app with
   somebody else's page — inside the desktop window, where a copy of the
   backup screen is a convincing way to ask for a recovery phrase.
+- **Nothing a member writes makes a reader fetch from a host they chose.**
+  Whatever a message embeds, every reader's client loads as it renders, so
+  an embed on the poster's own host is a tracking pixel that reports each
+  reader's IP address and reading time. Markdown images render as links,
+  the DOMPurify config drops every element and attribute that loads a
+  resource, a message's `image` is shown only when `serverFileUrl` places it
+  under the connected server's `/files/`, and `/link-preview` inlines the
+  OpenGraph image as a `data:` URL instead of returning its address. The
+  CSP cannot do this job: `img-src` has to allow any server a user adds.
 - **A Content-Security-Policy is the second line behind DOMPurify.** The
   desktop shell's is in `tauri.conf.json`; a web client served through
   `WEB_CLIENT_DIR` gets the same policy from `web_client.rs`, held equal by

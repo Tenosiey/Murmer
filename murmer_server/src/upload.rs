@@ -115,7 +115,7 @@ pub fn default_category_ids() -> Vec<String> {
 }
 
 /// Detect file type by magic bytes
-fn detect_file_type(data: &[u8]) -> Option<&'static str> {
+pub(crate) fn detect_file_type(data: &[u8]) -> Option<&'static str> {
     if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
         Some("image/jpeg")
     } else if data.starts_with(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {

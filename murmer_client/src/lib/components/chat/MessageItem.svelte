@@ -24,7 +24,7 @@
   import { giphyGifUrl } from '$lib/link-preview';
   import { customEmojis, shortcodeToEmoji } from '$lib/stores/customEmojis';
   import { selectedServer } from '$lib/stores/servers';
-  import { httpBaseFromWs } from '$lib/server-url';
+  import { httpBaseFromWs, serverFileUrl } from '$lib/server-url';
   import LinkPreview from '$lib/components/LinkPreview.svelte';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import RoleIcon from '$lib/components/RoleIcon.svelte';
@@ -91,6 +91,7 @@
     /^https?:\/\/\S+$/.test(message.text.trim()));
 
   let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
+  let imageUrl = $derived(serverFileUrl(message.image, httpBase));
 
   let shortTime = $derived(formatShortTime(message));
   let fullTime = $derived(formatFullTimestamp(message));
@@ -212,8 +213,8 @@
           {/each}
         </div>
       {/if}
-      {#if message.image}
-        <img src={message.image as string} alt="" loading="lazy" />
+      {#if imageUrl}
+        <img src={imageUrl} alt="" loading="lazy" />
       {/if}
       {#if message.attachment}
         <a
