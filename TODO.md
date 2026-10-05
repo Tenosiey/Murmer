@@ -18,11 +18,6 @@ the idea comes from and what users will expect it to behave like.
 
 ## 🐛 Bugs
 
-- [ ] Crackling/popping artefacts in transmitted voice audio while speaking —
-      the transmission gate now ramps instead of stepping, which removed the
-      clicks at the start and end of each burst; needs a re-test to see
-      whether anything remains mid-speech
-
 ---
 
 ## 🔧 Tech debt / hardening
