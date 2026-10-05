@@ -96,17 +96,16 @@ pub async fn broadcast_voice(state: &Arc<AppState>, channel_id: i32) {
     );
 }
 
-/// Sanitize and normalize a message timestamp.
-pub fn sanitize_message_timestamp(value: &mut Value) -> DateTime<Utc> {
+/// Stamp a message with the time the server received it.
+///
+/// Whatever timestamp the client sent is overwritten, not validated: keeping
+/// any well-formed value let a sender backdate or future-date what every
+/// reader sees, and sort a message in among ones posted long before it.
+/// Clients format the stamp in their own time zone.
+pub fn stamp_message_time(value: &mut Value) -> DateTime<Utc> {
     let now = Utc::now();
-    let parsed = value
-        .get("timestamp")
-        .and_then(|ts| ts.as_str())
-        .and_then(|ts| DateTime::parse_from_rfc3339(ts).ok())
-        .map(|dt| dt.with_timezone(&Utc))
-        .unwrap_or(now);
-    value["timestamp"] = Value::String(parsed.to_rfc3339());
-    parsed
+    value["timestamp"] = Value::String(now.to_rfc3339());
+    now
 }
 
 /// Create a JSON descriptor for a voice channel.

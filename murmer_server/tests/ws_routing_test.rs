@@ -774,3 +774,28 @@ async fn a_socket_that_never_authenticates_is_closed() {
         vec![json!({ "type": "error", "message": "unauthenticated" })]
     );
 }
+
+/// What readers see as a message's time is the server's, not the sender's.
+#[tokio::test]
+async fn a_message_is_stamped_with_the_servers_time() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+    let before = chrono::Utc::now();
+
+    alice
+        .send(json!({
+            "type": "chat",
+            "user": "alice",
+            "text": "from the past",
+            "timestamp": "2001-01-01T00:00:00Z",
+            "time": "00:00:00",
+        }))
+        .await;
+    let seen = bob.until(|f| f["type"] == "chat").await;
+    let chat = seen.last().unwrap();
+    let stamped =
+        chrono::DateTime::parse_from_rfc3339(chat["timestamp"].as_str().unwrap()).expect("rfc3339");
+    assert!(stamped >= before - chrono::Duration::seconds(1), "{chat}");
+    assert_ne!(chat["time"], "00:00:00", "{chat}");
+}

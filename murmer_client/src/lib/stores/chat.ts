@@ -779,12 +779,10 @@ function createChatStore() {
   ): string | null {
     if (!wsManager.isConnected()) return 'Not connected to the server.';
 
-    const now = new Date();
+    // No timestamp: the server stamps every message with its own time.
     const payload: Record<string, unknown> = {
       type: 'chat',
       user,
-      time: now.toLocaleTimeString(),
-      timestamp: now.toISOString(),
       ...extra
     };
 
@@ -896,14 +894,11 @@ function createChatStore() {
     }
     const payload = encryptDm(text, key, loadKeyPair().secretKey);
     if (!payload) return 'The message could not be encrypted.';
-    const now = new Date();
     wsManager.send({
       type: 'dm',
       to,
       nonce: payload.nonce,
-      ciphertext: payload.ciphertext,
-      time: now.toLocaleTimeString(),
-      timestamp: now.toISOString()
+      ciphertext: payload.ciphertext
     });
     return null;
   }

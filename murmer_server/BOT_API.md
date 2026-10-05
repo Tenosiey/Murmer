@@ -727,12 +727,12 @@ Once authenticated, bots can send messages the same way as regular clients:
 {
   "type": "chat",
   "user": "GreeterBot",
-  "text": "Hello everyone!",
-  "timestamp": "2026-03-10T12:00:00Z"
+  "text": "Hello everyone!"
 }
 ```
 
-The server broadcasts the message to the channel and persists it. Note that
+The server stamps the message with its own time, broadcasts it to the
+channel and persists it. Note that
 WebSocket messages from bots are not automatically tagged with `"bot": true` –
 use the REST API if you need that tag.
 
