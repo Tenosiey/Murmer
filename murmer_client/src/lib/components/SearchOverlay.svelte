@@ -140,7 +140,7 @@
       <form class="search-form" onsubmit={(event) => { event.preventDefault(); performSearch(); }}>
         <input
           type="search"
-          placeholder="Search messages and wiki pages"
+          placeholder="Search — from: in: has:file before: after:"
           aria-label="Search messages and wiki pages"
           bind:value={query}
           bind:this={inputEl}
@@ -151,7 +151,8 @@
       {#if encrypted}
         <p class="search-status">
           This channel is end-to-end encrypted, so its messages never reach the server as text
-          and cannot be searched. Its wiki pages still can.
+          and cannot be searched by their words. Its wiki pages, and the from:, before: and
+          after: filters, still can.
         </p>
       {/if}
       {#if error}

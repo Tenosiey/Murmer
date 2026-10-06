@@ -68,6 +68,7 @@
   } from '$lib/message-link';
   import { isWebClient } from '$lib/platform';
   import { parseSlashCommand } from '$lib/chat/commands';
+  import { parseSearchQuery } from '$lib/chat/search';
   import { pinned } from '$lib/stores/pins';
   import { scheduledAttention } from '$lib/stores/scheduled';
   import { typing } from '$lib/stores/typing';
@@ -691,11 +692,16 @@
 
   function handleSearchResult(msg: Message) {
     if (typeof msg.id !== 'number') return;
+    // An `in:` search can answer from another channel.
+    if (typeof msg.channelId === 'number') joinChannel(msg.channelId);
     focusMessage(msg.id);
   }
 
   function doSearch(query: string) {
-    return chat.search(currentChatChannelId, query, 50);
+    const parsed = parseSearchQuery(query, $channels);
+    if ('error' in parsed) return Promise.reject(new Error(parsed.error));
+    const channelId = parsed.channelId ?? currentChatChannelId;
+    return chat.search(channelId, parsed.text, 50, parsed.filters);
   }
 
   /**

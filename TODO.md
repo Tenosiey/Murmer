@@ -65,9 +65,6 @@ the idea comes from and what users will expect it to behave like.
       forwarding is: the server would have to see the votes to count them
 - [ ] Saved messages — a personal bookmark list, separate from the
       server-wide pins
-- [ ] Search filters — `from:`, `in:`, `has:file`, `before:`/`after:` in the
-      search overlay (`chat/search.ts`), the way Discord and Slack search
-      works
 - [ ] Synced read state. Last-read ids live in `localStorage`
       (`stores/unread.ts`), so the desktop app and the web client each think
       the other's reading is still unread. Per-user read markers on the

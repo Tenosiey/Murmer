@@ -130,25 +130,71 @@ pub(super) fn fts_match_expression(query: &str) -> Option<String> {
     }
 }
 
+/// Narrowing for a message search beyond its words: `from:`, `has:file`,
+/// `before:` and `after:` in the search box. The two dates are RFC 3339 UTC
+/// strings in the exact shape [`crate::ws::helpers::stamp_message_time`]
+/// writes, which is what lets SQLite compare them as plain text.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct SearchFilters {
+    /// Account name of the author; never a display name.
+    pub from: Option<String>,
+    /// Only messages carrying an uploaded file or image.
+    pub has_file: bool,
+    /// Only messages stamped strictly before this time.
+    pub before: Option<String>,
+    /// Only messages stamped at or after this time.
+    pub after: Option<String>,
+}
+
 /// Search for messages within a channel using the full-text index over the
 /// message text, newest first.
+///
+/// Filters alone are a search too ("everything alice posted"), so the words
+/// may be empty when a filter is set. They read the author and timestamp the
+/// server stamped into the stored JSON, which stay plaintext in an encrypted
+/// channel: author and date filters reach there even though words cannot
+/// (an attachment there is sealed, so `has:file` cannot).
 pub async fn search_messages(
     db: &Db,
     channel_id: i32,
     query: &str,
+    filters: &SearchFilters,
     limit: i64,
 ) -> Result<Vec<(i64, String)>, DbError> {
-    let Some(match_expr) = fts_match_expression(query) else {
+    let match_expr = fts_match_expression(query);
+    if match_expr.is_none() && *filters == SearchFilters::default() {
         return Ok(Vec::new());
-    };
+    }
+    let filters = filters.clone();
     db.call_db(move |conn| {
+        // `j` is NULL for a malformed row, so json_extract never sees it: an
+        // error there would abort the whole search, not just skip the row.
         let mut stmt = conn.prepare_cached(
-            "SELECT id, content FROM messages WHERE channel_id = ?1 AND id IN \
-             (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?2) \
-             ORDER BY id DESC LIMIT ?3",
+            "SELECT id, content FROM (SELECT id, content, \
+             CASE WHEN json_valid(content) THEN content END AS j \
+             FROM messages WHERE channel_id = ?1) \
+             WHERE (?2 IS NULL OR id IN \
+               (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?2)) \
+             AND (?3 IS NULL OR json_extract(j, '$.user') = ?3) \
+             AND (?4 = 0 OR json_extract(j, '$.attachment') IS NOT NULL \
+               OR json_extract(j, '$.image') IS NOT NULL) \
+             AND (?5 IS NULL OR json_extract(j, '$.timestamp') < ?5) \
+             AND (?6 IS NULL OR json_extract(j, '$.timestamp') >= ?6) \
+             ORDER BY id DESC LIMIT ?7",
         )?;
         let rows = stmt
-            .query_map(params![channel_id, match_expr, limit], row_to_id_content)?
+            .query_map(
+                params![
+                    channel_id,
+                    match_expr,
+                    filters.from,
+                    filters.has_file,
+                    filters.before,
+                    filters.after,
+                    limit
+                ],
+                row_to_id_content,
+            )?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     })

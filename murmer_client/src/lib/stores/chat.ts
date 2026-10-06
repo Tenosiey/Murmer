@@ -11,7 +11,7 @@ import {
   normalizeReactions,
   mergeHistory
 } from '../message-utils';
-import { parseWikiSearchHits } from '../chat/search';
+import { parseWikiSearchHits, type SearchFilters } from '../chat/search';
 import { parseGroupMentions, pingsMe, type GroupMentions } from '../chat/mentions';
 import { mentionInbox, type InboxEntry } from './mentionInbox';
 import { describeServerError } from '../errors';
@@ -1021,13 +1021,18 @@ function createChatStore() {
    * Search a channel: its message history and its wiki pages, which the
    * server answers on one frame from two full-text indexes.
    */
-  function search(channelId: number, query: string, limit = 50): Promise<SearchResults> {
+  function search(
+    channelId: number,
+    query: string,
+    limit = 50,
+    filters: SearchFilters = {}
+  ): Promise<SearchResults> {
     if (!wsManager.isConnected()) {
       return Promise.reject(new Error('Not connected to server'));
     }
 
     const trimmedQuery = query.trim();
-    if (!trimmedQuery) {
+    if (!trimmedQuery && Object.keys(filters).length === 0) {
       return Promise.resolve({ messages: [], pages: [] });
     }
 
@@ -1047,6 +1052,7 @@ function createChatStore() {
         type: 'search-history',
         channelId,
         query: trimmedQuery,
+        filters,
         limit: boundedLimit,
         requestId
       };
