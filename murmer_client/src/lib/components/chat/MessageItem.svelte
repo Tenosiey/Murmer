@@ -102,6 +102,12 @@
 
   let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
   let imageUrl = $derived(serverFileUrl(message.image, httpBase));
+  /* Held to this server's /files/ like images: an attachment card, or a
+     voice message the listener presses Play on, would otherwise fetch from
+     whatever host the sender wrote and report the reader's address to it. */
+  let attachmentUrl = $derived(
+    message.attachment ? serverFileUrl(message.attachment.url, httpBase) : null
+  );
 
   let shortTime = $derived(formatShortTime(message));
   let fullTime = $derived(formatFullTimestamp(message));
@@ -241,13 +247,13 @@
       {:else if imageUrl}
         <img src={imageUrl} alt="" loading="lazy" />
       {/if}
-      {#if message.attachment && isPlayableAudio(message.attachment.name)}
-        <AudioAttachment url={message.attachment.url} name={message.attachment.name} />
+      {#if message.attachment && attachmentUrl && isPlayableAudio(message.attachment.name)}
+        <AudioAttachment url={attachmentUrl} name={message.attachment.name} />
       {/if}
-      {#if message.attachment}
+      {#if message.attachment && attachmentUrl}
         <a
           class="attachment-card"
-          href={message.attachment.url}
+          href={attachmentUrl}
           download={message.attachment.name}
           target="_blank"
           rel="noopener noreferrer"

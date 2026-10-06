@@ -341,8 +341,8 @@ limiter** — which is why it is worth a test at all.
   an embed on the poster's own host is a tracking pixel that reports each
   reader's IP address and reading time. Markdown images render as links,
   the DOMPurify config drops every element and attribute that loads a
-  resource, a message's `image` is shown only when `serverFileUrl` places it
-  under the connected server's `/files/`, and `/link-preview` inlines the
+  resource, a message's `image` and `attachment` are shown only when
+  `serverFileUrl` places them under the connected server's `/files/`, and `/link-preview` inlines the
   OpenGraph image as a `data:` URL instead of returning its address. The
   CSP cannot do this job: `img-src` has to allow any server a user adds.
 - **A Content-Security-Policy is the second line behind DOMPurify.** The
