@@ -25,6 +25,12 @@
 //! profile frame is built through [`db::UserProfile::active_status`], which
 //! leaves a lapsed line out, and clients drop it on their own clock while
 //! connected. A timer would be one more background task for a cosmetic line.
+//!
+//! Every frame here is broadcast to every connection, so each is published
+//! text in all but name. [`may_publish`] holds them to the mute and message
+//! rate limit a chat message passes, and [`screened`] to the same
+//! auto-moderation and profanity filter: without that a muted member kept
+//! talking to everyone through their status line.
 
 use crate::ws::{constants::*, errors, helpers::*, validation::*};
 use crate::{AppState, db, permissions};
@@ -33,6 +39,41 @@ use futures::stream::SplitSink;
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::{error, info};
+
+/// Whether `user` may broadcast a profile change: not muted, and inside the
+/// message rate limit. Sends the refusal itself.
+async fn may_publish(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    user: &str,
+) -> bool {
+    if super::moderation::is_muted(state, user).await {
+        send_error(sender, errors::MUTED).await;
+        return false;
+    }
+    if !crate::security::check_message_rate_limit(&state.rate_limiter, user).await {
+        send_error(sender, errors::MESSAGE_RATE_LIMIT).await;
+        return false;
+    }
+    true
+}
+
+/// `text` run through auto-moderation and the profanity mask, as a chat
+/// message is, or `None` when a rule blocked it (the sender has been told).
+async fn screened(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    user: &str,
+    text: String,
+) -> Option<String> {
+    if text.is_empty() {
+        return Some(text);
+    }
+    if super::automod::screen(state, sender, user, &text).await == super::automod::Screen::Blocked {
+        return None;
+    }
+    Some(super::chat_settings::mask_text(state, &text).await)
+}
 
 /// Send all configured avatars to a newly connected client.
 pub(super) async fn send_all_avatars(
@@ -165,6 +206,10 @@ pub(super) async fn handle_set_avatar(
         return;
     };
 
+    if !may_publish(state, sender, requester).await {
+        return;
+    }
+
     let new_avatar = match v.get("avatar") {
         Some(raw) if raw.is_null() => String::new(),
         Some(raw) => {
@@ -283,6 +328,23 @@ pub(super) async fn handle_set_profile(
     if display_name.is_none() && about.is_none() {
         return;
     }
+    if !may_publish(state, sender, requester).await {
+        return;
+    }
+    let display_name = match display_name {
+        Some(text) => match screened(state, sender, requester, text).await {
+            Some(text) => Some(text),
+            None => return,
+        },
+        None => None,
+    };
+    let about = match about {
+        Some(text) => match screened(state, sender, requester, text).await {
+            Some(text) => Some(text),
+            None => return,
+        },
+        None => None,
+    };
 
     match db::set_user_profile(
         &state.db,
@@ -363,6 +425,12 @@ pub(super) async fn handle_set_nickname(
     let Some(nickname) = nickname else {
         return;
     };
+    if !may_publish(state, sender, requester).await {
+        return;
+    }
+    let Some(nickname) = screened(state, sender, requester, nickname).await else {
+        return;
+    };
 
     if target != requester {
         if !has_permission(state, requester, permissions::MANAGE_NICKNAMES).await {
@@ -420,6 +488,13 @@ pub(super) async fn handle_set_status_text(
     )
     .await
     else {
+        return;
+    };
+
+    if !may_publish(state, sender, requester).await {
+        return;
+    }
+    let Some(text) = screened(state, sender, requester, text).await else {
         return;
     };
 

@@ -182,6 +182,23 @@ pub async fn cancel_scheduled_message(db: &Db, user: &str, id: i64) -> Result<bo
     .await
 }
 
+/// Drop every scheduled message and reminder `user` has queued. Used when
+/// they are banned, so nothing they wrote earlier posts after the ban.
+pub async fn delete_scheduled_for_user(db: &Db, user: &str) -> Result<(), DbError> {
+    let user = user.to_owned();
+    db.call_db(move |conn| {
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM scheduled_messages WHERE user_name = ?1",
+            params![user],
+        )?;
+        tx.execute("DELETE FROM reminders WHERE user_name = ?1", params![user])?;
+        tx.commit()?;
+        Ok(())
+    })
+    .await
+}
+
 /// Take ownership of every scheduled message that is due, in one statement.
 ///
 /// Stamping `claimed_at` is what makes delivery at-most-once: every later tick

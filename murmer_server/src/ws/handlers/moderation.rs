@@ -181,6 +181,12 @@ pub(super) async fn handle_ban_user(
         send_error(sender, errors::MODERATION_FAILED).await;
         return;
     }
+    // A ban that leaves the queue in place still lets the banned user post:
+    // up to a year of scheduled messages would deliver on time. The
+    // scheduler also refuses banned authors, so a failure here is only logged.
+    if let Err(e) = db::delete_scheduled_for_user(&state.db, &target).await {
+        error!("Failed to clear scheduled messages for banned {target}: {e}");
+    }
 
     broadcast_force_disconnect(state, &target, "banned", &requester);
     record_audit(state, actions::BAN, &requester, &target, "").await;
@@ -350,12 +356,13 @@ pub(super) async fn handle_unmute_user(
 
 /// Check whether `user` is currently muted. Expired mutes are lazily removed
 /// from both the in-memory map and the database.
+///
+/// The key resolves through the persisted name binding too: `user_keys` only
+/// holds users connected since startup, so reading it alone made an offline
+/// muted user read as unmuted after a restart, and their scheduled messages
+/// posted anyway.
 pub(super) async fn is_muted(state: &Arc<AppState>, user: &str) -> bool {
-    let key = {
-        let keys = state.user_keys.lock().await;
-        keys.get(user).cloned()
-    };
-    let Some(key) = key else {
+    let Some(key) = lookup_user_key(state, user).await else {
         return false;
     };
 
