@@ -274,6 +274,12 @@ channel, so bouncing off a full room leaves them where they were. Someone
 already in the channel is never refused, or a re-sent `voice-join` would lock
 a client out of the room it is sitting in.
 
+A moderator with Manage Channels can give one channel a smaller limit of its
+own (Set User Limit, `userLimit` on `update-voice-channel`, at most 99). The
+stricter of the two caps wins, so a channel limit narrows the operator's cap
+and never widens it. Lowering it below the current headcount removes nobody;
+it only refuses the next joiner. Breakout rooms start without one.
+
 The cap is a bound on the symptom, not a fix for the cause — an SFU is, and
 that is a plan rather than code today.
 

@@ -317,6 +317,9 @@ pub struct VoiceChannelState {
     /// Breakout rooms are deleted when the split is closed, so this is also
     /// what marks a row as temporary.
     pub breakout_parent: Option<i32>,
+    /// Most members the channel admits; `0` for no limit of its own. The
+    /// server-wide `MAX_VOICE_CHANNEL_USERS` applies on top either way.
+    pub user_limit: u32,
 }
 
 /// Shared application state passed to handlers.

@@ -50,9 +50,6 @@ the idea comes from and what users will expect it to behave like.
 
 ### 🗨️ Chat Features
 
-- [ ] Block a user — hide their messages, mute their voice and soundboard
-      clips, drop their DMs (Discord block, TeamSpeak ignore). Personal and
-      local like the existing per-user soundboard mute, so no server change
 - [ ] Bulk delete for moderators — remove the last N messages of a channel,
       or everything one member posted in the last hour, with the ban
       (Discord's purge and "delete message history"). The Danger Zone only
@@ -88,7 +85,7 @@ the idea comes from and what users will expect it to behave like.
       Mumble). Breakout rooms already move people around, so the mechanism
       exists
 - [ ] Poke — a short nudge that pops up even when the channel is muted
-      (TeamSpeak). Rate-limited, and blockable with the block above
+      (TeamSpeak). Rate-limited, and blockable with the member block
 - [ ] Priority speaker — while a member with the permission talks, everyone
       else's playback is ducked (Mumble, Discord). The soundboard ducking
       (`voice/soundboard.ts`) is the same mechanism pointed at voices
@@ -101,10 +98,6 @@ the idea comes from and what users will expect it to behave like.
       exactly that lifecycle
 - [ ] Text chat scoped to a voice channel — somewhere to drop a link mid-call
       that does not interrupt the channel everyone else is reading
-- [ ] User limit per voice channel (TeamSpeak max clients, Discord user
-      limit). Every member of a mesh costs every other member a connection,
-      so a cap is a quality setting as much as a social one. Refused in
-      `handle_voice_join`
 - [ ] Whisper — hold a hotkey to talk to selected members of the same
       channel only (Mumble, TeamSpeak). In the mesh that is muting the audio
       sender towards everyone else, so it needs no server change

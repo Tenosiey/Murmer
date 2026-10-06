@@ -502,6 +502,7 @@ pub(super) async fn handle_create_voice_channel(
                 category_id: record.category_id,
                 position: record.position,
                 breakout_parent: record.breakout_parent,
+                user_limit: record.user_limit,
             };
             state
                 .voice_channels
@@ -581,6 +582,21 @@ pub(super) async fn handle_update_voice_channel(
         None
     };
 
+    let user_limit_override = match v.get("userLimit") {
+        None => None,
+        Some(val) => match val
+            .as_u64()
+            .and_then(|n| u32::try_from(n).ok())
+            .filter(|n| *n <= db::MAX_VOICE_USER_LIMIT)
+        {
+            Some(limit) => Some(limit),
+            None => {
+                send_error(sender, errors::INVALID_VOICE_USER_LIMIT).await;
+                return;
+            }
+        },
+    };
+
     let existing = state.voice_channels.lock().await.get(&ch_id).cloned();
     let Some(existing) = existing else {
         send_error(sender, errors::UNKNOWN_VOICE_CHANNEL).await;
@@ -593,12 +609,25 @@ pub(super) async fn handle_update_voice_channel(
         None => existing.bitrate,
     };
 
-    match db::update_voice_channel(&state.db, ch_id, &next_quality, next_bitrate).await {
+    let next_user_limit = user_limit_override.unwrap_or(existing.user_limit);
+
+    match db::update_voice_channel(
+        &state.db,
+        ch_id,
+        &next_quality,
+        next_bitrate,
+        next_user_limit,
+    )
+    .await
+    {
         Ok(true) => {
             let mut map = state.voice_channels.lock().await;
             if let Some(entry) = map.get_mut(&ch_id) {
                 entry.quality = next_quality.clone();
                 entry.bitrate = next_bitrate;
+                // Lowering the limit below the current headcount removes
+                // nobody: it only refuses the next joiner.
+                entry.user_limit = next_user_limit;
                 let snapshot = entry.clone();
                 drop(map);
                 broadcast_voice_channel_update(state, ch_id, &snapshot);

@@ -182,6 +182,8 @@ export interface VoiceChannelInfo {
   /** Set on a breakout room: the voice channel it was split off from. The
    *  room disappears again when the split is closed. */
   breakoutParent?: number | null;
+  /** Most members the channel admits; 0 for no limit of its own. */
+  userLimit: number;
 }
 
 /** One per-channel permission override target, as sent to managers. */

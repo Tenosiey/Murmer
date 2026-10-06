@@ -29,6 +29,10 @@ function normalizeChannel(value: any): VoiceChannelInfo | null {
   const categoryId = typeof value.categoryId === 'number' ? value.categoryId : null;
   const position = typeof value.position === 'number' ? value.position : 0;
   const breakoutParent = typeof value.breakoutParent === 'number' ? value.breakoutParent : null;
+  const userLimit =
+    typeof value.userLimit === 'number' && Number.isInteger(value.userLimit) && value.userLimit > 0
+      ? value.userLimit
+      : 0;
   return {
     id,
     name,
@@ -37,7 +41,8 @@ function normalizeChannel(value: any): VoiceChannelInfo | null {
     categoryId,
     position,
     private: value.private === true,
-    breakoutParent
+    breakoutParent,
+    userLimit
   };
 }
 
@@ -69,7 +74,9 @@ function createVoiceChannelStore() {
     if (info) {
       update((chs) =>
         chs.map((c) =>
-          c.id === info.id ? { ...c, quality: info.quality, bitrate: info.bitrate } : c
+          c.id === info.id
+            ? { ...c, quality: info.quality, bitrate: info.bitrate, userLimit: info.userLimit }
+            : c
         )
       );
     }
@@ -146,6 +153,11 @@ function createVoiceChannelStore() {
     chat.sendRaw(payload);
   }
 
+  /** `0` lifts the channel's own limit; the server-wide cap still applies. */
+  function setUserLimit(channelId: number, userLimit: number) {
+    chat.sendRaw({ type: 'update-voice-channel', channelId, userLimit });
+  }
+
   function rename(channelId: number, name: string) {
     chat.sendRaw({ type: 'rename-voice-channel', channelId, name });
   }
@@ -171,6 +183,7 @@ function createVoiceChannelStore() {
     set,
     create,
     configure,
+    setUserLimit,
     rename,
     remove,
     openBreakouts,

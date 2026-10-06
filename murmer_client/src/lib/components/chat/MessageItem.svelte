@@ -4,7 +4,8 @@
   render compactly and reveal their timestamp in the gutter on hover.
   A floating action toolbar (react/reply/forward/remind/edit/pin/delete) appears on
   hover or keyboard focus. A forwarded message keeps the forwarder as its
-  author and carries the original's attribution above it.
+  author and carries the original's attribution above it. A blocked author's
+  message collapses to a one-line placeholder until "Show" is pressed.
 -->
 <script lang="ts">
   import type { ForwardInfo, Message } from '$lib/types';
@@ -25,6 +26,7 @@
   import { giphyGifUrl } from '$lib/link-preview';
   import { customEmojis, shortcodeToEmoji } from '$lib/stores/customEmojis';
   import { selectedServer } from '$lib/stores/servers';
+  import { blockedUsers } from '$lib/stores/blocks';
   import { httpBaseFromWs, serverFileUrl } from '$lib/server-url';
   import LinkPreview from '$lib/components/LinkPreview.svelte';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
@@ -82,6 +84,9 @@
   }: Props = $props();
 
   let messageId = $derived(typeof message.id === 'number' ? message.id : null);
+  let blocked = $derived(!!message.user && $blockedUsers.includes(message.user));
+  /** Shown for this render only; scrolling it away hides it again. */
+  let revealBlocked = $state(false);
   let roleInfo = $derived(message.user ? $roles[message.user] : undefined);
   let reactions = $derived(reactionEntries(message));
   let eInfo = $derived(message.ephemeral ? ephemeralInfo(message, now) : null);
@@ -107,6 +112,17 @@
   );
 </script>
 
+{#if blocked && !revealBlocked}
+<div class="message blocked-message" data-message-id={messageId ?? undefined} class:highlighted>
+  <span class="gutter" aria-hidden="true"></span>
+  <span class="blocked-note">
+    Message from a blocked member
+    <button type="button" class="btn btn-ghost blocked-show" onclick={() => (revealBlocked = true)}>
+      Show
+    </button>
+  </span>
+</div>
+{:else}
 <div
   class="message"
   class:continuation
@@ -350,6 +366,7 @@
     </div>
   {/if}
 </div>
+{/if}
 
 <style>
   /* Two-column grid: fixed gutter (avatar / hover timestamp), then content.
@@ -364,6 +381,19 @@
     border-left: 2px solid transparent;
     /* Isolate layout/style recalculation per message so long histories stay cheap. */
     contain: layout style;
+  }
+
+  .blocked-note {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+    font-style: italic;
+  }
+
+  .blocked-show {
+    font-style: normal;
   }
 
   .message.continuation {

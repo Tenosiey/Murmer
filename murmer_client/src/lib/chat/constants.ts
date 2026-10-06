@@ -158,6 +158,9 @@ export const DEFAULT_VOICE_PRESET = VOICE_QUALITY_PRESETS[1];
 /** Upper bound the server accepts for a voice bitrate (`MAX_ALLOWED_VOICE_BITRATE`). */
 export const MAX_VOICE_BITRATE = 320_000;
 
+/** Largest per-channel user limit the server accepts (`MAX_VOICE_USER_LIMIT`). */
+export const MAX_VOICE_USER_LIMIT = 99;
+
 export const NOTIFICATION_OPTIONS: Array<{
   value: ChannelNotificationPreference;
   label: string;

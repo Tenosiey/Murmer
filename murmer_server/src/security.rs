@@ -77,12 +77,20 @@ pub fn get_max_frames_per_second() -> u32 {
 ///
 /// Someone already in the channel is never refused: a client re-sending
 /// `voice-join` for the channel it is already in must not lock itself out.
-pub fn voice_channel_has_room(occupants: &HashSet<String>, user: &str) -> bool {
-    let limit: usize = std::env::var("MAX_VOICE_CHANNEL_USERS")
+///
+/// `channel_limit` is the channel's own limit (`0` for none); the stricter of
+/// the two caps wins, so a moderator can narrow the operator's cap but never
+/// widen it.
+pub fn voice_channel_has_room(occupants: &HashSet<String>, user: &str, channel_limit: u32) -> bool {
+    let server_limit: usize = std::env::var("MAX_VOICE_CHANNEL_USERS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(10);
-    limit == 0 || occupants.contains(user) || occupants.len() < limit
+    let limit = [server_limit, channel_limit as usize]
+        .into_iter()
+        .filter(|&n| n > 0)
+        .min();
+    occupants.contains(user) || limit.is_none_or(|limit| occupants.len() < limit)
 }
 
 /// How often the sliding-window maps are swept end to end to drop entries for

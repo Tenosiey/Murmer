@@ -118,6 +118,7 @@ pub fn voice_channel_descriptor(id: i32, info: &VoiceChannelState) -> Value {
         "categoryId": info.category_id,
         "position": info.position,
         "breakoutParent": info.breakout_parent,
+        "userLimit": info.user_limit,
     })
 }
 
@@ -301,6 +302,7 @@ pub fn broadcast_new_voice_channel(state: &Arc<AppState>, id: i32, info: &VoiceC
             "categoryId": info.category_id,
             "position": info.position,
             "breakoutParent": info.breakout_parent,
+            "userLimit": info.user_limit,
         }),
     );
 }
@@ -319,6 +321,7 @@ pub fn broadcast_voice_channel_update(
             "name": info.name,
             "quality": info.quality,
             "bitrate": info.bitrate,
+            "userLimit": info.user_limit,
         }),
     );
 }

@@ -1,6 +1,7 @@
 import type { Message, UserStatus, VoiceChannelInfo } from '../types';
 import { extractLinks } from '../link-preview';
-import { VOICE_QUALITY_PRESETS } from './constants';
+import { hideSpoilers } from '../spoilers';
+import { MAX_VOICE_USER_LIMIT, VOICE_QUALITY_PRESETS } from './constants';
 
 export type MessageBlock =
   | { kind: 'separator'; label: string; key: string }
@@ -201,7 +202,9 @@ export function ephemeralInfo(
 
 export function searchResultPreview(message: Message): string {
   if (typeof message.text === 'string' && message.text.trim().length > 0) {
-    const normalized = message.text.trim().replace(/\s+/g, ' ');
+    // Blanked before truncating, so a cut can never leave half a spoiler
+    // whose closing `||` fell off the end.
+    const normalized = hideSpoilers(message.text.trim().replace(/\s+/g, ' '));
     return normalized.length > 120 ? `${normalized.slice(0, 117)}…` : normalized;
   }
   if (typeof message.image === 'string' && message.image.trim().length > 0) {
@@ -211,6 +214,16 @@ export function searchResultPreview(message: Message): string {
     return `[File] ${message.attachment.name}`;
   }
   return 'Message';
+}
+
+/** A user limit typed by a moderator: empty is 0 (no limit), anything that
+ *  is not a whole number in range is null. */
+export function parseUserLimit(text: string): number | null {
+  const trimmed = text.trim();
+  if (trimmed === '') return 0;
+  if (!/^\d+$/.test(trimmed)) return null;
+  const limit = Number(trimmed);
+  return limit <= MAX_VOICE_USER_LIMIT ? limit : null;
 }
 
 export function formatFileSize(bytes: number): string {

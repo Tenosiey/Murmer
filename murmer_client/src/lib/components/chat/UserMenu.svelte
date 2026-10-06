@@ -1,6 +1,7 @@
 <!--
-  Right-click menu on a member: their profile, a DM, their stats and — for
-  moderators who outrank them — roles, mute, nickname, kick and ban. The
+  Right-click menu on a member: their profile, a DM, their stats, a block
+  that only this client knows about and — for moderators who outrank them —
+  roles, mute, nickname, kick and ban. The
   entries only follow the server's rules so the menu does not offer what
   would be refused; the server re-checks the permission and the hierarchy on
   every one of these frames.
@@ -11,7 +12,8 @@
   import { userRoleIds } from '$lib/stores/roles';
   import { roleDefinitions } from '$lib/stores/roleDefinitions';
   import { can, myTopPosition, myPermissions } from '$lib/stores/permissions';
-  import { profiles } from '$lib/stores/profiles';
+  import { displayNames, profiles } from '$lib/stores/profiles';
+  import { blockedUsers, confirmBlock } from '$lib/stores/blocks';
   import { onlineUsers } from '$lib/stores/online';
   import { dialogs } from '$lib/stores/dialogs';
   import { PERMISSIONS, computeTopPosition } from '$lib/chat/permissions';
@@ -133,6 +135,11 @@
     items.push({ label: 'View Profile', action: () => onOpenProfile(user) });
     items.push({ label: 'Send Message', action: () => onOpenDm(user) });
     items.push({ label: 'View Stats', action: () => (statsUser = user) });
+    items.push(
+      $blockedUsers.includes(user)
+        ? { label: 'Unblock', action: () => blockedUsers.setBlocked(user, false) }
+        : { label: 'Block', danger: true, action: () => confirmBlock(user, $displayNames(user)) }
+    );
     // Role assignment: a checklist of grantable roles, shown only to managers
     // who outrank the target.
     if ($can(PERMISSIONS.MANAGE_ROLES) && outranks(user) && assignableRoles.length) {

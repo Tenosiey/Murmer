@@ -114,14 +114,18 @@ fn sweeps_keys_that_went_quiet() {
 fn caps_voice_channel_occupancy() {
     let occupants: HashSet<String> = ["alice", "bob"].iter().map(|u| u.to_string()).collect();
     with_var("MAX_VOICE_CHANNEL_USERS", Some("2"), || {
-        assert!(!voice_channel_has_room(&occupants, "carol"));
+        assert!(!voice_channel_has_room(&occupants, "carol", 0));
         // Already inside, so a repeated `voice-join` is never a lockout.
-        assert!(voice_channel_has_room(&occupants, "alice"));
-        assert!(voice_channel_has_room(&HashSet::new(), "carol"));
+        assert!(voice_channel_has_room(&occupants, "alice", 0));
+        assert!(voice_channel_has_room(&HashSet::new(), "carol", 0));
+        // A channel's own limit can narrow the operator's cap, never widen it.
+        assert!(!voice_channel_has_room(&occupants, "carol", 5));
     });
     // `0` means no cap at all.
     with_var("MAX_VOICE_CHANNEL_USERS", Some("0"), || {
-        assert!(voice_channel_has_room(&occupants, "carol"));
+        assert!(voice_channel_has_room(&occupants, "carol", 0));
+        assert!(!voice_channel_has_room(&occupants, "carol", 2));
+        assert!(voice_channel_has_room(&occupants, "carol", 3));
     });
 }
 

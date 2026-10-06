@@ -9,6 +9,7 @@
 import { get } from 'svelte/store';
 import { chat } from '$lib/stores/chat';
 import { channelNotifications } from '$lib/stores/channelNotifications';
+import { isBlocked } from '$lib/stores/blocks';
 import { displayNames } from '$lib/stores/profiles';
 import { ttsEnabled } from '$lib/stores/settings';
 import { hideSpoilers } from '$lib/spoilers';
@@ -21,7 +22,7 @@ export function ttsUtterance(name: string, text: string): string {
 
 chat.onLiveMessage((msg: Message) => {
   if (msg.tts !== true || typeof msg.text !== 'string' || !msg.text.trim()) return;
-  if (!msg.user || typeof msg.channelId !== 'number') return;
+  if (!msg.user || typeof msg.channelId !== 'number' || isBlocked(msg.user)) return;
   if (!get(ttsEnabled) || typeof speechSynthesis === 'undefined') return;
   if (get(channelNotifications)[msg.channelId] === 'mute') return;
   speechSynthesis.speak(
