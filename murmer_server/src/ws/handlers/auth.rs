@@ -25,7 +25,7 @@ const PRESENCE_PROOF_PREFIX: &str = "presence:";
 /// Verify that the presence frame proves ownership of its claimed public key:
 /// an Ed25519 signature over `presence:<challenge>`, where the challenge is
 /// the random value this connection was greeted with. Sends the matching
-/// error to the client and returns `Err` on failure.
+/// error to the client and returns `Err` on failure, or the proven key.
 ///
 /// The challenge is what binds the proof to this server and this socket. One
 /// identity key is the account on every server, so a proof over anything the
@@ -38,7 +38,7 @@ async fn verify_key_proof(
     v: &Value,
     client_ip: &str,
     challenge: &str,
-) -> Result<(), ()> {
+) -> Result<String, ()> {
     let (Some(pk), Some(sig)) = (
         v.get("publicKey").and_then(|p| p.as_str()),
         v.get("signature").and_then(|s| s.as_str()),
@@ -66,7 +66,7 @@ async fn verify_key_proof(
         return Err(());
     }
 
-    Ok(())
+    Ok(pk.to_string())
 }
 
 /// Which credential admitted a connection to a password-protected server.
@@ -87,18 +87,8 @@ async fn admit(
     state: &Arc<AppState>,
     v: &Value,
     required: &str,
-    verified_key: Option<&str>,
+    key: &str,
 ) -> Result<Admission, ()> {
-    // A password-protected server has always required a proven key, and all
-    // three credentials below are bound to one, so a keyless connection stops
-    // here — before the password is even looked at. Answering it differently
-    // for a right and a wrong password made this an oracle, and one outside
-    // the authentication rate limit, which only a key proof passes through.
-    let Some(key) = verified_key else {
-        send_error(sender, errors::INVALID_SIGNATURE).await;
-        return Err(());
-    };
-
     let provided = v.get("password").and_then(|p| p.as_str()).unwrap_or("");
     let password_ok = bool::from(provided.as_bytes().ct_eq(required.as_bytes()));
 
@@ -183,28 +173,24 @@ pub(super) async fn handle_presence(
     challenge: &str,
     default_channel_id: i32,
 ) -> Result<(), ()> {
-    // A claimed public key must always be proven, even on an open server or a
-    // repeated presence frame: roles, bans and moderation identity attach to
-    // the key, so accepting it unverified would allow impersonation. It is
-    // proven before the credential check because two of the three credentials
-    // — an invite membership and an invite code — are bound to the key.
-    let verified_key = if v.get("publicKey").is_some() {
-        verify_key_proof(sender, state, v, client_ip, challenge).await?;
-        v.get("publicKey")
-            .and_then(|p| p.as_str())
-            .map(str::to_string)
-    } else {
-        None
-    };
+    // Every presence must prove a public key, even on an open server or a
+    // repeated presence frame. A keyless one used to be admitted on an open
+    // server as an unbound name: when the real owner later bound it, both
+    // sockets ran as that name, and the keyless one acted with the roles the
+    // owner was given while mute and ban, which resolve a key, could not
+    // reach it. The proof also comes before the password is looked at, so a
+    // protected server answers a right and a wrong password alike — any other
+    // order is an oracle outside the authentication rate limit — and before
+    // the credential check, since an invite membership and an invite code are
+    // both bound to the key.
+    let verified_key = verify_key_proof(sender, state, v, client_ip, challenge).await?;
 
     let mut pending_invite: Option<String> = None;
     if !*authenticated {
         match &state.password {
-            // Without a password there is nothing to present; a keyless
-            // connection joins as an anonymous (role-less) user.
             None => *authenticated = true,
             Some(required) => {
-                match admit(sender, state, v, required, verified_key.as_deref()).await? {
+                match admit(sender, state, v, required, &verified_key).await? {
                     Admission::Granted => {}
                     Admission::PendingInvite(code) => pending_invite = Some(code),
                 }
@@ -259,7 +245,7 @@ pub(super) async fn handle_presence(
             }
 
             match db::get_user_key(&state.db, u).await {
-                Ok(Some(bound)) if verified_key.as_deref() != Some(bound.as_str()) => {
+                Ok(Some(bound)) if bound != verified_key => {
                     error!("Rejected presence for {u}: name is bound to another key");
                     send_error(sender, errors::USERNAME_TAKEN).await;
                     return Err(());
@@ -273,7 +259,7 @@ pub(super) async fn handle_presence(
             }
 
             // Reject banned users before they are registered as present.
-            match db::is_banned(&state.db, verified_key.as_deref(), u).await {
+            match db::is_banned(&state.db, Some(&verified_key), u).await {
                 Ok(true) => {
                     error!("Rejected banned user: {}", u);
                     send_error(sender, errors::BANNED).await;
@@ -293,8 +279,8 @@ pub(super) async fn handle_presence(
             // presence from costing the invite a use. It is re-validated
             // inside the same transaction that increments the counter, so two
             // clients racing for the last use cannot both be admitted.
-            if let (Some(code), Some(pk)) = (pending_invite.as_deref(), verified_key.as_deref()) {
-                match db::redeem_invite(&state.db, code, pk, Utc::now()).await {
+            if let Some(code) = pending_invite.as_deref() {
+                match db::redeem_invite(&state.db, code, &verified_key, Utc::now()).await {
                     Ok(db::Redemption::Granted) => info!(user = u, "Invite redeemed"),
                     Ok(reason) => {
                         warn!("Invite became unredeemable for {u}: {reason:?}");
@@ -311,26 +297,24 @@ pub(super) async fn handle_presence(
 
             // Claim the name for this key (no-op when already bound). A newly
             // created binding marks a first-time member, who receives the
-            // configured welcome message below. Anonymous connections (no
-            // key) have no persistent identity, so they never trigger it.
+            // configured welcome message below.
             let mut first_connection = false;
-            if let Some(pk) = verified_key.as_deref() {
-                match db::bind_user_key(&state.db, u, pk).await {
-                    Ok(newly_bound) => first_connection = newly_bound,
-                    Err(e) => error!("Failed to persist name binding for {u}: {e}"),
-                }
-                // The binding check above ran before this insert, so two
-                // keys racing for a fresh name both pass it and only one
-                // insert wins. The loser must not go on as that name: it
-                // would replace the owner's key in memory, which is what DMs
-                // and channel keys are encrypted to.
-                if !first_connection
-                    && !matches!(db::get_user_key(&state.db, u).await, Ok(Some(bound)) if bound == pk)
-                {
-                    error!("Rejected presence for {u}: lost the race for the name");
-                    send_error(sender, errors::USERNAME_TAKEN).await;
-                    return Err(());
-                }
+            let pk = verified_key.as_str();
+            match db::bind_user_key(&state.db, u, pk).await {
+                Ok(newly_bound) => first_connection = newly_bound,
+                Err(e) => error!("Failed to persist name binding for {u}: {e}"),
+            }
+            // The binding check above ran before this insert, so two
+            // keys racing for a fresh name both pass it and only one
+            // insert wins. The loser must not go on as that name: it
+            // would replace the owner's key in memory, which is what DMs
+            // and channel keys are encrypted to.
+            if !first_connection
+                && !matches!(db::get_user_key(&state.db, u).await, Ok(Some(bound)) if bound == pk)
+            {
+                error!("Rejected presence for {u}: lost the race for the name");
+                send_error(sender, errors::USERNAME_TAKEN).await;
+                return Err(());
             }
 
             state.users.lock().await.insert(u.to_string());
@@ -345,31 +329,29 @@ pub(super) async fn handle_presence(
             broadcast_users(state).await;
             *user_name = Some(u.to_string());
 
-            if let Some(pk) = verified_key.as_deref() {
-                state
-                    .upload_sessions
-                    .lock()
-                    .await
-                    .insert(challenge.to_string(), (u.to_string(), pk.to_string()));
-                state
-                    .user_keys
-                    .lock()
-                    .await
-                    .insert(u.to_string(), pk.to_string());
+            state
+                .upload_sessions
+                .lock()
+                .await
+                .insert(challenge.to_string(), (u.to_string(), pk.to_string()));
+            state
+                .user_keys
+                .lock()
+                .await
+                .insert(u.to_string(), pk.to_string());
 
-                // Load this key's role assignments from the database (the
-                // source of truth) into memory and announce them. An empty set
-                // also covers roles revoked while the user was offline.
-                let role_ids = db::get_user_role_ids(&state.db, pk)
-                    .await
-                    .unwrap_or_default();
-                state
-                    .user_roles
-                    .lock()
-                    .await
-                    .insert(u.to_string(), role_ids.clone());
-                broadcast_user_roles(state, u, &role_ids);
-            }
+            // Load this key's role assignments from the database (the
+            // source of truth) into memory and announce them. An empty set
+            // also covers roles revoked while the user was offline.
+            let role_ids = db::get_user_role_ids(&state.db, pk)
+                .await
+                .unwrap_or_default();
+            state
+                .user_roles
+                .lock()
+                .await
+                .insert(u.to_string(), role_ids.clone());
+            broadcast_user_roles(state, u, &role_ids);
 
             send_state_snapshot(state, sender, u).await;
             super::identity::send_server_identity(state, sender).await;

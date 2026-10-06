@@ -952,3 +952,23 @@ async fn a_status_line_is_broadcast_and_its_expiry_checked() {
     assert_eq!(profile["statusText"], "");
     assert!(profile["statusExpiresAt"].is_null());
 }
+
+/// On an open server a keyless presence used to take any name nobody had
+/// bound yet. When the real owner bound it later, both sockets ran as that
+/// name, and the keyless one acted with every role the owner was given.
+#[tokio::test]
+async fn a_keyless_presence_is_refused_on_an_open_server() {
+    let addr = start_server().await;
+    let (mut ws, _) = connect_async(format!("ws://{addr}/ws"))
+        .await
+        .expect("connect");
+    ws.send(Message::text(
+        json!({ "type": "presence", "user": "dave" }).to_string(),
+    ))
+    .await
+    .expect("send");
+    assert_eq!(
+        frames_until_closed(&mut ws).await,
+        vec![json!({ "type": "error", "message": "invalid-signature" })]
+    );
+}

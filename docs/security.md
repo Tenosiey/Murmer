@@ -73,9 +73,12 @@ same reason channel frames are filtered by visibility as they are delivered,
 not only at `join`: the default channel can be private, and access to a
 channel can be revoked while somebody sits in it.
 
-A keyless presence on a protected server is refused before the password is
-compared. Answering a right and a wrong password differently made it an
-oracle, and the authentication rate limit only sees key proofs.
+Every presence must prove a key, on an open server too. A keyless one used
+to take any name nobody had bound yet; once the real owner bound it, both
+sockets ran as that name and the keyless one acted with the owner's roles,
+out of reach of mute and ban, which resolve a key. The proof comes before
+the password is compared, so a right and a wrong password are answered
+alike: anything else is an oracle outside the authentication rate limit.
 
 A socket that has not authenticated within `AUTH_TIMEOUT` (10 s) is closed.
 There is no per-IP cap on connections, so idle sockets were otherwise a
