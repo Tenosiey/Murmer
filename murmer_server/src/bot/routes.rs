@@ -50,7 +50,6 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use subtle::ConstantTimeEq;
 use tracing::error;
 
 use super::{
@@ -69,11 +68,8 @@ fn json_error(status: StatusCode, message: &str) -> Response {
     (status, Json(serde_json::json!({"error": message}))).into_response()
 }
 
-fn verify_admin(state: &AppState, token: &str) -> bool {
-    state
-        .admin_token
-        .as_ref()
-        .is_some_and(|expected| expected.as_bytes().ct_eq(token.as_bytes()).into())
+async fn verify_admin(state: &AppState, token: &str) -> bool {
+    security::admin_token_matches(&state.rate_limiter, state.admin_token.as_deref(), token).await
 }
 
 async fn verify_bot(state: &AppState, token: &str) -> Option<BotRecord> {
@@ -174,7 +170,7 @@ async fn create_bot(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Json(body): Json<CreateBotRequest>,
 ) -> Response {
-    if !verify_admin(&state, bearer.token()) {
+    if !verify_admin(&state, bearer.token()).await {
         return json_error(StatusCode::UNAUTHORIZED, "invalid-admin-token");
     }
 
@@ -226,7 +222,7 @@ async fn list_bots(
     State(state): State<Arc<AppState>>,
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
 ) -> Response {
-    if !verify_admin(&state, bearer.token()) {
+    if !verify_admin(&state, bearer.token()).await {
         return json_error(StatusCode::UNAUTHORIZED, "invalid-admin-token");
     }
 
@@ -247,7 +243,7 @@ async fn get_bot(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path(bot_id): Path<String>,
 ) -> Response {
-    if !verify_admin(&state, bearer.token()) {
+    if !verify_admin(&state, bearer.token()).await {
         return json_error(StatusCode::UNAUTHORIZED, "invalid-admin-token");
     }
 
@@ -267,7 +263,7 @@ async fn update_bot_handler(
     Path(bot_id): Path<String>,
     Json(body): Json<UpdateBotRequest>,
 ) -> Response {
-    if !verify_admin(&state, bearer.token()) {
+    if !verify_admin(&state, bearer.token()).await {
         return json_error(StatusCode::UNAUTHORIZED, "invalid-admin-token");
     }
 
@@ -318,7 +314,7 @@ async fn delete_bot_handler(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path(bot_id): Path<String>,
 ) -> Response {
-    if !verify_admin(&state, bearer.token()) {
+    if !verify_admin(&state, bearer.token()).await {
         return json_error(StatusCode::UNAUTHORIZED, "invalid-admin-token");
     }
 
@@ -337,7 +333,7 @@ async fn reset_bot_token(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Path(bot_id): Path<String>,
 ) -> Response {
-    if !verify_admin(&state, bearer.token()) {
+    if !verify_admin(&state, bearer.token()).await {
         return json_error(StatusCode::UNAUTHORIZED, "invalid-admin-token");
     }
 

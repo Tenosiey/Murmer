@@ -54,6 +54,9 @@ fn quota_bytes(var: &str, default: u64) -> Result<u64> {
 /// `STUN_SERVERS=` rather than the default.
 const DEFAULT_STUN_SERVER: &str = "stun:stun.l.google.com:19302";
 
+/// Shortest `ADMIN_TOKEN` the server starts with.
+const MIN_ADMIN_TOKEN_CHARS: usize = 32;
+
 impl Config {
     /// Load configuration from environment variables.
     ///
@@ -87,6 +90,18 @@ impl Config {
 
         let password = env::var("SERVER_PASSWORD").ok().filter(|s| !s.is_empty());
         let admin_token = env::var("ADMIN_TOKEN").ok().filter(|s| !s.is_empty());
+        // The token grants Owner, so a short one is refused rather than
+        // guessed: the failure limit in `security` slows guessing, it does
+        // not make a weak token strong.
+        if admin_token
+            .as_ref()
+            .is_some_and(|t| t.chars().count() < MIN_ADMIN_TOKEN_CHARS)
+        {
+            anyhow::bail!(
+                "ADMIN_TOKEN must be at least {MIN_ADMIN_TOKEN_CHARS} characters; \
+                 generate one with `openssl rand -hex 32`"
+            );
+        }
 
         let cors_allowlist = Self::parse_cors_origins()?;
 

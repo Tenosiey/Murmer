@@ -77,7 +77,7 @@ Environment variables recognised by the server:
 | `DATABASE_PATH` | No | Path to the SQLite database file (defaults to `murmer.db`) |
 | `UPLOAD_DIR` | No | Directory for stored uploads (defaults to `uploads/`) |
 | `SERVER_PASSWORD` | No | Shared secret required during presence/auth |
-| `ADMIN_TOKEN` | No | Enables the administrative `/role` endpoint |
+| `ADMIN_TOKEN` | No | Enables the administrative `/role` endpoint, which can grant any role including Owner, and the bot management API. At least 32 characters or the server refuses to start; generate one with `openssl rand -hex 32`. After 10 wrong tokens in a minute every admin request is refused until the minute passes |
 | `BIND_ADDRESS` | No | Override the socket address (defaults to `0.0.0.0:3001`) |
 | `CORS_ALLOW_ORIGINS` | No | Comma-separated allowed origins (omit in production) |
 | `WEB_CLIENT_DIR` | No | Directory with the built web client to serve at `/` (see [Web client](#web-client)) |

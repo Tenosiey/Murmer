@@ -245,6 +245,9 @@ pub struct RateLimiter {
     pub upload_attempts: Mutex<SlidingWindows<VecDeque<Instant>>>,
     /// Link preview fetches per IP (ip -> timestamps).
     pub preview_attempts: Mutex<SlidingWindows<VecDeque<Instant>>>,
+    /// Wrong `ADMIN_TOKEN`s presented, server-wide; see
+    /// [`security::admin_token_matches`].
+    pub admin_failures: Mutex<VecDeque<Instant>>,
     /// Messages one user may send per minute.
     pub max_messages_per_minute: usize,
     /// Authentication attempts one IP may make per minute.
@@ -272,6 +275,7 @@ impl RateLimiter {
             auth_attempts: Mutex::new(SlidingWindows::new(now)),
             upload_attempts: Mutex::new(SlidingWindows::new(now)),
             preview_attempts: Mutex::new(SlidingWindows::new(now)),
+            admin_failures: Mutex::default(),
             max_messages_per_minute: security::get_max_messages_per_minute(),
             max_auth_attempts_per_minute: security::get_max_auth_attempts_per_minute(),
             max_uploads_per_minute: security::get_max_uploads_per_minute(),

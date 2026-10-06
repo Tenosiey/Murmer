@@ -284,6 +284,40 @@ pub async fn check_upload_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bo
     allowed
 }
 
+/// Wrong `ADMIN_TOKEN`s accepted per minute across the whole server before
+/// every admin request is refused until the window clears.
+pub const MAX_ADMIN_FAILURES_PER_MINUTE: usize = 10;
+
+/// Whether `given` is the configured admin token, refusing outright while
+/// too many wrong ones have been presented in the last minute.
+///
+/// The token grants Owner through `/role`, so an online guess at a weak one
+/// is a full takeover. Only failures count, so scripts using the right token
+/// never trip it, and the window is server-wide rather than per IP because a
+/// guesser rotating addresses is exactly who it is for. The cost is that a
+/// flood of wrong guesses locks the admin endpoints for everyone for a
+/// minute, which is the right way round for them to fail.
+pub async fn admin_token_matches(
+    rate_limiter: &RateLimiter,
+    expected: Option<&str>,
+    given: &str,
+) -> bool {
+    use subtle::ConstantTimeEq;
+    let now = rate_limiter.clock.now();
+    let mut failures = rate_limiter.admin_failures.lock().await;
+    cleanup_old_timestamps(&mut failures, now, RATE_WINDOW);
+    if failures.len() >= MAX_ADMIN_FAILURES_PER_MINUTE {
+        metrics::rejected(metrics::Limit::Auth);
+        warn!("Refusing admin request: too many wrong admin tokens");
+        return false;
+    }
+    let matches = expected.is_some_and(|e| e.as_bytes().ct_eq(given.as_bytes()).into());
+    if !matches {
+        failures.push_back(now);
+    }
+    matches
+}
+
 /// Link previews one IP may have fetched per minute. Cached previews are
 /// free; this caps the pages a caller can make the server go and fetch, which
 /// is what keeps `/link-preview` from being a free anonymous fetch proxy.

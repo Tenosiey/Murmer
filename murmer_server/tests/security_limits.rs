@@ -1,9 +1,9 @@
 use murmer_server::{
     Clock, RateLimiter,
     security::{
-        FRAME_BURST_SECONDS, FrameBudget, RATE_WINDOW, SWEEP_INTERVAL, check_auth_rate_limit,
-        check_message_rate_limit, validate_channel_name, validate_user_name,
-        voice_channel_has_room,
+        FRAME_BURST_SECONDS, FrameBudget, MAX_ADMIN_FAILURES_PER_MINUTE, RATE_WINDOW,
+        SWEEP_INTERVAL, admin_token_matches, check_auth_rate_limit, check_message_rate_limit,
+        validate_channel_name, validate_user_name, voice_channel_has_room,
     },
 };
 use serial_test::serial;
@@ -220,4 +220,43 @@ fn client_ip_believes_forwarded_for_only_from_a_trusted_proxy() {
         client_ip(&trusted, ip("10.0.0.1"), &HeaderMap::new()),
         ip("10.0.0.1")
     );
+}
+
+/// `ADMIN_TOKEN` grants Owner through `/role`. Wrong guesses are capped
+/// server-wide, and once the cap is hit even the right token waits out the
+/// window: answering it would tell a guesser which guess was right.
+#[test]
+fn wrong_admin_tokens_lock_the_admin_endpoints_for_a_minute() {
+    with_runtime(|rt| {
+        rt.block_on(async {
+            let clock = Clock::manual();
+            let limiter = RateLimiter::with_clock(clock.clone());
+            let token = Some("right");
+
+            // The right token never counts against anyone.
+            for _ in 0..(MAX_ADMIN_FAILURES_PER_MINUTE * 2) {
+                assert!(admin_token_matches(&limiter, token, "right").await);
+            }
+            for _ in 0..MAX_ADMIN_FAILURES_PER_MINUTE {
+                assert!(!admin_token_matches(&limiter, token, "guess").await);
+            }
+            assert!(!admin_token_matches(&limiter, token, "right").await);
+
+            clock.advance(RATE_WINDOW);
+            assert!(admin_token_matches(&limiter, token, "right").await);
+            // No token configured matches nothing, the empty string included.
+            assert!(!admin_token_matches(&limiter, None, "").await);
+        });
+    });
+}
+
+#[test]
+#[serial]
+fn a_short_admin_token_stops_the_server_from_starting() {
+    with_var("ADMIN_TOKEN", Some("short"), || {
+        assert!(murmer_server::config::Config::from_env().is_err());
+    });
+    with_var("ADMIN_TOKEN", Some(&"x".repeat(32)), || {
+        assert!(murmer_server::config::Config::from_env().is_ok());
+    });
 }
