@@ -372,6 +372,8 @@ pub struct AppState {
     /// When each user last played a soundboard sound, for the server-side
     /// playback cooldown. Entries are dropped on disconnect.
     pub soundboard_cooldowns: Mutex<HashMap<String, Instant>>,
+    /// When each connected user last poked someone; see `handle_poke`.
+    pub poke_cooldowns: Mutex<HashMap<String, Instant>>,
     pub upload_dir: PathBuf,
     pub password: Option<String>,
     pub admin_token: Option<String>,
@@ -462,6 +464,7 @@ impl AppState {
             voice_session_starts: Mutex::default(),
             screenshare_session_starts: Mutex::default(),
             soundboard_cooldowns: Mutex::default(),
+            poke_cooldowns: Mutex::default(),
             upload_dir: PathBuf::from("uploads"),
             password: None,
             admin_token: None,

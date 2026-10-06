@@ -84,8 +84,6 @@ the idea comes from and what users will expect it to behave like.
       channel, behind a new `MOVE_MEMBERS` permission (TeamSpeak, Discord,
       Mumble). Breakout rooms already move people around, so the mechanism
       exists
-- [ ] Poke — a short nudge that pops up even when the channel is muted
-      (TeamSpeak). Rate-limited, and blockable with the member block
 - [ ] Priority speaker — while a member with the permission talks, everyone
       else's playback is ducked (Mumble, Discord). The soundboard ducking
       (`voice/soundboard.ts`) is the same mechanism pointed at voices

@@ -546,3 +546,10 @@ pub const GROUP_MENTION_DENIED: &str = r#"{"type":"error","message":"group-menti
 /// A message's `mentions` field was malformed or named a role that does not
 /// exist (or `@everyone`, which is not a role one can ping).
 pub const INVALID_MENTIONS: &str = r#"{"type":"error","message":"invalid-mentions"}"#;
+
+/// The poke target is not online, is the sender, or is not a member at all.
+/// One code for all three: a poke reaches someone now or not at all.
+pub const POKE_UNAVAILABLE: &str = r#"{"type":"error","message":"poke-unavailable"}"#;
+
+/// The sender poked again inside the cooldown.
+pub const POKE_COOLDOWN: &str = r#"{"type":"error","message":"poke-cooldown"}"#;

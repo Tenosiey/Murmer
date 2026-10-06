@@ -329,6 +329,23 @@ ticking every thirty seconds). A timer to clear it would be another
 background task for a line that is purely cosmetic. Expiries are capped at
 a week ahead and must lie in the future; an empty line has none.
 
+## Pokes
+
+Server: `handle_poke` in `ws/handlers/mod.rs`. Client: `stores/pokes.ts`,
+Poke in the member menu.
+
+A nudge that pops up as a dialog and an OS notification **even when every
+channel is muted** (TeamSpeak). That is the whole feature, so everything
+else is about keeping it from becoming a harassment tool:
+
+- one poke per sender every `POKE_COOLDOWN_MS`, server-side, cleared on
+  disconnect like the soundboard cooldown;
+- a server mute silences pokes too;
+- it goes direct to an online target only — a poke is now or never, so an
+  offline target is refused rather than queued;
+- a blocked member's poke is dropped on arrival, like their DMs. The server
+  still delivers it, because it never learns who is blocked.
+
 ## Reminders and scheduled messages
 
 Two features over one background timer

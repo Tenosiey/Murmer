@@ -80,6 +80,11 @@ pub const MAX_STATUS_TEXT_LENGTH: usize = 80;
 /// (one week). Past that "expires" means nothing a client would show.
 pub const MAX_STATUS_TEXT_TTL_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 
+/// How long a member must wait between two pokes, in milliseconds. A poke
+/// pops up even in a muted channel, so without a pause it is a harassment
+/// tool rather than a nudge.
+pub const POKE_COOLDOWN_MS: u64 = 10_000;
+
 /// File extensions accepted for image uploads referenced over the WebSocket
 /// (custom emojis, server icon). Subset of the upload endpoint's safe-list.
 pub const UPLOAD_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];
