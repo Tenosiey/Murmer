@@ -179,6 +179,52 @@ the content — so the server rejects it in the clear there, as it does the
 image itself. It is one of the fields a forward copies; a forward that
 dropped it would show the image unblurred in the next channel.
 
+## Search filters
+
+Client: `parseSearchQuery` in `src/lib/chat/search.ts`. Server:
+`search_filters` in `ws/handlers/messages.rs`, `SearchFilters` in
+`db/messages.rs`.
+
+The search box takes `from:`, `in:`, `has:file`, `before:` and `after:`
+next to its words. `in:` never reaches the server: it only picks which
+channel the frame names, and the server checks that channel as it always
+did. The rest travel as a structured `filters` field rather than inside the
+query text, so the FTS sanitiser never has to know about them.
+
+**`from:` is the account name.** It matches the `user` the server stamped on
+the message, and a display name could name several people.
+
+**Dates are compared as text.** The client turns a day into a UTC instant
+at the user's local midnight; the server re-stamps it with the same
+`to_rfc3339` that writes `timestamp` on every message, and that shared shape
+is what makes a string comparison in SQLite correct.
+
+**A filter alone is a search,** and it reaches into encrypted channels:
+author and timestamp are plaintext metadata there anyway. `has:file` does
+not, because the attachment is sealed. A filter the client cannot honour (an
+unknown channel, an impossible date) is an error, not dropped — searching
+without it would answer a different question.
+
+## Text-to-speech
+
+Client: `src/lib/tts.ts`, `/tts` in `chat/commands.ts`, the toggle in
+Settings → Audio. No server code: `tts: true` is stored like any other
+field the client sends.
+
+**The sender asks, the listener decides.** The toggle is off by default and
+lives in `localStorage`, and a channel muted in its notification settings
+stays silent, so one member's `/tts` cannot make a room talk that did not
+opt in.
+
+**Only live messages speak.** The chat store hands each opened live message
+to `tts.ts` through `onLiveMessage`; history, threads and search never pass
+there, so scrolling back does not replay a conversation.
+
+**The flag is plaintext in an encrypted channel.** It travels beside the
+envelope, like the reply id, because it says how to deliver the words and
+not what they are. The words themselves are read from the opened message,
+with spoilers replaced by `[spoiler]` as in a notification.
+
 ## Profiles, display names and nicknames
 
 Server: `ws/handlers/profile.rs`, `db/users.rs`. Client:

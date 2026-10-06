@@ -29,8 +29,9 @@ that runs both as a Tauri desktop app and, unchanged, in the browser.
 ## Features
 
 - **Text chat** with Markdown, replies and threads, edits, pins, reactions,
-  forwarding, `@` mentions with a mentions inbox, search, link previews,
-  file and image sharing, slash commands, reminders and scheduled messages
+  forwarding, `@` mentions with a mentions inbox, search with `from:`,
+  `in:`, `has:file` and date filters, link previews, file and image
+  sharing, slash commands, `/tts`, reminders and scheduled messages
 - **Voice** over peer-to-peer WebRTC with RNNoise noise suppression,
   voice activation or push-to-talk, camera video, screen sharing (several
   at once, each in its own window), breakout rooms and a soundboard
@@ -141,9 +142,9 @@ is in [`docs/security.md`](docs/security.md#what-encryption-does-not-cover).
 
 ## Web client
 
-The same build runs in a browser. Everything works except OS-wide hotkeys
-and the built-in updater. The simplest deployment is to let the Murmer server
-host it:
+The same build runs in a browser. Everything works except OS-wide hotkeys,
+launch on login and the built-in updater. The simplest deployment is to let
+the Murmer server host it:
 
 ```bash
 cd murmer_client && bun install && bun run build      # writes build/

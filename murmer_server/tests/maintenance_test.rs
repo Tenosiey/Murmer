@@ -50,7 +50,7 @@ async fn purge_removes_every_message_pin_and_reaction() {
     // The full-text index follows the messages through its delete trigger, so
     // a purged message can not come back as a search hit.
     assert!(
-        db::search_messages(&db, channel, "hello", 50)
+        db::search_messages(&db, channel, "hello", &db::SearchFilters::default(), 50)
             .await
             .expect("search")
             .is_empty()
@@ -196,7 +196,7 @@ async fn retention_deletes_only_messages_past_the_limit() {
             .is_empty()
     );
     assert!(
-        db::search_messages(&db, channel, "ancient", 50)
+        db::search_messages(&db, channel, "ancient", &db::SearchFilters::default(), 50)
             .await
             .expect("search")
             .is_empty()

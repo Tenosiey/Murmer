@@ -837,7 +837,15 @@ async fn search_messages_handler(
         .unwrap_or(DEFAULT_HISTORY_LIMIT)
         .clamp(1, MAX_SEARCH_RESULTS);
 
-    match db::search_messages(&state.db, channel_id, query, limit).await {
+    match db::search_messages(
+        &state.db,
+        channel_id,
+        query,
+        &db::SearchFilters::default(),
+        limit,
+    )
+    .await
+    {
         Ok(rows) => {
             let messages = db::hydrate_messages(&state.db, rows, channel_id).await;
             Json(serde_json::json!({

@@ -1,6 +1,9 @@
 //! Handlers for chat messages, message deletion, editing, forwarding,
 //! reactions, history and search.
 //!
+//! A search may carry `filters` (author, has-a-file, a date window) next to
+//! its words; see [`search_filters`]. A filter alone is a whole search.
+//!
 //! A chat frame may carry a `mentions` field naming groups to ping — `@here`
 //! and roles. Recipients ping on that field alone, never on the text, so it
 //! is authorized here against `MENTION_GROUPS` and rebuilt from known parts;
@@ -145,6 +148,42 @@ async fn search_wiki_hits(
     }
 }
 
+/// Read a search frame's `filters` field. Every part is optional; a part
+/// that is present but malformed is an error rather than ignored, because a
+/// silently dropped `before:` answers a different question than the one the
+/// user asked.
+fn search_filters(v: &Value) -> Result<db::SearchFilters, &'static str> {
+    let Some(raw) = v.get("filters").filter(|value| !value.is_null()) else {
+        return Ok(db::SearchFilters::default());
+    };
+    let raw = raw.as_object().ok_or("Invalid search filters")?;
+    let from = match raw.get("from") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(name)) if security::validate_user_name(name) => Some(name.clone()),
+        Some(_) => return Err("Invalid from: filter"),
+    };
+    let has_file = match raw.get("hasFile") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(flag)) => *flag,
+        Some(_) => return Err("Invalid has: filter"),
+    };
+    // Re-stamped in the server's own shape so the database can compare the
+    // bound with stored timestamps as plain strings.
+    let time = |key: &str| match raw.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(text)) => DateTime::parse_from_rfc3339(text)
+            .map(|at| Some(at.with_timezone(&Utc).to_rfc3339()))
+            .map_err(|_| "Invalid date filter"),
+        Some(_) => Err("Invalid date filter"),
+    };
+    Ok(db::SearchFilters {
+        from,
+        has_file,
+        before: time("before")?,
+        after: time("after")?,
+    })
+}
+
 /// Handle search history request.
 ///
 /// Answers with both the matching messages and the channel's matching wiki
@@ -171,8 +210,21 @@ pub(super) async fn handle_search_history(
         return;
     };
 
+    let filters = match search_filters(v) {
+        Ok(filters) => filters,
+        Err(message) => {
+            let payload = serde_json::json!({
+                "type": "search-error",
+                "message": message,
+                "requestId": request_id_for_error,
+            });
+            send_json(sender, &payload).await;
+            return;
+        }
+    };
+
     let trimmed_query = raw_query.trim();
-    if trimmed_query.is_empty() {
+    if trimmed_query.is_empty() && filters == db::SearchFilters::default() {
         let payload = serde_json::json!({
             "type": "search-results",
             "requestId": request_id,
@@ -207,11 +259,17 @@ pub(super) async fn handle_search_history(
         .unwrap_or(DEFAULT_HISTORY_LIMIT);
     limit = limit.clamp(1, MAX_SEARCH_RESULTS);
 
-    match db::search_messages(&state.db, channel_to_search, trimmed_query, limit).await {
+    match db::search_messages(&state.db, channel_to_search, trimmed_query, &filters, limit).await {
         Ok(rows) => {
             let messages = db::hydrate_messages(&state.db, rows, channel_to_search).await;
 
-            let pages = search_wiki_hits(state, channel_to_search, trimmed_query, limit).await;
+            // Wiki pages have no author, file or message time to filter on,
+            // so a filtered search is about messages only.
+            let pages = if filters == db::SearchFilters::default() {
+                search_wiki_hits(state, channel_to_search, trimmed_query, limit).await
+            } else {
+                Vec::new()
+            };
 
             let payload = serde_json::json!({
                 "type": "search-results",

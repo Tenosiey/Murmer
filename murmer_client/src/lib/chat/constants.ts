@@ -187,6 +187,10 @@ export const HELP_COMMANDS: Array<{
   { usage: '/help', description: 'Show this list of available slash commands.' },
   { usage: '/me <action>', description: 'Send an italicised third-person emote.' },
   {
+    usage: '/tts <message>',
+    description: 'Send a message that listeners who enabled it in Settings → Audio hear read aloud.'
+  },
+  {
     usage: '/shrug [message]',
     description: 'Append the classic shrug emoticon to your message.'
   },

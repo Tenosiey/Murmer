@@ -65,15 +65,10 @@ the idea comes from and what users will expect it to behave like.
       forwarding is: the server would have to see the votes to count them
 - [ ] Saved messages — a personal bookmark list, separate from the
       server-wide pins
-- [ ] Search filters — `from:`, `in:`, `has:file`, `before:`/`after:` in the
-      search overlay (`chat/search.ts`), the way Discord and Slack search
-      works
 - [ ] Synced read state. Last-read ids live in `localStorage`
       (`stores/unread.ts`), so the desktop app and the web client each think
       the other's reading is still unread. Per-user read markers on the
       server fix it, DMs included
-- [ ] Text-to-speech — `/tts` messages read aloud by the platform's
-      `speechSynthesis` (Discord), off by default per listener
 - [ ] Voice messages — record a clip in the composer and send it as an audio
       attachment (Skype, WhatsApp). Attachments already travel sealed in DMs
       and encrypted channels, so it inherits that for free
@@ -124,8 +119,6 @@ the idea comes from and what users will expect it to behave like.
       an export of their own DMs, which only their client can decrypt
 - [ ] Custom status text — a short line such as "back at 3" with an optional
       expiry, next to the presence dot (Discord, Teams)
-- [ ] Launch on login for the desktop app — the Tauri autostart plugin, gated
-      on `isTauri` like the other native integrations
 - [ ] Narrow-window and touch layout. The web client is a shipped target, and
       nine `max-width` media queries in the whole client is what it has to
       meet a phone with

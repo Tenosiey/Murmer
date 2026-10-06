@@ -28,6 +28,7 @@ tauri-plugin-window-state = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
 # Not used directly: code expanded from `tauri::generate_context!` names it.
 serde_json = "1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

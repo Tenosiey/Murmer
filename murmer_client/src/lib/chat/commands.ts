@@ -21,6 +21,7 @@ export type SlashCommand =
   | { kind: 'help' }
   | { kind: 'reminders' }
   | { kind: 'send'; text: string }
+  | { kind: 'tts'; text: string }
   | { kind: 'topic'; topic: string }
   | { kind: 'status'; status: UserStatus }
   | { kind: 'ephemeral'; text: string; seconds: number; clampNote: string | null }
@@ -76,6 +77,8 @@ export function parseSlashCommand(raw: string, now: Date = new Date()): SlashCom
       return { kind: 'reminders' };
     case 'me':
       return rest ? { kind: 'send', text: `_${rest}_` } : error('Usage: /me <action>');
+    case 'tts':
+      return rest ? { kind: 'tts', text: rest } : error('Usage: /tts <message>');
     case 'shrug':
       return { kind: 'send', text: rest ? `${rest} ${SHRUG}` : SHRUG };
     case 'topic':
