@@ -132,3 +132,21 @@ async fn assign_named_role_bootstraps_owner() {
     assert!(!custom.is_owner && !custom.is_default);
     assert_eq!(custom.permissions, DEFAULT_EVERYONE);
 }
+
+#[tokio::test]
+async fn a_new_role_never_ties_an_existing_one() {
+    let database = db::init(":memory:").await.expect("in-memory db");
+    let before = db::list_role_defs(&database).await.expect("list roles");
+    let mod_pos = before.iter().find(|d| d.name == "Mod").unwrap().position;
+
+    // Created in Mod's slot: Mod and everything above it move up one.
+    db::create_role_def(&database, "Dude", None, VIEW_CHANNELS, mod_pos)
+        .await
+        .expect("create role");
+
+    let after = db::list_role_defs(&database).await.expect("list roles");
+    let pos = |name: &str| after.iter().find(|d| d.name == name).unwrap().position;
+    assert_eq!(pos("Dude"), mod_pos);
+    assert!(pos("Dude") < pos("Mod") && pos("Mod") < pos("Admin"));
+    assert_eq!(pos(EVERYONE_ROLE_NAME), 0, "@everyone stays at the bottom");
+}

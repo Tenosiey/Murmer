@@ -213,18 +213,19 @@ pub(super) async fn handle_create_role(
         return;
     }
 
-    // Position the role just below the Owner, and never above the requester's
-    // own highest role.
-    let max_non_owner = defs
-        .iter()
-        .filter(|d| !d.is_owner)
-        .map(|d| d.position)
-        .max()
-        .unwrap_or(0);
-    let mut position = max_non_owner + 1;
-    if requester_pos != i64::MAX {
-        position = position.min((requester_pos - 1).max(1));
-    }
+    // Position the role just below the Owner, or for a non-admin manager in
+    // their own top slot, which pushes them (and everything at or above it)
+    // up one, so the role lands just below them without tying anything.
+    let position = if requester_pos == i64::MAX {
+        defs.iter()
+            .filter(|d| !d.is_owner)
+            .map(|d| d.position)
+            .max()
+            .unwrap_or(0)
+            + 1
+    } else {
+        requester_pos.max(1)
+    };
 
     let id = match db::create_role_def(&state.db, name, color.as_deref(), perms, position).await {
         Ok(id) => id,
@@ -245,7 +246,16 @@ pub(super) async fn handle_create_role(
         is_default: false,
         is_owner: false,
     };
-    state.role_defs.lock().await.insert(id, def);
+    {
+        // Mirror the shift `create_role_def` made in the database.
+        let mut map = state.role_defs.lock().await;
+        for d in map.values_mut() {
+            if !d.is_default && d.position >= position {
+                d.position += 1;
+            }
+        }
+        map.insert(id, def);
+    }
     broadcast_role_definitions(state).await;
     record_audit(state, actions::ROLE_CREATE, &requester, name, "").await;
     info!(requester, role = name, "Role created");
@@ -444,9 +454,8 @@ pub(super) async fn handle_delete_role(
     info!(requester, role = %target.name, "Role deleted");
 }
 
-/// Handle reorder-roles: `orderedIds` lists the manageable custom roles from
-/// highest power to lowest. `@everyone` stays at the bottom and the Owner is
-/// kept at the top.
+/// Handle reorder-roles: `orderedIds` lists manageable custom roles from
+/// highest power to lowest, and they swap the positions they already hold.
 pub(super) async fn handle_reorder_roles(
     state: &Arc<AppState>,
     sender: &mut SplitSink<WebSocket, Message>,
@@ -484,34 +493,26 @@ pub(super) async fn handle_reorder_roles(
         }
     }
 
-    // First listed id gets the highest position; the Owner is bumped above all.
-    let n = ids.len() as i64;
-    let owner_id = defs.values().find(|d| d.is_owner).map(|d| d.id);
-    for (index, id) in ids.iter().enumerate() {
-        let position = n - index as i64;
-        if let Err(e) = db::set_role_position(&state.db, *id, position).await {
-            error!("failed to reorder role {id}: {e}");
-            send_error(sender, errors::ROLE_UPDATE_FAILED).await;
-            return;
-        }
-    }
-    if let Some(owner_id) = owner_id
-        && let Err(e) = db::set_role_position(&state.db, owner_id, n + 1).await
-    {
-        error!("failed to reposition owner role: {e}");
+    // Only permute the slots the listed roles already hold, the first listed
+    // id taking the highest. Each of them is below the requester, so no
+    // permutation can lift a role to or past them. Numbering the list n..1
+    // instead let a manager list more roles than fit below them and push the
+    // top ones above every Admin.
+    let mut slots: Vec<i64> = ids.iter().map(|id| defs[id].position).collect();
+    slots.sort_unstable_by(|a, b| b.cmp(a));
+    let moves: Vec<(i64, i64)> = ids.iter().copied().zip(slots).collect();
+    if let Err(e) = db::set_role_positions(&state.db, moves.clone()).await {
+        error!("failed to reorder roles: {e}");
+        send_error(sender, errors::ROLE_UPDATE_FAILED).await;
+        return;
     }
 
     {
         let mut map = state.role_defs.lock().await;
-        for (index, id) in ids.iter().enumerate() {
-            if let Some(def) = map.get_mut(id) {
-                def.position = n - index as i64;
+        for (id, position) in moves {
+            if let Some(def) = map.get_mut(&id) {
+                def.position = position;
             }
-        }
-        if let Some(owner_id) = owner_id
-            && let Some(owner) = map.get_mut(&owner_id)
-        {
-            owner.position = n + 1;
         }
     }
     broadcast_role_definitions(state).await;
