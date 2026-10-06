@@ -260,7 +260,7 @@ pub(super) async fn handle_set_avatar(
             .is_ok_and(|count| count == 0)
         && let Some(key) = upload_key_from_url(&old_url)
     {
-        let _ = tokio::fs::remove_file(state.upload_dir.join(key)).await;
+        crate::upload::remove_upload(state, key).await;
     }
 
     info!(requester, "Avatar updated");

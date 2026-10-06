@@ -32,6 +32,21 @@ pub struct Config {
     pub message_retention_days: Option<u32>,
     /// Reverse proxies whose `X-Forwarded-For` header is believed.
     pub trusted_proxies: Vec<ipnet::IpNet>,
+    /// Byte quotas for stored uploads.
+    pub upload_quota: crate::upload::UploadQuota,
+}
+
+/// Read a quota given in megabytes as bytes, or `default` when unset. Like
+/// the retention limit, a typo is fatal rather than read as "no limit".
+fn quota_bytes(var: &str, default: u64) -> Result<u64> {
+    match env::var(var) {
+        Ok(value) if !value.trim().is_empty() => value
+            .trim()
+            .parse::<u64>()
+            .map(|mb| mb.saturating_mul(1024 * 1024))
+            .with_context(|| format!("{var} must be a whole number of megabytes")),
+        _ => Ok(default),
+    }
 }
 
 /// Used when `STUN_SERVERS` is unset. Dropping it would break direct
@@ -56,6 +71,8 @@ impl Config {
     ///   are deleted; unset or `0` keeps them forever
     /// - `TRUSTED_PROXIES` (optional): Comma-separated proxy addresses or
     ///   CIDR ranges whose `X-Forwarded-For` is believed
+    /// - `UPLOAD_QUOTA_USER_MB`, `UPLOAD_QUOTA_TOTAL_MB` (optional): upload
+    ///   storage quotas in megabytes; `0` means no limit
     pub fn from_env() -> Result<Self> {
         let database_path = env::var("DATABASE_PATH").unwrap_or_else(|_| "murmer.db".to_string());
 
@@ -98,6 +115,12 @@ impl Config {
 
         let trusted_proxies = parse_trusted_proxies(env::var("TRUSTED_PROXIES").ok().as_deref())?;
 
+        let defaults = crate::upload::UploadQuota::default();
+        let upload_quota = crate::upload::UploadQuota {
+            per_user: quota_bytes("UPLOAD_QUOTA_USER_MB", defaults.per_user)?,
+            total: quota_bytes("UPLOAD_QUOTA_TOTAL_MB", defaults.total)?,
+        };
+
         Ok(Self {
             bind_addr,
             database_path,
@@ -109,6 +132,7 @@ impl Config {
             stun_servers,
             message_retention_days,
             trusted_proxies,
+            upload_quota,
         })
     }
 

@@ -375,6 +375,8 @@ pub struct AppState {
     /// When each connected user last poked someone; see `handle_poke`.
     pub poke_cooldowns: Mutex<HashMap<String, Instant>>,
     pub upload_dir: PathBuf,
+    /// Byte quotas `/upload` enforces (see `upload::UploadQuota`).
+    pub upload_quota: upload::UploadQuota,
     pub password: Option<String>,
     pub admin_token: Option<String>,
     /// STUN URLs sent to each client in its `ice-config` frame
@@ -466,6 +468,7 @@ impl AppState {
             soundboard_cooldowns: Mutex::default(),
             poke_cooldowns: Mutex::default(),
             upload_dir: PathBuf::from("uploads"),
+            upload_quota: upload::UploadQuota::default(),
             password: None,
             admin_token: None,
             stun_servers: Vec::new(),

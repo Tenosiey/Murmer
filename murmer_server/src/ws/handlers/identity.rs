@@ -195,7 +195,7 @@ pub(super) async fn handle_set_server_identity(
     if let Some(old_url) = replaced_icon
         && let Some(key) = upload_key_from_url(&old_url)
     {
-        let _ = tokio::fs::remove_file(state.upload_dir.join(key)).await;
+        crate::upload::remove_upload(state, key).await;
     }
 
     info!(requester, "Server identity updated");

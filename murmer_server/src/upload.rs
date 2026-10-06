@@ -16,6 +16,11 @@
 //! contains a relative URL that clients can combine with the server URL to
 //! fetch the file later.
 //!
+//! Every stored file is recorded against its uploader in the `uploads` table,
+//! which is what the per-user and server-wide byte quotas ([`UploadQuota`])
+//! are counted from, and what lets a deleted message take its file with it
+//! ([`spawn_upload_sweep`]).
+//!
 //! The safe-list is grouped into categories (images, documents, archives,
 //! audio, video). Which categories are accepted and how large a file may be
 //! are server-wide settings managed from the Server Dashboard and persisted by
@@ -53,6 +58,69 @@ pub const MIN_CONFIGURABLE_FILE_SIZE: usize = 64 * 1024;
 /// they exceed the *configured* limit, so a high ceiling does not let an
 /// unauthenticated caller buffer more than the operator allowed.
 pub const MAX_CONFIGURABLE_FILE_SIZE: usize = 100 * 1024 * 1024;
+
+/// How many bytes of uploads one user, and the whole server, may keep
+/// stored (`UPLOAD_QUOTA_USER_MB`, `UPLOAD_QUOTA_TOTAL_MB`). Zero means no
+/// limit. Without a quota the per-IP rate limit alone let one member write
+/// about 12 GB an hour onto the disk the database shares.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UploadQuota {
+    pub per_user: u64,
+    pub total: u64,
+}
+
+impl Default for UploadQuota {
+    fn default() -> Self {
+        Self {
+            per_user: 1024 * 1024 * 1024,
+            total: 20 * 1024 * 1024 * 1024,
+        }
+    }
+}
+
+/// Remove a stored upload and return its bytes to its owner's quota.
+/// Best-effort: a file already gone is not an error.
+pub async fn remove_upload(state: &AppState, key: &str) {
+    let _ = tokio::fs::remove_file(state.upload_dir.join(key)).await;
+    if let Err(e) = db::forget_upload(&state.db, key).await {
+        error!("Failed to forget upload {key}: {e}");
+    }
+}
+
+/// Delete the files of messages that are gone and named nowhere else. See
+/// [`db::take_unreferenced_uploads`].
+pub async fn sweep_released_uploads(state: &AppState) {
+    match db::take_unreferenced_uploads(&state.db).await {
+        Ok(keys) => {
+            for key in &keys {
+                let _ = tokio::fs::remove_file(state.upload_dir.join(key)).await;
+            }
+            if !keys.is_empty() {
+                info!(removed = keys.len(), "Deleted uploads of deleted messages");
+            }
+        }
+        Err(e) => error!("Upload sweep failed: {e}"),
+    }
+}
+
+/// How often [`spawn_upload_sweep`] runs.
+const UPLOAD_SWEEP_SECONDS: u64 = 300;
+
+/// Sweep the files of deleted messages every few minutes. Deleting them with
+/// the message would need every delete path (author, moderator, retention,
+/// purge, reset, ephemeral expiry) to remember to; the trigger plus this
+/// sweep cannot be forgotten by a new one.
+pub fn spawn_upload_sweep(state: Arc<AppState>) {
+    tokio::spawn(async move {
+        let mut ticker =
+            tokio::time::interval(std::time::Duration::from_secs(UPLOAD_SWEEP_SECONDS));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            sweep_released_uploads(&state).await;
+        }
+    });
+}
 
 /// Allowed MIME types for image uploads
 static ALLOWED_IMAGE_TYPES: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -367,6 +435,27 @@ pub async fn upload(
         chrono::Utc::now().timestamp_millis(),
         filename
     );
+    let quota = state.upload_quota;
+    match db::reserve_upload(
+        &state.db,
+        &key,
+        &user,
+        data.len() as u64,
+        quota.per_user,
+        quota.total,
+    )
+    .await
+    {
+        Ok(true) => {}
+        Ok(false) => {
+            warn!("Rejected upload from {user}: storage quota reached");
+            return StatusCode::INSUFFICIENT_STORAGE.into_response();
+        }
+        Err(e) => {
+            error!("Failed to reserve upload quota for {user}: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    }
     let path = state.upload_dir.join(&key);
     // Append ".tmp" rather than replacing the extension: with_extension()
     // would map same-millisecond uploads of "a.pdf" and "a.zip" onto the same
@@ -390,11 +479,13 @@ pub async fn upload(
             Err(e) => {
                 error!("Failed to move uploaded file: {}", e);
                 let _ = tokio::fs::remove_file(temp_path).await;
+                let _ = db::forget_upload(&state.db, &key).await;
                 StatusCode::INTERNAL_SERVER_ERROR.into_response()
             }
         },
         Err(e) => {
             error!("Failed to write uploaded file: {}", e);
+            let _ = db::forget_upload(&state.db, &key).await;
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }

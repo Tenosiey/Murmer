@@ -356,6 +356,8 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         // Depends on `channels`, created above: a scheduled message references
         // the channel it is bound for.
         conn.execute_batch(&scheduled::scheduled_schema())?;
+        // Its trigger hangs off `messages`, created above.
+        conn.execute_batch(uploads::uploads_schema())?;
 
         // Seed built-in roles and migrate any legacy single-role assignments
         // into role_definitions/user_roles. Runs once (marker-guarded); depends

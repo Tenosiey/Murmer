@@ -80,8 +80,9 @@
       <span class="setting-label">Purge all messages</span>
       <div class="setting-description">
         Permanently delete every message, pin and reaction on this server, in every
-        channel, for everyone. Channels, members and uploads are kept — the files
-        behind deleted attachments stay on disk. This cannot be undone.
+        channel, for everyone. Channels and members are kept; the files those
+        messages carried are deleted a few minutes later, except files in encrypted
+        messages. This cannot be undone.
       </div>
       <div><button class="btn btn-danger" onclick={purgeMessages}>Purge messages…</button></div>
     </div>

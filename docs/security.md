@@ -160,6 +160,8 @@ All of this is deliberate, and `README.md` points operators here:
 - **Bots** — `POST /channels/:id/messages` refuses; a bot has no identity key
   to encrypt with.
 - **Uploaded file bytes** — only the attachment's name and URL travel sealed.
+  For the same reason, deleting a sealed message leaves its file on disk;
+  see [Quota and deletion](#quota-and-deletion).
 - **Link previews** and content-derived stats.
 - **The profanity filter and the auto-moderation rules** — the server holds
   no text to mask or match. Doing either would mean handing the server the
@@ -243,6 +245,30 @@ asserts neither copy ever admits active content. See
 [`../agents/skills/mirrored-constants.md`](../agents/skills/mirrored-constants.md).
 
 Files are streamed to disk after validating type, size and filename.
+
+### Quota and deletion
+
+Every stored file is recorded in the `uploads` table with its uploader and
+size, and `/upload` refuses with `507` once the uploader, or the server as a
+whole, would pass its quota (`UPLOAD_QUOTA_USER_MB`, `UPLOAD_QUOTA_TOTAL_MB`
+in `README.md`). The rate limit alone bounded only how *fast* the disk could
+be filled, never how full.
+
+Deleting a message deletes its file. A trigger on `messages` marks the file
+released on **any** delete, so the author's delete, a moderator's, retention,
+the Danger Zone purge and reset all take files with them without each having
+to remember. `upload::spawn_upload_sweep` then removes released files that
+nothing else names: a server-made forward, an avatar, an emoji, a sound, the
+server icon or a wiki page keeps the file alive. Two gaps are deliberate:
+
+- a file in an **encrypted** message or a DM is never released, because the
+  server cannot see which file a sealed message carries;
+- a file that was uploaded but never posted is kept, and counts against its
+  uploader's quota. Sweeping unposted files would also sweep every file in a
+  sealed message, for the same reason.
+
+A copy a user forwarded into a DM points at the original upload, so it stops
+loading once the original message is deleted. That is what deleting means.
 
 ### Serving files back
 

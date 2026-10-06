@@ -209,7 +209,7 @@ pub(super) async fn handle_remove_sound(
             // Best-effort file cleanup; re-validate the stored URL before
             // touching the filesystem in case the DB row was tampered with.
             if let Some(key) = sound_key_from_url(&url) {
-                let _ = tokio::fs::remove_file(state.upload_dir.join(key)).await;
+                crate::upload::remove_upload(state, key).await;
             }
             info!(requester, id, "Soundboard sound removed");
             broadcast_sounds(state).await;
