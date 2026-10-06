@@ -952,3 +952,101 @@ async fn a_status_line_is_broadcast_and_its_expiry_checked() {
     assert_eq!(profile["statusText"], "");
     assert!(profile["statusExpiresAt"].is_null());
 }
+
+/// On an open server a keyless presence used to take any name nobody had
+/// bound yet. When the real owner bound it later, both sockets ran as that
+/// name, and the keyless one acted with every role the owner was given.
+#[tokio::test]
+async fn a_keyless_presence_is_refused_on_an_open_server() {
+    let addr = start_server().await;
+    let (mut ws, _) = connect_async(format!("ws://{addr}/ws"))
+        .await
+        .expect("connect");
+    ws.send(Message::text(
+        json!({ "type": "presence", "user": "dave" }).to_string(),
+    ))
+    .await
+    .expect("send");
+    assert_eq!(
+        frames_until_closed(&mut ws).await,
+        vec![json!({ "type": "error", "message": "invalid-signature" })]
+    );
+}
+
+/// A manager may reorder only roles below them, and doing so must never lift
+/// one to or past them. Numbering the list n..1 did, given enough roles tied
+/// below the manager (which `create-role` used to produce): the sockpuppet's
+/// role landed above Admin and could ban one.
+#[tokio::test]
+async fn a_role_reorder_never_lifts_a_role_past_the_manager() {
+    use murmer_server::permissions::{BAN_MEMBERS, DEFAULT_EVERYONE, MANAGE_ROLES};
+    let database = db::init(":memory:").await.expect("in-memory db");
+    db::assign_named_role(&database, &public_key("carol"), "Admin", None)
+        .await
+        .expect("admin");
+    let mask = DEFAULT_EVERYONE | MANAGE_ROLES | BAN_MEMBERS;
+    let manager = db::create_role_def(&database, "Manager", None, mask, 2)
+        .await
+        .expect("manager");
+    let mut tied = Vec::new();
+    for name in ["r1", "r2", "r3"] {
+        let id = db::create_role_def(&database, name, None, mask, 1)
+            .await
+            .expect("role");
+        tied.push((id, 1));
+    }
+    // Manager level with Admin, every other custom role tied below.
+    let admin = db::get_role_def_by_name(&database, "Admin")
+        .await
+        .expect("query")
+        .expect("admin");
+    let mod_id = db::get_role_def_by_name(&database, "Mod")
+        .await
+        .expect("query")
+        .expect("mod")
+        .id;
+    let mut layout = tied.clone();
+    layout.extend([(mod_id, 1), (manager, 2), (admin.id, 2)]);
+    db::set_role_positions(&database, layout)
+        .await
+        .expect("layout");
+    db::set_user_roles(&database, &public_key("mallory"), &[manager])
+        .await
+        .expect("assign manager");
+    db::set_user_roles(&database, &public_key("sock"), &[tied[0].0])
+        .await
+        .expect("assign sock");
+    let role_defs = db::list_role_defs(&database).await.expect("role defs");
+    let addr = serve(AppState {
+        role_defs: tokio::sync::Mutex::new(role_defs.into_iter().map(|d| (d.id, d)).collect()),
+        ..AppState::new(database)
+    })
+    .await;
+
+    let _carol = Client::connect(addr, "carol").await;
+    let mut sock = Client::connect(addr, "sock").await;
+    let mut mallory = Client::connect(addr, "mallory").await;
+
+    let ids: Vec<i64> = tied.iter().map(|(id, _)| *id).chain([mod_id]).collect();
+    mallory
+        .send(json!({ "type": "reorder-roles", "orderedIds": ids }))
+        .await;
+    let frames = mallory.until(|f| f["type"] == "role-definitions").await;
+    let roles = frames.last().unwrap()["roles"].as_array().unwrap().clone();
+    let pos = |id: i64| {
+        roles.iter().find(|r| r["id"] == id).unwrap()["position"]
+            .as_i64()
+            .unwrap()
+    };
+    for id in &ids {
+        assert!(
+            pos(*id) < pos(manager),
+            "role {id} was lifted past the manager"
+        );
+    }
+
+    sock.send(json!({ "type": "ban-user", "user": "carol" }))
+        .await;
+    let seen = sock.until(|f| f["type"] == "error").await;
+    assert!(of_type(&seen, "force-disconnect").is_empty());
+}

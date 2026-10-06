@@ -170,7 +170,7 @@
   }
 
   // Move a custom role up (more power) or down; sends the new order to the
-  // server, which re-derives positions.
+  // server, which swaps the positions the listed roles already hold.
   function moveRole(role: RoleDef, direction: -1 | 1) {
     const order = customRolesHighToLow.map((r) => r.id);
     const index = order.indexOf(role.id);

@@ -39,6 +39,14 @@ what a manager can do, and both exist to prevent escalation:
 - moderation and role management require **strictly outranking** the target;
 - a manager can never grant a permission it does not itself hold.
 
+Positions are what the first rule compares, so neither frame that moves them
+may create one a manager could not reach before. `reorder-roles` only
+permutes the slots the listed roles already hold; numbering the list afresh
+let a manager list enough roles to lift one past every Admin. `create-role`
+takes the manager's own slot and pushes everything at or above it up one,
+because a new role that tied an existing one could never be ordered against
+it by such a permutation.
+
 The target is usually offline, and the in-memory `user_roles` only holds
 accounts that connected since the server started. `top_position` reads a
 missing account from the database rather than as "no roles" — otherwise
