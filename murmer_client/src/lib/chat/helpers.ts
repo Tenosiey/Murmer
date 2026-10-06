@@ -1,5 +1,6 @@
 import type { Message, UserStatus, VoiceChannelInfo } from '../types';
 import { extractLinks } from '../link-preview';
+import { hideSpoilers } from '../spoilers';
 import { VOICE_QUALITY_PRESETS } from './constants';
 
 export type MessageBlock =
@@ -201,7 +202,9 @@ export function ephemeralInfo(
 
 export function searchResultPreview(message: Message): string {
   if (typeof message.text === 'string' && message.text.trim().length > 0) {
-    const normalized = message.text.trim().replace(/\s+/g, ' ');
+    // Blanked before truncating, so a cut can never leave half a spoiler
+    // whose closing `||` fell off the end.
+    const normalized = hideSpoilers(message.text.trim().replace(/\s+/g, ' '));
     return normalized.length > 120 ? `${normalized.slice(0, 117)}…` : normalized;
   }
   if (typeof message.image === 'string' && message.image.trim().length > 0) {

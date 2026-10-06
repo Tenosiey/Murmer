@@ -2,6 +2,7 @@
 
   import { displayNames } from '$lib/stores/profiles';
   import { tick } from 'svelte';
+  import { hideSpoilers } from '$lib/spoilers';
   import type { Message, SearchResults, WikiSearchHit } from '$lib/types';
   import {
     searchResultPreview,
@@ -172,7 +173,7 @@
                   <button type="button" class="search-result" onclick={() => openPage(page)}>
                     <span class="search-result-text">{page.title}</span>
                     {#if page.snippet}
-                      <span class="search-result-snippet">{page.snippet}</span>
+                      <span class="search-result-snippet">{hideSpoilers(page.snippet)}</span>
                     {/if}
                     <span class="search-result-meta">
                       <span class="search-result-user">

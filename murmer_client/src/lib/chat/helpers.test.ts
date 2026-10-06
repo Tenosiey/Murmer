@@ -328,6 +328,12 @@ describe('searchResultPreview', () => {
     expect(preview.endsWith('…')).toBe(true);
   });
 
+  it('blanks spoilers, which a plain-text preview cannot hide', () => {
+    expect(searchResultPreview(message({ text: 'it was ||the butler|| all along' }))).toBe(
+      'it was [spoiler] all along'
+    );
+  });
+
   it('falls back to the attachment kind when there is no text', () => {
     expect(searchResultPreview(message({ text: '   ', image: 'https://host/a.png' }))).toBe(
       '[Image]'
