@@ -50,10 +50,9 @@ pub async fn purge_all_messages(db: &Db) -> Result<usize, DbError> {
 /// are end-to-end encrypted and private to two people, not server history.
 /// Returns the number of messages deleted.
 ///
-/// Age is the message's stored `timestamp`, which the sender supplies and the
-/// server only normalises. A back-dated message therefore goes early and a
-/// future-dated one late — acceptable for a storage bound, which is all this
-/// is. A row without a parseable timestamp is kept rather than guessed at.
+/// Age is the message's stored `timestamp`, which the server stamps, read
+/// through the indexed `sent_at` column. A row without a parseable timestamp
+/// is kept rather than guessed at.
 pub async fn delete_messages_older_than(db: &Db, days: u32) -> Result<usize, DbError> {
     delete_messages_before(db, Utc::now() - TimeDelta::days(days.into())).await
 }
@@ -66,16 +65,14 @@ pub async fn delete_messages_older_than(db: &Db, days: u32) -> Result<usize, DbE
 /// between them: its reactions and pins were kept, then the message deleted,
 /// leaving orphans that no later sweep would ever select.
 pub async fn delete_messages_before(db: &Db, cutoff: DateTime<Utc>) -> Result<usize, DbError> {
-    // `CASE` rather than `AND json_valid(..)`: SQLite does not promise to
-    // short-circuit `AND`, and `json_extract` on one malformed row would fail
-    // the whole statement — and with it every future sweep.
-    const EXPIRED: &str = "SELECT id FROM messages WHERE julianday(CASE WHEN json_valid(content) \
-         THEN json_extract(content, '$.timestamp') END) < julianday(?1)";
+    // `sent_at` is NULL for a malformed row (see `run_schema`), so one bad
+    // row can neither fail the sweep nor be deleted by it.
+    const EXPIRED: &str = "SELECT id FROM messages WHERE sent_at < julianday(?1)";
     db.call_db(move |conn| {
         let tx = conn.transaction()?;
-        // `EXPIRED` parses the JSON of every message, so it runs once into a
-        // temp table rather than once per table it deletes from: the sweep
-        // holds the only connection thread while it works.
+        // `EXPIRED` runs once into a temp table rather than once per table
+        // it deletes from: the sweep holds the only connection thread while
+        // it works.
         tx.execute_batch(
             "CREATE TEMP TABLE IF NOT EXISTS expired_messages (id INTEGER PRIMARY KEY);
              DELETE FROM expired_messages;",

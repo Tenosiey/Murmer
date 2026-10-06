@@ -132,8 +132,7 @@ pub(super) fn fts_match_expression(query: &str) -> Option<String> {
 
 /// Narrowing for a message search beyond its words: `from:`, `has:file`,
 /// `before:` and `after:` in the search box. The two dates are RFC 3339 UTC
-/// strings in the exact shape [`crate::ws::helpers::stamp_message_time`]
-/// writes, which is what lets SQLite compare them as plain text.
+/// strings, compared as Julian days against the indexed `sent_at` column.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct SearchFilters {
     /// Account name of the author; never a display name.
@@ -169,17 +168,19 @@ pub async fn search_messages(
     db.call_db(move |conn| {
         // `j` is NULL for a malformed row, so json_extract never sees it: an
         // error there would abort the whole search, not just skip the row.
+        // Author and dates read the indexed generated columns (see
+        // `run_schema`), so they narrow the rows before any JSON is parsed.
         let mut stmt = conn.prepare_cached(
             "SELECT id, content FROM (SELECT id, content, \
              CASE WHEN json_valid(content) THEN content END AS j \
-             FROM messages WHERE channel_id = ?1) \
+             FROM messages WHERE channel_id = ?1 \
+             AND (?3 IS NULL OR author = ?3) \
+             AND (?5 IS NULL OR sent_at < julianday(?5)) \
+             AND (?6 IS NULL OR sent_at >= julianday(?6))) \
              WHERE (?2 IS NULL OR id IN \
                (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?2)) \
-             AND (?3 IS NULL OR json_extract(j, '$.user') = ?3) \
              AND (?4 = 0 OR json_extract(j, '$.attachment') IS NOT NULL \
                OR json_extract(j, '$.image') IS NOT NULL) \
-             AND (?5 IS NULL OR json_extract(j, '$.timestamp') < ?5) \
-             AND (?6 IS NULL OR json_extract(j, '$.timestamp') >= ?6) \
              ORDER BY id DESC LIMIT ?7",
         )?;
         let rows = stmt

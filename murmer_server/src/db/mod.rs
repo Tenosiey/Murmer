@@ -180,7 +180,8 @@ fn ensure_column(
     definition: &str,
 ) -> rusqlite::Result<()> {
     let exists: i64 = conn.query_row(
-        &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+        // `xinfo`, because `table_info` leaves generated columns out.
+        &format!("SELECT COUNT(*) FROM pragma_table_xinfo('{table}') WHERE name = ?1"),
         [column],
         |row| row.get(0),
     )?;
@@ -346,6 +347,36 @@ CREATE TABLE IF NOT EXISTS bots (
 INSERT OR IGNORE INTO channels (name) VALUES ('general');
 "#
         ))?;
+
+        // A message's author and send time, read out of its JSON by SQLite
+        // instead of by every query that filters on them: search, retention
+        // and `from:`/`before:` each parsed every row of the table on the one
+        // connection thread. VIRTUAL, so they cost no storage, need no
+        // backfill and can never disagree with `content`; the indexes are
+        // what make them cheap. `sent_at` is a Julian day number, so rows
+        // stamped `…Z` and `…+00:00` compare correctly. The GLOB guard keeps
+        // `julianday('now')`, which SQLite refuses in an index, out of reach
+        // of a crafted timestamp.
+        ensure_column(
+            conn,
+            "messages",
+            "author",
+            "TEXT GENERATED ALWAYS AS (CASE WHEN json_valid(content) \
+             THEN json_extract(content, '$.user') END) VIRTUAL",
+        )?;
+        ensure_column(
+            conn,
+            "messages",
+            "sent_at",
+            "REAL GENERATED ALWAYS AS (CASE WHEN json_valid(content) \
+             AND json_extract(content, '$.timestamp') GLOB '[0-9]*' \
+             THEN julianday(json_extract(content, '$.timestamp')) END) VIRTUAL",
+        )?;
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_messages_channel_sent ON messages (channel_id, sent_at);
+             CREATE INDEX IF NOT EXISTS idx_messages_channel_author ON messages (channel_id, author);
+             CREATE INDEX IF NOT EXISTS idx_messages_sent ON messages (sent_at);",
+        )?;
 
         conn.execute_batch(&invites::invites_schema())?;
         conn.execute_batch(&stats::stats_schema())?;
