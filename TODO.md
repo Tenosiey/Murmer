@@ -110,8 +110,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Backup and export. For operators: a consistent snapshot of the database
       (`VACUUM INTO`) plus `uploads/` without stopping the server. For users:
       an export of their own DMs, which only their client can decrypt
-- [ ] Custom status text — a short line such as "back at 3" with an optional
-      expiry, next to the presence dot (Discord, Teams)
 - [ ] Narrow-window and touch layout. The web client is a shipped target, and
       nine `max-width` media queries in the whole client is what it has to
       meet a phone with

@@ -1,6 +1,11 @@
-import { derived, writable } from 'svelte/store';
+import { derived, readable, writable } from 'svelte/store';
 import { chat } from './chat';
-import { MAX_ABOUT_LENGTH, MAX_DISPLAY_NAME_LENGTH, MAX_NICKNAME_LENGTH } from '../chat/constants';
+import {
+  MAX_ABOUT_LENGTH,
+  MAX_DISPLAY_NAME_LENGTH,
+  MAX_NICKNAME_LENGTH,
+  MAX_STATUS_TEXT_LENGTH
+} from '../chat/constants';
 import type { Message, UserProfile } from '../types';
 
 /**
@@ -29,6 +34,11 @@ function toProfile(raw: unknown): UserProfile | null {
     displayName: displayName.slice(0, MAX_DISPLAY_NAME_LENGTH),
     nickname: nickname.slice(0, MAX_NICKNAME_LENGTH),
     about: about.slice(0, MAX_ABOUT_LENGTH),
+    statusText: typeof p.statusText === 'string' ? p.statusText.slice(0, MAX_STATUS_TEXT_LENGTH) : '',
+    statusExpiresAt:
+      typeof p.statusExpiresAt === 'number' && Number.isFinite(p.statusExpiresAt)
+        ? p.statusExpiresAt
+        : null,
     createdAt: typeof p.createdAt === 'string' ? p.createdAt : ''
   };
 }
@@ -71,7 +81,15 @@ function createProfileStore() {
     chat.sendRaw({ type: 'set-nickname', user, nickname });
   }
 
-  return { subscribe, saveSelf, setNickname, reset: () => set({}) };
+  /**
+   * Set (or with an empty string clear) the own custom status line, lapsing
+   * at `expiresAt` (Unix milliseconds) or never with null.
+   */
+  function setStatusText(text: string, expiresAt: number | null) {
+    chat.sendRaw({ type: 'set-status-text', text, expiresAt });
+  }
+
+  return { subscribe, saveSelf, setNickname, setStatusText, reset: () => set({}) };
 }
 
 export const profiles = createProfileStore();
@@ -92,4 +110,26 @@ export const displayNames = derived(profiles, ($profiles) => {
     if (name) map[user] = name;
   }
   return (user: string) => map[user] ?? user;
+});
+
+/**
+ * A profile's status line as of `now`, or '' once it has lapsed. The server
+ * leaves a lapsed line out of what it sends, but nothing tells a connected
+ * client when one runs out — so the client checks against its own clock.
+ */
+export function activeStatusText(profile: UserProfile | undefined, now: number): string {
+  if (!profile?.statusText) return '';
+  if (profile.statusExpiresAt !== null && profile.statusExpiresAt <= now) return '';
+  return profile.statusText;
+}
+
+/** The clock status lines lapse against, ticking every thirty seconds. */
+const statusClock = readable(Date.now(), (set) => {
+  const timer = setInterval(() => set(Date.now()), 30_000);
+  return () => clearInterval(timer);
+});
+
+/** Each user's current status line, '' when they have none. */
+export const statusTexts = derived([profiles, statusClock], ([$profiles, now]) => {
+  return (user: string) => activeStatusText($profiles[user], now);
 });

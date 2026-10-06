@@ -53,6 +53,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-role-permissions': 'Those permissions are not valid.',
   'invalid-display-name': 'That display name is not allowed.',
   'invalid-about': 'That about text is not allowed.',
+  'invalid-status-text': 'That status is too long, or its expiry is not allowed.',
   'profile-update-failed': 'The server could not update your profile. Please try again.',
   'invalid-avatar': 'That image cannot be used as an avatar.',
   'avatar-update-failed': 'The server could not update your avatar. Please try again.',

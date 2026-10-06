@@ -34,6 +34,7 @@ export const MAX_ROLE_ICON_BYTES = 512 * 1024;
 export const MAX_DISPLAY_NAME_LENGTH = 32;
 export const MAX_NICKNAME_LENGTH = 32;
 export const MAX_ABOUT_LENGTH = 300;
+export const MAX_STATUS_TEXT_LENGTH = 80;
 
 /* Upload policy mirror of `murmer_server/src/upload.rs` — the server enforces
    all of this on `/upload`; the client copy only exists to reject a file

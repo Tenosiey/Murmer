@@ -206,6 +206,10 @@ pub const INVALID_DISPLAY_NAME: &str = r#"{"type":"error","message":"invalid-dis
 
 pub const INVALID_ABOUT: &str = r#"{"type":"error","message":"invalid-about"}"#;
 
+/// A custom status line was too long, multi-line, or its expiry was in the
+/// past or too far ahead.
+pub const INVALID_STATUS_TEXT: &str = r#"{"type":"error","message":"invalid-status-text"}"#;
+
 pub const PROFILE_UPDATE_FAILED: &str = r#"{"type":"error","message":"profile-update-failed"}"#;
 
 pub const INVALID_NICKNAME: &str = r#"{"type":"error","message":"invalid-nickname"}"#;

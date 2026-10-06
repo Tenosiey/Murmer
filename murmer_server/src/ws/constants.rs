@@ -72,6 +72,14 @@ pub const MAX_NICKNAME_LENGTH: usize = 32;
 /// Maximum length in characters for a user's profile "about" text.
 pub const MAX_ABOUT_LENGTH: usize = 300;
 
+/// Maximum length in characters for a user's custom status line ("back at
+/// 3"). It sits under the name in the member list, so one short line.
+pub const MAX_STATUS_TEXT_LENGTH: usize = 80;
+
+/// The furthest ahead a custom status may be set to expire, in milliseconds
+/// (one week). Past that "expires" means nothing a client would show.
+pub const MAX_STATUS_TEXT_TTL_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+
 /// File extensions accepted for image uploads referenced over the WebSocket
 /// (custom emojis, server icon). Subset of the upload endpoint's safe-list.
 pub const UPLOAD_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];

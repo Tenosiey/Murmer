@@ -354,6 +354,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                             "set-profile" => {
                                 profile::handle_set_profile(&state, &mut sender, &v, &user_name).await;
                             }
+                            "set-status-text" => {
+                                profile::handle_set_status_text(&state, &mut sender, &v, &user_name).await;
+                            }
                             "set-nickname" => {
                                 profile::handle_set_nickname(&state, &mut sender, &v, &user_name).await;
                             }
