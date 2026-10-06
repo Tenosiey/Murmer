@@ -69,6 +69,8 @@ export function uploadErrorMessage(status: number, subject = 'file'): string | n
       return `That ${subject} is too large to upload.`;
     case 415:
       return `This ${subject} type is not allowed on the server.`;
+    case 507:
+      return 'The server is out of upload space for you. Delete older uploads or ask an admin.';
     default:
       return null;
   }

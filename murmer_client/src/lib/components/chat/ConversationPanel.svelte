@@ -155,8 +155,8 @@
             </span>
           {:else if serverFileUrl(msg.image, httpBase)}
             <img src={serverFileUrl(msg.image, httpBase)} alt="" loading="lazy" />
-          {:else if msg.attachment}
-            <a href={msg.attachment.url} target="_blank" rel="noopener noreferrer">
+          {:else if msg.attachment && serverFileUrl(msg.attachment.url, httpBase)}
+            <a href={serverFileUrl(msg.attachment.url, httpBase)} target="_blank" rel="noopener noreferrer">
               {msg.attachment.name}
             </a>
           {/if}

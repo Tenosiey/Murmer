@@ -147,6 +147,7 @@ async fn main() -> Result<()> {
         channel_overrides: Mutex::new(existing_overrides),
         mutes: Mutex::new(existing_mutes.into_iter().collect()),
         upload_dir: config.upload_dir.clone(),
+        upload_quota: config.upload_quota,
         password: config.password.clone(),
         admin_token: config.admin_token.clone(),
         stun_servers: config.stun_servers.clone(),
@@ -166,6 +167,7 @@ async fn main() -> Result<()> {
     // failure rather than retried. Must run before the scheduler starts.
     ws::recover_claimed_scheduled_messages(&state).await;
     ws::spawn_scheduler(Arc::clone(&state));
+    upload::spawn_upload_sweep(Arc::clone(&state));
     if let Some(days) = config.message_retention_days {
         info!(
             days,

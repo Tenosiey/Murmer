@@ -1050,3 +1050,74 @@ async fn a_role_reorder_never_lifts_a_role_past_the_manager() {
     let seen = sock.until(|f| f["type"] == "error").await;
     assert!(of_type(&seen, "force-disconnect").is_empty());
 }
+
+/// A profile change reaches every connection, so a muted member could keep
+/// talking to everyone through their status line or display name.
+#[tokio::test]
+async fn a_muted_member_cannot_publish_through_their_profile() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+
+    alice
+        .send(json!({ "type": "mute-user", "user": "bob" }))
+        .await;
+    bob.until(|f| f["type"] == "user-muted").await;
+
+    for frame in [
+        json!({ "type": "set-status-text", "text": "still here" }),
+        json!({ "type": "set-profile", "displayName": "still here" }),
+        json!({ "type": "set-nickname", "nickname": "still here" }),
+    ] {
+        bob.send(frame).await;
+        let refused = bob.until(|f| f["type"] == "error").await;
+        assert_eq!(refused.last().unwrap()["message"], "muted");
+        assert!(of_type(&refused, "profile-update").is_empty());
+    }
+}
+
+/// A ban takes the banned member's queue with it; otherwise everything they
+/// scheduled before the ban still posts on time.
+#[tokio::test]
+async fn a_ban_clears_the_banned_members_scheduled_messages() {
+    let database = db::init(":memory:").await.expect("in-memory db");
+    db::assign_named_role(&database, &public_key("alice"), "Owner", None)
+        .await
+        .expect("bootstrap owner");
+    let role_defs = db::list_role_defs(&database).await.expect("role defs");
+    let addr = serve(AppState {
+        role_defs: tokio::sync::Mutex::new(role_defs.into_iter().map(|d| (d.id, d)).collect()),
+        ..AppState::new(database.clone())
+    })
+    .await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let _bob = Client::connect(addr, "bob").await;
+
+    let channel = db::get_channel_id_by_name(&database, "general")
+        .await
+        .expect("general");
+    let body = json!({ "type": "chat", "user": "bob", "text": "later" }).to_string();
+    db::insert_scheduled_message(
+        &database,
+        "bob",
+        channel,
+        &body,
+        chrono::Utc::now() + chrono::Duration::days(30),
+        25,
+    )
+    .await
+    .expect("schedule")
+    .expect("under the cap");
+
+    alice
+        .send(json!({ "type": "ban-user", "user": "bob" }))
+        .await;
+    alice.until(|f| f["type"] == "force-disconnect").await;
+
+    assert!(
+        db::get_scheduled_messages(&database, "bob")
+            .await
+            .expect("list")
+            .is_empty()
+    );
+}

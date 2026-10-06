@@ -32,12 +32,30 @@ pub struct Config {
     pub message_retention_days: Option<u32>,
     /// Reverse proxies whose `X-Forwarded-For` header is believed.
     pub trusted_proxies: Vec<ipnet::IpNet>,
+    /// Byte quotas for stored uploads.
+    pub upload_quota: crate::upload::UploadQuota,
+}
+
+/// Read a quota given in megabytes as bytes, or `default` when unset. Like
+/// the retention limit, a typo is fatal rather than read as "no limit".
+fn quota_bytes(var: &str, default: u64) -> Result<u64> {
+    match env::var(var) {
+        Ok(value) if !value.trim().is_empty() => value
+            .trim()
+            .parse::<u64>()
+            .map(|mb| mb.saturating_mul(1024 * 1024))
+            .with_context(|| format!("{var} must be a whole number of megabytes")),
+        _ => Ok(default),
+    }
 }
 
 /// Used when `STUN_SERVERS` is unset. Dropping it would break direct
 /// connections that work today, so opting out of Google is an explicit
 /// `STUN_SERVERS=` rather than the default.
 const DEFAULT_STUN_SERVER: &str = "stun:stun.l.google.com:19302";
+
+/// Shortest `ADMIN_TOKEN` the server starts with.
+const MIN_ADMIN_TOKEN_CHARS: usize = 32;
 
 impl Config {
     /// Load configuration from environment variables.
@@ -56,6 +74,8 @@ impl Config {
     ///   are deleted; unset or `0` keeps them forever
     /// - `TRUSTED_PROXIES` (optional): Comma-separated proxy addresses or
     ///   CIDR ranges whose `X-Forwarded-For` is believed
+    /// - `UPLOAD_QUOTA_USER_MB`, `UPLOAD_QUOTA_TOTAL_MB` (optional): upload
+    ///   storage quotas in megabytes; `0` means no limit
     pub fn from_env() -> Result<Self> {
         let database_path = env::var("DATABASE_PATH").unwrap_or_else(|_| "murmer.db".to_string());
 
@@ -70,6 +90,18 @@ impl Config {
 
         let password = env::var("SERVER_PASSWORD").ok().filter(|s| !s.is_empty());
         let admin_token = env::var("ADMIN_TOKEN").ok().filter(|s| !s.is_empty());
+        // The token grants Owner, so a short one is refused rather than
+        // guessed: the failure limit in `security` slows guessing, it does
+        // not make a weak token strong.
+        if admin_token
+            .as_ref()
+            .is_some_and(|t| t.chars().count() < MIN_ADMIN_TOKEN_CHARS)
+        {
+            anyhow::bail!(
+                "ADMIN_TOKEN must be at least {MIN_ADMIN_TOKEN_CHARS} characters; \
+                 generate one with `openssl rand -hex 32`"
+            );
+        }
 
         let cors_allowlist = Self::parse_cors_origins()?;
 
@@ -98,6 +130,12 @@ impl Config {
 
         let trusted_proxies = parse_trusted_proxies(env::var("TRUSTED_PROXIES").ok().as_deref())?;
 
+        let defaults = crate::upload::UploadQuota::default();
+        let upload_quota = crate::upload::UploadQuota {
+            per_user: quota_bytes("UPLOAD_QUOTA_USER_MB", defaults.per_user)?,
+            total: quota_bytes("UPLOAD_QUOTA_TOTAL_MB", defaults.total)?,
+        };
+
         Ok(Self {
             bind_addr,
             database_path,
@@ -109,6 +147,7 @@ impl Config {
             stun_servers,
             message_retention_days,
             trusted_proxies,
+            upload_quota,
         })
     }
 

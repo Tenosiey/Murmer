@@ -32,6 +32,7 @@ describe('uploadErrorMessage', () => {
     expect(uploadErrorMessage(429)).toMatch(/too quickly/i);
     expect(uploadErrorMessage(413, 'image')).toBe('That image is too large to upload.');
     expect(uploadErrorMessage(415, 'sound')).toBe('This sound type is not allowed on the server.');
+    expect(uploadErrorMessage(507)).toMatch(/upload space/i);
   });
 
   it('leaves other statuses to the caller', () => {

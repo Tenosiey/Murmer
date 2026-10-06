@@ -156,10 +156,22 @@ would protect nothing.
 
 All of this is deliberate, and `README.md` points operators here:
 
+- **The server operator.** This is the limit that matters most. The roster
+  a client wraps the channel key to comes from the server
+  (`channel_members`), so an operator can add a member, or an account bound
+  to a key they hold, and honest clients will hand it the key. Pinning in
+  `stores/peerKeys.ts` catches a member whose key *changed*, never a member
+  who is *new*. Encrypted channels therefore protect against other members
+  and a leaked database, not against whoever runs the server. Closing this
+  would take members seeing, or approving, each new wrap — design work, not
+  a fix.
+
 - **Server-side search** — there is no text to index.
 - **Bots** — `POST /channels/:id/messages` refuses; a bot has no identity key
   to encrypt with.
 - **Uploaded file bytes** — only the attachment's name and URL travel sealed.
+  For the same reason, deleting a sealed message leaves its file on disk;
+  see [Quota and deletion](#quota-and-deletion).
 - **Link previews** and content-derived stats.
 - **The profanity filter and the auto-moderation rules** — the server holds
   no text to mask or match. Doing either would mean handing the server the
@@ -244,6 +256,30 @@ asserts neither copy ever admits active content. See
 
 Files are streamed to disk after validating type, size and filename.
 
+### Quota and deletion
+
+Every stored file is recorded in the `uploads` table with its uploader and
+size, and `/upload` refuses with `507` once the uploader, or the server as a
+whole, would pass its quota (`UPLOAD_QUOTA_USER_MB`, `UPLOAD_QUOTA_TOTAL_MB`
+in `README.md`). The rate limit alone bounded only how *fast* the disk could
+be filled, never how full.
+
+Deleting a message deletes its file. A trigger on `messages` marks the file
+released on **any** delete, so the author's delete, a moderator's, retention,
+the Danger Zone purge and reset all take files with them without each having
+to remember. `upload::spawn_upload_sweep` then removes released files that
+nothing else names: a server-made forward, an avatar, an emoji, a sound, the
+server icon or a wiki page keeps the file alive. Two gaps are deliberate:
+
+- a file in an **encrypted** message or a DM is never released, because the
+  server cannot see which file a sealed message carries;
+- a file that was uploaded but never posted is kept, and counts against its
+  uploader's quota. Sweeping unposted files would also sweep every file in a
+  sealed message, for the same reason.
+
+A copy a user forwarded into a DM points at the original upload, so it stops
+loading once the original message is deleted. That is what deleting means.
+
 ### Serving files back
 
 `/files` answers from the app's own origin, so the safe-list is not allowed
@@ -315,8 +351,8 @@ limiter** — which is why it is worth a test at all.
   an embed on the poster's own host is a tracking pixel that reports each
   reader's IP address and reading time. Markdown images render as links,
   the DOMPurify config drops every element and attribute that loads a
-  resource, a message's `image` is shown only when `serverFileUrl` places it
-  under the connected server's `/files/`, and `/link-preview` inlines the
+  resource, a message's `image` and `attachment` are shown only when
+  `serverFileUrl` places them under the connected server's `/files/`, and `/link-preview` inlines the
   OpenGraph image as a `data:` URL instead of returning its address. The
   CSP cannot do this job: `img-src` has to allow any server a user adds.
 - **A Content-Security-Policy is the second line behind DOMPurify.** The

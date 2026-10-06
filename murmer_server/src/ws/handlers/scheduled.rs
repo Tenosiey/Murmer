@@ -410,6 +410,15 @@ async fn delivery_refusal(
     if super::moderation::is_muted(state, user).await {
         return Some("muted");
     }
+    // Fail closed: a database error refuses the message rather than letting
+    // a possibly banned author through.
+    let key = lookup_user_key(state, user).await;
+    if !matches!(
+        db::is_banned(&state.db, key.as_deref(), user).await,
+        Ok(false)
+    ) {
+        return Some("banned");
+    }
     let sealed = body.get("enc").is_some_and(|enc| !enc.is_null());
     match channel_is_e2ee(state, channel_id).await {
         true if !sealed => return Some("channel-requires-encryption"),

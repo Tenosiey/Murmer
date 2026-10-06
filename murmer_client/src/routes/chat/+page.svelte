@@ -99,6 +99,7 @@
   import { loadKeyPair, sign } from '$lib/keypair';
   import { httpBaseFromWs } from '$lib/server-url';
   import { connection, connectionError } from '$lib/stores/connection';
+  import { reconnectDelay } from '$lib/websocket-manager';
   import { uploadConfig, describeUploadRejection } from '$lib/stores/uploadConfig';
   import { slowModeWait } from '$lib/stores/chatSettings';
   import { describeServerError, isFatalConnectionError } from '$lib/errors';
@@ -393,15 +394,52 @@
         // so rejoin the channel the user was viewing.
         chat.join(currentChatChannelId);
       }
+      // The server dropped us from voice with the old connection, so rejoin
+      // the call too rather than sit in it with nobody signaling.
+      if (inVoice && currentVoiceChannelId !== null) {
+        void joinVoiceChannel(currentVoiceChannelId);
+      }
       ping.start();
       await scrollBottom();
     });
   }
 
   function retryConnect() {
+    clearReconnect();
     ping.stop();
     connectToServer();
   }
+
+  /* A connection that was established and then lost retries on its own, with
+     backoff; before this every restart or network blip left every member on
+     the overlay until they pressed "Try again". A connection that never came
+     up does not retry: that is a wrong address, not an outage. Leaving the
+     server goes through `chat.disconnect`, whose 'idle' stops the loop. */
+  let reconnecting = $state(false);
+  let reconnectAttempt = 0;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function clearReconnect() {
+    if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  $effect(() => {
+    const state = $connection;
+    if (state === 'connected' || state === 'idle') {
+      reconnecting = false;
+      reconnectAttempt = 0;
+      clearReconnect();
+      return;
+    }
+    if (state === 'disconnected') reconnecting = true;
+    if (!reconnecting || state === 'connecting' || reconnectTimer !== null) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      ping.stop();
+      connectToServer();
+    }, reconnectDelay(reconnectAttempt++));
+  });
 
   function leaveToServers(message: string | null = null) {
     connectionError.set(message);
@@ -530,6 +568,7 @@
   });
 
   onDestroy(() => {
+    clearReconnect();
     window.removeEventListener('keydown', handleGlobalShortcut);
     stopAutoAway?.();
   });
@@ -1660,6 +1699,7 @@
   <ConnectionOverlay
     state={$connection}
     server={$selectedServer}
+    {reconnecting}
     onRetry={retryConnect}
     onBack={() => leaveToServers()}
   />

@@ -350,3 +350,29 @@ async fn hostile_wiki_queries_neither_error_nor_match_everything() {
             .is_empty()
     );
 }
+
+/// Rows from before the server stamped every message carry the client's
+/// `…Z` form, and plain text comparison put `10:00:00Z` after
+/// `10:00:00.5+00:00` (`Z` sorts above `.`). Dates compare as instants.
+#[tokio::test]
+async fn date_filters_compare_instants_not_text() {
+    let (db, channel) = setup().await;
+    let legacy = insert_json(
+        &db,
+        channel,
+        serde_json::json!({"type": "chat", "user": "alice", "text": "old",
+            "timestamp": "2026-01-01T10:00:00Z"}),
+    )
+    .await;
+    let before = db::SearchFilters {
+        before: Some("2026-01-01T10:00:00.5+00:00".into()),
+        ..Default::default()
+    };
+    let rows = db::search_messages(&db, channel, "", &before, 50)
+        .await
+        .expect("search");
+    assert_eq!(
+        rows.into_iter().map(|(id, _)| id).collect::<Vec<_>>(),
+        vec![legacy]
+    );
+}

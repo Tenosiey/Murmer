@@ -2,11 +2,15 @@
   Full-screen overlay for connection lifecycle states. The connecting state
   fades in after a short delay so fast connects never flash the overlay;
   disconnected/failed states offer retry and a way back to the server list.
+  While the page is reconnecting by itself the overlay says so, so "Try
+  again" reads as "now" rather than as the only way back.
 -->
 <script lang="ts">
   interface Props {
     state: 'connecting' | 'disconnected' | 'failed';
     server?: string | null;
+    /** The page is retrying on its own after losing an established connection. */
+    reconnecting?: boolean;
     onRetry: () => void;
     onBack: () => void;
   }
@@ -14,6 +18,7 @@
   let {
     state,
     server = null,
+    reconnecting = false,
     onRetry,
     onBack
   }: Props = $props();
@@ -26,11 +31,13 @@
       <h2>Connecting…</h2>
       <p class="detail">{server ?? 'Unknown server'}</p>
     {:else}
-      <h2>{state === 'failed' ? 'Could not connect' : 'Connection lost'}</h2>
+      <h2>{reconnecting ? 'Reconnecting…' : state === 'failed' ? 'Could not connect' : 'Connection lost'}</h2>
       <p>
-        {state === 'failed'
-          ? 'The server is offline or unreachable. Check the address or try again later.'
-          : 'The connection to the server was lost. It may have gone offline.'}
+        {reconnecting
+          ? 'The connection to the server was lost. Murmer keeps trying in the background.'
+          : state === 'failed'
+            ? 'The server is offline or unreachable. Check the address or try again later.'
+            : 'The connection to the server was lost. It may have gone offline.'}
       </p>
       <p class="detail">{server ?? 'Unknown server'}</p>
       <div class="actions">

@@ -77,13 +77,15 @@ Environment variables recognised by the server:
 | `DATABASE_PATH` | No | Path to the SQLite database file (defaults to `murmer.db`) |
 | `UPLOAD_DIR` | No | Directory for stored uploads (defaults to `uploads/`) |
 | `SERVER_PASSWORD` | No | Shared secret required during presence/auth |
-| `ADMIN_TOKEN` | No | Enables the administrative `/role` endpoint |
+| `ADMIN_TOKEN` | No | Enables the administrative `/role` endpoint, which can grant any role including Owner, and the bot management API. At least 32 characters or the server refuses to start; generate one with `openssl rand -hex 32`. After 10 wrong tokens in a minute every admin request is refused until the minute passes |
 | `BIND_ADDRESS` | No | Override the socket address (defaults to `0.0.0.0:3001`) |
 | `CORS_ALLOW_ORIGINS` | No | Comma-separated allowed origins (omit in production) |
 | `WEB_CLIENT_DIR` | No | Directory with the built web client to serve at `/` (see [Web client](#web-client)) |
 | `MAX_MESSAGES_PER_MINUTE` | No | Per-user message rate limit (default: 30) |
 | `MAX_AUTH_ATTEMPTS_PER_MINUTE` | No | Per-IP auth rate limit (default: 5) |
 | `MAX_UPLOADS_PER_MINUTE` | No | Per-IP file upload rate limit (default: 20) |
+| `UPLOAD_QUOTA_USER_MB` | No | Megabytes of uploads one user may keep stored (default: 1024, `0` for no limit) |
+| `UPLOAD_QUOTA_TOTAL_MB` | No | Megabytes of uploads the whole server may keep stored (default: 20480, `0` for no limit). A file is deleted a few minutes after the last unencrypted message carrying it is |
 | `TRUSTED_PROXIES` | Behind a reverse proxy | Comma-separated addresses or CIDR ranges of your reverse proxies (e.g. `127.0.0.1` or `172.16.0.0/12` for Docker). Only requests from these may set the client IP through `X-Forwarded-For`; without it every user behind the proxy shares one per-IP rate limit, so a few failed logins lock everyone out |
 | `MAX_FRAMES_PER_SECOND` | No | Sustained WebSocket frames one connection may send per second, with ten seconds' worth allowed in a burst (default: 20, `0` for no limit) |
 | `STUN_SERVERS` | No | Comma-separated `stun:`/`stuns:` URLs clients use to set up voice and screen share (defaults to `stun:stun.l.google.com:19302`; set it empty to contact no STUN server, which limits calls to peers on the same network) |
@@ -137,8 +139,11 @@ link is still a credential.
 
 **Encrypted channels** are a per-channel choice with real trade-offs: no
 server-side search, no bot posting, no forwarding, link previews or
-moderation filters, and uploaded file bytes stay unencrypted. The full list
-is in [`docs/security.md`](docs/security.md#what-encryption-does-not-cover).
+moderation filters, and uploaded file bytes stay unencrypted. They protect
+against other members and a leaked database, **not against whoever runs the
+server**: the operator decides who is on a channel's roster and can add a
+member holding their own key. The full list is in
+[`docs/security.md`](docs/security.md#what-encryption-does-not-cover).
 
 ## Web client
 

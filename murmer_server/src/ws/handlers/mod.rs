@@ -808,6 +808,12 @@ async fn handle_status_update(
         send_error(sender, errors::INVALID_STATUS).await;
         return;
     };
+    // Every change reaches every connection, so it is paced like a message.
+    // No mute check: online/away is not something a member says.
+    if !crate::security::check_message_rate_limit(&state.rate_limiter, &user).await {
+        send_error(sender, errors::MESSAGE_RATE_LIMIT).await;
+        return;
+    }
 
     state
         .statuses

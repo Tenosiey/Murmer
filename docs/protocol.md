@@ -105,8 +105,9 @@ resolve differently and nothing is broadcast for it.
 Both broadcast channels hold `BROADCAST_CAPACITY` frames. A connection that
 cannot drain them in time (a slow client, a stalled socket) gets
 `RecvError::Lagged` and the skipped frames are gone. Closing the socket is
-not the answer: the client does not reconnect on its own, so the person
-would see "Connection lost" and drop out of a call over a burst of traffic.
+not the answer: the client would reconnect, but only after a backoff and a
+fresh rejoin of its call, so the person would drop out of a call over a burst
+of traffic.
 
 So the receive arm puts current state in the frames' place instead:
 

@@ -343,3 +343,39 @@ async fn a_server_reset_clears_scheduled_messages_but_not_reminders() {
         "reminders are personal notes, not server structure"
     );
 }
+
+/// A ban clears the queue. Left in place, up to a year of scheduled messages
+/// would still post under the banned name.
+#[tokio::test]
+async fn clearing_a_users_queue_takes_only_theirs() {
+    let (db, channel) = setup().await;
+    schedule(&db, "spammer", channel, 60).await;
+    remind(&db, "spammer", 60).await;
+    schedule(&db, "ada", channel, 60).await;
+    remind(&db, "ada", 60).await;
+
+    db::delete_scheduled_for_user(&db, "spammer")
+        .await
+        .expect("clear");
+
+    assert!(
+        db::get_scheduled_messages(&db, "spammer")
+            .await
+            .expect("list")
+            .is_empty()
+    );
+    assert!(
+        db::get_reminders(&db, "spammer")
+            .await
+            .expect("list")
+            .is_empty()
+    );
+    assert_eq!(
+        db::get_scheduled_messages(&db, "ada")
+            .await
+            .expect("list")
+            .len(),
+        1
+    );
+    assert_eq!(db::get_reminders(&db, "ada").await.expect("list").len(), 1);
+}
