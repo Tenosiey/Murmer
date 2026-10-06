@@ -940,8 +940,11 @@
     font-weight: 600;
   }
 
+  /* Name and quality both shrink from their content width, so at the
+     default sidebar width the name keeps a share instead of collapsing to
+     nothing behind a fixed "Standard (64 kbps)". */
   .voice-channel-name {
-    flex: 1;
+    flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -953,7 +956,10 @@
     font-size: var(--text-xs);
     font-weight: 500;
     color: var(--color-muted);
-    flex-shrink: 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .voice-channel-limit {
