@@ -119,8 +119,6 @@ the idea comes from and what users will expect it to behave like.
       an export of their own DMs, which only their client can decrypt
 - [ ] Custom status text — a short line such as "back at 3" with an optional
       expiry, next to the presence dot (Discord, Teams)
-- [ ] Launch on login for the desktop app — the Tauri autostart plugin, gated
-      on `isTauri` like the other native integrations
 - [ ] Narrow-window and touch layout. The web client is a shipped target, and
       nine `max-width` media queries in the whole client is what it has to
       meet a phone with

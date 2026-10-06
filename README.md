@@ -142,9 +142,9 @@ is in [`docs/security.md`](docs/security.md#what-encryption-does-not-cover).
 
 ## Web client
 
-The same build runs in a browser. Everything works except OS-wide hotkeys
-and the built-in updater. The simplest deployment is to let the Murmer server
-host it:
+The same build runs in a browser. Everything works except OS-wide hotkeys,
+launch on login and the built-in updater. The simplest deployment is to let
+the Murmer server host it:
 
 ```bash
 cd murmer_client && bun install && bun run build      # writes build/
