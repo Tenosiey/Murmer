@@ -20,9 +20,25 @@
   import { createInviteLink, looksLikeInviteLink, parseInviteLink } from '$lib/invite';
   import { pendingInvite } from '$lib/stores/pendingInvite';
   import { isWebClient } from '$lib/platform';
+  import { pendingMessageLink } from '$lib/message-link';
 
   onMount(() => {
-    if (!get(session).user) goto('/login');
+    if (!get(session).user) {
+      goto('/login');
+      return;
+    }
+    // A message link carries on to its server, but only to one the user
+    // already added: following a link must never connect anywhere new.
+    const link = get(pendingMessageLink);
+    if (link) {
+      const server = servers.get(link.server);
+      if (server) {
+        join(server);
+        return;
+      }
+      pendingMessageLink.set(null);
+      error = 'That message link is for a server you have not added.';
+    }
     serverStatus.start();
     // Surface the reason we were sent back here (wrong password, ban, ...).
     const carried = get(connectionError);

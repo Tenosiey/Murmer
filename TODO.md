@@ -57,8 +57,6 @@ the idea comes from and what users will expect it to behave like.
       or everything one member posted in the last hour, with the ban
       (Discord's purge and "delete message history"). The Danger Zone only
       knows everything at once
-- [ ] Copy a link to a message, which opens the right server and channel and
-      scrolls to it. `highlightMessageById` already does the jumping
 - [ ] Outbound webhooks. The bot REST API covers "something else drives
       Murmer"; there is no way round for Murmer to notify something else when
       a message arrives
@@ -70,8 +68,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Search filters — `from:`, `in:`, `has:file`, `before:`/`after:` in the
       search overlay (`chat/search.ts`), the way Discord and Slack search
       works
-- [ ] Spoilers — `||text||` markup and a "spoiler" toggle on image uploads
-      that blurs them until clicked (Discord)
 - [ ] Synced read state. Last-read ids live in `localStorage`
       (`stores/unread.ts`), so the desktop app and the web client each think
       the other's reading is still unread. Per-user read markers on the
@@ -123,8 +119,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Accessibility pass — keyboard navigation and screen-reader labels.
       Context menus only open on right-click and take no arrow keys, so
       most of the app is currently hard to reach without a mouse
-- [ ] Auto-away — switch to away after N minutes without input and back on
-      return (Discord idle, TeamSpeak away). Status is manual only today
 - [ ] Backup and export. For operators: a consistent snapshot of the database
       (`VACUUM INTO`) plus `uploads/` without stopping the server. For users:
       an export of their own DMs, which only their client can decrypt

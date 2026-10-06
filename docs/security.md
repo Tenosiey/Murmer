@@ -192,7 +192,7 @@ when it was written, which is the same epoch a message sent then would have
 used — see [`features.md`](features.md).
 
 `handle_chat` and `handle_edit_message` branch on `channel_is_e2ee` and
-**reject** a `text`, `image` or `attachment` field there rather than
+**reject** a `text`, `image`, `attachment` or `spoiler` field there rather than
 stripping it silently: a client that got this wrong has a bug its user must
 hear about.
 

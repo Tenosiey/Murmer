@@ -13,6 +13,7 @@
   import { displayNames } from '$lib/stores/profiles';
   import { session } from '$lib/stores/session';
   import { renderMarkdown } from '$lib/markdown';
+  import { hideSpoilers } from '$lib/spoilers';
   import { emojifyHtml, isEmojiOnlyText } from '$lib/emoji';
   import {
     ephemeralInfo,
@@ -45,6 +46,7 @@
     onReply: (msg: Message) => void;
     onForward: (msg: Message) => void;
     onRemind: (msg: Message) => void;
+    onCopyLink: (msg: Message) => void;
     onEdit: (msg: Message) => void;
     onTogglePin: (msg: Message) => void;
     onDelete: (msg: Message) => void;
@@ -69,6 +71,7 @@
     onReply,
     onForward,
     onRemind,
+    onCopyLink,
     onEdit,
     onTogglePin,
     onDelete,
@@ -159,7 +162,7 @@
       >
         <span class="reply-quote-arrow" aria-hidden="true">↪</span>
         <span class="reply-quote-user">{$displayNames(reply.user)}</span>
-        <span class="reply-quote-text">{reply.text || 'Original message'}</span>
+        <span class="reply-quote-text">{reply.text ? hideSpoilers(reply.text) : 'Original message'}</span>
       </button>
     {/if}
 
@@ -213,7 +216,11 @@
           {/each}
         </div>
       {/if}
-      {#if imageUrl}
+      {#if imageUrl && message.spoiler}
+        <span class="spoiler spoiler-media" role="button" tabindex="0" aria-label="Spoiler image, select to reveal">
+          <img src={imageUrl} alt="" loading="lazy" />
+        </span>
+      {:else if imageUrl}
         <img src={imageUrl} alt="" loading="lazy" />
       {/if}
       {#if message.attachment}
@@ -308,6 +315,10 @@
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M5 3 2.5 5.5"/><path d="m19 3 2.5 2.5"/></svg>
         <span class="sr-only">Remind me about this</span>
+      </button>
+      <button type="button" class="message-action" onclick={() => onCopyLink(message)} title="Copy link">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <span class="sr-only">Copy link</span>
       </button>
       {#if canEdit}
         <button type="button" class="message-action" onclick={() => onEdit(message)} title="Edit message">

@@ -59,6 +59,14 @@
   import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
   import { channelTopics } from '$lib/stores/channelTopics';
   import { statuses } from '$lib/stores/status';
+  import { startAutoAway } from '$lib/stores/autoAway';
+  import {
+    createMessageLink,
+    parseMessageLink,
+    pendingMessageLink,
+    type MessageLink
+  } from '$lib/message-link';
+  import { isWebClient } from '$lib/platform';
   import { parseSlashCommand } from '$lib/chat/commands';
   import { pinned } from '$lib/stores/pins';
   import { scheduledAttention } from '$lib/stores/scheduled';
@@ -137,6 +145,7 @@
   let composer: MessageComposer | undefined = $state();
   let previewUrl: string | null = $state(null);
   let pendingFile: File | null = $state(null);
+  let pendingSpoiler = $state(false);
   let dragActive = $state(false);
 
   let highlightedMessageId: number | null = $state(null);
@@ -301,6 +310,7 @@
       previewUrl = null;
     }
     pendingFile = file;
+    pendingSpoiler = false;
     if (pendingFile && pendingFile.type.startsWith('image/')) {
       previewUrl = URL.createObjectURL(pendingFile);
     }
@@ -443,6 +453,17 @@
   chat.on('breakout-move', handleBreakoutMove);
 
   onMount(() => {
+    // A message link opened in the browser lands here. The server screen
+    // decides whether its server is one we may connect to.
+    const opened = parseMessageLink(location.href);
+    if (opened) {
+      pendingMessageLink.set(opened);
+      history.replaceState(history.state, '', location.pathname);
+      if (opened.server !== get(selectedServer)) {
+        goto('/servers');
+        return;
+      }
+    }
     if (!get(session).user) {
       goto('/login');
       return;
@@ -498,12 +519,16 @@
     clearGlobalHotkeyActions();
   });
 
+  let stopAutoAway: (() => void) | null = null;
+
   onMount(() => {
     window.addEventListener('keydown', handleGlobalShortcut);
+    stopAutoAway = startAutoAway();
   });
 
   onDestroy(() => {
     window.removeEventListener('keydown', handleGlobalShortcut);
+    stopAutoAway?.();
   });
 
   /**
@@ -546,9 +571,13 @@
     if (!file) return;
     const base = httpBaseFromWs(get(selectedServer) ?? 'ws://localhost:3001/ws');
     const result = await uploadAttachment(base, file, $uploadConfig.maxBytes);
+    const spoiler = pendingSpoiler;
     clearPendingFile();
     const error = result.ok
-      ? chat.sendUpload($session.user ?? 'anon', result.content)
+      ? chat.sendUpload($session.user ?? 'anon', {
+          ...result.content,
+          ...(spoiler && 'image' in result.content ? { spoiler: true } : {})
+        })
       : result.message;
     if (error) setCommandFeedback(error, 'error');
   }
@@ -796,6 +825,66 @@
   }
 
   /** Jump to the original of a forwarded message, switching channels first. */
+  async function copyMessageLink(msg: Message) {
+    const server = get(selectedServer);
+    if (typeof msg.id !== 'number' || !server) return;
+    const link = createMessageLink(
+      { server, channel: currentChatChannelId, message: msg.id },
+      isWebClient ? location.origin : undefined
+    );
+    try {
+      await navigator.clipboard.writeText(link);
+      setCommandFeedback('Link copied.');
+    } catch (e) {
+      console.error('Failed to copy message link', e);
+      setCommandFeedback('Could not copy the link.', 'error');
+    }
+  }
+
+  /**
+   * Follow a message link. One for this server jumps in place; one for
+   * another server in the list goes through the server screen, which
+   * connects there and leaves the jump to `pendingMessageLink`.
+   */
+  function openMessageLink(link: MessageLink) {
+    if (link.server === get(selectedServer)) {
+      if (!$channels.some((channel) => channel.id === link.channel)) {
+        setCommandFeedback('That message is in a channel you cannot see.', 'error');
+        return;
+      }
+      joinChannel(link.channel);
+      focusMessage(link.message);
+      return;
+    }
+    if (!servers.get(link.server)) {
+      setCommandFeedback('That message is on a server you have not added.', 'error');
+      return;
+    }
+    pendingMessageLink.set(link);
+    leaveToServers();
+  }
+
+  /* Delegated from the message list, ahead of the opener that would hand an
+     external link to the system browser. */
+  function handleMessageListClick(event: MouseEvent) {
+    const anchor = (event.target as HTMLElement | null)?.closest?.('a[href]');
+    if (!anchor) return;
+    const link = parseMessageLink((anchor as HTMLAnchorElement).href);
+    if (!link) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openMessageLink(link);
+  }
+
+  // Attached rather than an `onclick` on the list: links are the only thing
+  // in it to activate, and they bring their own keyboard handling.
+  $effect(() => {
+    const list = messagesContainer;
+    if (!list) return;
+    list.addEventListener('click', handleMessageListClick);
+    return () => list.removeEventListener('click', handleMessageListClick);
+  });
+
   function focusForwardedSource(origin: ForwardInfo) {
     if (!$channels.some((channel) => channel.id === origin.channelId)) return;
     joinChannel(origin.channelId);
@@ -1261,6 +1350,14 @@
       initialChannelSet = true;
     }
   });
+  // A link that brought us to this server jumps once the channel list is in
+  // and the server has placed us in its default channel.
+  $effect(() => {
+    const link = $pendingMessageLink;
+    if (!link || !initialChannelSet || link.server !== get(selectedServer)) return;
+    pendingMessageLink.set(null);
+    openMessageLink(link);
+  });
   let currentChatChannelName = $derived($channels.find(c => c.id === currentChatChannelId)?.name ?? '');
   let currentChannelEncrypted = $derived(
     $channels.find((c) => c.id === currentChatChannelId)?.e2ee === true
@@ -1454,6 +1551,7 @@
                 onReply={startReply}
                 onForward={forwardMessage}
                 onRemind={remindAboutMessage}
+                onCopyLink={copyMessageLink}
                 onEdit={editChatMessage}
                 onTogglePin={togglePinMessage}
                 onDelete={deleteChatMessage}
@@ -1480,6 +1578,7 @@
         {commandFeedbackType}
         {pendingFile}
         {previewUrl}
+        bind:spoiler={pendingSpoiler}
         canSend={$can(PERMISSIONS.SEND_MESSAGES)}
         encrypted={currentChannelEncrypted}
         keyPending={currentChannelKeyPending}

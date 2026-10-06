@@ -23,6 +23,8 @@
     commandFeedbackType?: 'info' | 'error';
     pendingFile?: File | null;
     previewUrl?: string | null;
+    /** Send the pending image as a spoiler. */
+    spoiler?: boolean;
     /** When false, the composer is read-only (no SEND_MESSAGES permission). */
     canSend?: boolean;
     /** The channel is end-to-end encrypted and we hold its key. */
@@ -46,6 +48,7 @@
     commandFeedbackType = 'info',
     pendingFile = null,
     previewUrl = null,
+    spoiler = $bindable(false),
     canSend = true,
     encrypted = false,
     keyPending = false,
@@ -186,7 +189,15 @@
     {#if pendingFile}
       <div class="preview-container">
         {#if previewUrl}
-          <img src={previewUrl} alt="preview" class="preview" />
+          <img src={previewUrl} alt="preview" class="preview" class:spoiler-preview={spoiler} />
+          <button
+            type="button"
+            class="btn btn-ghost spoiler-toggle"
+            class:selected={spoiler}
+            aria-pressed={spoiler}
+            title="Blur the image until it is clicked"
+            onclick={() => (spoiler = !spoiler)}
+          >Spoiler</button>
         {:else}
           <span class="file-chip" title={pendingFile.name}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -393,6 +404,18 @@
     max-width: 120px;
     max-height: 120px;
     border-radius: var(--radius-sm);
+  }
+
+  .preview-container img.spoiler-preview {
+    filter: blur(8px);
+  }
+
+  .spoiler-toggle {
+    font-size: var(--text-xs);
+  }
+
+  .spoiler-toggle.selected {
+    color: var(--color-primary);
   }
 
   .preview-remove {

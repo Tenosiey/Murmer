@@ -149,6 +149,10 @@
             <span class="undecryptable">This message could not be decrypted.</span>
           {:else if msg.text}
             {@html emojifyHtml(renderMarkdown(msg.text), $customEmojis, httpBase)}
+          {:else if serverFileUrl(msg.image, httpBase) && msg.spoiler}
+            <span class="spoiler spoiler-media" role="button" tabindex="0" aria-label="Spoiler image, select to reveal">
+              <img src={serverFileUrl(msg.image, httpBase)} alt="" loading="lazy" />
+            </span>
           {:else if serverFileUrl(msg.image, httpBase)}
             <img src={serverFileUrl(msg.image, httpBase)} alt="" loading="lazy" />
           {:else if msg.attachment}

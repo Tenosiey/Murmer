@@ -181,6 +181,7 @@ function createChatStore() {
       delete failed.text;
       delete failed.image;
       delete failed.attachment;
+      delete failed.spoiler;
       if (key) {
         failed.decryptFailed = true;
       } else {
@@ -194,6 +195,7 @@ function createChatStore() {
     if (typeof payload.text === 'string') opened.text = payload.text;
     if (typeof payload.image === 'string') opened.image = payload.image;
     if (payload.attachment) opened.attachment = payload.attachment;
+    if (payload.spoiler === true) opened.spoiler = true;
     // The server cannot quote an encrypted message, so it sends the reply's id
     // and author with an empty snippet; the snippet travels sealed instead.
     if (opened.replyTo && typeof payload.replyText === 'string') {
@@ -833,7 +835,11 @@ function createChatStore() {
    */
   function sendUpload(
     user: string,
-    content: { image?: string; attachment?: { url: string; name: string; size: number } }
+    content: {
+      image?: string;
+      attachment?: { url: string; name: string; size: number };
+      spoiler?: boolean;
+    }
   ): string | null {
     return sendMessage(user, content);
   }

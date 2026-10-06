@@ -1,6 +1,7 @@
 import { get } from 'svelte/store';
 import { selectedServer } from './stores/servers';
 import { httpBaseFromWs } from './server-url';
+import { parseMessageLink } from './message-link';
 
 export interface LinkPreviewData {
   url: string;
@@ -92,7 +93,12 @@ export function extractLinks(text: string | undefined | null): string[] {
     url = url.replace(/[).,!?"'\]]+$/g, '');
     try {
       const parsed = new URL(url);
-      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      // A message link jumps inside Murmer; previewing it would only show
+      // the web client's empty page.
+      if (
+        (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+        !parseMessageLink(url)
+      ) {
         results.add(parsed.toString());
       }
     } catch (error) {
