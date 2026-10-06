@@ -346,6 +346,25 @@ else is about keeping it from becoming a harassment tool:
 - a blocked member's poke is dropped on arrival, like their DMs. The server
   still delivers it, because it never learns who is blocked.
 
+## Voice messages
+
+Client only: `src/lib/voice-message.ts`, the microphone button in the
+composer.
+
+**A voice message is an ordinary attachment.** The recorder opens the
+microphone through `openMicrophone` — same device and processing as a call
+— and hands the finished clip to the composer as the pending file, so it
+travels sealed in DMs and encrypted channels like any other file and needs
+no server change. What marks it is the file name the recorder gives it:
+Chromium can only record WebM, which the upload safe-list files under
+video, so the extension alone cannot say "play this as audio". A recording
+stops itself after five minutes rather than holding the microphone open.
+
+Audio attachments get an inline player (`AudioAttachment.svelte`) that
+fetches the clip into a `blob:` URL on the first press of Play: the CSP's
+`media-src` admits `blob:` but not the server's origin, and fetching every
+clip in the history just to render it would download all of them.
+
 ## Reminders and scheduled messages
 
 Two features over one background timer

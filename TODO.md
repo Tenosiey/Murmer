@@ -66,9 +66,6 @@ the idea comes from and what users will expect it to behave like.
       (`stores/unread.ts`), so the desktop app and the web client each think
       the other's reading is still unread. Per-user read markers on the
       server fix it, DMs included
-- [ ] Voice messages — record a clip in the composer and send it as an audio
-      attachment (Skype, WhatsApp). Attachments already travel sealed in DMs
-      and encrypted channels, so it inherits that for free
 
 ### 🎤 Voice Features
 
