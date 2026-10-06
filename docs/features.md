@@ -205,6 +205,26 @@ not, because the attachment is sealed. A filter the client cannot honour (an
 unknown channel, an impossible date) is an error, not dropped — searching
 without it would answer a different question.
 
+## Text-to-speech
+
+Client: `src/lib/tts.ts`, `/tts` in `chat/commands.ts`, the toggle in
+Settings → Audio. No server code: `tts: true` is stored like any other
+field the client sends.
+
+**The sender asks, the listener decides.** The toggle is off by default and
+lives in `localStorage`, and a channel muted in its notification settings
+stays silent, so one member's `/tts` cannot make a room talk that did not
+opt in.
+
+**Only live messages speak.** The chat store hands each opened live message
+to `tts.ts` through `onLiveMessage`; history, threads and search never pass
+there, so scrolling back does not replay a conversation.
+
+**The flag is plaintext in an encrypted channel.** It travels beside the
+envelope, like the reply id, because it says how to deliver the words and
+not what they are. The words themselves are read from the opened message,
+with spoilers replaced by `[spoiler]` as in a notification.
+
 ## Profiles, display names and nicknames
 
 Server: `ws/handlers/profile.rs`, `db/users.rs`. Client:

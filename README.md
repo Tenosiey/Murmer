@@ -31,7 +31,7 @@ that runs both as a Tauri desktop app and, unchanged, in the browser.
 - **Text chat** with Markdown, replies and threads, edits, pins, reactions,
   forwarding, `@` mentions with a mentions inbox, search with `from:`,
   `in:`, `has:file` and date filters, link previews, file and image
-  sharing, slash commands, reminders and scheduled messages
+  sharing, slash commands, `/tts`, reminders and scheduled messages
 - **Voice** over peer-to-peer WebRTC with RNNoise noise suppression,
   voice activation or push-to-talk, camera video, screen sharing (several
   at once, each in its own window), breakout rooms and a soundboard

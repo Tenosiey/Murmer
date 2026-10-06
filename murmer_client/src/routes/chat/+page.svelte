@@ -69,6 +69,8 @@
   import { isWebClient } from '$lib/platform';
   import { parseSlashCommand } from '$lib/chat/commands';
   import { parseSearchQuery } from '$lib/chat/search';
+  // Side effect only: starts reading `/tts` messages aloud.
+  import '$lib/tts';
   import { pinned } from '$lib/stores/pins';
   import { scheduledAttention } from '$lib/stores/scheduled';
   import { typing } from '$lib/stores/typing';
@@ -622,6 +624,11 @@
         return;
       case 'send': {
         const sendError = chat.send(currentUser ?? 'anon', command.text);
+        if (sendError) setCommandFeedback(sendError, 'error');
+        return;
+      }
+      case 'tts': {
+        const sendError = chat.sendTts(currentUser ?? 'anon', command.text);
         if (sendError) setCommandFeedback(sendError, 'error');
         return;
       }

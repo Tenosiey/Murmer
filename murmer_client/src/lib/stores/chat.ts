@@ -77,6 +77,10 @@ function createChatStore() {
   let encryptedChannels = new Set<number>();
   /** The channel this connection is joined to; what `send` seals for. */
   let joinedChannelId = 0;
+  /** Called with every live channel message once opened. A callback rather
+   *  than an import because its one user, text-to-speech, needs the profiles
+   *  store, and that store imports this one. */
+  let liveListener: ((msg: Message) => void) | undefined;
   /** Last pin snapshot per channel, kept so sealed previews can be re-opened
    *  once the channel key arrives. */
   const rawPins = new Map<number, unknown[]>();
@@ -377,6 +381,7 @@ function createChatStore() {
       case 'chat': {
         const prepared = decryptChannelFrame(msg);
         update((m) => [...m, prepared].slice(-MAX_LIVE_MESSAGES));
+        liveListener?.(prepared);
 
         // The author's message arriving supersedes their typing signal.
         if (typeof prepared.channelId === 'number' && prepared.user) {
@@ -827,6 +832,13 @@ function createChatStore() {
     return sendMessage(user, { text, replyText }, extra);
   }
 
+  /** Send a `/tts` message: the text, flagged for listeners to hear it read
+   *  aloud. The flag stays plaintext beside a sealed message, like the reply
+   *  id; it says how to deliver the words, not what they are. */
+  function sendTts(user: string, text: string): string | null {
+    return sendMessage(user, { text }, { tts: true });
+  }
+
   /**
    * Send an uploaded image or file. The bytes live on the server either way;
    * in an encrypted channel the reference to them travels sealed, so who
@@ -1113,6 +1125,7 @@ function createChatStore() {
     connectionLost,
     join,
     send,
+    sendTts,
     sendUpload,
     forward,
     sendDm,
@@ -1134,6 +1147,9 @@ function createChatStore() {
     delete: deleteMessage,
     on,
     off,
+    onLiveMessage: (listener: (msg: Message) => void) => {
+      liveListener = listener;
+    },
     disconnect,
     clear: () => set([])
   };

@@ -20,6 +20,11 @@ describe('parseSlashCommand', () => {
     expect(parse('/frobnicate now')).toEqual({ kind: 'error', message: 'Unknown command: /frobnicate' });
   });
 
+  it('flags /tts messages to be read aloud', () => {
+    expect(parse('/tts hello all')).toEqual({ kind: 'tts', text: 'hello all' });
+    expect(parse('/tts')).toMatchObject({ kind: 'error' });
+  });
+
   it('turns /me and /shrug into plain messages', () => {
     expect(parse('/me waves')).toEqual({ kind: 'send', text: '_waves_' });
     expect(parse('/me')).toMatchObject({ kind: 'error' });
