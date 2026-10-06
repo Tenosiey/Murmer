@@ -156,6 +156,16 @@ would protect nothing.
 
 All of this is deliberate, and `README.md` points operators here:
 
+- **The server operator.** This is the limit that matters most. The roster
+  a client wraps the channel key to comes from the server
+  (`channel_members`), so an operator can add a member, or an account bound
+  to a key they hold, and honest clients will hand it the key. Pinning in
+  `stores/peerKeys.ts` catches a member whose key *changed*, never a member
+  who is *new*. Encrypted channels therefore protect against other members
+  and a leaked database, not against whoever runs the server. Closing this
+  would take members seeing, or approving, each new wrap — design work, not
+  a fix.
+
 - **Server-side search** — there is no text to index.
 - **Bots** — `POST /channels/:id/messages` refuses; a bot has no identity key
   to encrypt with.
