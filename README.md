@@ -87,7 +87,7 @@ Environment variables recognised by the server:
 | `TRUSTED_PROXIES` | Behind a reverse proxy | Comma-separated addresses or CIDR ranges of your reverse proxies (e.g. `127.0.0.1` or `172.16.0.0/12` for Docker). Only requests from these may set the client IP through `X-Forwarded-For`; without it every user behind the proxy shares one per-IP rate limit, so a few failed logins lock everyone out |
 | `MAX_FRAMES_PER_SECOND` | No | Sustained WebSocket frames one connection may send per second, with ten seconds' worth allowed in a burst (default: 20, `0` for no limit) |
 | `STUN_SERVERS` | No | Comma-separated `stun:`/`stuns:` URLs clients use to set up voice and screen share (defaults to `stun:stun.l.google.com:19302`; set it empty to contact no STUN server, which limits calls to peers on the same network) |
-| `MAX_VOICE_CHANNEL_USERS` | No | People allowed in one voice channel (default: 10, `0` for no limit) |
+| `MAX_VOICE_CHANNEL_USERS` | No | People allowed in one voice channel (default: 10, `0` for no limit). A channel's own user limit can only lower this |
 | `MESSAGE_RETENTION_DAYS` | No | Delete channel messages, with their reactions and pins, once they are this many days old; checked hourly. DMs are kept. Unset or `0` keeps everything |
 
 Every capability, channel and wiki management included, is gated by roles

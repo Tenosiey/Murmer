@@ -32,6 +32,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'message-too-long': 'That message is too long to send.',
   'invalid-voice-quality': 'Invalid voice quality setting.',
   'invalid-voice-bitrate': 'Invalid voice bitrate setting.',
+  'invalid-voice-user-limit': 'A user limit must be a whole number from 0 to 99.',
   'unknown-voice-channel': 'That voice channel no longer exists.',
   'voice-channel-full': 'That voice channel is full. Try again once somebody leaves.',
   'voice-channel-update-failed': 'The server could not update the voice channel.',

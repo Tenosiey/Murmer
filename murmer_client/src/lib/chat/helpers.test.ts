@@ -26,7 +26,8 @@ import {
   pingToStrength,
   parseTimestampValue,
   reactionEntries,
-  searchResultPreview
+  searchResultPreview,
+  parseUserLimit
 } from './helpers';
 
 /** Local wall-clock timestamp, so day grouping does not depend on the TZ. */
@@ -347,6 +348,19 @@ describe('searchResultPreview', () => {
   });
 });
 
+describe('parseUserLimit', () => {
+  it('reads empty as no limit and rejects anything out of range', () => {
+    expect(parseUserLimit('  ')).toBe(0);
+    expect(parseUserLimit('0')).toBe(0);
+    expect(parseUserLimit(' 5 ')).toBe(5);
+    expect(parseUserLimit('99')).toBe(99);
+    expect(parseUserLimit('100')).toBeNull();
+    expect(parseUserLimit('-1')).toBeNull();
+    expect(parseUserLimit('2.5')).toBeNull();
+    expect(parseUserLimit('five')).toBeNull();
+  });
+});
+
 describe('formatFileSize', () => {
   it('scales bytes to KB and MB', () => {
     expect(formatFileSize(512)).toBe('512 B');
@@ -404,7 +418,16 @@ describe('orderVoiceChannels', () => {
     position: number,
     breakoutParent: number | null = null
   ): VoiceChannelInfo {
-    return { id, name, quality: 'standard', bitrate: null, categoryId: null, position, breakoutParent };
+    return {
+      id,
+      name,
+      quality: 'standard',
+      bitrate: null,
+      categoryId: null,
+      position,
+      breakoutParent,
+      userLimit: 0
+    };
   }
 
   it('places breakout rooms under the channel they were split off from', () => {

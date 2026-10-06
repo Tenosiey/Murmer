@@ -1,7 +1,7 @@
 import type { Message, UserStatus, VoiceChannelInfo } from '../types';
 import { extractLinks } from '../link-preview';
 import { hideSpoilers } from '../spoilers';
-import { VOICE_QUALITY_PRESETS } from './constants';
+import { MAX_VOICE_USER_LIMIT, VOICE_QUALITY_PRESETS } from './constants';
 
 export type MessageBlock =
   | { kind: 'separator'; label: string; key: string }
@@ -214,6 +214,16 @@ export function searchResultPreview(message: Message): string {
     return `[File] ${message.attachment.name}`;
   }
   return 'Message';
+}
+
+/** A user limit typed by a moderator: empty is 0 (no limit), anything that
+ *  is not a whole number in range is null. */
+export function parseUserLimit(text: string): number | null {
+  const trimmed = text.trim();
+  if (trimmed === '') return 0;
+  if (!/^\d+$/.test(trimmed)) return null;
+  const limit = Number(trimmed);
+  return limit <= MAX_VOICE_USER_LIMIT ? limit : null;
 }
 
 export function formatFileSize(bytes: number): string {

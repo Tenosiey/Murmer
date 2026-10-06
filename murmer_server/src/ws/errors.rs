@@ -74,6 +74,9 @@ pub const MESSAGE_TOO_LONG: &str = r#"{"type":"error","message":"message-too-lon
 pub const INVALID_VOICE_QUALITY: &str = r#"{"type":"error","message":"invalid-voice-quality"}"#;
 
 pub const INVALID_VOICE_BITRATE: &str = r#"{"type":"error","message":"invalid-voice-bitrate"}"#;
+/// A voice channel user limit outside `0..=MAX_VOICE_USER_LIMIT`.
+pub const INVALID_VOICE_USER_LIMIT: &str =
+    r#"{"type":"error","message":"invalid-voice-user-limit"}"#;
 
 pub const UNKNOWN_VOICE_CHANNEL: &str = r#"{"type":"error","message":"unknown-voice-channel"}"#;
 

@@ -98,10 +98,6 @@ the idea comes from and what users will expect it to behave like.
       exactly that lifecycle
 - [ ] Text chat scoped to a voice channel — somewhere to drop a link mid-call
       that does not interrupt the channel everyone else is reading
-- [ ] User limit per voice channel (TeamSpeak max clients, Discord user
-      limit). Every member of a mesh costs every other member a connection,
-      so a cap is a quality setting as much as a social one. Refused in
-      `handle_voice_join`
 - [ ] Whisper — hold a hotkey to talk to selected members of the same
       channel only (Mumble, TeamSpeak). In the mesh that is muting the audio
       sender towards everyone else, so it needs no server change

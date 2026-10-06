@@ -131,6 +131,7 @@ async fn main() -> Result<()> {
                 category_id: record.category_id,
                 position: record.position,
                 breakout_parent: record.breakout_parent,
+                user_limit: record.user_limit,
             };
             (record.id, info)
         })

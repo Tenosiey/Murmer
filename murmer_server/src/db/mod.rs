@@ -221,7 +221,8 @@ CREATE TABLE IF NOT EXISTS voice_channels (
     bitrate INTEGER,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     position INTEGER NOT NULL DEFAULT 0,
-    breakout_parent INTEGER
+    breakout_parent INTEGER,
+    user_limit INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -405,6 +406,13 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         // Nullable on purpose: NULL is "not a breakout room", which is what
         // every existing row is.
         ensure_column(conn, "voice_channels", "breakout_parent", "INTEGER")?;
+        // 0 is "no limit of its own", which is what every existing channel had.
+        ensure_column(
+            conn,
+            "voice_channels",
+            "user_limit",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
 
         // Breakout rooms exist only for as long as the session that opened
         // them. Nobody is in one after a restart, and an empty room nobody

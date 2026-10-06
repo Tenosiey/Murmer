@@ -156,6 +156,7 @@ pub(super) async fn handle_open_breakouts(
                     category_id: record.category_id,
                     position: record.position,
                     breakout_parent: record.breakout_parent,
+                    user_limit: record.user_limit,
                 },
             )),
             Ok(None) => {}

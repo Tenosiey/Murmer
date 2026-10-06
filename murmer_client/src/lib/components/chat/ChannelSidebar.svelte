@@ -456,6 +456,11 @@
                   </span>
                 {/if}
                 <span class="voice-channel-quality">{formatVoiceQuality(ch)}</span>
+                {#if ch.userLimit > 0}
+                  <span class="voice-channel-limit" title="User limit">
+                    {$voiceUsers[ch.id]?.length ?? 0}/{ch.userLimit}
+                  </span>
+                {/if}
               </button>
               {#if $voiceUsers[ch.id]?.length}
                 {@const queue = handQueue($voiceHands, ch.id)}
@@ -947,6 +952,13 @@
     margin-left: auto;
     font-size: var(--text-xs);
     font-weight: 500;
+    color: var(--color-muted);
+    flex-shrink: 0;
+  }
+
+  .voice-channel-limit {
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
     color: var(--color-muted);
     flex-shrink: 0;
   }

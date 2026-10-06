@@ -284,6 +284,39 @@ async fn shared_voice_channel(alice: &mut Client, bob: &mut Client) -> i64 {
     channel
 }
 
+/// A channel's own user limit is decided on the server: the client greys
+/// out a full channel, but only the refusal here keeps the mesh small.
+#[tokio::test]
+async fn a_full_voice_channel_refuses_the_next_joiner() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+    let channel = create_voice_channel(&mut alice, "Booth").await;
+
+    alice
+        .send(json!({ "type": "update-voice-channel", "channelId": channel, "userLimit": 100 }))
+        .await;
+    let refused = alice.until(|f| f["type"] == "error").await;
+    assert_eq!(
+        refused.last().unwrap()["message"],
+        "invalid-voice-user-limit"
+    );
+
+    alice
+        .send(json!({ "type": "update-voice-channel", "channelId": channel, "userLimit": 1 }))
+        .await;
+    let updated = alice
+        .until(|f| f["type"] == "voice-channel-update" && f["channelId"] == channel)
+        .await;
+    assert_eq!(updated.last().unwrap()["userLimit"], 1);
+    join_voice(&mut alice, channel).await;
+
+    bob.send(json!({ "type": "voice-join", "channelId": channel }))
+        .await;
+    let seen = bob.until(|f| f["type"] == "error").await;
+    assert_eq!(seen.last().unwrap()["message"], "voice-channel-full");
+}
+
 #[tokio::test]
 async fn a_hand_is_raised_only_in_the_channel_its_owner_sits_in() {
     let addr = start_server().await;

@@ -34,6 +34,7 @@ import {
   MAX_PROFANITY_WORDS,
   MAX_PROFANITY_WORD_LEN,
   MAX_VOICE_BITRATE,
+  MAX_VOICE_USER_LIMIT,
   MIN_MUTE_SECONDS,
   MAX_MUTE_SECONDS,
   MAX_AUTOMOD_RULES,
@@ -360,6 +361,12 @@ describe('chat policy mirror', () => {
   it('agrees on the voice bitrate ceiling', () => {
     expect(serverNumberConstant(voiceDefaultsRs, 'MAX_ALLOWED_VOICE_BITRATE', 'i32')).toBe(
       MAX_VOICE_BITRATE
+    );
+  });
+
+  it('agrees on the voice user limit ceiling', () => {
+    expect(serverNumberConstant(voiceDefaultsRs, 'MAX_VOICE_USER_LIMIT', 'u32')).toBe(
+      MAX_VOICE_USER_LIMIT
     );
   });
 });

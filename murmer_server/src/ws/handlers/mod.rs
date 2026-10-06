@@ -983,7 +983,7 @@ async fn handle_voice_join(
         // Capacity is decided before the user is pulled out of whatever
         // channel they are in, so a full target leaves them where they were
         // instead of dropping them out of voice entirely.
-        if !crate::security::voice_channel_has_room(&entry.users, u) {
+        if !crate::security::voice_channel_has_room(&entry.users, u, entry.user_limit) {
             drop(map);
             info!("voice channel {ch_id} is full; refused join from {u}");
             send_error(sender, errors::VOICE_CHANNEL_FULL).await;
