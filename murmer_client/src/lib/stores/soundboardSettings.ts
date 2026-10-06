@@ -1,6 +1,7 @@
 import { browser } from '$app/environment';
 import { get, writable } from 'svelte/store';
 import { loadBool } from './settings';
+import { isBlocked } from './blocks';
 
 /**
  * Local, per-listener soundboard preferences. None of this is ever sent to the
@@ -169,7 +170,7 @@ export const soundboardPrefs = createPrefsStore();
 export function effectiveGain(soundId: number, user: string): number | null {
   if (!get(soundboardEnabled)) return null;
   const prefs = get(soundboardPrefs);
-  if (prefs.mutedUsers.includes(user)) return null;
+  if (prefs.mutedUsers.includes(user) || isBlocked(user)) return null;
   if (prefs.mutedSounds.includes(soundId)) return null;
   const gain = get(soundboardVolume) * (prefs.soundVolumes[soundId] ?? 1);
   return gain > 0 ? gain : null;

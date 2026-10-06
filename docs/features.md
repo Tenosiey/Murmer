@@ -225,6 +225,25 @@ envelope, like the reply id, because it says how to deliver the words and
 not what they are. The words themselves are read from the opened message,
 with spoilers replaced by `[spoiler]` as in a notification.
 
+## Blocking
+
+Client: `src/lib/stores/blocks.ts`, Block in the member menu and on a
+profile. No server code.
+
+**The server never learns who you blocked.** The list lives in
+`localStorage`, per server since account names are only unique per server,
+so a block hides rather than prevents: the blocked member can still read your
+messages and send you DMs, the client just drops them. That is the price of
+keeping the list private, and the same shape as the per-user soundboard mute.
+
+**Hidden is collapsed, not removed.** A blocked member's channel message
+renders as a one-line placeholder with a Show button, so a reply to it still
+has something to point at and the conversation around it still reads. No
+notification, mention-inbox entry or `/tts` reading comes from them, their
+voice plays at zero and their soundboard clips are not played. DMs from them
+are dropped on arrival and filtered out of history; your own side of the
+conversation stays.
+
 ## Profiles, display names and nicknames
 
 Server: `ws/handlers/profile.rs`, `db/users.rs`. Client:

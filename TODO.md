@@ -50,9 +50,6 @@ the idea comes from and what users will expect it to behave like.
 
 ### 🗨️ Chat Features
 
-- [ ] Block a user — hide their messages, mute their voice and soundboard
-      clips, drop their DMs (Discord block, TeamSpeak ignore). Personal and
-      local like the existing per-user soundboard mute, so no server change
 - [ ] Bulk delete for moderators — remove the last N messages of a channel,
       or everything one member posted in the last hour, with the ban
       (Discord's purge and "delete message history"). The Danger Zone only
@@ -88,7 +85,7 @@ the idea comes from and what users will expect it to behave like.
       Mumble). Breakout rooms already move people around, so the mechanism
       exists
 - [ ] Poke — a short nudge that pops up even when the channel is muted
-      (TeamSpeak). Rate-limited, and blockable with the block above
+      (TeamSpeak). Rate-limited, and blockable with the member block
 - [ ] Priority speaker — while a member with the permission talks, everyone
       else's playback is ducked (Mumble, Discord). The soundboard ducking
       (`voice/soundboard.ts`) is the same mechanism pointed at voices

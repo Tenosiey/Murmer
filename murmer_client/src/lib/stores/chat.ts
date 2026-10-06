@@ -4,6 +4,7 @@ import { session } from './session';
 import { notify } from '../notify';
 import { channelNotifications } from './channelNotifications';
 import { soundboardPrefs } from './soundboardSettings';
+import { blockedUsers, isBlocked } from './blocks';
 import { screenShareWindows } from './screenShareWindows';
 import {
   prepareMessage,
@@ -353,6 +354,7 @@ function createChatStore() {
     text: string,
     mention: boolean
   ): void {
+    if (isBlocked(sender)) return;
     const preference = get(channelNotifications)[channelId] ?? 'all';
     if (preference === 'mentions' ? !mention : preference !== 'all') return;
     const from = sender ?? 'Unknown user';
@@ -394,7 +396,7 @@ function createChatStore() {
             : { mention: false, findable: false };
           notifyChannelMessage(prepared.channelId ?? 0, prepared.user, prepared.text ?? '', mention);
           // In the open channel, so read as it lands: listed, not counted.
-          const entry = mention ? inboxEntry(prepared, !findable) : null;
+          const entry = mention && !isBlocked(prepared.user) ? inboxEntry(prepared, !findable) : null;
           if (entry) mentionInbox.add(entry, false);
         }
         break;
@@ -577,6 +579,9 @@ function createChatStore() {
         const from = typeof msg.from === 'string' ? msg.from : null;
         const to = typeof msg.to === 'string' ? msg.to : null;
         if (!from || !to || !current) break;
+        // Dropped on arrival: the server still delivers, since a block is
+        // never sent to it.
+        if (from !== current && isBlocked(from)) break;
         const peer = from === current ? to : from;
         void decryptDmFrame(peer, msg).then((prepared) => {
           dm.receive(prepared, current);
@@ -591,7 +596,8 @@ function createChatStore() {
       case 'dm-history': {
         const peer = typeof msg.with === 'string' ? msg.with : null;
         if (peer) {
-          const list: Message[] = Array.isArray(msg.messages) ? (msg.messages as Message[]) : [];
+          const list: Message[] = (Array.isArray(msg.messages) ? (msg.messages as Message[]) : [])
+            .filter((item) => !isBlocked(peer) || item.from === current);
           void Promise.all(list.map((item) => decryptDmFrame(peer, item))).then((prepared) => {
             dm.setHistory(peer, prepared);
           });
@@ -658,7 +664,7 @@ function createChatStore() {
           ? mentionOf(text, msg.mentions, current, sealed !== null)
           : { mention: false, findable: false };
         unread.recordIncoming(channelId, messageId, mention);
-        if (mention && sender) {
+        if (mention && sender && !isBlocked(sender)) {
           mentionInbox.add(
             {
               id: messageId,
@@ -727,6 +733,7 @@ function createChatStore() {
     channelNotifications.setServer(url);
     // Sound ids and usernames are also only unique per server.
     soundboardPrefs.setServer(url);
+    blockedUsers.setServer(url);
     // Screen share windows are remembered per sharer, which is a username too.
     screenShareWindows.setServer(url);
     // Key pins persist per server; in-flight lookups belong to the old one.

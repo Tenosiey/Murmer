@@ -23,6 +23,7 @@
   import { roleDefinitions } from '$lib/stores/roleDefinitions';
   import { userRoleIds } from '$lib/stores/roles';
   import { selectedServer } from '$lib/stores/servers';
+  import { blockedUsers, confirmBlock } from '$lib/stores/blocks';
   import { httpBaseFromWs } from '$lib/server-url';
   import { uploadImage } from '$lib/upload';
   import {
@@ -355,6 +356,11 @@
             <button class="btn btn-primary" onclick={startEditing}>Edit profile</button>
           {/if}
         {:else}
+          {#if user && $blockedUsers.includes(user)}
+            <button class="btn" onclick={() => user && blockedUsers.setBlocked(user, false)}>Unblock</button>
+          {:else}
+            <button class="btn btn-danger" onclick={() => user && confirmBlock(user, $displayNames(user))}>Block</button>
+          {/if}
           <button class="btn btn-primary" onclick={messageUser}>Send message</button>
         {/if}
       </div>
