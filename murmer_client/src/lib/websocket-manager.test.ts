@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WebSocketManager } from './websocket-manager';
+import { WebSocketManager, reconnectDelay } from './websocket-manager';
 
 /**
  * Several stores listen to the same frame types, and so do the call
@@ -60,5 +60,19 @@ describe('WebSocketManager handlers', () => {
     FakeSocket.last.receive({ type: 'screenshare-stop' });
 
     expect(seen).toEqual(['store']);
+  });
+});
+
+describe('reconnectDelay', () => {
+  it('doubles from one second and stops at thirty', () => {
+    const top = (attempt: number) => reconnectDelay(attempt, () => 1);
+    expect([0, 1, 2, 3, 4, 5, 6, 20].map(top)).toEqual([
+      1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000
+    ]);
+  });
+
+  it('spreads clients over the upper half of each step', () => {
+    expect(reconnectDelay(3, () => 0)).toBe(4000);
+    expect(reconnectDelay(3, () => 0.5)).toBe(6000);
   });
 });

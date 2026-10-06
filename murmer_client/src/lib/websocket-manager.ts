@@ -1,6 +1,8 @@
 /**
  * One WebSocket connection plus the per-type handlers the stores register.
- * Reconnecting is the caller's job (see `stores/chat.ts`).
+ * Reconnecting is the caller's job: a new connection needs a fresh signed
+ * `presence` and a rejoin, which only the chat page knows how to make (see
+ * `routes/chat/+page.svelte`). The delay policy lives here.
  */
 
 import type { Message } from './types';
@@ -13,6 +15,17 @@ export interface CloseInfo {
   opened: boolean;
   /** Whether the close was requested locally via disconnect(). */
   intentional: boolean;
+}
+
+/**
+ * How long to wait before reconnect attempt `attempt` (counting from 0):
+ * 1 s doubling up to 30 s, of which a random half is jitter. Without the
+ * jitter every client of a restarted server would come back in the same
+ * instant, and keep doing so on every retry.
+ */
+export function reconnectDelay(attempt: number, random: () => number = Math.random): number {
+  const ceiling = Math.min(30_000, 1000 * 2 ** Math.max(0, attempt));
+  return ceiling / 2 + (random() * ceiling) / 2;
 }
 
 /** Abort connection attempts that have not opened within this window. */
