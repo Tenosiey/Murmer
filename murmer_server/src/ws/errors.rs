@@ -206,6 +206,10 @@ pub const INVALID_DISPLAY_NAME: &str = r#"{"type":"error","message":"invalid-dis
 
 pub const INVALID_ABOUT: &str = r#"{"type":"error","message":"invalid-about"}"#;
 
+/// A custom status line was too long, multi-line, or its expiry was in the
+/// past or too far ahead.
+pub const INVALID_STATUS_TEXT: &str = r#"{"type":"error","message":"invalid-status-text"}"#;
+
 pub const PROFILE_UPDATE_FAILED: &str = r#"{"type":"error","message":"profile-update-failed"}"#;
 
 pub const INVALID_NICKNAME: &str = r#"{"type":"error","message":"invalid-nickname"}"#;
@@ -542,3 +546,10 @@ pub const GROUP_MENTION_DENIED: &str = r#"{"type":"error","message":"group-menti
 /// A message's `mentions` field was malformed or named a role that does not
 /// exist (or `@everyone`, which is not a role one can ping).
 pub const INVALID_MENTIONS: &str = r#"{"type":"error","message":"invalid-mentions"}"#;
+
+/// The poke target is not online, is the sender, or is not a member at all.
+/// One code for all three: a poke reaches someone now or not at all.
+pub const POKE_UNAVAILABLE: &str = r#"{"type":"error","message":"poke-unavailable"}"#;
+
+/// The sender poked again inside the cooldown.
+pub const POKE_COOLDOWN: &str = r#"{"type":"error","message":"poke-cooldown"}"#;

@@ -3,7 +3,9 @@
 //! `set-nickname` handlers apply.
 
 use murmer_server::db;
-use murmer_server::ws::validation::{validate_about, validate_display_name, validate_nickname};
+use murmer_server::ws::validation::{
+    validate_about, validate_display_name, validate_nickname, validate_status_text,
+};
 
 #[tokio::test]
 async fn profile_fields_update_independently() {
@@ -203,4 +205,41 @@ fn moderating_roles_gain_the_nickname_flag_by_default() {
     assert!(mask_allows(DEFAULT_ADMIN, MANAGE_NICKNAMES));
     // Relabelling other people is never part of the baseline.
     assert!(!mask_allows(DEFAULT_EVERYONE, MANAGE_NICKNAMES));
+}
+
+#[tokio::test]
+async fn a_lapsed_status_line_is_not_reported() {
+    let db = db::init(":memory:").await.expect("in-memory db");
+    db::bind_user_key(&db, "alice", "key-a")
+        .await
+        .expect("bind");
+    assert!(
+        db::set_user_status_text(&db, "alice", "back at 3", 1_000)
+            .await
+            .expect("set status")
+    );
+    let profile = db::get_user_profile(&db, "alice")
+        .await
+        .expect("query")
+        .expect("binding exists");
+    assert_eq!(profile.active_status(999), ("back at 3", 1_000));
+    assert_eq!(profile.active_status(1_000), ("", 0));
+
+    // 0 means it never lapses.
+    db::set_user_status_text(&db, "alice", "on holiday", 0)
+        .await
+        .expect("set status");
+    let profile = db::get_user_profile(&db, "alice")
+        .await
+        .expect("query")
+        .expect("binding exists");
+    assert_eq!(profile.active_status(i64::MAX), ("on holiday", 0));
+}
+
+#[test]
+fn status_text_is_one_short_line() {
+    assert!(validate_status_text(""));
+    assert!(validate_status_text("back at 3 ☕"));
+    assert!(!validate_status_text("two\nlines"));
+    assert!(!validate_status_text(&"x".repeat(81)));
 }

@@ -66,9 +66,6 @@ the idea comes from and what users will expect it to behave like.
       (`stores/unread.ts`), so the desktop app and the web client each think
       the other's reading is still unread. Per-user read markers on the
       server fix it, DMs included
-- [ ] Voice messages — record a clip in the composer and send it as an audio
-      attachment (Skype, WhatsApp). Attachments already travel sealed in DMs
-      and encrypted channels, so it inherits that for free
 
 ### 🎤 Voice Features
 
@@ -84,8 +81,6 @@ the idea comes from and what users will expect it to behave like.
       channel, behind a new `MOVE_MEMBERS` permission (TeamSpeak, Discord,
       Mumble). Breakout rooms already move people around, so the mechanism
       exists
-- [ ] Poke — a short nudge that pops up even when the channel is muted
-      (TeamSpeak). Rate-limited, and blockable with the member block
 - [ ] Priority speaker — while a member with the permission talks, everyone
       else's playback is ducked (Mumble, Discord). The soundboard ducking
       (`voice/soundboard.ts`) is the same mechanism pointed at voices
@@ -110,8 +105,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Backup and export. For operators: a consistent snapshot of the database
       (`VACUUM INTO`) plus `uploads/` without stopping the server. For users:
       an export of their own DMs, which only their client can decrypt
-- [ ] Custom status text — a short line such as "back at 3" with an optional
-      expiry, next to the presence dot (Discord, Teams)
 - [ ] Narrow-window and touch layout. The web client is a shipped target, and
       nine `max-width` media queries in the whole client is what it has to
       meet a phone with

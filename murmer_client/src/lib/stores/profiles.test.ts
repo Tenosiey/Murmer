@@ -152,3 +152,23 @@ describe('sending changes', () => {
     });
   });
 });
+
+describe('status lines', () => {
+  it('drops a status line once its expiry passes on the local clock', async () => {
+    const { activeStatusText, profiles } = await load();
+    bus.emit('profile-snapshot', {
+      profiles: [
+        { user: 'alice', statusText: 'back at 3', statusExpiresAt: 1_000 },
+        { user: 'bob', statusText: 'on holiday', statusExpiresAt: null },
+        { user: 'carol', statusText: 42, statusExpiresAt: 'soon' }
+      ]
+    });
+    const map = get(profiles);
+    expect(activeStatusText(map.alice, 999)).toBe('back at 3');
+    expect(activeStatusText(map.alice, 1_000)).toBe('');
+    expect(activeStatusText(map.bob, Number.MAX_SAFE_INTEGER)).toBe('on holiday');
+    // A malformed frame yields no status rather than a broken one.
+    expect(map.carol).toMatchObject({ statusText: '', statusExpiresAt: null });
+    expect(activeStatusText(undefined, 0)).toBe('');
+  });
+});

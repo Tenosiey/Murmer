@@ -31,6 +31,8 @@
   import LinkPreview from '$lib/components/LinkPreview.svelte';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import RoleIcon from '$lib/components/RoleIcon.svelte';
+  import AudioAttachment from './AudioAttachment.svelte';
+  import { isPlayableAudio } from '$lib/voice-message';
 
 
   interface Props {
@@ -238,6 +240,9 @@
         </span>
       {:else if imageUrl}
         <img src={imageUrl} alt="" loading="lazy" />
+      {/if}
+      {#if message.attachment && isPlayableAudio(message.attachment.name)}
+        <AudioAttachment url={message.attachment.url} name={message.attachment.name} />
       {/if}
       {#if message.attachment}
         <a

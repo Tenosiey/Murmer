@@ -250,7 +250,8 @@ Server: `ws/handlers/profile.rs`, `db/users.rs`. Client:
 `stores/profiles.ts`.
 
 Profiles live on the `user_keys` binding row: `avatar`, `display_name`,
-`nickname`, `about`, and the `created_at` that doubles as "member since".
+`nickname`, `about`, the status line, and the `created_at` that doubles as
+"member since".
 
 `set-avatar` and `set-profile` only ever touch the requester's own row;
 absent fields are left alone and `null` clears one. Every client gets an
@@ -316,6 +317,53 @@ The inbox is held in memory and reset per connection, like the drafts: it
 carries the plaintext of encrypted channels, which must never land on disk.
 
 Rendering rules for the client are in [`client-state.md`](client-state.md).
+
+### Status line
+
+A short custom status ("back at 3") under the name in the member list,
+set in the profile editor with `set-status-text` and an optional expiry.
+**Nothing clears it when the expiry passes.** The server leaves a lapsed
+line out of every profile frame it builds (`UserProfile::active_status`),
+and a connected client drops it against its own clock (`statusTexts`,
+ticking every thirty seconds). A timer to clear it would be another
+background task for a line that is purely cosmetic. Expiries are capped at
+a week ahead and must lie in the future; an empty line has none.
+
+## Pokes
+
+Server: `handle_poke` in `ws/handlers/mod.rs`. Client: `stores/pokes.ts`,
+Poke in the member menu.
+
+A nudge that pops up as a dialog and an OS notification **even when every
+channel is muted** (TeamSpeak). That is the whole feature, so everything
+else is about keeping it from becoming a harassment tool:
+
+- one poke per sender every `POKE_COOLDOWN_MS`, server-side, cleared on
+  disconnect like the soundboard cooldown;
+- a server mute silences pokes too;
+- it goes direct to an online target only — a poke is now or never, so an
+  offline target is refused rather than queued;
+- a blocked member's poke is dropped on arrival, like their DMs. The server
+  still delivers it, because it never learns who is blocked.
+
+## Voice messages
+
+Client only: `src/lib/voice-message.ts`, the microphone button in the
+composer.
+
+**A voice message is an ordinary attachment.** The recorder opens the
+microphone through `openMicrophone` — same device and processing as a call
+— and hands the finished clip to the composer as the pending file, so it
+travels sealed in DMs and encrypted channels like any other file and needs
+no server change. What marks it is the file name the recorder gives it:
+Chromium can only record WebM, which the upload safe-list files under
+video, so the extension alone cannot say "play this as audio". A recording
+stops itself after five minutes rather than holding the microphone open.
+
+Audio attachments get an inline player (`AudioAttachment.svelte`) that
+fetches the clip into a `blob:` URL on the first press of Play: the CSP's
+`media-src` admits `blob:` but not the server's origin, and fetching every
+clip in the history just to render it would download all of them.
 
 ## Reminders and scheduled messages
 

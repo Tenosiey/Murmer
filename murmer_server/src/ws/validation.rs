@@ -4,9 +4,9 @@ use super::constants::{
     DEFAULT_HISTORY_LIMIT, MAX_ABOUT_LENGTH, MAX_ALLOWED_VOICE_BITRATE, MAX_BREAKOUT_ROOMS,
     MAX_DISPLAY_NAME_LENGTH, MAX_EMOJI_NAME_LEN, MAX_HISTORY_LIMIT, MAX_NICKNAME_LENGTH,
     MAX_ROLE_NAME_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH,
-    MAX_SOUND_NAME_LEN, MAX_TOPIC_LENGTH, MAX_WELCOME_MESSAGE_LENGTH, MAX_WIKI_SLUG_LENGTH,
-    MAX_WIKI_TITLE_LENGTH, MIN_BREAKOUT_ROOMS, MIN_EMOJI_NAME_LEN, MIN_SOUND_NAME_LEN,
-    UPLOAD_IMAGE_EXTENSIONS, UPLOAD_SOUND_EXTENSIONS, USER_STATUSES,
+    MAX_SOUND_NAME_LEN, MAX_STATUS_TEXT_LENGTH, MAX_TOPIC_LENGTH, MAX_WELCOME_MESSAGE_LENGTH,
+    MAX_WIKI_SLUG_LENGTH, MAX_WIKI_TITLE_LENGTH, MIN_BREAKOUT_ROOMS, MIN_EMOJI_NAME_LEN,
+    MIN_SOUND_NAME_LEN, UPLOAD_IMAGE_EXTENSIONS, UPLOAD_SOUND_EXTENSIONS, USER_STATUSES,
 };
 use crate::security::MAX_CHANNEL_NAME_LENGTH;
 
@@ -134,6 +134,12 @@ pub fn validate_nickname(value: &str) -> bool {
 /// limit; newlines are allowed, other control characters are not.
 pub fn validate_about(value: &str) -> bool {
     value.chars().count() <= MAX_ABOUT_LENGTH && !value.chars().any(|c| c.is_control() && c != '\n')
+}
+
+/// Validate a custom status line: may be empty, within the length limit, and
+/// a single line — it renders under a name in the member list.
+pub fn validate_status_text(value: &str) -> bool {
+    value.chars().count() <= MAX_STATUS_TEXT_LENGTH && !value.chars().any(char::is_control)
 }
 
 /// Validate a soundboard sound's display name. Unlike emoji shortcodes these

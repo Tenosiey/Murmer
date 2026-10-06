@@ -288,6 +288,8 @@ CREATE TABLE IF NOT EXISTS user_keys (
     display_name TEXT NOT NULL DEFAULT '',
     nickname TEXT NOT NULL DEFAULT '',
     about TEXT NOT NULL DEFAULT '',
+    status_text TEXT NOT NULL DEFAULT '',
+    status_expires_at INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT ({NOW_UTC})
 );
 -- `user_for_key` resolves an account from the key that signed an upload, on
@@ -397,6 +399,14 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         )?;
         ensure_column(conn, "user_keys", "about", "TEXT NOT NULL DEFAULT ''")?;
         ensure_column(conn, "user_keys", "nickname", "TEXT NOT NULL DEFAULT ''")?;
+        ensure_column(conn, "user_keys", "status_text", "TEXT NOT NULL DEFAULT ''")?;
+        // 0 is "never expires", which is what an empty status already means.
+        ensure_column(
+            conn,
+            "user_keys",
+            "status_expires_at",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
         ensure_column(
             conn,
             "user_stats",

@@ -354,6 +354,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                             "set-profile" => {
                                 profile::handle_set_profile(&state, &mut sender, &v, &user_name).await;
                             }
+                            "set-status-text" => {
+                                profile::handle_set_status_text(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "poke" => {
+                                handle_poke(&state, &mut sender, &v, &user_name).await;
+                            }
                             "set-nickname" => {
                                 profile::handle_set_nickname(&state, &mut sender, &v, &user_name).await;
                             }
@@ -809,6 +815,52 @@ async fn handle_status_update(
         .await
         .insert(user.clone(), status.to_string());
     broadcast_status(state, &user, status);
+}
+
+/// Handle `poke`: deliver a short nudge to one online member, which their
+/// client shows even when every channel is muted (TeamSpeak's poke).
+///
+/// Anyone authenticated may poke, like sending a DM; a server mute silences
+/// it, and a per-sender cooldown keeps it a nudge. Blocking is the
+/// recipient's client's job, as it is for DMs — the server keeps no block
+/// list. It goes direct: nobody but the target has any use for the frame.
+async fn handle_poke(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(from) = user_name.as_deref() else {
+        send_error(sender, errors::NOT_AUTHENTICATED).await;
+        return;
+    };
+    let Some(target) = v.get("target").and_then(|t| t.as_str()) else {
+        send_error(sender, errors::POKE_UNAVAILABLE).await;
+        return;
+    };
+    if target == from || !state.direct.lock().await.contains_key(target) {
+        send_error(sender, errors::POKE_UNAVAILABLE).await;
+        return;
+    }
+    if moderation::is_muted(state, from).await {
+        send_error(sender, errors::MUTED).await;
+        return;
+    }
+    {
+        let cooldown = std::time::Duration::from_millis(super::constants::POKE_COOLDOWN_MS);
+        let now = std::time::Instant::now();
+        let mut last = state.poke_cooldowns.lock().await;
+        if last
+            .get(from)
+            .is_some_and(|at| now.duration_since(*at) < cooldown)
+        {
+            send_error(sender, errors::POKE_COOLDOWN).await;
+            return;
+        }
+        last.insert(from.to_string(), now);
+    }
+    let frame = serde_json::json!({ "type": "poke", "from": from });
+    send_to_user(state, target, frame.to_string().into()).await;
 }
 
 async fn handle_ping(sender: &mut SplitSink<WebSocket, Message>, v: &Value) {
@@ -1336,6 +1388,7 @@ async fn handle_disconnect(
     broadcast_users(state).await;
     state.connection_stats.lock().await.remove(&name);
     soundboard::clear_cooldown(state, &name).await;
+    state.poke_cooldowns.lock().await.remove(&name);
     // Slow mode paces a live conversation; a member who leaves and comes
     // back is not made to wait out an interval they never spent typing.
     state.slow_mode_sends.lock().await.remove(&name);

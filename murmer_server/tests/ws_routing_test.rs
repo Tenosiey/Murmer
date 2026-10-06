@@ -877,3 +877,78 @@ async fn wiki_links_into_a_hidden_channel_resolve_as_missing() {
         );
     }
 }
+
+#[tokio::test]
+async fn a_poke_reaches_only_its_target_and_is_paced() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+    let mut carol = Client::connect(addr, "carol").await;
+
+    alice.send(json!({ "type": "poke", "target": "bob" })).await;
+    let seen = bob.until(|f| f["type"] == "poke").await;
+    assert_eq!(seen.last().unwrap()["from"], "alice");
+
+    // Inside the cooldown the second poke is refused, not delivered.
+    alice.send(json!({ "type": "poke", "target": "bob" })).await;
+    let refused = alice.until(|f| f["type"] == "error").await;
+    assert_eq!(refused.last().unwrap()["message"], "poke-cooldown");
+
+    // Nobody can poke themselves or someone who is not online.
+    carol
+        .send(json!({ "type": "poke", "target": "carol" }))
+        .await;
+    let refused = carol.until(|f| f["type"] == "error").await;
+    assert_eq!(refused.last().unwrap()["message"], "poke-unavailable");
+    carol
+        .send(json!({ "type": "poke", "target": "nobody" }))
+        .await;
+    let refused = carol.until(|f| f["type"] == "error").await;
+    assert_eq!(refused.last().unwrap()["message"], "poke-unavailable");
+
+    alice.mark("away").await;
+    let seen = carol.until_mark("alice", "away").await;
+    assert!(
+        of_type(&seen, "poke").is_empty(),
+        "a poke is direct: {seen:?}"
+    );
+    let seen = bob.until_mark("alice", "away").await;
+    assert!(of_type(&seen, "poke").is_empty(), "the refused poke leaked");
+}
+
+#[tokio::test]
+async fn a_status_line_is_broadcast_and_its_expiry_checked() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+
+    let now = chrono::Utc::now().timestamp_millis();
+    alice
+        .send(json!({ "type": "set-status-text", "text": "back at 3", "expiresAt": now + 60_000 }))
+        .await;
+    let seen = bob
+        .until(|f| f["type"] == "profile-update" && f["profile"]["user"] == "alice")
+        .await;
+    let profile = &seen.last().unwrap()["profile"];
+    assert_eq!(profile["statusText"], "back at 3");
+    assert_eq!(profile["statusExpiresAt"], now + 60_000);
+
+    // An expiry in the past, or one beyond a week, is refused outright.
+    for expires in [now - 1, now + 8 * 24 * 60 * 60 * 1000] {
+        alice
+            .send(json!({ "type": "set-status-text", "text": "x", "expiresAt": expires }))
+            .await;
+        let refused = alice.until(|f| f["type"] == "error").await;
+        assert_eq!(refused.last().unwrap()["message"], "invalid-status-text");
+    }
+
+    alice
+        .send(json!({ "type": "set-status-text", "text": "" }))
+        .await;
+    let seen = bob
+        .until(|f| f["type"] == "profile-update" && f["profile"]["user"] == "alice")
+        .await;
+    let profile = &seen.last().unwrap()["profile"];
+    assert_eq!(profile["statusText"], "");
+    assert!(profile["statusExpiresAt"].is_null());
+}

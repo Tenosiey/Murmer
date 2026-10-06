@@ -137,6 +137,10 @@ export interface UserProfile {
   nickname: string;
   /** Free-text "about me", empty when unset. */
   about: string;
+  /** Custom status line ("back at 3"), empty when unset. */
+  statusText: string;
+  /** When the status line lapses, in Unix milliseconds; null is never. */
+  statusExpiresAt: number | null;
   /** RFC 3339 timestamp of when the name was first claimed ("member since"). */
   createdAt: string;
 }
