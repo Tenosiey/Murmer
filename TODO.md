@@ -32,13 +32,11 @@ the idea comes from and what users will expect it to behave like.
       would delete every attachment of every encrypted channel. The options
       that remain are the author's client naming the files when it deletes
       its own message, or an operator-chosen age limit for attachments
-- [ ] TURN support — voice does not connect at all behind symmetric NAT or a
-      network that blocks UDP. The ICE configuration already comes from the
-      server (`STUN_SERVERS`, the `ice-config` frame); what is missing is the
-      relay itself. Designed but not scheduled: see
-      [`plans/turn-support.md`](plans/turn-support.md) for the work breakdown,
-      the ephemeral-credential scheme, the interaction with
-      `webrtc/recovery.ts` and the open questions
+- [ ] Voice does not connect at all behind symmetric NAT, and the mesh caps a
+      channel at a handful of people. Both are answered by a hybrid SFU
+      (mesh for small channels, an SFU inside the server above a threshold);
+      TURN is deliberately not part of it. See
+      [`plans/hybrid-voice-sfu.md`](plans/hybrid-voice-sfu.md)
 
 ---
 
@@ -111,9 +109,6 @@ the idea comes from and what users will expect it to behave like.
 
 ## 💡 Future Ideas
 
-- [ ] An SFU for large voice channels — the real answer to the mesh's square
-      growth, and a much bigger commitment than TURN: it puts media through
-      the server, which today never sees any
 - [ ] Background blur for the camera. Needs a segmentation model in the
       client — worth it once cameras are used routinely
 - [ ] Call recording to a local file, with an indicator everyone in the
