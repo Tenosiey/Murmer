@@ -43,6 +43,7 @@ The desktop shell logs to stdout; set `RUST_LOG` to change its verbosity.
 | `src/lib/channel-crypto.ts` | Sealing and key wrapping for encrypted channels |
 | `src/lib/dm-crypto.ts` | The identity→X25519 conversion DMs and channels share |
 | `src/lib/identity.ts` | Identity backup/restore formats — [`../agents/skills/crypto-changes.md`](../agents/skills/crypto-changes.md) |
+| `src/lib/i18n/` | UI string lookup `t()` and the English catalog `en.ts`; a new language is one more catalog file |
 | `src/lib/upload.ts` | Signed `/upload` bodies — always build them with `uploadForm` |
 | `src/lib/platform.ts` | `isTauri`/`isWebClient`, the single answer to which shell we are in |
 | `src/lib/invite.ts` | Invite links; the payload rides in the URL fragment |

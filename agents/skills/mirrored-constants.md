@@ -21,7 +21,7 @@ extension `/upload` rejects.
 | `murmer_server/src/automod.rs` (bounds, kind/action names) plus the mute bounds in `db/moderation.rs` | `murmer_client/src/lib/chat/constants.ts` |
 | `murmer_server/src/db/audit.rs` (action names, the `/role` actor sentinel) | `murmer_client/src/lib/chat/audit.ts` |
 | `murmer_server/src/ws/constants.rs` (soundboard limits) | `murmer_client/src/lib/chat/constants.ts` |
-| `murmer_server/src/ws/errors.rs` (error codes) | `murmer_client/src/lib/errors.ts` (their prose) |
+| `murmer_server/src/ws/errors.rs` (error codes) | `murmer_client/src/lib/i18n/en.ts` (their prose, as `error.<code>`) |
 
 ## The guard
 
