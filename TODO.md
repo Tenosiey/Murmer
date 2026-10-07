@@ -70,10 +70,6 @@ the idea comes from and what users will expect it to behave like.
       private call means creating a private channel first. The peer
       connection code carries over; what is new is the ringing state and a
       call that belongs to no channel
-- [ ] Move members between voice channels — drag a member onto another
-      channel, behind a new `MOVE_MEMBERS` permission (TeamSpeak, Discord,
-      Mumble). Breakout rooms already move people around, so the mechanism
-      exists
 - [ ] Priority speaker — while a member with the permission talks, everyone
       else's playback is ducked (Mumble, Discord). The soundboard ducking
       (`voice/soundboard.ts`) is the same mechanism pointed at voices

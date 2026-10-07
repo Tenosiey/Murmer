@@ -474,3 +474,19 @@ pub fn migrate_group_mention_permissions(conn: &rusqlite::Connection) -> rusqlit
         )
     })
 }
+
+/// Grant [`MOVE_MEMBERS`](crate::permissions::MOVE_MEMBERS) to every role
+/// that already moderates members, matching `DEFAULT_MOD` on a freshly seeded
+/// server. `KICK_MEMBERS` marks a moderating role, and a member who may kick
+/// someone out of the server can already do more than move them.
+///
+/// Marker-guarded, so an owner who takes the flag away again keeps it away.
+pub fn migrate_move_members_permissions(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    once(conn, "move_members_perms", || {
+        grant_to_holders(
+            conn,
+            crate::permissions::MOVE_MEMBERS,
+            crate::permissions::KICK_MEMBERS,
+        )
+    })
+}

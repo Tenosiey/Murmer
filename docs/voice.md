@@ -238,6 +238,22 @@ than renumbered — `Room 3` means the same thing on the second split of a
 channel as it did on the first — and a split that ends up with fewer than two
 rooms is rolled back before anything is announced.
 
+## Moving members
+
+A member holding `MOVE_MEMBERS` (seeded on Mod and above) drags somebody in
+voice onto another voice channel; the client sends `move-member`, handled in
+`ws/handlers/moderation.rs` with the same strict-outranking check as a kick.
+It is the breakout mechanism pointed at one person: the server sends the
+target a `breakout-move` frame, and their client joins the channel as if they
+had clicked it. Two refusals are the server's to make because nobody else
+would notice them missing:
+
+- **Only somebody already in a call is moved.** Pulling an idle member into
+  voice would open their microphone without them asking.
+- **A full channel is refused to the mover**, not just on the target's join.
+  Otherwise the error lands on the target, who did nothing, and the mover
+  sees a drag that silently did not happen.
+
 ## Soundboard playback
 
 Soundboard sounds are never mixed into a microphone stream. The server

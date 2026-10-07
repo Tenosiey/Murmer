@@ -452,7 +452,7 @@ describe('audit action mirror', () => {
     const known = serverAuditActions();
     for (const action of known) expect(typeof auditTargetIsMember(action)).toBe('boolean');
     expect(known.filter(auditTargetIsMember).sort()).toEqual(
-      ['admin-role-grant', 'ban', 'kick', 'mute', 'unban', 'unmute', 'user-roles'].sort()
+      ['admin-role-grant', 'ban', 'kick', 'move', 'mute', 'unban', 'unmute', 'user-roles'].sort()
     );
   });
 

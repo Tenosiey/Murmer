@@ -1,7 +1,8 @@
-//! Moderation handlers: kick, ban and mute.
+//! Moderation handlers: kick, ban, mute and moving a member between voice
+//! channels.
 //!
 //! Each action requires the matching permission (`KICK_MEMBERS`,
-//! `BAN_MEMBERS`, `MUTE_MEMBERS`) and the requester must strictly outrank the
+//! `BAN_MEMBERS`, `MUTE_MEMBERS`, `MOVE_MEMBERS`) and the requester must strictly outrank the
 //! target in the role hierarchy. Unlike channel management there is no "no
 //! admin token" fallback: moderation is never open to unprivileged users.
 //!
@@ -10,9 +11,10 @@
 //! Server Dashboard can answer "who banned them?" without the operator's
 //! terminal.
 
+use crate::channel_overrides::ChannelKind;
 use crate::db::actions;
 use crate::permissions::Permissions;
-use crate::ws::{constants::*, errors, helpers::*};
+use crate::ws::{constants::*, errors, helpers::*, validation::i32_field};
 use crate::{AppState, db};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -435,4 +437,84 @@ pub(super) async fn handle_get_ban_list(
         }),
     )
     .await;
+}
+
+/// Handle `move-member`: ask a member who is in voice to switch to another
+/// voice channel.
+///
+/// Like a breakout room, this is a request rather than an eviction: audio is
+/// peer-to-peer, so the server addresses the same `breakout-move` frame to
+/// the target and their client joins the channel as if they had clicked it.
+/// That join is checked like any other, so a target who may not see the
+/// channel stays put. The requester must see it too, or a move would confirm
+/// that a private channel id exists.
+pub(super) async fn handle_move_member(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(requester) = require_requester(sender, user_name).await else {
+        return;
+    };
+    let Some(target) = require_target(sender, v).await else {
+        return;
+    };
+    let Some(channel_id) = i32_field(v, "channelId") else {
+        send_error(sender, errors::UNKNOWN_VOICE_CHANNEL).await;
+        return;
+    };
+    if !check_allowed(
+        state,
+        sender,
+        &requester,
+        &target,
+        crate::permissions::MOVE_MEMBERS,
+    )
+    .await
+    {
+        return;
+    }
+    if !can_view_channel(state, &requester, ChannelKind::Voice, channel_id).await {
+        send_error(sender, errors::UNKNOWN_VOICE_CHANNEL).await;
+        return;
+    }
+
+    let channel_name = {
+        let map = state.voice_channels.lock().await;
+        let Some(dest) = map.get(&channel_id) else {
+            drop(map);
+            send_error(sender, errors::UNKNOWN_VOICE_CHANNEL).await;
+            return;
+        };
+        // Only someone already in a call can be moved; pulling an idle member
+        // into voice would open their microphone without them asking.
+        if !map.values().any(|info| info.users.contains(&target)) {
+            drop(map);
+            send_error(sender, errors::MODERATION_TARGET_NOT_FOUND).await;
+            return;
+        }
+        if dest.users.contains(&target) {
+            return;
+        }
+        // Checked here as well as on the target's join so the mover hears
+        // about it; the target would otherwise get the error instead.
+        if !crate::security::voice_channel_has_room(&dest.users, &target, dest.user_limit) {
+            drop(map);
+            send_error(sender, errors::VOICE_CHANNEL_FULL).await;
+            return;
+        }
+        dest.name.clone()
+    };
+
+    let frame = serde_json::json!({
+        "type": "breakout-move",
+        "channelId": channel_id,
+    });
+    send_to_user(state, &target, frame.to_string().into()).await;
+    record_audit(state, actions::MOVE, &requester, &target, &channel_name).await;
+    info!(
+        requester,
+        target, channel_id, "Member moved to voice channel"
+    );
 }

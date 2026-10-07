@@ -490,6 +490,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                             "voice-hand" => {
                                 hands::handle_voice_hand(&state, &v, &user_name, voice_channel).await;
                             }
+                            "move-member" => {
+                                moderation::handle_move_member(&state, &mut sender, &v, &user_name).await;
+                            }
                             "kick-user" => {
                                 moderation::handle_kick_user(&state, &mut sender, &v, &user_name).await;
                             }

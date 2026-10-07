@@ -19,6 +19,7 @@ export const AUDIT_ACTIONS = {
   unban: 'Lifted a ban',
   mute: 'Muted a member',
   unmute: 'Lifted a mute',
+  move: 'Moved a member to a voice channel',
   'role-create': 'Created a role',
   'role-update': 'Edited a role',
   'role-delete': 'Deleted a role',
@@ -62,6 +63,7 @@ const MEMBER_TARGET_ACTIONS = new Set<string>([
   'unban',
   'mute',
   'unmute',
+  'move',
   'user-roles',
   'admin-role-grant'
 ]);
