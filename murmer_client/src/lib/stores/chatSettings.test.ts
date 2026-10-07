@@ -187,9 +187,13 @@ describe('chatSettings — parsing the server frame', () => {
     expect(slowModeWait()).toBe(0);
 
     // Our own message coming back from the server is what the server's own
-    // timer is keyed on — a send it refused never gets here.
+    // timer is keyed on — a send it refused never gets here. The clock is
+    // pinned: the store stamps the echo with its own `Date.now()`, and a
+    // millisecond ticking past `sentAt` rounds the wait up to 8.
     const sentAt = Date.now();
+    const now = vi.spyOn(Date, 'now').mockReturnValue(sentAt);
     bus.emit('chat', { user: 'alice', text: 'hello' });
+    now.mockRestore();
     expect(slowModeWait(sentAt + 3_000)).toBe(7);
     expect(slowModeWait(sentAt + 10_000)).toBe(0);
   });
