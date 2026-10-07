@@ -71,7 +71,11 @@ Add `localhost:3001` as a server in the app and you are in.
 
 ## Configuration
 
-Environment variables recognised by the server:
+The server reads these environment variables, and also a `.env` file:
+`docker compose` reads it from the repository root, `cargo run` from
+`murmer_server/` or any parent. Start from `.env.example`. Under Docker,
+`DATABASE_PATH`, `UPLOAD_DIR` and `WEB_CLIENT_DIR` are set in
+`docker-compose.yml` instead, since they name paths inside the container.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
