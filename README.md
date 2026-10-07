@@ -57,7 +57,7 @@ You need Docker, [Rust](https://www.rust-lang.org/tools/install) (the
 toolchain is pinned by `rust-toolchain.toml`) and [Bun](https://bun.sh) 1.x.
 
 ```bash
-cp .env.example .env        # adjust as needed
+cp .env.example .env        # set SERVER_PASSWORD, adjust as needed
 docker compose up --build   # server on http://localhost:3001, WebSocket at /ws
 ```
 
@@ -76,6 +76,12 @@ The server reads these environment variables, and also a `.env` file:
 `murmer_server/` or any parent. Start from `.env.example`. Under Docker,
 `DATABASE_PATH`, `UPLOAD_DIR` and `WEB_CLIENT_DIR` are set in
 `docker-compose.yml` instead, since they name paths inside the container.
+
+`docker-compose.yml` is production-shaped: `SERVER_PASSWORD` is required, CORS
+is off and the port is published on loopback only, for a TLS reverse proxy.
+`docker-compose.override.yml` relaxes this for development (CORS for
+`tauri dev`, port open to the network) and is merged in automatically; delete
+it on a public server.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
