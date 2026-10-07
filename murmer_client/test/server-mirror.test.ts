@@ -53,7 +53,9 @@ import {
   MAX_SCHEDULE_AHEAD_SECONDS,
   MAX_SCHEDULED_MESSAGES_PER_USER,
   MAX_REMINDERS_PER_USER,
-  MAX_REMINDER_TEXT_LENGTH
+  MAX_REMINDER_TEXT_LENGTH,
+  MAX_POLL_OPTIONS,
+  MAX_POLL_OPTION_LENGTH
 } from '../src/lib/chat/constants';
 
 function readServerSource(relative: string): string {
@@ -327,6 +329,17 @@ describe('scheduling mirror', () => {
     const tick = serverNumberConstant(wsConstantsRs, 'SCHEDULER_TICK_SECONDS', 'u64');
     expect(tick).toBeGreaterThan(0);
     expect(MIN_SCHEDULE_LEAD_SECONDS).toBeGreaterThanOrEqual(tick);
+  });
+});
+
+describe('poll mirror', () => {
+  // The server refuses a poll outside these bounds, so a client that thinks
+  // they are wider posts polls that bounce.
+  it('agrees on the option count and length', () => {
+    expect(serverNumberConstant(wsConstantsRs, 'MAX_POLL_OPTIONS', 'usize')).toBe(MAX_POLL_OPTIONS);
+    expect(serverNumberConstant(wsConstantsRs, 'MAX_POLL_OPTION_LENGTH', 'usize')).toBe(
+      MAX_POLL_OPTION_LENGTH
+    );
   });
 });
 

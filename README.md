@@ -29,7 +29,7 @@ that runs both as a Tauri desktop app and, unchanged, in the browser.
 ## Features
 
 - **Text chat** with Markdown, replies and threads, edits, pins, reactions,
-  forwarding, `@` mentions with a mentions inbox, search with `from:`,
+  polls, forwarding, `@` mentions with a mentions inbox, search with `from:`,
   `in:`, `has:file` and date filters, link previews, file and image
   sharing, slash commands, `/tts`, reminders and scheduled messages
 - **Voice** over peer-to-peer WebRTC with RNNoise noise suppression,
@@ -138,7 +138,7 @@ sit in the URL fragment, which never reaches a web server's logs — but the
 link is still a credential.
 
 **Encrypted channels** are a per-channel choice with real trade-offs: no
-server-side search, no bot posting, no forwarding, link previews or
+server-side search, no bot posting, no forwarding, polls, link previews or
 moderation filters, and uploaded file bytes stay unencrypted. They protect
 against other members and a leaked database, **not against whoever runs the
 server**: the operator decides who is on a channel's roster and can add a

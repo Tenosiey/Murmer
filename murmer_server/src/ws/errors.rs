@@ -325,6 +325,20 @@ pub const CANNOT_FORWARD_ENCRYPTED: &str =
 pub const CANNOT_FORWARD_EPHEMERAL: &str =
     r#"{"type":"error","message":"cannot-forward-ephemeral"}"#;
 
+/// A poll's options are missing, too few, too many, blank or too long, or
+/// a vote names an option the poll does not have.
+pub const INVALID_POLL: &str = r#"{"type":"error","message":"invalid-poll"}"#;
+
+/// A poll was posted into, or voted on in, an end-to-end encrypted channel.
+/// The server counts the votes, so it would have to see them.
+pub const CANNOT_POLL_ENCRYPTED: &str = r#"{"type":"error","message":"cannot-poll-encrypted"}"#;
+
+/// The message a forward names is a poll. A copy would start a second,
+/// empty tally under the original author's name.
+pub const CANNOT_FORWARD_POLL: &str = r#"{"type":"error","message":"cannot-forward-poll"}"#;
+
+pub const POLL_VOTE_FAILED: &str = r#"{"type":"error","message":"poll-vote-failed"}"#;
+
 /// The message a forward names carries no text, image or attachment to copy.
 pub const NOTHING_TO_FORWARD: &str = r#"{"type":"error","message":"nothing-to-forward"}"#;
 

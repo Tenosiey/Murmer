@@ -129,6 +129,9 @@ export const STATUS_LABELS: Record<UserStatus, string> = {
 export const MESSAGE_INPUT_MAX_HEIGHT = 360;
 export const MAX_TOPIC_LENGTH = 256;
 export const PIN_PREVIEW_LIMIT = 120;
+/** Poll bounds; mirror `MAX_POLL_OPTIONS` / `MAX_POLL_OPTION_LENGTH` in ws/constants.rs. */
+export const MAX_POLL_OPTIONS = 10;
+export const MAX_POLL_OPTION_LENGTH = 55;
 export const MIN_EPHEMERAL_SECONDS = 5;
 export const MAX_EPHEMERAL_SECONDS = 86_400;
 
@@ -212,6 +215,12 @@ export const HELP_COMMANDS: Array<{
     description:
       'Send a message that automatically deletes itself after the requested duration.',
     aliases: ['/temp <seconds> <message>']
+  },
+  {
+    usage: '/poll <question> | <option> | <option> …',
+    description:
+      `Post a poll with up to ${MAX_POLL_OPTIONS} options; everyone gets one vote and can ` +
+      'change it. Not available in encrypted channels.'
   },
   {
     usage: '/search [query]',

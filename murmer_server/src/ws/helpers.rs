@@ -1315,6 +1315,18 @@ pub async fn prepare_forward(
         return Err(super::errors::CANNOT_FORWARD_EPHEMERAL);
     }
 
+    // A poll's options and votes stay with the original: a copy would open a
+    // second, empty tally under the forwarder's name with the original
+    // author's attribution on top, and copying only the question would drop
+    // what made it a poll.
+    if record
+        .content
+        .get("poll")
+        .is_some_and(|poll| !poll.is_null())
+    {
+        return Err(super::errors::CANNOT_FORWARD_POLL);
+    }
+
     let source_channel_name = db::get_channel_by_id(&state.db, record.channel_id)
         .await
         .map(|channel| channel.name)
@@ -1384,4 +1396,92 @@ pub fn ensure_time(value: &mut Value, timestamp: &DateTime<Utc>) {
     if value.get("time").and_then(|t| t.as_str()).is_none() {
         value["time"] = Value::String(timestamp.format("%H:%M:%S").to_string());
     }
+}
+
+/// Validate the `poll` field of a client `chat` frame and rebuild it from its
+/// known parts: the trimmed option labels and nothing else, so a client cannot
+/// store a `votes` tally of its own making.
+///
+/// The question is the message's `text`, which is why it is not checked
+/// here: it already answers to the length limit, auto-moderation and the
+/// profanity filter like any other message.
+pub fn parse_poll(raw: &Value) -> Result<Value, &'static str> {
+    use super::constants::{MAX_POLL_OPTION_LENGTH, MAX_POLL_OPTIONS};
+    let options = raw
+        .get("options")
+        .and_then(Value::as_array)
+        .ok_or(super::errors::INVALID_POLL)?;
+    if !(2..=MAX_POLL_OPTIONS).contains(&options.len()) {
+        return Err(super::errors::INVALID_POLL);
+    }
+    let mut labels = Vec::with_capacity(options.len());
+    for option in options {
+        let label = option
+            .as_str()
+            .map(str::trim)
+            .ok_or(super::errors::INVALID_POLL)?;
+        if label.is_empty() || label.chars().count() > MAX_POLL_OPTION_LENGTH {
+            return Err(super::errors::INVALID_POLL);
+        }
+        labels.push(label);
+    }
+    Ok(serde_json::json!({ "options": labels }))
+}
+
+/// Decide whether `user` may cast (`Some(option)`) or take back (`None`) a
+/// vote on poll message `message_id`. Returns the poll's channel and its
+/// stored `poll` field, or the error frame to send back.
+///
+/// Voting answers to the same rules as reacting: seeing the channel, and
+/// for a new vote `SEND_MESSAGES` there; taking a vote back only needs the
+/// channel to be visible. A message in a channel the voter cannot see is
+/// reported as missing, so ids cannot be probed through this frame.
+///
+/// An encrypted channel refuses votes even on a poll posted before the
+/// channel was switched to encryption: the server would go on learning who
+/// chose what in a channel whose members were promised it learns nothing.
+pub async fn prepare_poll_vote(
+    state: &Arc<AppState>,
+    user: &str,
+    message_id: i64,
+    option: Option<usize>,
+) -> Result<(i32, Value), &'static str> {
+    let record = match db::get_message_record(&state.db, message_id).await {
+        Ok(Some(record)) => record,
+        Ok(None) => return Err(super::errors::MESSAGE_NOT_FOUND),
+        Err(error) => {
+            error!("failed to load poll {message_id}: {error}");
+            return Err(super::errors::POLL_VOTE_FAILED);
+        }
+    };
+    if !can_view_channel(state, user, ChannelKind::Text, record.channel_id).await {
+        return Err(super::errors::MESSAGE_NOT_FOUND);
+    }
+    let Some(poll) = record.content.get("poll").filter(|p| p.is_object()) else {
+        return Err(super::errors::INVALID_POLL);
+    };
+    if channel_is_e2ee(state, record.channel_id).await {
+        return Err(super::errors::CANNOT_POLL_ENCRYPTED);
+    }
+    if let Some(option) = option {
+        if !has_channel_permission(
+            state,
+            user,
+            ChannelKind::Text,
+            record.channel_id,
+            permissions::SEND_MESSAGES,
+        )
+        .await
+        {
+            return Err(super::errors::SEND_PERMISSION_DENIED);
+        }
+        let count = poll
+            .get("options")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        if option >= count {
+            return Err(super::errors::INVALID_POLL);
+        }
+    }
+    Ok((record.channel_id, poll.clone()))
 }

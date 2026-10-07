@@ -4,7 +4,7 @@
  * nothing at all.
  */
 
-import type { AttachmentInfo, ForwardInfo, Message, ReplyInfo } from './types';
+import type { AttachmentInfo, ForwardInfo, Message, PollInfo, ReplyInfo } from './types';
 
 /** Normalize reactions object to ensure consistent structure. */
 export function normalizeReactions(value: unknown): Record<string, string[]> {
@@ -78,6 +78,32 @@ export function normalizeForwardedFrom(value: unknown): ForwardInfo | undefined 
 }
 
 /**
+ * Validate a poll's options, and the tally from a server frame
+ * (`history`, `poll-update`). The tally is padded or cut to the option list
+ * so a malformed frame cannot render counts against options that do not
+ * exist.
+ * @returns A safe poll, or undefined if the options are unusable
+ */
+export function normalizePoll(value: unknown): PollInfo | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Record<string, unknown>;
+  if (!Array.isArray(raw.options) || raw.options.length < 2) return undefined;
+  if (!raw.options.every((option) => typeof option === 'string')) return undefined;
+  const options = raw.options as string[];
+  return { options, votes: normalizePollVotes(raw.votes, options.length) };
+}
+
+/** The per-option voter lists of a poll with `count` options. */
+export function normalizePollVotes(value: unknown, count: number): string[][] {
+  const votes = Array.isArray(value) ? value : [];
+  return Array.from({ length: count }, (_, i) =>
+    Array.isArray(votes[i])
+      ? (votes[i] as unknown[]).filter((u): u is string => typeof u === 'string' && u !== '')
+      : []
+  );
+}
+
+/**
  * Prepare a raw message for display by normalizing timestamps, reactions, and ephemeral status.
  */
 export function prepareMessage(raw: Message): Message {
@@ -132,6 +158,13 @@ export function prepareMessage(raw: Message): Message {
     msg.forwardedFrom = forwardedFrom;
   } else {
     delete msg.forwardedFrom;
+  }
+
+  const poll = normalizePoll(raw.poll);
+  if (poll) {
+    msg.poll = poll;
+  } else {
+    delete msg.poll;
   }
 
   let normalizedExpiry: string | undefined;

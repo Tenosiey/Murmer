@@ -1,5 +1,10 @@
 //! Handlers for chat messages, message deletion, editing, forwarding,
-//! reactions, history and search.
+//! reactions, poll votes, history and search.
+//!
+//! A poll is a chat message with a `poll` field listing its options; the
+//! question is the text. The server keeps the votes, one per account, and
+//! sends the whole tally to the channel on every change (`poll-update`).
+//! Encrypted channels refuse polls, since counting votes means seeing them.
 //!
 //! A search may carry `filters` (author, has-a-file, a date window) next to
 //! its words; see [`search_filters`]. A filter alone is a whole search.
@@ -417,6 +422,34 @@ pub(super) async fn prepare_chat_body(
     // from opting a message out of the channel's encryption.
     let max_length = super::chat_settings::max_message_length(state).await;
     let encrypted = channel_is_e2ee(state, channel_id).await;
+
+    // A poll is refused outright in an encrypted channel rather than sealed:
+    // the server counts the votes, so it would have to see them — and the
+    // options too, to know what was voted for. The question is the message
+    // text, so a poll without one is no poll.
+    let mut poll = None;
+    if let Some(raw) = v.get("poll").filter(|p| !p.is_null()) {
+        if encrypted {
+            send_error(sender, errors::CANNOT_POLL_ENCRYPTED).await;
+            return Err(());
+        }
+        let has_question = v
+            .get("text")
+            .and_then(|t| t.as_str())
+            .is_some_and(|t| !t.trim().is_empty());
+        match parse_poll(raw) {
+            Ok(parsed) if has_question => poll = Some(parsed),
+            Ok(_) => {
+                send_error(sender, errors::INVALID_POLL).await;
+                return Err(());
+            }
+            Err(code) => {
+                send_error(sender, code).await;
+                return Err(());
+            }
+        }
+    }
+
     if encrypted {
         if PLAINTEXT_MESSAGE_FIELDS
             .iter()
@@ -461,6 +494,32 @@ pub(super) async fn prepare_chat_body(
     // no-op in an encrypted channel: the server holds no text to mask there,
     // which is a limit of the profanity filter rather than a way around it.
     super::chat_settings::apply_profanity_filter(state, v).await;
+
+    // A poll's options are words posted to the channel like the question, so
+    // they clear the same rule screen and mask; otherwise the options would
+    // be the place to put whatever the text may not say.
+    if let Some(mut poll) = poll {
+        if let Some(options) = poll["options"].as_array_mut() {
+            let joined = options
+                .iter()
+                .filter_map(|o| o.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            if super::automod::screen(state, sender, user, &joined).await
+                == super::automod::Screen::Blocked
+            {
+                return Err(());
+            }
+            for option in options.iter_mut() {
+                let masked =
+                    super::chat_settings::mask_text(state, option.as_str().unwrap_or("")).await;
+                *option = Value::String(masked);
+            }
+        }
+        v["poll"] = poll;
+    } else if let Some(map) = v.as_object_mut() {
+        map.remove("poll");
+    }
 
     v["user"] = Value::String(user.to_string());
     v["channelId"] = Value::from(channel_id);
@@ -1049,6 +1108,62 @@ pub(super) async fn handle_typing(
         "type": "typing",
         "user": user,
         "channelId": channel_id,
+    });
+    send_to_channel(state, channel_id, &payload).await;
+}
+
+/// Handle a `poll-vote`: cast, change or (with a null `option`) take back
+/// the sender's one vote on a poll, then send the poll's whole tally to its
+/// channel. The rules live in [`prepare_poll_vote`].
+pub(super) async fn handle_poll_vote(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(user) = user_name.as_deref() else {
+        send_error(sender, errors::NOT_AUTHENTICATED).await;
+        return;
+    };
+    let Some(message_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
+        send_error(sender, errors::INVALID_MESSAGE_ID).await;
+        return;
+    };
+    let option = match v.get("option") {
+        None | Some(Value::Null) => None,
+        Some(raw) => match raw.as_u64().and_then(|o| usize::try_from(o).ok()) {
+            Some(option) => Some(option),
+            None => {
+                send_error(sender, errors::INVALID_POLL).await;
+                return;
+            }
+        },
+    };
+
+    let (channel_id, poll) = match prepare_poll_vote(state, user, message_id, option).await {
+        Ok(found) => found,
+        Err(code) => {
+            send_error(sender, code).await;
+            return;
+        }
+    };
+    if let Err(e) = db::set_poll_vote(&state.db, message_id, user, option).await {
+        error!("db poll vote error: {e}");
+        send_error(sender, errors::POLL_VOTE_FAILED).await;
+        return;
+    }
+    let votes = match db::get_poll_votes_for_messages(&state.db, &[message_id]).await {
+        Ok(mut map) => map.remove(&message_id).unwrap_or_default(),
+        Err(e) => {
+            error!("db poll tally error: {e}");
+            return;
+        }
+    };
+    let payload = serde_json::json!({
+        "type": "poll-update",
+        "channelId": channel_id,
+        "messageId": message_id,
+        "votes": db::poll_tally(&poll, &votes),
     });
     send_to_channel(state, channel_id, &payload).await;
 }

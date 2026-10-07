@@ -188,6 +188,10 @@ All of this is deliberate, and `README.md` points operators here:
   works and is client-side for the same reason: the attribution travels
   inside the ciphertext as text, which makes it the sender's claim rather
   than the server's — see [`features.md`](features.md).
+- **Polls.** The server keeps the count, so it would have to see every vote
+  and the options being voted for. A poll is refused rather than sealed, and
+  a poll posted before the channel switched to encryption stops taking votes
+  — see [`features.md`](features.md#polls).
 - **Forward secrecy within an epoch.**
 - **Which groups a message pings.** A group mention's `mentions` field
   travels in plaintext beside the envelope, because the server has to

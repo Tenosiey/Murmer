@@ -10,6 +10,7 @@ import {
   prepareMessage,
   containsMention,
   normalizeReactions,
+  normalizePollVotes,
   mergeHistory
 } from '../message-utils';
 import { parseWikiSearchHits, type SearchFilters } from '../chat/search';
@@ -425,6 +426,19 @@ function createChatStore() {
             messages.map((m) => (m.id === messageId ? { ...m, reactions } : m))
           );
         }
+        break;
+      }
+
+      case 'poll-update': {
+        const messageId = msg.messageId;
+        if (typeof messageId !== 'number') break;
+        update((messages) =>
+          messages.map((m) =>
+            m.id === messageId && m.poll
+              ? { ...m, poll: { ...m.poll, votes: normalizePollVotes(msg.votes, m.poll.options.length) } }
+              : m
+          )
+        );
         break;
       }
 
@@ -940,6 +954,22 @@ function createChatStore() {
   }
 
   /** Send a self-destructing chat message; `expiresAt` is ISO 8601. */
+  /**
+   * Post a poll: the question is the message text, the options ride beside
+   * it. The server refuses one in an encrypted channel, where it could not
+   * count the votes without seeing them.
+   * @returns null on success, or an error message for the caller to surface
+   */
+  function sendPoll(user: string, question: string, options: string[]): string | null {
+    return sendMessage(user, { text: question }, { poll: { options } });
+  }
+
+  /** Vote for option `option` of a poll, or take the vote back with null. */
+  function votePoll(messageId: number, option: number | null): void {
+    if (!wsManager.isConnected()) return;
+    wsManager.send({ type: 'poll-vote', messageId, option });
+  }
+
   function sendEphemeral(user: string, text: string, expiresAt: string): string | null {
     return sendMessage(user, { text }, { ephemeral: true, expiresAt });
   }
@@ -1137,6 +1167,8 @@ function createChatStore() {
     forward,
     sendDm,
     sendEphemeral,
+    sendPoll,
+    votePoll,
     scheduleMessage,
     cancelScheduledMessage,
     setReminder,

@@ -6,6 +6,7 @@ import {
   mergeHistory,
   normalizeAttachment,
   normalizeForwardedFrom,
+  normalizePoll,
   normalizeReactions,
   normalizeReplyTo,
   prepareMessage
@@ -108,6 +109,21 @@ describe('normalizeReplyTo', () => {
     expect(normalizeReplyTo({})).toBeUndefined();
     expect(normalizeReplyTo({ id: '7' })).toBeUndefined();
     expect(normalizeReplyTo({ id: Number.NaN })).toBeUndefined();
+  });
+});
+
+describe('normalizePoll', () => {
+  it('fits the tally to the options', () => {
+    expect(
+      normalizePoll({ options: ['a', 'b'], votes: [['bob', 7], ['carol'], ['ghost']] })
+    ).toEqual({ options: ['a', 'b'], votes: [['bob'], ['carol']] });
+    expect(normalizePoll({ options: ['a', 'b'] })).toEqual({ options: ['a', 'b'], votes: [[], []] });
+  });
+
+  it('drops a poll without usable options', () => {
+    expect(normalizePoll(null)).toBeUndefined();
+    expect(normalizePoll({ options: ['only'] })).toBeUndefined();
+    expect(normalizePoll({ options: ['a', 2] })).toBeUndefined();
   });
 });
 

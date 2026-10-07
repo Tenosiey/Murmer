@@ -26,6 +26,16 @@ export interface ForwardInfo {
   channelId: number;
 }
 
+/**
+ * A poll riding on a message: the question is the message's text. `votes`
+ * holds, per option in order, the accounts that chose it — counted by the
+ * server, which is why encrypted channels have no polls.
+ */
+export interface PollInfo {
+  options: string[];
+  votes: string[][];
+}
+
 export interface Message {
   type: string;
   user?: string;
@@ -47,6 +57,7 @@ export interface Message {
   threadId?: number;
   /** Set on a message forwarded from elsewhere; `user` stays the forwarder. */
   forwardedFrom?: ForwardInfo;
+  poll?: PollInfo;
   /** Direct messages: sender/recipient names (metadata stays plaintext). */
   from?: string;
   to?: string;

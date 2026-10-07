@@ -105,7 +105,7 @@ Forwarding a forward keeps the *first* attribution rather than nesting one
 inside the other. The words are still the first author's, and a chain of
 "forwarded from a forward of…" tells the reader nothing.
 
-Three refusals carry the design:
+Four refusals carry the design:
 
 - **The source is view-checked, and the refusal is deliberately ambiguous.**
   Message ids are small integers, so without the check a member could guess
@@ -120,6 +120,9 @@ Three refusals carry the design:
 - **An ephemeral message refuses.** It was posted on the promise that it
   disappears; a copy without the expiry breaks that promise, and a copy
   carrying it would start a second countdown nobody asked for.
+- **A poll refuses.** Its options and votes belong to the original; a copy
+  would open a second, empty tally under the original author's attribution,
+  and copying only the question would drop what made it a poll.
 
 **A forward cannot be edited.** Editing is normally the author's own right,
 never a moderator's, precisely because it rewrites somebody's words — but a
@@ -137,6 +140,39 @@ attribution travels inside the ciphertext as text, because a DM's plaintext
 honest shape for it and not a weakening: in a two-person conversation the
 sender could type the same words anyway, so there is nothing a stamp would
 protect. See [`security.md`](security.md).
+
+## Polls
+
+Server: `ws/helpers.rs::parse_poll` / `prepare_poll_vote`,
+`ws/handlers/messages.rs::handle_poll_vote`, `db/polls.rs`. Client:
+`/poll` in `src/lib/chat/commands.ts`, `components/chat/PollCard.svelte`.
+
+**A poll is a chat message with a `poll` field.** The question is the
+message's `text`, so it gets the length limit, auto-moderation, the
+profanity mask, mentions, search and editing for free. The options are
+rebuilt from their labels alone (`parse_poll`) and run through the same
+rule screen and mask: otherwise they would be the place to put whatever the
+text may not say. They cannot be edited — changing an option under existing
+votes would change what people voted for.
+
+**The server counts, one vote per account.** Votes live in `poll_votes`,
+keyed on message and account, so changing a vote replaces it and a null
+`option` takes it back. They are never written into the stored frame; the
+tally is attached whenever the message is served (`hydrate_messages`), and
+every change re-sends the whole tally to the channel as `poll-update`. The
+cap on options exists because of that re-send. Voters are named, like
+reactions — Murmer has no anonymous polls. Votes cascade away with their
+message through the foreign key, so every deletion path cleans them up
+without knowing about them.
+
+Voting answers to the rules reacting does: seeing the channel, plus
+`SEND_MESSAGES` to cast a vote; taking one back only needs the channel to be
+visible. A poll in a channel the voter cannot see answers "message not
+found", so the frame cannot probe for hidden ids.
+
+**Encrypted channels have no polls.** Counting means seeing the votes and the
+options they choose between. A poll is refused there rather than sealed, and
+a poll posted before the channel switched to encryption stops taking votes.
 
 ## Message links
 

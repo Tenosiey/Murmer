@@ -2,6 +2,7 @@
  * Translation of server error codes (the `message` field of
  * `{"type":"error"}` frames) into user-facing text.
  */
+import { MAX_POLL_OPTION_LENGTH, MAX_POLL_OPTIONS } from './chat/constants';
 
 const SERVER_ERROR_MESSAGES: Record<string, string> = {
   unauthenticated: 'You are not authenticated with this server.',
@@ -122,6 +123,12 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'cannot-forward-encrypted':
     'Messages cannot be forwarded into or out of an end-to-end encrypted channel.',
   'cannot-forward-ephemeral': 'A disappearing message cannot be forwarded.',
+  'invalid-poll':
+    `A poll needs a question and 2 to ${MAX_POLL_OPTIONS} options of at most ${MAX_POLL_OPTION_LENGTH} characters.`,
+  'cannot-poll-encrypted':
+    'Polls are not available in end-to-end encrypted channels — counting the votes would mean the server sees them.',
+  'cannot-forward-poll': 'A poll cannot be forwarded.',
+  'poll-vote-failed': 'Your vote could not be recorded. Please try again.',
   'nothing-to-forward': 'That message has nothing that can be forwarded.',
   'cannot-edit-forward': 'A forwarded message cannot be edited — its words are someone else’s.',
   'thread-load-failed': 'The server could not load that thread. Please try again.',
