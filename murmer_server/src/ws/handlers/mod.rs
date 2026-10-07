@@ -1,7 +1,7 @@
 //! WebSocket message handlers.
 //!
 //! The socket loop and dispatch live here, along with the small voice,
-//! SFU-offer, screen-share and camera handlers, the ICE server announcement, the
+//! SFU-offer, mesh-failure, screen-share and camera handlers, the ICE server announcement, the
 //! server-info and operator-metrics answers, and the rest of what is not
 //! worth a file of its own. Each
 //! submodule handles one domain and documents itself.
@@ -465,6 +465,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                             }
                             "sfu-offer" => {
                                 handle_sfu_offer(&state, &mut sender, &v, voice_channel, &user_name).await;
+                            }
+                            "voice-p2p-failed" => {
+                                handle_voice_p2p_failed(&state, &v, voice_channel, &user_name).await;
                             }
                             "set-screenshare-max-bitrate" => {
                                 screenshare::handle_set_screenshare_max_bitrate(&state, &mut sender, &v, &user_name).await;
@@ -1174,6 +1177,52 @@ async fn handle_sfu_offer(
     match (channel, slots) {
         (Some(ch_id), Some(slots)) => sfu.offer(user, ch_id, sdp.to_string(), slots),
         _ => send_error(sender, errors::SFU_OFFER_REJECTED).await,
+    }
+}
+
+/// `voice-p2p-failed`: a mesh pair in the sender's channel could not
+/// connect, so the channel moves to the SFU and stays there until it empties
+/// (`sticky`). This is what replaced TURN as the relay of last resort.
+///
+/// Any member may do this to their own channel, with no permission bit: the
+/// cost is server bandwidth for a call they are in, no more than inviting
+/// enough friends to cross the threshold. Both ends of the pair must be in
+/// that channel, so nobody can push a call they are not part of. With the
+/// SFU off there is nowhere to move to, and the frame is ignored.
+async fn handle_voice_p2p_failed(
+    state: &Arc<AppState>,
+    v: &Value,
+    voice_channel: Option<i32>,
+    user_name: &Option<String>,
+) {
+    let (Some(user), Some(ch_id), Some(_)) = (user_name.as_deref(), voice_channel, &state.sfu)
+    else {
+        return;
+    };
+    let Some(target) = v.get("target").and_then(|t| t.as_str()) else {
+        return;
+    };
+    if !names_own_voice_channel(v, voice_channel) || target == user {
+        return;
+    }
+    let newly_sticky = {
+        let mut vc = state.voice_channels.lock().await;
+        match vc.get_mut(&ch_id) {
+            Some(info)
+                if !info.sticky && info.users.contains(user) && info.users.contains(target) =>
+            {
+                info.sticky = true;
+                true
+            }
+            _ => false,
+        }
+    };
+    if newly_sticky {
+        info!(
+            channel = ch_id,
+            "mesh pair failed; voice channel moves to the SFU"
+        );
+        broadcast_voice(state, ch_id).await;
     }
 }
 
