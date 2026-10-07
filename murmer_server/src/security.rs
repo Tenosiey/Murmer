@@ -106,31 +106,38 @@ pub fn voice_channel_cap(channel_limit: u32) -> Option<usize> {
         .min()
 }
 
-/// How far below the SFU threshold a channel must shrink before it returns
-/// to the mesh. Without the gap a channel sitting at the threshold would
-/// tear down and rebuild every connection each time someone's Wi-Fi
-/// blinked. A constant, because nobody tunes two numbers.
-pub const SFU_HYSTERESIS: usize = 3;
+/// The headcounts at which a voice channel changes mode (`SFU_THRESHOLD`,
+/// `SFU_RETURN_THRESHOLD`). The gap between them is what stops a channel
+/// sitting at the threshold from tearing down and rebuilding every
+/// connection each time someone's Wi-Fi blinks; `config.rs` guarantees
+/// `to_mesh < to_sfu`.
+#[derive(Debug, Clone, Copy)]
+pub struct SfuThresholds {
+    /// A mesh channel moves to the SFU at this many members.
+    pub to_sfu: usize,
+    /// An SFU channel moves back to the mesh at this many members.
+    pub to_mesh: usize,
+}
 
 /// The mode a voice channel of `headcount` members should be in.
 ///
-/// `threshold` is `None` while the SFU is off, which keeps every channel on
+/// `thresholds` is `None` while the SFU is off, which keeps every channel on
 /// the mesh. An empty channel always resets to the mesh; the caller clears
 /// `sticky` with it.
 pub fn next_mode(
     current: VoiceMode,
     headcount: usize,
     sticky: bool,
-    threshold: Option<usize>,
+    thresholds: Option<SfuThresholds>,
 ) -> VoiceMode {
-    let Some(threshold) = threshold else {
+    let Some(t) = thresholds else {
         return VoiceMode::Mesh;
     };
     let sfu = match current {
         _ if headcount == 0 => false,
         _ if sticky => true,
-        VoiceMode::Mesh => headcount >= threshold,
-        VoiceMode::Sfu => headcount > threshold.saturating_sub(SFU_HYSTERESIS),
+        VoiceMode::Mesh => headcount >= t.to_sfu,
+        VoiceMode::Sfu => headcount > t.to_mesh,
     };
     if sfu { VoiceMode::Sfu } else { VoiceMode::Mesh }
 }
@@ -363,7 +370,15 @@ pub async fn admin_token_matches(
 /// Link previews one IP may have fetched per minute. Cached previews are
 /// free; this caps the pages a caller can make the server go and fetch, which
 /// is what keeps `/link-preview` from being a free anonymous fetch proxy.
-pub const MAX_PREVIEWS_PER_MINUTE: usize = 30;
+///
+/// Reads from the `MAX_PREVIEWS_PER_MINUTE` environment variable, defaulting
+/// to 30. Resolved once per [`RateLimiter`], like the limits above.
+pub fn get_max_previews_per_minute() -> usize {
+    std::env::var("MAX_PREVIEWS_PER_MINUTE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(30)
+}
 
 /// Check if an IP may make the server fetch another link preview.
 pub async fn check_preview_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool {
@@ -371,7 +386,7 @@ pub async fn check_preview_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> b
         &rate_limiter.preview_attempts,
         &rate_limiter.clock,
         ip,
-        MAX_PREVIEWS_PER_MINUTE,
+        rate_limiter.max_previews_per_minute,
     )
     .await;
     if !allowed {
@@ -542,7 +557,10 @@ mod tests {
 
     #[test]
     fn next_mode_switches_with_hysteresis() {
-        let t = Some(7);
+        let t = Some(SfuThresholds {
+            to_sfu: 7,
+            to_mesh: 4,
+        });
         // (current, headcount, sticky) -> expected
         let table = [
             ((Mesh, 6, false), Mesh),

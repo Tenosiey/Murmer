@@ -255,6 +255,8 @@ pub struct RateLimiter {
     pub max_auth_attempts_per_minute: usize,
     /// Uploads one IP may make per minute.
     pub max_uploads_per_minute: usize,
+    /// Link previews one IP may make the server fetch per minute.
+    pub max_previews_per_minute: usize,
     /// Frames one connection may send per second, sustained; see
     /// [`security::FrameBudget`].
     pub max_frames_per_second: u32,
@@ -280,6 +282,7 @@ impl RateLimiter {
             max_messages_per_minute: security::get_max_messages_per_minute(),
             max_auth_attempts_per_minute: security::get_max_auth_attempts_per_minute(),
             max_uploads_per_minute: security::get_max_uploads_per_minute(),
+            max_previews_per_minute: security::get_max_previews_per_minute(),
             max_frames_per_second: security::get_max_frames_per_second(),
             clock,
         }
@@ -405,9 +408,9 @@ pub struct AppState {
     /// STUN URLs sent to each client in its `ice-config` frame
     /// (`STUN_SERVERS`, see `config.rs`).
     pub stun_servers: Vec<String>,
-    /// Headcount at which a voice channel moves to the SFU; `None` while the
-    /// SFU is off, which keeps every channel on the mesh.
-    pub sfu_threshold: Option<usize>,
+    /// Headcounts at which a voice channel moves to the SFU and back; `None`
+    /// while the SFU is off, which keeps every channel on the mesh.
+    pub sfu_thresholds: Option<security::SfuThresholds>,
     /// The SFU task, while it runs (`SFU_PUBLIC_IP` set).
     pub sfu: Option<sfu::Sfu>,
     pub rate_limiter: RateLimiter,
@@ -500,7 +503,7 @@ impl AppState {
             password: None,
             admin_token: None,
             stun_servers: Vec::new(),
-            sfu_threshold: None,
+            sfu_thresholds: None,
             sfu: None,
             rate_limiter: RateLimiter::new(),
             stats_enabled: AtomicBool::new(false),

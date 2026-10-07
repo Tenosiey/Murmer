@@ -217,11 +217,12 @@ camera track are untouched; only what they are attached to changes.
 
 The server decides, in `security::next_mode`, on every join and leave. A
 channel moves to the SFU at `SFU_THRESHOLD` people (default 7) and back to
-the mesh only once it is three below that. The band stops a channel sitting
-at the threshold from tearing down every connection each time somebody's
-Wi-Fi blinks; it is a constant because nobody will tune two numbers. A
-channel the relay fallback made *sticky* ([Relay support](#relay-support))
-stays on the SFU at any size, and an empty channel resets to the mesh. With
+the mesh only at `SFU_RETURN_THRESHOLD` (default three below that). The band
+stops a channel sitting at the threshold from tearing down every connection
+each time somebody's Wi-Fi blinks, which is why the server refuses to start
+with the two equal. A channel the relay fallback made *sticky*
+([Relay support](#relay-support)) stays on the SFU at any size, and an empty
+channel resets to the mesh. With
 `SFU_PUBLIC_IP` unset every channel is mesh, always.
 
 The SFU is embedded in the server (str0m, one tokio task, one UDP port)

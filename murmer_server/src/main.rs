@@ -164,7 +164,7 @@ async fn main() -> Result<()> {
         password: config.password.clone(),
         admin_token: config.admin_token.clone(),
         stun_servers: config.stun_servers.clone(),
-        sfu_threshold: config.sfu.map(|sfu| sfu.threshold),
+        sfu_thresholds: config.sfu.map(|sfu| sfu.thresholds),
         sfu: sfu.as_ref().map(|(sfu, _)| sfu.clone()),
         trusted_proxies: config.trusted_proxies.clone(),
         stats_enabled: std::sync::atomic::AtomicBool::new(stats_enabled),
