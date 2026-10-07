@@ -88,9 +88,10 @@ version (Settings → About), your OS, and whether you were on the desktop app
 or in a browser.
 
 For anything voice-related, say whether the other peer was on the same
-network — Murmer has no relay yet, so two peers behind symmetric NATs
+network, and whether the server has its SFU enabled (`SFU_PUBLIC_IP`).
+Without the SFU there is no relay, so two peers behind symmetric NATs
 cannot connect at all. That is a known gap, not a bug:
-[`plans/hybrid-voice-sfu.md`](plans/hybrid-voice-sfu.md).
+[`docs/voice.md`](docs/voice.md#relay-support).
 
 Please **do not** open a public issue for a security problem. Email the
 maintainer instead.

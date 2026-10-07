@@ -335,7 +335,7 @@ pub struct VoiceChannelState {
 }
 
 /// Whether a voice channel's media runs peer to peer or through the
-/// server's SFU (`plans/hybrid-voice-sfu.md`). The server decides and
+/// server's SFU (`docs/voice.md`). The server decides and
 /// announces it in `voice-mode`; clients follow.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "lowercase")]

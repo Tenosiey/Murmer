@@ -99,9 +99,12 @@ pages are as much its content as its messages are, which is why
 `wiki-resolve` stays ungated: it answers only "does this page exist" for
 channels addressed by name.
 
-**Voice talk is the one client-enforced piece** (the mic is disabled via the
-`voice-permissions` hint) because audio is peer-to-peer. View and join, and
-every text gate, are server-enforced.
+**Voice talk is the one client-enforced piece** in a mesh channel (the mic
+is disabled via the `voice-permissions` hint) because audio there is
+peer-to-peer. In a channel on the server's SFU the same hint applies, and
+the SFU also stops forwarding audio from a member without Talk or under a
+server mute ([`voice.md`](voice.md#through-the-server-sfu)). View and join,
+and every text gate, are server-enforced.
 
 Managers (`MANAGE_CHANNELS`) edit overrides through the
 `set-channel-override`/`remove-channel-override`/`get-channel-overrides`

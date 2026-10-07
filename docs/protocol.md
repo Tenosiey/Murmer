@@ -68,6 +68,20 @@ channel. `webcam-start` and `-stop` do the same, and are the *only* frames a cam
 the voice peer connections rather than a mesh of its own, so it has no
 signaling of its own to relay. See [`voice.md`](voice.md).
 
+A channel on the server's SFU signals with the server instead of a peer, so
+these frames have no `target` and no relay: the server *is* the other end.
+The server announces the mode with `voice-mode` (and the `mode` field of the
+`voice-permissions` join reply), and only accepts an `sfu-offer` or
+`sfu-screen-offer` from a member of the channel it names while that channel
+is in SFU mode. A refused `sfu-offer` is answered with `sfu-offer-rejected`
+rather than dropped, so a client that is out of step with the mode hears
+about it. The SFU is ICE-lite with one fixed candidate, so there is no
+`sfu-candidate`: the answer carries everything. `sfu-slots` then tells each
+member who is in which receive slot. `voice-p2p-failed` is the one frame
+going the other way: a mesh pair that never connected asks the server to
+move its channel onto the SFU. See
+[`voice.md`](voice.md#through-the-server-sfu).
+
 ### Visibility filtering
 
 Private channels mean a channel-scoped broadcast cannot simply be fanned out.

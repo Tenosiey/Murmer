@@ -84,11 +84,13 @@ bug, not a style disagreement.
   and rate decision is made in `murmer_server/src/ws/helpers.rs` and the
   handlers. Client-side gating keeps the UI honest and is *cosmetic*; never
   move a decision into the client. There is exactly one exception —
-  voice **talk** permission, a hint (`voice-permissions`) because audio is
-  peer-to-peer and the server cannot stop two peers that already connected.
-  It is labelled as such where it appears. Everything else, including the
-  soundboard cooldown, is decided server-side with at most a cosmetic mirror
-  on the client.
+  voice **talk** permission in a mesh channel, a hint (`voice-permissions`)
+  because audio there is peer-to-peer and the server cannot stop two peers
+  that already connected. In a channel on the server's SFU the hint stays,
+  but the SFU also refuses to forward audio from a member without Talk, so
+  there it is enforced. It is labelled as such where it appears. Everything
+  else, including the soundboard cooldown, is decided server-side with at
+  most a cosmetic mirror on the client.
 - **The account name is the identity.** Display names and nicknames are
   decoration. Auth, roles, moderation, DM routing and message authorship all
   key on the account name, bound to a public key on first connect. Any lookup

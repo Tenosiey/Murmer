@@ -301,6 +301,47 @@ attachment download at all: the client marks the link `download`, but
 browsers ignore that attribute across origins, and the desktop app is always
 on a different origin than the server.
 
+## Voice through the SFU
+
+In a mesh channel the server never sees media: DTLS-SRTP runs between the
+peers. A channel on the server's SFU (`murmer_server/src/sfu/`,
+[`voice.md`](voice.md#through-the-server-sfu)) is different, and the
+difference is the point of this section:
+
+- **The server decrypts media in SFU mode.** DTLS-SRTP terminates at the
+  SFU, so an operator *can* record a large call, its cameras and its screen
+  shares. That is why the SFU is off unless the operator sets
+  `SFU_PUBLIC_IP`, and why the voice panel shows a "Via server" badge
+  whenever it is in use: someone who chose a self-hosted mesh for privacy
+  should be able to see when they do not have it.
+- **End-to-end encryption through the SFU is not built.** Encoded
+  transforms (SFrame) could hide media from the server, but whether
+  WebView2, WebKitGTK and WKWebView all support `RTCRtpScriptTransform` has
+  not been checked.
+- **Talk is enforced there.** The SFU forwards a member's audio only while
+  they have Talk in the channel and are not server-muted, and their video
+  only while their camera is announced. It learns membership from every
+  join and leave, so a member who leaves the channel for any reason, a kick
+  or ban included, loses their connection at once, whatever their client
+  does. A mute re-syncs immediately and again when a timed one ends; a role
+  or override edit that takes Talk away only applies at the channel's next
+  join, leave, camera or mute change (`sync_sfu` in `ws/helpers.rs`). On the
+  mesh, Talk remains a hint.
+- **Only members get a connection.** An `sfu-offer` is accepted only from a
+  member of the channel it names, while that channel is in SFU mode; a
+  screen-share offer additionally needs an announced share with both ends
+  in the channel.
+- **The SFU is an unauthenticated UDP listener**, one port. Each connection
+  has its own random ICE credentials, handed out only in an answer over the
+  authenticated WebSocket, so a datagram that no connection accepts is
+  dropped before any parsing beyond the ICE check (logged at `debug`, so a
+  port scan cannot flood the log). str0m parses SRTP and RTCP only for a
+  connection that already passed ICE.
+- **Any member can push their own channel onto the SFU** with
+  `voice-p2p-failed`. The cost is server bandwidth for a call they are in,
+  no more than inviting enough people to cross the threshold, so it needs
+  no permission bit. Both ends of the failed pair must be in their channel.
+
 ## Rate limiting
 
 Authentication and uploads are rate limited per IP, chat per user. Behind a

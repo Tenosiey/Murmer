@@ -1,7 +1,7 @@
 /**
  * Which transport carries a voice call — the peer-to-peer mesh or the
  * server's SFU — and how a call moves between them
- * (`plans/hybrid-voice-sfu.md`).
+ * (`docs/voice.md`).
  *
  * The server decides the mode per channel and announces it with
  * `voice-mode` (and in the `voice-permissions` reply to a join). The client

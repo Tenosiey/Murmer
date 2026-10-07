@@ -1,6 +1,6 @@
 /**
  * The voice connection to the server's SFU, used while a channel is in SFU
- * mode (`voice/mode.ts`, `plans/hybrid-voice-sfu.md`).
+ * mode (`voice/mode.ts`, `docs/voice.md`).
  *
  * One `RTCPeerConnection` to the server instead of one per member, offered
  * **once and never renegotiated**: a send-only audio and video transceiver
