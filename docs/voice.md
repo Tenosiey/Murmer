@@ -9,6 +9,8 @@ repair layer and lives in [`screen-sharing.md`](screen-sharing.md).
 Audio is peer-to-peer. Everyone in a voice channel holds a connection to
 everyone else and the server relays only signaling, which is why per-peer
 cost shows up so often below as the reason something is the way it is.
+On a server with the SFU enabled, a large channel runs over one connection
+to the server instead — see [Through the server](#through-the-server-sfu).
 
 ## One AudioContext
 
@@ -206,6 +208,55 @@ five with cameras on already costs each machine four encodes and four
 decodes. Senders use `maintain-framerate`: a face reads fine soft and badly
 stuttering, the opposite trade-off from a screen share.
 
+## Through the server (SFU)
+
+When the server puts a channel in SFU mode (`voice-mode`, or the `mode` in
+the `voice-permissions` reply to a join), the call moves onto one
+connection to the server (`voice/sfu.ts`). The microphone chain and the
+camera track are untouched; only what they are attached to changes.
+
+The server decides, in `security::next_mode`, on every join and leave. A
+channel moves to the SFU at `SFU_THRESHOLD` people (default 7) and back to
+the mesh only at `SFU_RETURN_THRESHOLD` (default three below that). The band
+stops a channel sitting at the threshold from tearing down every connection
+each time somebody's Wi-Fi blinks, which is why the server refuses to start
+with the two equal. A channel the relay fallback made *sticky*
+([Relay support](#relay-support)) stays on the SFU at any size, and an empty
+channel resets to the mesh. With
+`SFU_PUBLIC_IP` unset every channel is mesh, always.
+
+The SFU is embedded in the server (str0m, one tokio task, one UDP port)
+rather than a separate media server such as LiveKit or mediasoup: those
+bring their own SDK, tokens and client library, which would mean a second
+voice client beside the mesh one. Embedded, its signaling rides the
+existing WebSocket and inherits authentication, channel visibility and the
+rate limiter. It is ICE-lite with a single host candidate, so it needs no
+STUN and the client never trickles candidates to it. It forwards one layer
+of each stream: no simulcast and no per-viewer bandwidth estimation, which
+the 720p camera cap makes affordable at the channel sizes Murmer allows.
+
+- **Offered once, never renegotiated.** The offer carries a send-only audio
+  and video transceiver plus a receive-only pair per *slot* (one per other
+  member the channel could hold). After that the server only says who is in
+  which slot (`sfu-slots`), so joins, leaves and camera toggles never cause
+  an offer — the same glare-avoidance as the mesh's camera transceiver.
+- **Make before break.** `voice/mode.ts` keeps the old transport live until
+  the new one is up: mesh peers close only once the SFU connection reports
+  `connected`; going back, the SFU closes once every mesh peer connects or
+  after 10 s. Only the live transport's peers are listed, so nobody is
+  played twice during a switch. These rules are a pure function and
+  unit-tested, because every way of getting them wrong sounds like a normal
+  call.
+- **Repair** uses the same `PeerRecovery` policy through a controller of its
+  own (a reserved peer id could collide with an account name). A rebuild is
+  a fresh offer; its new certificate tells the server to replace its end.
+- **Stats** take one rtt from the server connection and loss and jitter per
+  member from the receive slot carrying their audio, so the bars beside each
+  name still mean something.
+
+While the SFU carries the call the voice panel shows a "Via server" badge:
+the server terminates DTLS there and can see the media.
+
 ## Breakout rooms
 
 A manager splits a voice channel into temporary rooms and folds them back
@@ -296,18 +347,28 @@ stricter of the two caps wins, so a channel limit narrows the operator's cap
 and never widens it. Lowering it below the current headcount removes nobody;
 it only refuses the next joiner. Breakout rooms start without one.
 
-The cap is a bound on the symptom, not a fix for the cause — an SFU is. The
-plan is [`../plans/hybrid-voice-sfu.md`](../plans/hybrid-voice-sfu.md): mesh
-below a threshold, an SFU inside the server above it.
+The cap is a bound on the symptom, not a fix for the cause — the SFU is
+([Through the server](#through-the-server-sfu)). Its receive slots are
+sized from the cap, which is why a server with the SFU enabled refuses to
+start with `MAX_VOICE_CHANNEL_USERS=0`.
 
 ## Relay support
 
-Murmer has no relay today, so two peers behind symmetric NATs cannot
-connect. It will not get TURN: the planned relay is the same SFU that serves
-large channels ([`../plans/hybrid-voice-sfu.md`](../plans/hybrid-voice-sfu.md)).
-A pair that cannot connect moves its channel onto the SFU, which any client
+Murmer has no TURN. Its relay is the same SFU that serves large channels:
+a pair that cannot connect moves its channel onto the SFU, which any client
 can reach because the server is not behind a NAT — no coturn, no second
 credential scheme.
+
+Every new mesh connection, a rebuild included, has 15 s to reach
+`connected`. If it does not, the client sends `voice-p2p-failed` naming the
+other end, and the server marks the channel *sticky*: it stays on the SFU
+at any size until it empties, because the network that broke the pair will
+not mend mid-call. Both ends must be in the sender's channel, and no
+permission is needed — the cost is server bandwidth for a call the sender
+is in. Without the SFU the report is ignored, and two peers behind
+symmetric NATs still cannot connect. A network that blocks UDP entirely
+is not covered either way: the SFU listens on UDP only, and ICE-TCP on the
+same port is the follow-up if anybody needs it.
 
 STUN stays, because the mesh needs it. The STUN servers come from the server
 (`STUN_SERVERS`) in an `ice-config` frame after authentication, and both

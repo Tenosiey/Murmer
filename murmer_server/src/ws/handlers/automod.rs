@@ -287,6 +287,7 @@ async fn apply_mute(state: &Arc<AppState>, user: &str, rule: &AutomodRule) {
         "until": until.to_rfc3339(),
     });
     broadcast(state, &msg);
+    sync_sfu_for_user(state, user, Some(until)).await;
     info!(
         user,
         rule = %rule.name,

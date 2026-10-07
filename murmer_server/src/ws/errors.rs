@@ -85,6 +85,11 @@ pub const UNKNOWN_VOICE_CHANNEL: &str = r#"{"type":"error","message":"unknown-vo
 /// permission one — the same user is welcome once somebody leaves.
 pub const VOICE_CHANNEL_FULL: &str = r#"{"type":"error","message":"voice-channel-full"}"#;
 
+/// An `sfu-offer` the server could not take: the SFU is off, the channel is
+/// not in SFU mode, or the SDP did not parse. The client falls back to
+/// whatever the channel's mode says and tries again on the next change.
+pub const SFU_OFFER_REJECTED: &str = r#"{"type":"error","message":"sfu-offer-rejected"}"#;
+
 pub const VOICE_CHANNEL_UPDATE_FAILED: &str =
     r#"{"type":"error","message":"voice-channel-update-failed"}"#;
 

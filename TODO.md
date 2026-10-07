@@ -22,6 +22,46 @@ the idea comes from and what users will expect it to behave like.
 
 ## 🔧 Tech debt / hardening
 
+- [ ] Default to `wss://`. `normalizeServerUrl` in `src/lib/utils.ts` turns
+      a bare hostname into `ws://`, so messages, the server password and
+      invite codes cross the internet in clear without a word. Use `wss://`
+      for anything that is not localhost or a LAN address, and show a
+      visible "not encrypted" warning while connected over `ws://`
+- [ ] Drop the Google STUN default (`DEFAULT_STUN_SERVER` in
+      `config.rs`). Every call by every user tells Google their IP and when
+      they are in a call unless the operator changes it, which undoes the
+      client deliberately having no default of its own (`iceConfig.ts`).
+      Default to none, or to a server the project runs
+- [ ] Encrypt attachment bytes in DMs and encrypted channels. Only the name
+      and URL travel sealed today, so a DM'd photo or voice message sits
+      in clear in `uploads/`, behind an unauthenticated `/files` URL, and is
+      never deleted. Encrypting the file client-side with a key carried
+      inside the sealed message fixes both, and is also what would let the
+      orphaned-upload entry below delete them
+- [ ] Erase one user's data. An erasure request (GDPR) today means
+      hand-written SQL: the CLI has only `set-role` and `unbind-name`, the
+      Danger Zone purges everything, retention skips DMs. A `murmer_server
+      erase-user <name>` covering messages, DMs, files, reactions, profile
+      and binding
+- [ ] Forward secrecy for DMs. They are static NaCl `box` between long-term
+      keys and kept forever, so whoever later gets a key reads every DM it
+      ever received. A ratchet, or an established protocol rather than our
+      own composition — through `agents/skills/crypto-changes.md`
+- [ ] Identity key in the OS keychain (Tauri Stronghold or keyring) on
+      desktop instead of `localStorage`. It is the root of the DM-history
+      exposure above, and in the web client the operator serves the code
+      that holds it
+- [ ] Per-server identities derived from the one seed (HKDF of seed and
+      server address). One key on every server lets any two operators, or a
+      member of both, link a person's communities. Keeps the single backup;
+      it is a crypto-format change, see `agents/skills/crypto-changes.md`
+- [ ] Production-shaped `docker-compose.yml`. Today it is a development file:
+      plaintext port published, `CORS_ALLOW_ORIGINS=http://localhost:1420`,
+      `MAX_MESSAGES_PER_MINUTE: 300` (ten times the default), no password.
+      Move the dev settings into an override file
+- [ ] Raid protection. On a password-less server anyone can mint unlimited
+      keys and accounts; there is no join verification, account-age gate or
+      captcha (Discord verification levels)
 - [ ] Reclaim orphaned uploads. Deleting an emoji, avatar, server icon or
       sound removes its file; deleting a *message* does not, and neither does
       the Danger Zone purge or reset. The dashboard's storage breakdown can
@@ -32,11 +72,23 @@ the idea comes from and what users will expect it to behave like.
       would delete every attachment of every encrypted channel. The options
       that remain are the author's client naming the files when it deletes
       its own message, or an operator-chosen age limit for attachments
-- [ ] Voice does not connect at all behind symmetric NAT, and the mesh caps a
-      channel at a handful of people. Both are answered by a hybrid SFU
-      (mesh for small channels, an SFU inside the server above a threshold);
-      TURN is deliberately not part of it. See
-      [`plans/hybrid-voice-sfu.md`](plans/hybrid-voice-sfu.md)
+- [ ] Version check on connect. The README asks for the app and server to
+      match, but nothing compares them, so a member who never pressed
+      Update gets undefined behaviour. Refuse or warn with "update your
+      app" on a mismatch
+
+---
+
+## 📚 Documentation
+
+- [ ] Privacy at a glance in `README.md`, linked from every "encrypted" in
+      the feature list: what the operator sees, that mesh voice shows each
+      participant's IP to the others, that DM and encrypted-channel files
+      are not encrypted, that DMs cannot be deleted, and that in the web
+      client the operator serves the code holding your key
+- [ ] A production deployment guide: a Caddy or nginx TLS front with
+      `TRUSTED_PROXIES`, a password or invites, backing up the database and
+      `uploads/`, and how long to keep logs (they pair names with IPs)
 
 ---
 
@@ -52,6 +104,11 @@ the idea comes from and what users will expect it to behave like.
       or everything one member posted in the last hour, with the ban
       (Discord's purge and "delete message history"). The Danger Zone only
       knows everything at once
+- [ ] Delete and edit DMs. There is no frame for either, and
+      `MESSAGE_RETENTION_DAYS` keeps DMs, so a DM is permanent. Delete
+      removes the stored ciphertext for both sides
+- [ ] Message reports — a member flags a message to the moderators, with a
+      queue in the Server Dashboard (Discord's report to mods)
 - [ ] Outbound webhooks. The bot REST API covers "something else drives
       Murmer"; there is no way round for Murmer to notify something else when
       a message arrives
@@ -63,6 +120,10 @@ the idea comes from and what users will expect it to behave like.
 - [ ] AFK channel — move a member who has been deafened or silent for N
       minutes into a designated channel (TeamSpeak, Discord). In a full mesh
       an idle member still costs everyone a connection
+- [ ] Always through the server — a per-user setting to take every call over
+      the SFU, and an operator "SFU only" mode. In the mesh every
+      participant learns everyone else's IP address, which Discord and
+      TeamSpeak never reveal; today only `SFU_THRESHOLD=2` comes close
 - [ ] Direct calls — call someone from a DM, with ringing, accept and decline
       (Skype, Discord). Voice exists only in server channels today, so a
       private call means creating a private channel first. The peer
@@ -89,12 +150,21 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Accessibility pass — keyboard navigation and screen-reader labels.
       Context menus only open on right-click and take no arrow keys, so
       most of the app is currently hard to reach without a mouse
+- [ ] Appear offline, and a setting to stop sending typing indicators
+      (Discord's invisible status)
 - [ ] Backup and export. For operators: a consistent snapshot of the database
       (`VACUUM INTO`) plus `uploads/` without stopping the server. For users:
       an export of their own DMs, which only their client can decrypt
+- [ ] Discord import or bridge, so a community can move with its history or
+      run both during a transition. Existing bots also need rewriting, since
+      the bot API has its own shape
 - [ ] Narrow-window and touch layout. The web client is a shipped target, and
       nine `max-width` media queries in the whole client is what it has to
       meet a phone with
+- [ ] Release builds for macOS and Linux, and a signed Windows installer.
+      `release.yml` builds Windows only and unsigned, and the people most
+      likely to want Murmer are the ones trained to stop at SmartScreen's
+      warning. macOS is `plans/macos-client.md`
 - [ ] Rules screening — new members accept the server rules before they can
       post (Discord membership screening). The welcome message already
       reaches first-time members; this makes it a gate
@@ -104,6 +174,9 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Translatable UI. Every string is hardcoded English, so this is a
       structural change (extraction plus a lookup) rather than a translation
       job, and it only gets more expensive with every screen added
+- [ ] Update prompt at startup. Updates only happen when someone presses
+      Settings → Updates (`AboutTab.svelte`), so members drift behind the
+      server
 
 ---
 
@@ -119,8 +192,14 @@ the idea comes from and what users will expect it to behave like.
       talking (Discord, TeamSpeak overlays)
 - [ ] LAN server discovery over mDNS, so a LAN party finds its server without
       anyone typing an address
-- [ ] Local transcription and meeting notes. The server never sees media, so
-      this can only run on a client (a local Whisper model in the desktop
-      app), and only with the same visible indicator as recording
+- [ ] Local transcription and meeting notes. The server sees no media in a
+      mesh channel, so this can only run on a client (a local Whisper model
+      in the desktop app), and only with the same visible indicator as
+      recording
 - [ ] Positional audio for games (Mumble)
 - [ ] Screen-share annotations
+- [ ] End-to-end encryption through the SFU (encoded transforms / SFrame),
+      so a large call stays private from the operator too. Check
+      `RTCRtpScriptTransform` in WebView2, WebKitGTK and WKWebView first
+- [ ] ICE-TCP on the SFU port, for networks that block UDP entirely. str0m
+      supports TCP candidates; nobody has asked yet

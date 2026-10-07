@@ -16,6 +16,7 @@ pub mod permissions;
 pub mod profanity;
 pub mod roles;
 pub mod security;
+pub mod sfu;
 pub mod upload;
 pub mod web_client;
 pub mod ws;
@@ -254,6 +255,8 @@ pub struct RateLimiter {
     pub max_auth_attempts_per_minute: usize,
     /// Uploads one IP may make per minute.
     pub max_uploads_per_minute: usize,
+    /// Link previews one IP may make the server fetch per minute.
+    pub max_previews_per_minute: usize,
     /// Frames one connection may send per second, sustained; see
     /// [`security::FrameBudget`].
     pub max_frames_per_second: u32,
@@ -279,6 +282,7 @@ impl RateLimiter {
             max_messages_per_minute: security::get_max_messages_per_minute(),
             max_auth_attempts_per_minute: security::get_max_auth_attempts_per_minute(),
             max_uploads_per_minute: security::get_max_uploads_per_minute(),
+            max_previews_per_minute: security::get_max_previews_per_minute(),
             max_frames_per_second: security::get_max_frames_per_second(),
             clock,
         }
@@ -324,6 +328,24 @@ pub struct VoiceChannelState {
     /// Most members the channel admits; `0` for no limit of its own. The
     /// server-wide `MAX_VOICE_CHANNEL_USERS` applies on top either way.
     pub user_limit: u32,
+    /// How the channel's media travels; decided by
+    /// [`security::next_mode`] on every join and leave.
+    pub mode: VoiceMode,
+    /// Set when a mesh pair in the channel could not connect: the channel
+    /// then stays on the SFU until it empties, because the network that
+    /// broke the pair will not mend mid-call.
+    pub sticky: bool,
+}
+
+/// Whether a voice channel's media runs peer to peer or through the
+/// server's SFU (`docs/voice.md`). The server decides and
+/// announces it in `voice-mode`; clients follow.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VoiceMode {
+    #[default]
+    Mesh,
+    Sfu,
 }
 
 /// Shared application state passed to handlers.
@@ -386,6 +408,11 @@ pub struct AppState {
     /// STUN URLs sent to each client in its `ice-config` frame
     /// (`STUN_SERVERS`, see `config.rs`).
     pub stun_servers: Vec<String>,
+    /// Headcounts at which a voice channel moves to the SFU and back; `None`
+    /// while the SFU is off, which keeps every channel on the mesh.
+    pub sfu_thresholds: Option<security::SfuThresholds>,
+    /// The SFU task, while it runs (`SFU_PUBLIC_IP` set).
+    pub sfu: Option<sfu::Sfu>,
     pub rate_limiter: RateLimiter,
     /// Mirror of the server-wide stat tracking toggle (`server_settings` key
     /// `stats_enabled`), kept in memory so the recording hooks that fire on
@@ -476,6 +503,8 @@ impl AppState {
             password: None,
             admin_token: None,
             stun_servers: Vec::new(),
+            sfu_thresholds: None,
+            sfu: None,
             rate_limiter: RateLimiter::new(),
             stats_enabled: AtomicBool::new(false),
             chat_settings: Mutex::default(),

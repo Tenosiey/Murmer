@@ -17,6 +17,7 @@
   import { categories } from '$lib/stores/categories';
   import { voiceUsers } from '$lib/stores/voiceUsers';
   import { voiceStats, voiceReconnecting } from '$lib/stores/voice';
+  import { viaServer } from '$lib/stores/voiceTransport';
   import { session } from '$lib/stores/session';
   import { roles } from '$lib/stores/roles';
   import { displayNames } from '$lib/stores/profiles';
@@ -626,7 +627,17 @@
   <div class="voice-controls-container">
     <div class="voice-controls-panel">
       {#if inVoice}
-        <div class="voice-controls-header">Voice Controls</div>
+        <div class="voice-controls-header">
+          Voice Controls
+          {#if $viaServer}
+            <span
+              class="badge via-server"
+              title="This channel is large, so voice and video pass through the server instead of going directly between members. The server can see this media."
+            >
+              Via server
+            </span>
+          {/if}
+        </div>
       {/if}
       <div class="voice-controls-buttons">
         {#if inVoice}
@@ -1059,6 +1070,18 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
     padding: var(--space-1) var(--space-1) 0;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-2);
+  }
+
+  .via-server {
+    white-space: nowrap;
+    text-transform: none;
+    letter-spacing: normal;
+    cursor: help;
   }
 
   .voice-controls-buttons {

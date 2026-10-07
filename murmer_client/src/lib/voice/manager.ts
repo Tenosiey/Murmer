@@ -7,6 +7,11 @@
  *
  * Camera video rides these same connections — see `setCameraTrack` for why it
  * is not a mesh of its own.
+ *
+ * Above the server's SFU threshold the same call runs over one connection to
+ * the server instead (`sfu.ts`). The microphone chain and the camera track
+ * do not care which: only what the outgoing tracks are attached to changes,
+ * and `mode.ts` decides when the switch happens.
  */
 import { chat } from '../stores/chat';
 import { iceServers } from '../stores/iceConfig';
@@ -32,7 +37,7 @@ import {
 import { resetSpeaking, setSpeaking, SPEAKING_RMS_THRESHOLD } from '../stores/voiceSpeaking';
 import { captureStream } from '../stores/voiceCapture';
 import { get } from 'svelte/store';
-import type { Message, RemotePeer, VoiceChannelInfo } from '../types';
+import type { ConnectionStats, Message, RemotePeer, VoiceChannelInfo } from '../types';
 import { VoiceActivityDetector, type VadConfig } from './vad';
 import { PushToTalkManager } from './ptt';
 import { getAudioContext, resumeAudioContext } from './audioContext';
@@ -43,6 +48,16 @@ import { withOpusFeatures } from './sdp';
 import { capBitrate } from '../webrtc/bitrate';
 import { remoteFingerprint } from '../webrtc/fingerprint';
 import { PeerRecovery } from '../webrtc/recovery';
+import { SfuConnection } from './sfu';
+import {
+  INITIAL_TRANSPORT,
+  parseSfuSlots,
+  parseVoiceMode,
+  stepTransport,
+  type TransportAction,
+  type TransportEvent
+} from './mode';
+import { viaServer } from '../stores/voiceTransport';
 
 const DEFAULT_AUDIO_BITRATE = 64_000;
 
@@ -76,6 +91,32 @@ const INPUT_GAIN_RAMP_SECONDS = 0.05;
  * point — see `updateStats`.
  */
 const MIN_LOSS_SAMPLE_PACKETS = 20;
+
+/**
+ * How long a call switching back from the SFU waits for every mesh peer to
+ * connect before it drops the SFU anyway. A pair that cannot connect would
+ * otherwise keep the whole channel on the server forever; past this it is
+ * left to the normal repair path, and reported once `P2P_CONNECT_TIMEOUT_MS`
+ * runs out.
+ */
+const MESH_READY_TIMEOUT_MS = 10_000;
+/**
+ * How long a new mesh connection gets to reach `connected` before the pair
+ * is reported as unreachable (`voice-p2p-failed`) and the server moves the
+ * channel onto its SFU. Long enough for a slow ICE gathering, short enough
+ * that the people who cannot hear each other are not left wondering.
+ */
+const P2P_CONNECT_TIMEOUT_MS = 15_000;
+
+/** The packet counters `scoreStats` turns into a loss percentage. */
+interface StatsSample {
+  rtt: number;
+  jitter: number;
+  received: number;
+  lost: number;
+  sent: number;
+  remoteLost: number;
+}
 
 /** The detector's settings as they currently stand, read from the stores. */
 function vadConfig(): VadConfig {
@@ -112,6 +153,8 @@ export class VoiceManager {
       outbound: number;
     }
   > = {};
+  private sfuPrevPacketCounts: VoiceManager['prevPacketCounts'] = {};
+  private sfuLossWindows: VoiceManager['lossWindows'] = {};
   private localStream: MediaStream | null = null;
   /** The signaling handlers of the current call, so leaving removes exactly
    *  these and not a store's listener for the same frame type. */
@@ -142,6 +185,28 @@ export class VoiceManager {
     rebuild: (id) => this.rebuildPeer(id),
     setReconnecting: (id, reconnecting) => this.markReconnecting(id, reconnecting)
   });
+
+  /** Which transport the channel wants and which one carries the call. */
+  private transport = INITIAL_TRANSPORT;
+  /** Receive slots an SFU offer carries, from the last mode frame. */
+  private sfuSlots = 0;
+  private sfu: SfuConnection | null = null;
+  /**
+   * The SFU connection's own repair, on the same policy as a mesh peer. A
+   * separate controller rather than a reserved peer id, because any id
+   * could also be somebody's account name.
+   */
+  private sfuRecovery = new PeerRecovery({
+    restart: () => void this.sfu?.offer(true).catch(() => {}),
+    // A fresh offer carries a new certificate, which tells the server to
+    // replace its end rather than restart it.
+    rebuild: () => this.openSfu(),
+    setReconnecting: (_, reconnecting) => this.sfu?.setReconnecting(reconnecting)
+  });
+  /** Pending `voice-p2p-failed` report per mesh peer not yet connected. */
+  private p2pWatch: Record<string, ReturnType<typeof setTimeout>> = {};
+  /** Pending give-up on a mesh that is taking over from the SFU. */
+  private meshWait: ReturnType<typeof setTimeout> | null = null;
 
   // The manager is a module singleton that lives as long as the app, so these
   // are never torn down.
@@ -482,6 +547,7 @@ export class VoiceManager {
       });
       if (track) this.configureVideoSender(sender);
     }
+    this.sfu?.setCamera(track);
   }
 
   /**
@@ -534,6 +600,7 @@ export class VoiceManager {
         if (sender.track?.kind === 'audio') capBitrate(sender, this.audioBitrate);
       }
     }
+    this.sfu?.setAudioBitrate(this.audioBitrate);
   }
 
   /**
@@ -658,8 +725,135 @@ export class VoiceManager {
     for (const cb of this.listeners) cb(peers);
   }
 
+  /**
+   * Hand subscribers the peers of whichever transport is live. The other
+   * one's peers are never listed: while a switch is under way both carry
+   * the same voices, and listing both would play everybody twice.
+   */
+  private publish() {
+    const live = this.transport.live === 'sfu' && this.sfu ? this.sfu.peers() : this.activePeers;
+    this.emit([...live]);
+  }
+
+  /** Feed an event to the transport rules and carry out what they say. */
+  private advanceTransport(event: TransportEvent) {
+    const wasLive = this.transport.live;
+    const { state, actions } = stepTransport(this.transport, event);
+    this.transport = state;
+    for (const action of actions) this.runTransportAction(action);
+    if (state.live !== wasLive) {
+      viaServer.set(state.live === 'sfu' ? { rtt: 0 } : null);
+      this.publish();
+    }
+  }
+
+  private runTransportAction(action: TransportAction) {
+    switch (action) {
+      case 'open-sfu':
+        this.openSfu();
+        break;
+      case 'close-sfu':
+        this.closeSfu();
+        break;
+      case 'close-mesh':
+        this.clearMeshWait();
+        for (const id of Object.keys(this.peers)) this.cleanupPeer(id);
+        break;
+      case 'build-mesh': {
+        // The SFU's member list is exactly who we need a connection to.
+        // The usual tiebreak picks who offers; the other end answers.
+        const members = this.sfu?.peers().map((p) => p.id) ?? [];
+        for (const id of members) {
+          if (this.userName && this.userName > id) void this.createPeer(id, true);
+        }
+        this.clearMeshWait();
+        this.meshWait = setTimeout(() => {
+          this.meshWait = null;
+          this.advanceTransport({ type: 'mesh-ready' });
+        }, MESH_READY_TIMEOUT_MS);
+        this.checkMeshReady();
+        break;
+      }
+    }
+  }
+
+  /** Open (or replace) the SFU connection with a fresh offer. */
+  private openSfu() {
+    if (!this.userName || this.channelId === null) return;
+    this.closeSfu();
+    const sfu = new SfuConnection({
+      channelId: this.channelId,
+      slots: this.sfuSlots,
+      audio: this.localStream?.getAudioTracks()[0] ?? null,
+      camera: this.cameraTrack,
+      audioBitrate: this.audioBitrate,
+      send: (frame) => chat.sendRaw(frame),
+      onPeers: () => {
+        if (this.transport.live === 'sfu') this.publish();
+      },
+      onState: (state) => {
+        if (this.sfu !== sfu) return;
+        this.sfuRecovery.observe('sfu', state);
+        if (state === 'connected') this.advanceTransport({ type: 'sfu-connected' });
+      },
+      configureVideo: (sender) => this.configureVideoSender(sender)
+    });
+    this.sfu = sfu;
+    sfu.offer().catch((error) => {
+      console.error('Failed to offer the SFU connection:', error);
+    });
+  }
+
+  private closeSfu() {
+    this.sfuRecovery.clear();
+    this.sfu?.close();
+    this.sfu = null;
+    this.sfuPrevPacketCounts = {};
+    this.sfuLossWindows = {};
+  }
+
+  private clearMeshWait() {
+    if (this.meshWait !== null) {
+      clearTimeout(this.meshWait);
+      this.meshWait = null;
+    }
+  }
+
+  /** Hand the call back to the mesh once every member is connected on it. */
+  private checkMeshReady() {
+    if (this.transport.target !== 'mesh' || this.transport.live !== 'sfu' || !this.sfu) return;
+    const ready = this.sfu
+      .peers()
+      .every((p) => this.peers[p.id]?.connectionState === 'connected');
+    if (ready) {
+      this.clearMeshWait();
+      this.advanceTransport({ type: 'mesh-ready' });
+    }
+  }
+
+  private handleVoiceMode(msg: Message) {
+    const frame = parseVoiceMode(msg);
+    if (!frame || frame.channelId !== this.channelId) return;
+    this.sfuSlots = frame.slots;
+    this.advanceTransport({ type: 'mode', mode: frame.mode });
+  }
+
+  private handleSfuAnswer(msg: Message) {
+    if (msg.channelId !== this.channelId || typeof msg.sdp !== 'string') return;
+    this.sfu?.answer(msg.sdp).catch((error) => {
+      console.error('Failed to apply the SFU answer:', error);
+    });
+  }
+
+  private handleSfuSlots(msg: Message) {
+    const frame = parseSfuSlots(msg);
+    if (!frame || frame.channelId !== this.channelId) return;
+    this.sfu?.setSlots(frame.slots);
+  }
+
   private cleanupPeer(id: string) {
     this.recovery.forget(id);
+    this.unwatchP2p(id);
     const pc = this.peers[id];
     if (pc) {
       pc.close();
@@ -674,7 +868,7 @@ export class VoiceManager {
     // moment anything else emits — a closed connection reappearing in the
     // member list with a dead stream.
     this.activePeers = this.activePeers.filter((r) => r.id !== id);
-    this.emit([...this.activePeers]);
+    this.publish();
   }
 
   /**
@@ -687,6 +881,8 @@ export class VoiceManager {
   private async restartPeerIce(id: string) {
     const pc = this.peers[id];
     if (!pc || !this.userName || pc.signalingState === 'closed') return;
+    // A mesh on its way out for the SFU is not worth repairing.
+    if (this.transport.target !== 'mesh') return;
     // Names are unique per server, so this is never a tie.
     if (this.userName < id) return;
     try {
@@ -710,6 +906,7 @@ export class VoiceManager {
   private rebuildPeer(id: string) {
     if (!this.userName || !this.peers[id]) return;
     this.cleanupPeer(id);
+    if (this.transport.target !== 'mesh') return;
     // Same tiebreak as the ICE restart: one side offers, the other picks the
     // new session up from that offer.
     if (this.userName > id) {
@@ -717,18 +914,97 @@ export class VoiceManager {
     }
   }
 
+  /**
+   * Report a mesh pair that does not connect in time, so the server carries
+   * the channel instead: the relay of last resort since TURN was dropped.
+   * Every new connection is watched, rebuilds included, so a pair whose
+   * repair keeps failing is caught by the same rule as one that never
+   * connected. The server ignores the report when it runs no SFU.
+   */
+  private watchP2p(id: string) {
+    this.unwatchP2p(id);
+    this.p2pWatch[id] = setTimeout(() => {
+      delete this.p2pWatch[id];
+      if (this.transport.target !== 'mesh' || this.peers[id]?.connectionState === 'connected')
+        return;
+      chat.sendRaw({ type: 'voice-p2p-failed', channelId: this.channelId, target: id });
+    }, P2P_CONNECT_TIMEOUT_MS);
+  }
+
+  private unwatchP2p(id: string) {
+    clearTimeout(this.p2pWatch[id]);
+    delete this.p2pWatch[id];
+  }
+
   /** Flag a peer as under repair so the UI can say so instead of going quiet. */
   private markReconnecting(id: string, reconnecting: boolean) {
     const peer = this.activePeers.find((p) => p.id === id);
     if (!peer || peer.reconnecting === reconnecting) return;
     peer.reconnecting = reconnecting;
-    this.emit([...this.activePeers]);
+    this.publish();
   }
 
   /** Refresh every peer's connection stats, then publish the list once. */
   private async pollStats() {
-    await Promise.all(Object.keys(this.peers).map((id) => this.updateStats(id)));
-    this.emit([...this.activePeers]);
+    await Promise.all([
+      ...Object.keys(this.peers).map((id) => this.updateStats(id)),
+      this.updateSfuStats()
+    ]);
+    this.publish();
+  }
+
+  /**
+   * Stats for the SFU connection: one round-trip time, to the server, and
+   * loss and jitter per member from the receive slot carrying their audio,
+   * so the bars beside each name still say something about that member.
+   */
+  private async updateSfuStats() {
+    const sfu = this.sfu;
+    if (!sfu) return;
+    const peers = sfu.peers();
+    if (sfu.pc.connectionState !== 'connected') {
+      for (const p of peers) p.stats = { rtt: 0, jitter: 0, packetLoss: 0, strength: 0 };
+      return;
+    }
+    try {
+      const reports = await sfu.pc.getStats();
+      let rtt = 0;
+      let sent = 0;
+      let remoteLost = 0;
+      const inbound: Record<string, { received: number; lost: number; jitter: number }> = {};
+      reports.forEach((report) => {
+        if (
+          report.type === 'candidate-pair' &&
+          (report as any).state === 'succeeded' &&
+          (report as any).currentRoundTripTime != null
+        ) {
+          rtt = (report as any).currentRoundTripTime * 1000;
+        }
+        if (report.type === 'remote-inbound-rtp' && (report as any).kind === 'audio') {
+          remoteLost += (report as any).packetsLost ?? 0;
+        }
+        if (report.type === 'outbound-rtp' && (report as any).kind === 'audio') {
+          sent += (report as any).packetsSent ?? 0;
+        }
+        if (report.type === 'inbound-rtp' && (report as any).kind === 'audio') {
+          const user = sfu.audioUser((report as any).mid);
+          if (user) {
+            inbound[user] = {
+              received: (report as any).packetsReceived ?? 0,
+              lost: (report as any).packetsLost ?? 0,
+              jitter: ((report as any).jitter ?? 0) * 1000
+            };
+          }
+        }
+      });
+      for (const p of peers) {
+        const own = inbound[p.id] ?? { received: 0, lost: 0, jitter: 0 };
+        p.stats = this.scoreStats(p.id, { rtt, sent, remoteLost, ...own }, true);
+      }
+      if (this.sfu === sfu && this.transport.live === 'sfu') viaServer.set({ rtt });
+    } catch {
+      // ignore stats errors
+    }
   }
 
   private async updateStats(id: string) {
@@ -775,71 +1051,86 @@ export class VoiceManager {
         }
       });
 
-      // Loss in both directions: packets we didn't receive plus packets the
-      // peer reports missing from us. Deltas are clamped because the
-      // cumulative counters may decrease (e.g. after duplicate packets or an
-      // SSRC restart).
-      const prev = this.prevPacketCounts[id] ?? { received: 0, lost: 0, sent: 0, remoteLost: 0 };
-      this.prevPacketCounts[id] = { received, lost, sent, remoteLost };
-      const dReceived = Math.max(0, received - prev.received);
-      const dLost = Math.max(0, lost - prev.lost);
-      const dSent = Math.max(0, sent - prev.sent);
-      const dRemoteLost = Math.max(0, remoteLost - prev.remoteLost);
-
-      // The percentage is only recomputed once enough packets have gone by,
-      // not once per poll. With DTX a silent stream carries a handful of
-      // comfort-noise packets a second, and dividing by that few would turn a
-      // single lost packet into "50 % loss" and drop the connection bars to
-      // one for everyone who is not currently talking. Deltas accumulate into
-      // the next window instead of being dropped, so real loss on a quiet
-      // link still surfaces — it just takes a couple of seconds. While
-      // somebody talks the stream fills a window in well under a second, so
-      // the bars stay as responsive as they were.
-      const window = this.lossWindows[id] ?? {
-        received: 0,
-        lost: 0,
-        sent: 0,
-        remoteLost: 0,
-        inbound: 0,
-        outbound: 0
-      };
-      window.received += dReceived;
-      window.lost += dLost;
-      window.sent += dSent;
-      window.remoteLost += dRemoteLost;
-      const inboundSample = window.received + window.lost;
-      if (inboundSample >= MIN_LOSS_SAMPLE_PACKETS) {
-        window.inbound = (window.lost / inboundSample) * 100;
-        window.received = 0;
-        window.lost = 0;
-      }
-      if (window.sent >= MIN_LOSS_SAMPLE_PACKETS) {
-        window.outbound = Math.min(100, (window.remoteLost / window.sent) * 100);
-        window.sent = 0;
-        window.remoteLost = 0;
-      }
-      this.lossWindows[id] = window;
-      const packetLoss = Math.max(window.inbound, window.outbound);
-
-      let strength =
-        rtt === 0 ? 5 : rtt < 50 ? 5 : rtt < 100 ? 4 : rtt < 200 ? 3 : rtt < 400 ? 2 : 1;
-      // Heavy packet loss ruins a call even on a fast link, so cap the bars.
-      if (packetLoss >= 10) strength = Math.min(strength, 1);
-      else if (packetLoss >= 5) strength = Math.min(strength, 2);
-      else if (packetLoss >= 2) strength = Math.min(strength, 3);
-
+      const stats = this.scoreStats(id, { rtt, jitter, received, lost, sent, remoteLost });
       for (const p of this.activePeers) {
-        if (p.id === id) p.stats = { rtt, jitter, packetLoss, strength };
+        if (p.id === id) p.stats = stats;
       }
     } catch {
       // ignore stats errors
     }
   }
 
+  /**
+   * Turn one poll's cumulative counters for `id` into the stats the UI
+   * shows: windowed loss in both directions, and bars from rtt and loss.
+   */
+  private scoreStats(id: string, sample: StatsSample, viaSfu = false): ConnectionStats {
+    const { rtt, jitter, received, lost, sent, remoteLost } = sample;
+    // The SFU's counters are its own: during a switch the same member has
+    // a mesh connection too, and mixing the two would make nonsense deltas.
+    const prevCounts = viaSfu ? this.sfuPrevPacketCounts : this.prevPacketCounts;
+    const lossWindows = viaSfu ? this.sfuLossWindows : this.lossWindows;
+    // Loss in both directions: packets we didn't receive plus packets the
+    // peer reports missing from us. Deltas are clamped because the
+    // cumulative counters may decrease (e.g. after duplicate packets or an
+    // SSRC restart).
+    const prev = prevCounts[id] ?? { received: 0, lost: 0, sent: 0, remoteLost: 0 };
+    prevCounts[id] = { received, lost, sent, remoteLost };
+    const dReceived = Math.max(0, received - prev.received);
+    const dLost = Math.max(0, lost - prev.lost);
+    const dSent = Math.max(0, sent - prev.sent);
+    const dRemoteLost = Math.max(0, remoteLost - prev.remoteLost);
+
+    // The percentage is only recomputed once enough packets have gone by,
+    // not once per poll. With DTX a silent stream carries a handful of
+    // comfort-noise packets a second, and dividing by that few would turn a
+    // single lost packet into "50 % loss" and drop the connection bars to
+    // one for everyone who is not currently talking. Deltas accumulate into
+    // the next window instead of being dropped, so real loss on a quiet
+    // link still surfaces — it just takes a couple of seconds. While
+    // somebody talks the stream fills a window in well under a second, so
+    // the bars stay as responsive as they were.
+    const window = lossWindows[id] ?? {
+      received: 0,
+      lost: 0,
+      sent: 0,
+      remoteLost: 0,
+      inbound: 0,
+      outbound: 0
+    };
+    window.received += dReceived;
+    window.lost += dLost;
+    window.sent += dSent;
+    window.remoteLost += dRemoteLost;
+    const inboundSample = window.received + window.lost;
+    if (inboundSample >= MIN_LOSS_SAMPLE_PACKETS) {
+      window.inbound = (window.lost / inboundSample) * 100;
+      window.received = 0;
+      window.lost = 0;
+    }
+    if (window.sent >= MIN_LOSS_SAMPLE_PACKETS) {
+      window.outbound = Math.min(100, (window.remoteLost / window.sent) * 100);
+      window.sent = 0;
+      window.remoteLost = 0;
+    }
+    lossWindows[id] = window;
+    const packetLoss = Math.max(window.inbound, window.outbound);
+
+    let strength =
+      rtt === 0 ? 5 : rtt < 50 ? 5 : rtt < 100 ? 4 : rtt < 200 ? 3 : rtt < 400 ? 2 : 1;
+    // Heavy packet loss ruins a call even on a fast link, so cap the bars.
+    if (packetLoss >= 10) strength = Math.min(strength, 1);
+    else if (packetLoss >= 5) strength = Math.min(strength, 2);
+    else if (packetLoss >= 2) strength = Math.min(strength, 3);
+
+    return { rtt, jitter, packetLoss, strength };
+  }
+
   private async createPeer(id: string, initiator: boolean): Promise<RTCPeerConnection> {
     if (this.peers[id]) return this.peers[id];
     const pc = new RTCPeerConnection({ iceServers: get(iceServers) });
     this.peers[id] = pc;
+    this.watchP2p(id);
     if (this.localStream) {
       for (const track of this.localStream.getTracks()) {
         const sender = pc.addTrack(track, this.localStream);
@@ -875,7 +1166,7 @@ export class VoiceManager {
         peer.stream = ev.streams[0];
       }
       if (!existing) this.activePeers.push(peer);
-      this.emit([...this.activePeers]);
+      this.publish();
     };
     pc.onicecandidate = (ev) => {
       if (ev.candidate && this.userName) {
@@ -896,6 +1187,10 @@ export class VoiceManager {
       // `closed` is only ever reached because we closed it ourselves, but the
       // peer still has to leave the list when that happened elsewhere.
       if (pc.connectionState === 'closed') this.cleanupPeer(id);
+      if (pc.connectionState === 'connected') {
+        this.unwatchP2p(id);
+        this.checkMeshReady();
+      }
     };
     if (initiator) await this.sendOffer(id, pc);
     return pc;
@@ -945,6 +1240,7 @@ export class VoiceManager {
     this.userName = user;
     this.channelId = channelId;
     this.activePeers = [];
+    this.transport = INITIAL_TRANSPORT;
     this.audioBitrate = info ? info.bitrate : DEFAULT_AUDIO_BITRATE;
     this.statsInterval = window.setInterval(() => void this.pollStats(), 1000);
     resetSpeaking();
@@ -953,7 +1249,11 @@ export class VoiceManager {
       ['voice-offer', (m) => this.handleOffer(m)],
       ['voice-answer', (m) => this.handleAnswer(m)],
       ['voice-candidate', (m) => this.handleCandidate(m)],
-      ['voice-leave', (m) => this.handleLeave(m)]
+      ['voice-leave', (m) => this.handleLeave(m)],
+      ['voice-permissions', (m) => this.handleVoiceMode(m)],
+      ['voice-mode', (m) => this.handleVoiceMode(m)],
+      ['sfu-answer', (m) => this.handleSfuAnswer(m)],
+      ['sfu-slots', (m) => this.handleSfuSlots(m)]
     ];
     for (const [type, handler] of this.signaling) chat.on(type, handler);
 
@@ -980,6 +1280,10 @@ export class VoiceManager {
     for (const id of Object.keys(this.peers)) {
       this.cleanupPeer(id);
     }
+    this.clearMeshWait();
+    this.closeSfu();
+    this.transport = INITIAL_TRANSPORT;
+    viaServer.set(null);
     this.cleanupAudioProcessing();
     this.localStream = null;
     // The capture itself belongs to the webcam store, which stops it on the
@@ -1011,12 +1315,16 @@ export class VoiceManager {
       msg.channelId !== this.channelId
     )
       return;
-    this.createPeer(msg.user as string, true);
+    // On the SFU a joiner reaches us through the server's slots instead.
+    if (this.transport.target === 'mesh') this.createPeer(msg.user as string, true);
     this.playPeerSound(this.joinSound);
   }
 
   private async handleOffer(msg: Message) {
     if (!this.addressedToMe(msg)) return;
+    // A mesh offer that crossed the switch to the SFU: there is nothing
+    // left to answer it with that would not be torn down again.
+    if (this.transport.target !== 'mesh') return;
     const remote = msg.user as string;
     const offerSdp = (msg.sdp as RTCSessionDescriptionInit | undefined)?.sdp;
     // Two very different offers arrive on an existing connection. An ICE

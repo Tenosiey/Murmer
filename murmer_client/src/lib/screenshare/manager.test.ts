@@ -78,3 +78,42 @@ describe('ScreenShareManager — viewer identity', () => {
     expect(offersTo('carol')[0].channelId).toBe(1);
   });
 });
+
+describe('ScreenShareManager — through the SFU', () => {
+  const sfuMode = (channelId: number, mode: 'sfu' | 'mesh') =>
+    mocks.handlers.get('voice-mode')?.({ type: 'voice-mode', channelId, mode, slots: 9 });
+  const sfuOffers = () => mocks.sent.filter((f) => f.type === 'sfu-screen-offer');
+
+  it('asks the server, not the sharer, while the channel is in SFU mode', async () => {
+    const manager = await freshManager();
+    sfuMode(1, 'sfu');
+
+    await manager.viewScreenShare('alice', 'me', 1);
+
+    expect(offersTo('alice')).toHaveLength(0);
+    expect(sfuOffers()).toEqual([
+      { type: 'sfu-screen-offer', channelId: 1, sharer: 'alice', sdp: '' }
+    ]);
+  });
+
+  it('stays on the mesh when another channel is the one in SFU mode', async () => {
+    const manager = await freshManager();
+    sfuMode(2, 'sfu');
+
+    await manager.viewScreenShare('alice', 'me', 1);
+
+    expect(offersTo('alice')).toHaveLength(1);
+    expect(sfuOffers()).toHaveLength(0);
+  });
+
+  it('moves a watched share to the new route when the mode changes', async () => {
+    const manager = await freshManager();
+    await manager.viewScreenShare('alice', 'me', 1);
+
+    sfuMode(1, 'sfu');
+    await vi.waitFor(() => expect(sfuOffers()).toHaveLength(1));
+
+    sfuMode(1, 'mesh');
+    await vi.waitFor(() => expect(offersTo('alice')).toHaveLength(2));
+  });
+});

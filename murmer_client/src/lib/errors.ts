@@ -36,6 +36,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-voice-user-limit': 'A user limit must be a whole number from 0 to 99.',
   'unknown-voice-channel': 'That voice channel no longer exists.',
   'voice-channel-full': 'That voice channel is full. Try again once somebody leaves.',
+  'sfu-offer-rejected': 'The server could not take this call through its relay. Rejoin the voice channel to try again.',
   'voice-channel-update-failed': 'The server could not update the voice channel.',
   'invalid-breakout-rooms': 'That is not a valid number of breakout rooms.',
   'breakout-already-open': 'That channel already has breakout rooms open.',

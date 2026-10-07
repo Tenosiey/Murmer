@@ -23,20 +23,29 @@ murmer_client/                          murmer_server/
          ▲                                          
          │  WebRTC: voice audio, camera video and screen shares
          └─ travel peer-to-peer between clients. The server
-            only relays signaling (offer/answer/candidate).
+            only relays signaling (offer/answer/candidate),
+            unless its SFU carries the channel (below).
 ```
 
 Two consequences of that last box are worth internalising before touching
 anything voice-shaped:
 
-- **Media never reaches the server.** It relays SDP and ICE candidates and
-  otherwise knows nothing about the call. Everyone in a voice channel holds a
-  connection to everyone else, which is why per-peer cost matters so much —
-  see [`voice.md`](voice.md).
-- **Voice "permissions" are therefore hints.** The server can refuse to let
-  you join a voice channel, but it cannot stop audio between two peers that
-  already connected. That gap is documented where it appears and is the only
-  place client-side gating is load-bearing.
+- **In a mesh channel, media never reaches the server.** It relays SDP and
+  ICE candidates and otherwise knows nothing about the call. Everyone in the
+  channel holds a connection to everyone else, which is why per-peer cost
+  matters so much — see [`voice.md`](voice.md).
+- **Voice "permissions" are therefore hints there.** The server can refuse
+  to let you join a voice channel, but it cannot stop audio between two
+  peers that already connected. That gap is documented where it appears and
+  is the only place client-side gating is load-bearing.
+
+The exception is the **SFU** (`murmer_server/src/sfu/`), off unless the
+operator sets `SFU_PUBLIC_IP`. A channel that grows past a threshold, or
+whose members cannot reach each other directly, is moved by the server onto
+one connection per member to the server, which forwards the media itself.
+There the server sees the media and decides what flows, Talk included —
+see [`voice.md`](voice.md#through-the-server-sfu) and
+[`security.md`](security.md#voice-through-the-sfu).
 
 ## One build, two targets
 
@@ -131,7 +140,7 @@ cached server answer — is [`client-state.md`](client-state.md).
 | [`protocol.md`](protocol.md) | WebSocket frames, the three routing paths, HTTP endpoints |
 | [`security.md`](security.md) | Identity keys, DM and channel E2EE, upload auth, rate limiting |
 | [`permissions.md`](permissions.md) | The permission bitmask, roles, private channels, chat policy, Danger Zone |
-| [`voice.md`](voice.md) | Capture chain, RNNoise, VAD, Opus/DTX, connection repair |
+| [`voice.md`](voice.md) | Capture chain, RNNoise, VAD, Opus/DTX, connection repair, mesh vs. SFU |
 | [`screen-sharing.md`](screen-sharing.md) | The screen-share manager and its floating windows |
 | [`client-state.md`](client-state.md) | Stores, persistence, per-server namespacing, display names |
 | [`ui.md`](ui.md) | Design tokens, shared primitives, icons, brand assets |

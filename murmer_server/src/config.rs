@@ -4,7 +4,11 @@
 
 use anyhow::{Context, Result};
 use axum::http::{HeaderValue, Method, header};
-use std::{env, net::SocketAddr, path::PathBuf};
+use std::{
+    env,
+    net::{IpAddr, SocketAddr},
+    path::PathBuf,
+};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 /// Server configuration loaded from environment variables.
@@ -34,6 +38,21 @@ pub struct Config {
     pub trusted_proxies: Vec<ipnet::IpNet>,
     /// Byte quotas for stored uploads.
     pub upload_quota: crate::upload::UploadQuota,
+    /// The embedded SFU's settings (None means the SFU is off and every
+    /// voice channel stays a mesh).
+    pub sfu: Option<SfuConfig>,
+}
+
+/// Settings for the SFU that carries large voice channels
+/// (`docs/voice.md`).
+#[derive(Debug, Clone, Copy)]
+pub struct SfuConfig {
+    /// Address advertised in the SFU's one ICE candidate.
+    pub public_ip: IpAddr,
+    /// The single UDP port all SFU media uses.
+    pub udp_port: u16,
+    /// Headcounts at which a voice channel moves to the SFU and back.
+    pub thresholds: crate::security::SfuThresholds,
 }
 
 /// Read a quota given in megabytes as bytes, or `default` when unset. Like
@@ -53,6 +72,12 @@ fn quota_bytes(var: &str, default: u64) -> Result<u64> {
 /// connections that work today, so opting out of Google is an explicit
 /// `STUN_SERVERS=` rather than the default.
 const DEFAULT_STUN_SERVER: &str = "stun:stun.l.google.com:19302";
+
+const DEFAULT_SFU_UDP_PORT: u16 = 3479;
+const DEFAULT_SFU_THRESHOLD: usize = 7;
+/// How far below `SFU_THRESHOLD` a channel shrinks before it returns to the
+/// mesh when `SFU_RETURN_THRESHOLD` is unset.
+const DEFAULT_SFU_RETURN_GAP: usize = 3;
 
 /// Shortest `ADMIN_TOKEN` the server starts with.
 const MIN_ADMIN_TOKEN_CHARS: usize = 32;
@@ -76,6 +101,13 @@ impl Config {
     ///   CIDR ranges whose `X-Forwarded-For` is believed
     /// - `UPLOAD_QUOTA_USER_MB`, `UPLOAD_QUOTA_TOTAL_MB` (optional): upload
     ///   storage quotas in megabytes; `0` means no limit
+    /// - `SFU_PUBLIC_IP` (optional): address the SFU advertises; unset keeps
+    ///   the SFU off
+    /// - `SFU_UDP_PORT`, `SFU_THRESHOLD` (optional): the SFU's UDP port
+    ///   (default 3479) and the headcount that moves a channel onto it
+    ///   (default 7)
+    /// - `SFU_RETURN_THRESHOLD` (optional): the headcount that moves it back
+    ///   (default three below `SFU_THRESHOLD`)
     pub fn from_env() -> Result<Self> {
         let database_path = env::var("DATABASE_PATH").unwrap_or_else(|_| "murmer.db".to_string());
 
@@ -136,6 +168,14 @@ impl Config {
             total: quota_bytes("UPLOAD_QUOTA_TOTAL_MB", defaults.total)?,
         };
 
+        let sfu = parse_sfu(
+            env::var("SFU_PUBLIC_IP").ok().as_deref(),
+            env::var("SFU_UDP_PORT").ok().as_deref(),
+            env::var("SFU_THRESHOLD").ok().as_deref(),
+            env::var("SFU_RETURN_THRESHOLD").ok().as_deref(),
+            crate::security::max_voice_channel_users(),
+        )?;
+
         Ok(Self {
             bind_addr,
             database_path,
@@ -148,6 +188,7 @@ impl Config {
             message_retention_days,
             trusted_proxies,
             upload_quota,
+            sfu,
         })
     }
 
@@ -205,7 +246,7 @@ impl Config {
 /// other directly (a LAN).
 ///
 /// Only `stun:`/`stuns:` is accepted, permanently: Murmer will not use TURN
-/// (the relay fallback is the SFU, `plans/hybrid-voice-sfu.md`), and a
+/// (the relay fallback is the SFU, `docs/voice.md`), and a
 /// `turn:` URL without credentials makes `RTCPeerConnection` throw — which
 /// would surface as voice failing to connect for everybody, far from this
 /// setting.
@@ -224,6 +265,74 @@ fn parse_stun_servers(raw: Option<&str>) -> Result<Vec<String>> {
             }
         })
         .collect()
+}
+
+/// Parse the `SFU_*` variables. `SFU_PUBLIC_IP` unset or empty turns the SFU
+/// off, and the others are then ignored. Like the other settings, a typo
+/// is fatal rather than read as a default.
+///
+/// The SFU offers each client a fixed set of receive slots, one per other
+/// member, so that joins never renegotiate. That needs a finite channel cap,
+/// so the SFU refuses to start with `MAX_VOICE_CHANNEL_USERS=0`
+/// (`max_voice_users`).
+fn parse_sfu(
+    public_ip: Option<&str>,
+    udp_port: Option<&str>,
+    threshold: Option<&str>,
+    return_threshold: Option<&str>,
+    max_voice_users: usize,
+) -> Result<Option<SfuConfig>> {
+    fn set(v: Option<&str>) -> Option<&str> {
+        v.map(str::trim).filter(|v| !v.is_empty())
+    }
+    let Some(public_ip) = set(public_ip) else {
+        return Ok(None);
+    };
+    let public_ip = public_ip
+        .parse()
+        .with_context(|| format!("SFU_PUBLIC_IP {public_ip:?} is not an IP address"))?;
+    let udp_port = match set(udp_port) {
+        Some(port) => port
+            .parse::<u16>()
+            .ok()
+            .filter(|&port| port != 0)
+            .with_context(|| format!("SFU_UDP_PORT {port:?} is not a port number"))?,
+        None => DEFAULT_SFU_UDP_PORT,
+    };
+    let threshold = match set(threshold) {
+        Some(n) => n
+            .parse::<usize>()
+            .ok()
+            .filter(|&n| n >= 2)
+            .with_context(|| format!("SFU_THRESHOLD {n:?} must be a whole number of at least 2"))?,
+        None => DEFAULT_SFU_THRESHOLD,
+    };
+    // Equal thresholds would flip a channel back and forth on every join and
+    // leave at that size, rebuilding everyone's connections each time.
+    let return_threshold = match set(return_threshold) {
+        Some(n) => n
+            .parse::<usize>()
+            .ok()
+            .filter(|&n| n < threshold)
+            .with_context(|| {
+                format!("SFU_RETURN_THRESHOLD {n:?} must be a whole number below SFU_THRESHOLD")
+            })?,
+        None => threshold.saturating_sub(DEFAULT_SFU_RETURN_GAP),
+    };
+    if max_voice_users == 0 {
+        anyhow::bail!(
+            "the SFU needs a finite voice channel size; set MAX_VOICE_CHANNEL_USERS \
+             above 0 or unset SFU_PUBLIC_IP"
+        );
+    }
+    Ok(Some(SfuConfig {
+        public_ip,
+        udp_port,
+        thresholds: crate::security::SfuThresholds {
+            to_sfu: threshold,
+            to_mesh: return_threshold,
+        },
+    }))
 }
 
 /// Parse `TRUSTED_PROXIES`: addresses or CIDR ranges, comma separated. A typo
@@ -273,5 +382,40 @@ mod tests {
         assert_eq!(nets.len(), 3);
         assert!(nets[1].contains(&"172.18.0.5".parse::<std::net::IpAddr>().unwrap()));
         assert!(parse_trusted_proxies(Some("proxy.local")).is_err());
+    }
+
+    #[test]
+    fn sfu_is_off_unless_an_address_is_set() {
+        assert!(
+            parse_sfu(None, Some("4000"), None, None, 10)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            parse_sfu(Some(" "), None, None, None, 10)
+                .unwrap()
+                .is_none()
+        );
+        let sfu = parse_sfu(Some("203.0.113.5"), None, None, None, 10)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (sfu.udp_port, sfu.thresholds.to_sfu, sfu.thresholds.to_mesh),
+            (DEFAULT_SFU_UDP_PORT, DEFAULT_SFU_THRESHOLD, 4)
+        );
+        let sfu = parse_sfu(Some("::1"), None, Some("10"), Some("8"), 10)
+            .unwrap()
+            .unwrap();
+        assert_eq!((sfu.thresholds.to_sfu, sfu.thresholds.to_mesh), (10, 8));
+    }
+
+    #[test]
+    fn sfu_rejects_typos_and_an_unlimited_channel() {
+        assert!(parse_sfu(Some("sfu.example"), None, None, None, 10).is_err());
+        assert!(parse_sfu(Some("::1"), Some("0"), None, None, 10).is_err());
+        assert!(parse_sfu(Some("::1"), None, Some("1"), None, 10).is_err());
+        assert!(parse_sfu(Some("::1"), None, Some("5"), Some("5"), 10).is_err());
+        assert!(parse_sfu(Some("::1"), None, None, Some("seven"), 10).is_err());
+        assert!(parse_sfu(Some("::1"), None, None, None, 0).is_err());
     }
 }

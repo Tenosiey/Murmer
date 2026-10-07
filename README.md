@@ -32,7 +32,8 @@ that runs both as a Tauri desktop app and, unchanged, in the browser.
   polls, forwarding, `@` mentions with a mentions inbox, search with `from:`,
   `in:`, `has:file` and date filters, link previews, file and image
   sharing, slash commands, `/tts`, reminders and scheduled messages
-- **Voice** over peer-to-peer WebRTC with RNNoise noise suppression,
+- **Voice** over peer-to-peer WebRTC, or through the server's optional SFU
+  for large channels, with RNNoise noise suppression,
   voice activation or push-to-talk, camera video, screen sharing (several
   at once, each in its own window), breakout rooms and a soundboard
 - **End-to-end encryption** for direct messages and, optionally, for private
@@ -70,7 +71,11 @@ Add `localhost:3001` as a server in the app and you are in.
 
 ## Configuration
 
-Environment variables recognised by the server:
+The server reads these environment variables, and also a `.env` file:
+`docker compose` reads it from the repository root, `cargo run` from
+`murmer_server/` or any parent. Start from `.env.example`. Under Docker,
+`DATABASE_PATH`, `UPLOAD_DIR` and `WEB_CLIENT_DIR` are set in
+`docker-compose.yml` instead, since they name paths inside the container.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -84,12 +89,17 @@ Environment variables recognised by the server:
 | `MAX_MESSAGES_PER_MINUTE` | No | Per-user message rate limit (default: 30) |
 | `MAX_AUTH_ATTEMPTS_PER_MINUTE` | No | Per-IP auth rate limit (default: 5) |
 | `MAX_UPLOADS_PER_MINUTE` | No | Per-IP file upload rate limit (default: 20) |
+| `MAX_PREVIEWS_PER_MINUTE` | No | Per-IP limit on link previews the server fetches (default: 30); cached previews do not count |
 | `UPLOAD_QUOTA_USER_MB` | No | Megabytes of uploads one user may keep stored (default: 1024, `0` for no limit) |
 | `UPLOAD_QUOTA_TOTAL_MB` | No | Megabytes of uploads the whole server may keep stored (default: 20480, `0` for no limit). A file is deleted a few minutes after the last unencrypted message carrying it is |
 | `TRUSTED_PROXIES` | Behind a reverse proxy | Comma-separated addresses or CIDR ranges of your reverse proxies (e.g. `127.0.0.1` or `172.16.0.0/12` for Docker). Only requests from these may set the client IP through `X-Forwarded-For`; without it every user behind the proxy shares one per-IP rate limit, so a few failed logins lock everyone out |
 | `MAX_FRAMES_PER_SECOND` | No | Sustained WebSocket frames one connection may send per second, with ten seconds' worth allowed in a burst (default: 20, `0` for no limit) |
 | `STUN_SERVERS` | No | Comma-separated `stun:`/`stuns:` URLs clients use to set up voice and screen share (defaults to `stun:stun.l.google.com:19302`; set it empty to contact no STUN server, which limits calls to peers on the same network) |
 | `MAX_VOICE_CHANNEL_USERS` | No | People allowed in one voice channel (default: 10, `0` for no limit). A channel's own user limit can only lower this |
+| `SFU_PUBLIC_IP` | No | Public address of this server. Setting it turns on the built-in SFU: once a voice channel reaches `SFU_THRESHOLD` people, its voice, camera video and screen shares go through the server instead of between every pair of members, so nobody uploads their microphone to everyone. A channel where two members cannot connect directly (for example both behind strict NATs) moves to the SFU too, whatever its size. While a channel is on the SFU the server can see its media, and members see a "Via server" badge. Unset keeps every channel peer-to-peer. Needs `MAX_VOICE_CHANNEL_USERS` above `0`, and a real interface address even for local testing: browsers will not connect to `127.0.0.1` |
+| `SFU_UDP_PORT` | No | The one UDP port the SFU uses for all media (default: 3479); open it in your firewall and, under Docker, publish it as `udp` |
+| `SFU_THRESHOLD` | No | People in a voice channel at which it moves to the SFU (default: 7, at least 2). It moves back at `SFU_RETURN_THRESHOLD` |
+| `SFU_RETURN_THRESHOLD` | No | People in an SFU channel at which it moves back to peer-to-peer (default: three below `SFU_THRESHOLD`, must be below it). The gap stops a channel at the threshold from switching back and forth whenever someone reconnects |
 | `MESSAGE_RETENTION_DAYS` | No | Delete channel messages, with their reactions and pins, once they are this many days old; checked hourly. DMs are kept. Unset or `0` keeps everything |
 
 Every capability, channel and wiki management included, is gated by roles
@@ -178,7 +188,7 @@ bun run build && bun run tauri build    # bundles land in src-tauri/target/relea
 
 The build signs the updater artifacts, so it needs `TAURI_SIGNING_PRIVATE_KEY`
 and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` in the environment. Installed apps
-update themselves from GitHub releases (Settings → Updates); how a release is
+update from GitHub releases when asked to (Settings → Updates); how a release is
 cut is [`agents/skills/releasing.md`](agents/skills/releasing.md).
 
 ## Security

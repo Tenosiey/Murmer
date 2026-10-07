@@ -1,7 +1,7 @@
 //! WebSocket message handlers.
 //!
 //! The socket loop and dispatch live here, along with the small voice,
-//! screen-share and camera handlers, the ICE server announcement, the
+//! SFU-offer, mesh-failure, screen-share and camera handlers, the ICE server announcement, the
 //! server-info and operator-metrics answers, and the rest of what is not
 //! worth a file of its own. Each
 //! submodule handles one domain and documents itself.
@@ -36,6 +36,7 @@ mod voice_defaults;
 mod wiki;
 
 pub use maintenance::spawn_message_retention;
+pub(crate) use moderation::is_muted;
 pub use pins::broadcast_pins;
 pub use scheduled::{recover_claimed_scheduled_messages, spawn_scheduler};
 
@@ -428,6 +429,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                                         stats::note_screenshare_start(&state, u).await;
                                     }
                                     broadcast_serialized(&state, text, &v);
+                                    if let Some(ch_id) = voice_channel {
+                                        sync_sfu(&state, ch_id).await;
+                                    }
                                 }
                             }
                             "screenshare-stop" => {
@@ -437,22 +441,42 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                                         stats::flush_screenshare_session(&state, u).await;
                                     }
                                     broadcast_serialized(&state, text, &v);
+                                    if let Some(ch_id) = i32_field(&v, "channelId") {
+                                        sync_sfu(&state, ch_id).await;
+                                    }
                                 }
                             }
                             // A camera is announced to the channel the same way, but
                             // carries no signaling of its own: the video rides the
                             // voice peer connections that already exist.
+                            // In SFU mode the announcement is also what lets the
+                            // server forward the camera at all.
                             "webcam-start" => {
                                 if claims_own_user(&v, &user_name) && names_own_voice_channel(&v, voice_channel) {
                                     tile_start(&state.active_webcams, &v).await;
                                     broadcast_serialized(&state, text, &v);
+                                    if let Some(ch_id) = voice_channel {
+                                        sync_sfu(&state, ch_id).await;
+                                    }
                                 }
                             }
                             "webcam-stop" => {
                                 if claims_own_user(&v, &user_name) {
                                     tile_stop(&state.active_webcams, &v).await;
                                     broadcast_serialized(&state, text, &v);
+                                    if let Some(ch_id) = i32_field(&v, "channelId") {
+                                        sync_sfu(&state, ch_id).await;
+                                    }
                                 }
+                            }
+                            "sfu-offer" => {
+                                handle_sfu_offer(&state, &mut sender, &v, voice_channel, &user_name).await;
+                            }
+                            "sfu-screen-offer" => {
+                                handle_sfu_screen_offer(&state, &v, voice_channel, &user_name).await;
+                            }
+                            "voice-p2p-failed" => {
+                                handle_voice_p2p_failed(&state, &v, voice_channel, &user_name).await;
                             }
                             "set-screenshare-max-bitrate" => {
                                 screenshare::handle_set_screenshare_max_bitrate(&state, &mut sender, &v, &user_name).await;
@@ -1057,14 +1081,20 @@ async fn handle_voice_join(
             send_error(sender, errors::VOICE_CHANNEL_FULL).await;
             return;
         }
-        for info in map.values_mut() {
-            info.users.remove(u);
-        }
+        let left: Vec<i32> = map
+            .iter_mut()
+            .filter_map(|(id, info)| (*id != ch_id && info.users.remove(u)).then_some(*id))
+            .collect();
         if let Some(entry) = map.get_mut(&ch_id) {
             entry.users.insert(u.to_string());
         }
         *voice_channel = Some(ch_id);
         drop(map);
+        // The channel they switched out of shrank too, and its mode follows
+        // its headcount.
+        for old in left {
+            broadcast_voice(state, old).await;
+        }
         // Switching channels: a hand raised in the old one does not follow.
         if state
             .voice_hands
@@ -1085,8 +1115,18 @@ async fn handle_voice_join(
         broadcast(state, &msg);
 
         // Tell the joiner whether they may speak here (Talk = SEND in the
-        // channel). Voice audio is peer-to-peer, so the client enforces this by
-        // disabling its microphone; the server enforces View/join only.
+        // channel). On the mesh, audio is peer-to-peer, so the client
+        // enforces this by disabling its microphone; on the SFU the server
+        // also stops forwarding it (`sync_sfu`).
+        // The channel's mode rides along, so a joiner never builds a mesh it
+        // is about to tear down.
+        let (mode, user_limit) = state
+            .voice_channels
+            .lock()
+            .await
+            .get(&ch_id)
+            .map(|info| (info.mode, info.user_limit))
+            .unwrap_or_default();
         let can_speak = has_channel_permission(
             state,
             u,
@@ -1099,10 +1139,149 @@ async fn handle_voice_join(
             "type": "voice-permissions",
             "channelId": ch_id,
             "canSpeak": can_speak,
+            "mode": mode,
+            "slots": sfu_slots(user_limit),
         });
         send_json(sender, &perms).await;
 
         send_voice_channel_state(state, sender, ch_id).await;
+    }
+}
+
+/// Handle `sfu-offer`: hand a member's one-time SFU offer to the SFU task,
+/// which answers with `sfu-answer` and then keeps them posted with
+/// `sfu-slots`.
+///
+/// Only from a member of the channel the frame names, and only while that
+/// channel is in SFU mode: the server, not the client, decides which
+/// channels cost it bandwidth. Anything else is refused with
+/// `sfu-offer-rejected` rather than ignored, so a client that got out of
+/// step with the mode hears about it.
+async fn handle_sfu_offer(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    voice_channel: Option<i32>,
+    user_name: &Option<String>,
+) {
+    let (Some(user), Some(sfu)) = (user_name.as_deref(), &state.sfu) else {
+        send_error(sender, errors::SFU_OFFER_REJECTED).await;
+        return;
+    };
+    let Some(sdp) = v.get("sdp").and_then(|s| s.as_str()) else {
+        send_error(sender, errors::SFU_OFFER_REJECTED).await;
+        return;
+    };
+    let channel = voice_channel.filter(|_| names_own_voice_channel(v, voice_channel));
+    let slots = match channel {
+        Some(ch_id) => state
+            .voice_channels
+            .lock()
+            .await
+            .get(&ch_id)
+            .filter(|info| info.mode == crate::VoiceMode::Sfu && info.users.contains(user))
+            .map(|info| sfu_slots(info.user_limit)),
+        None => None,
+    };
+    match (channel, slots) {
+        (Some(ch_id), Some(slots)) => sfu.offer(user, ch_id, sdp.to_string(), slots),
+        _ => send_error(sender, errors::SFU_OFFER_REJECTED).await,
+    }
+}
+
+/// Handle `sfu-screen-offer`: a screen share connection to the SFU, either
+/// the sharer publishing (`sharer` is themselves) or a viewer pulling that
+/// share from the server instead of from the sharer.
+///
+/// The same gate as a mesh `screenshare-offer`, which it replaces in SFU
+/// mode: both ends in the sender's own voice channel. On top of that the
+/// channel must be in SFU mode and the share announced (`screenshare-start`),
+/// so nobody makes the server carry a share that does not exist. A refusal
+/// is silent, as a refused `screenshare-offer` is; the client's repair and
+/// the share's `screenshare-stop` already cover every honest way to get here.
+async fn handle_sfu_screen_offer(
+    state: &Arc<AppState>,
+    v: &Value,
+    voice_channel: Option<i32>,
+    user_name: &Option<String>,
+) {
+    let (Some(user), Some(sfu), Some(ch_id)) = (user_name.as_deref(), &state.sfu, voice_channel)
+    else {
+        return;
+    };
+    let (Some(sdp), Some(sharer)) = (
+        v.get("sdp").and_then(|s| s.as_str()),
+        v.get("sharer").and_then(|s| s.as_str()),
+    ) else {
+        return;
+    };
+    if !names_own_voice_channel(v, voice_channel) {
+        return;
+    }
+    let in_sfu_mode = state
+        .voice_channels
+        .lock()
+        .await
+        .get(&ch_id)
+        .is_some_and(|info| {
+            info.mode == crate::VoiceMode::Sfu
+                && info.users.contains(user)
+                && info.users.contains(sharer)
+        });
+    let announced = state
+        .active_screen_shares
+        .lock()
+        .await
+        .get(&ch_id)
+        .is_some_and(|sharers| sharers.contains(sharer));
+    if in_sfu_mode && announced {
+        sfu.offer_screen(user, sharer, ch_id, sdp.to_string());
+    }
+}
+
+/// `voice-p2p-failed`: a mesh pair in the sender's channel could not
+/// connect, so the channel moves to the SFU and stays there until it empties
+/// (`sticky`). This is what replaced TURN as the relay of last resort.
+///
+/// Any member may do this to their own channel, with no permission bit: the
+/// cost is server bandwidth for a call they are in, no more than inviting
+/// enough friends to cross the threshold. Both ends of the pair must be in
+/// that channel, so nobody can push a call they are not part of. With the
+/// SFU off there is nowhere to move to, and the frame is ignored.
+async fn handle_voice_p2p_failed(
+    state: &Arc<AppState>,
+    v: &Value,
+    voice_channel: Option<i32>,
+    user_name: &Option<String>,
+) {
+    let (Some(user), Some(ch_id), Some(_)) = (user_name.as_deref(), voice_channel, &state.sfu)
+    else {
+        return;
+    };
+    let Some(target) = v.get("target").and_then(|t| t.as_str()) else {
+        return;
+    };
+    if !names_own_voice_channel(v, voice_channel) || target == user {
+        return;
+    }
+    let newly_sticky = {
+        let mut vc = state.voice_channels.lock().await;
+        match vc.get_mut(&ch_id) {
+            Some(info)
+                if !info.sticky && info.users.contains(user) && info.users.contains(target) =>
+            {
+                info.sticky = true;
+                true
+            }
+            _ => false,
+        }
+    };
+    if newly_sticky {
+        info!(
+            channel = ch_id,
+            "mesh pair failed; voice channel moves to the SFU"
+        );
+        broadcast_voice(state, ch_id).await;
     }
 }
 

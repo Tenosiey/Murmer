@@ -1,40 +1,30 @@
+# Settings live in .env (start from .env.example); README.md lists them all.
 services:
   server:
     build: ./murmer_server
     # Or skip the build and run a released server; README.md has the details.
     # image: ghcr.io/tenosiey/murmer-server:latest
     restart: unless-stopped
-    # Load optional settings like ADMIN_TOKEN from a `.env` file
     env_file:
-      - .env
+      - path: .env
+        required: false
+    # Where the data lives inside the container. Set here rather than in .env
+    # so a .env written for `cargo run` cannot move the database off the
+    # volume.
     environment:
       DATABASE_PATH: /app/data/murmer.db
       UPLOAD_DIR: /app/uploads
-      # Uncomment to require a password for WebSocket connections
-      # SERVER_PASSWORD: changeme
-      # Rate limiting configuration
-      MAX_MESSAGES_PER_MINUTE: 300
-      MAX_AUTH_ATTEMPTS_PER_MINUTE: 5
-      # People allowed in one voice channel; 0 removes the cap
-      MAX_VOICE_CHANNEL_USERS: 10
-      # Allow the desktop client dev server to access the HTTP endpoints during development
-      CORS_ALLOW_ORIGINS: http://localhost:1420
-      # Serve the web client at / on this same origin (no CORS needed). Build
-      # it first with `bun run build` in murmer_client/ and mount it below.
+      # Uncomment with the web client mount below to serve it at /. Build it
+      # first with `bun run build` in murmer_client/.
       # WEB_CLIENT_DIR: /app/web
     ports:
       - "3001:3001"
+      # Uncomment when SFU_PUBLIC_IP is set; match SFU_UDP_PORT if changed.
+      # - "3479:3479/udp"
     volumes:
       - db_data:/app/data
       - uploads:/app/uploads
-      # Uncomment together with WEB_CLIENT_DIR above to serve the web client
       # - ./murmer_client/build:/app/web:ro
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/"]
-      interval: 30s
-      timeout: 5s
-      start_period: 10s
-      retries: 3
 volumes:
   db_data:
   uploads:

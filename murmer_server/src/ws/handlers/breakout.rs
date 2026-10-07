@@ -17,7 +17,7 @@
 use crate::channel_overrides::ChannelKind;
 use crate::security::validate_channel_name;
 use crate::ws::{constants::*, errors, helpers::*, validation::*};
-use crate::{AppState, VoiceChannelState, db};
+use crate::{AppState, VoiceChannelState, VoiceMode, db};
 use axum::extract::ws::{Message, WebSocket};
 use futures::stream::SplitSink;
 use serde_json::Value;
@@ -157,6 +157,8 @@ pub(super) async fn handle_open_breakouts(
                     position: record.position,
                     breakout_parent: record.breakout_parent,
                     user_limit: record.user_limit,
+                    mode: VoiceMode::Mesh,
+                    sticky: false,
                 },
             )),
             Ok(None) => {}
