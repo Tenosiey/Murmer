@@ -1,78 +1,63 @@
-import { browser } from '$app/environment';
 import { get, writable } from 'svelte/store';
-
-const STORAGE_KEY = 'murmer_last_read';
 
 /** channelId -> id of the newest message the user has seen */
 type LastReadState = Record<number, number>;
-
-/** serverUrl -> last-read state. Channel ids are only unique per server, so
- *  the persisted state must be namespaced or servers bleed into each other. */
-type PersistedLastRead = Record<string, LastReadState>;
 
 export interface UnreadInfo {
   count: number;
   mentions: number;
 }
 
-/** channelId -> unread counters (session-local; last-read ids persist) */
+/** channelId -> unread counters (session-local; last-read ids live on the server) */
 type UnreadCounts = Record<number, UnreadInfo>;
 
-function parseChannelMap(value: unknown): LastReadState {
-  if (!value || typeof value !== 'object') return {};
-  const result: LastReadState = {};
-  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    const channelId = Number(key);
-    if (Number.isNaN(channelId)) continue;
-    if (typeof entry === 'number' && Number.isFinite(entry) && entry > 0) {
-      result[channelId] = entry;
+/** Where the user stands in one direct conversation, as the server counts it. */
+export interface DmReadState {
+  lastRead: number;
+  unread: number;
+}
+
+export interface ReadMarkers {
+  channels: LastReadState;
+  dms: Record<string, DmReadState>;
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+/**
+ * Parse the server's `read-markers` frame. Malformed entries are dropped one
+ * by one rather than failing the frame: a marker that is missing only costs
+ * the "new messages" divider for that channel.
+ */
+export function parseReadMarkers(msg: Record<string, unknown>): ReadMarkers {
+  const result: ReadMarkers = { channels: {}, dms: {} };
+  if (msg.channels && typeof msg.channels === 'object') {
+    for (const [key, value] of Object.entries(msg.channels as Record<string, unknown>)) {
+      const channelId = Number(key);
+      if (Number.isSafeInteger(channelId) && isCount(value) && value > 0) {
+        result.channels[channelId] = value;
+      }
+    }
+  }
+  if (msg.dms && typeof msg.dms === 'object') {
+    for (const [peer, value] of Object.entries(msg.dms as Record<string, unknown>)) {
+      if (!value || typeof value !== 'object') continue;
+      const { lastRead, unread } = value as Record<string, unknown>;
+      if (isCount(lastRead) && isCount(unread)) result.dms[peer] = { lastRead, unread };
     }
   }
   return result;
 }
 
-function loadPersisted(): PersistedLastRead {
-  if (!browser) return {};
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    if (!parsed || typeof parsed !== 'object') return {};
-    const result: PersistedLastRead = {};
-    for (const [server, channels] of Object.entries(parsed)) {
-      // Entries whose value is not an object stem from the old flat
-      // (un-namespaced) format and are dropped.
-      if (channels && typeof channels === 'object') {
-        result[server] = parseChannelMap(channels);
-      }
-    }
-    return result;
-  } catch (error) {
-    console.error('Failed to parse last-read state', error);
-    return {};
-  }
-}
-
 function createUnreadStore() {
   const counts = writable<UnreadCounts>({});
-  const lastRead = writable<LastReadState>({});
+  let lastRead: LastReadState = {};
   let activeChannelId = 0;
-  let activeServer: string | null = null;
-  const persisted = loadPersisted();
 
-  lastRead.subscribe((value) => {
-    if (!browser || !activeServer) return;
-    persisted[activeServer] = value;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
-    } catch (error) {
-      console.error('Failed to persist last-read state', error);
-    }
-  });
-
-  // Both early returns check before calling `update`: a writable treats any
-  // object it is handed as changed, so returning the same one from `update`
-  // would still notify every badge and re-persist the whole last-read map.
+  // Checks before calling `set`: a writable treats any object it is handed as
+  // changed, so writing the same one back would still notify every badge.
   function clearCounts(channelId: number) {
     const current = get(counts);
     if (!(channelId in current)) return;
@@ -83,11 +68,13 @@ function createUnreadStore() {
 
   return {
     subscribe: counts.subscribe,
-    /** Switch to the given server's persisted last-read state. Must be
-     *  called when connecting, before any channel is joined. */
-    setServer(url: string) {
-      activeServer = url;
-      lastRead.set(persisted[url] ?? {});
+    /** Adopt the server's markers, sent at sign-in. Only ever moves a
+     *  pointer forward, in case this client already read further. */
+    load(markers: LastReadState) {
+      for (const [key, messageId] of Object.entries(markers)) {
+        const channelId = Number(key);
+        if ((lastRead[channelId] ?? 0) < messageId) lastRead[channelId] = messageId;
+      }
     },
     /** Mark a channel as the one currently on screen; its counter resets. */
     setActive(channelId: number) {
@@ -97,17 +84,18 @@ function createUnreadStore() {
     getActive(): number {
       return activeChannelId;
     },
-    /** Advance the last-read pointer for a channel and reset its counter. */
-    markRead(channelId: number, messageId: number) {
-      if (!Number.isFinite(messageId) || messageId <= 0) return;
-      const current = get(lastRead);
-      if ((current[channelId] ?? 0) < messageId) {
-        lastRead.set({ ...current, [channelId]: messageId });
-      }
+    /** Advance the last-read pointer for a channel and reset its counter.
+     *  Returns whether the pointer moved, i.e. whether the server needs
+     *  to hear about it. */
+    markRead(channelId: number, messageId: number): boolean {
+      if (!Number.isFinite(messageId) || messageId <= 0) return false;
       clearCounts(channelId);
+      if ((lastRead[channelId] ?? 0) >= messageId) return false;
+      lastRead[channelId] = messageId;
+      return true;
     },
     getLastRead(channelId: number): number {
-      return get(lastRead)[channelId] ?? 0;
+      return lastRead[channelId] ?? 0;
     },
     /** Count a message that arrived in a channel the user is not viewing. */
     recordIncoming(channelId: number, messageId: number, mention: boolean) {
@@ -124,9 +112,11 @@ function createUnreadStore() {
         };
       });
     },
-    /** Drop all session counters, e.g. when leaving a server. */
+    /** Drop everything held for the server, e.g. when leaving it. The
+     *  markers come back with the next sign-in. */
     reset() {
       counts.set({});
+      lastRead = {};
       activeChannelId = 0;
     }
   };

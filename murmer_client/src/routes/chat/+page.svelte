@@ -990,6 +990,7 @@
     if (user === $session.user) return;
     closeThread();
     dm.open(user);
+    chat.markDmRead(user);
     chat.loadDmHistory(user);
   }
 
@@ -1462,7 +1463,7 @@
   // Everything rendered in the active channel counts as read.
   $effect(() => {
     const latest = latestMessageId(channelMessages);
-    if (latest !== null) unread.markRead(currentChatChannelId, latest);
+    if (latest !== null) chat.markRead(currentChatChannelId, latest);
   });
   let typingLabel = $derived(
     describeTyping($typing[currentChatChannelId] ?? {}, $session.user, now, $displayNames)

@@ -25,6 +25,7 @@ mod messages;
 mod moderation;
 mod pins;
 mod profile;
+mod read_markers;
 mod roles;
 mod scheduled;
 mod screenshare;
@@ -273,6 +274,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                             }
                             "typing" => {
                                 messages::handle_typing(&state, channel_id, &user_name, &mut last_typing_broadcast).await;
+                            }
+                            "mark-read" => {
+                                read_markers::handle_mark_read(&state, &v, &user_name).await;
                             }
                             "load-mentions" => {
                                 mentions::handle_load_mentions(&state, &mut sender, &user_name).await;

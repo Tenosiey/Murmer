@@ -353,6 +353,9 @@ pub(super) async fn handle_presence(
                 .insert(u.to_string(), role_ids.clone());
             broadcast_user_roles(state, u, &role_ids);
 
+            // Ahead of the channel list: the client reads a channel's
+            // marker the moment it opens one, which the list triggers.
+            super::read_markers::send_read_markers(state, sender, u).await;
             send_state_snapshot(state, sender, u).await;
             super::identity::send_server_identity(state, sender).await;
             if first_connection {

@@ -40,10 +40,17 @@ Persisted to `localStorage` under `murmer_*` keys. Settings, per-sound mute,
 per-user mute, screen-share window layouts.
 
 **Per-channel and per-name state must be namespaced by server URL.** Channel
-ids are only unique per server, so last-read markers, notification
-preferences and window layouts all carry the server URL in their key. Follow
+ids are only unique per server, so notification preferences and window
+layouts both carry the server URL in their key. Follow
 that pattern for any new per-channel or per-peer persistence — this is the
 most common way a new store goes subtly wrong.
+
+Last-read markers used to live here and do not any more: one account is
+often signed in from the desktop app and a browser at once, and each kept
+treating what the other had read as unread. They are the server's now
+(`read-markers` at sign-in, `mark-read` to advance, `read-marker` to the
+account's other connections); only the unread *counters* stay local, since
+spotting a mention in an encrypted channel takes the key.
 
 ### 2. The server's answer, cached
 
