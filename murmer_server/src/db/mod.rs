@@ -24,6 +24,7 @@ mod maintenance;
 mod messages;
 mod moderation;
 mod pins;
+mod polls;
 mod reactions;
 mod roles;
 mod scheduled;
@@ -49,6 +50,7 @@ pub use maintenance::*;
 pub use messages::*;
 pub use moderation::*;
 pub use pins::*;
+pub use polls::*;
 pub use reactions::*;
 pub use roles::*;
 pub use scheduled::*;
@@ -236,6 +238,12 @@ CREATE TABLE IF NOT EXISTS reactions (
     user_name TEXT NOT NULL,
     emoji TEXT NOT NULL,
     PRIMARY KEY (message_id, user_name, emoji)
+);
+CREATE TABLE IF NOT EXISTS poll_votes (
+    message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    user_name TEXT NOT NULL,
+    option INTEGER NOT NULL,
+    PRIMARY KEY (message_id, user_name)
 );
 CREATE TABLE IF NOT EXISTS roles (
     public_key TEXT PRIMARY KEY,

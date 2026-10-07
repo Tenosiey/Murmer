@@ -716,8 +716,8 @@ Connect to `ws://<server>/ws` and send a `bot-presence` message:
 
 On success the server sends initial state (channel list, user list, history)
 and begins streaming events. The bot receives all the same events as a regular
-client: `chat`, `message-deleted`, `reaction-update`, `channel-add`,
-`channel-remove`, `online-users`, `status-update`, etc.
+client: `chat`, `message-deleted`, `reaction-update`, `poll-update`,
+`channel-add`, `channel-remove`, `online-users`, `status-update`, etc.
 
 ### Sending messages via WebSocket
 

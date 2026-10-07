@@ -59,9 +59,10 @@ pub async fn insert_message(db: &Db, channel_id: i32, content: &str) -> Result<i
 }
 
 /// Turn stored `(id, content)` rows into message frames: parse the JSON,
-/// stamp `id`, fill a missing `channelId` and attach the reactions. History,
-/// search, threads and the bot API all serve messages through this so they
-/// cannot drift apart in shape. Rows that fail to parse are dropped.
+/// stamp `id`, fill a missing `channelId` and attach the reactions and poll
+/// votes. History, search, threads and the bot API all serve messages through
+/// this so they cannot drift apart in shape. Rows that fail to parse are
+/// dropped.
 pub async fn hydrate_messages(db: &Db, rows: Vec<(i64, String)>, channel_id: i32) -> Vec<Value> {
     let ids: Vec<i64> = rows.iter().map(|(id, _)| *id).collect();
     let reaction_map = get_reactions_for_messages(db, &ids)
@@ -71,7 +72,8 @@ pub async fn hydrate_messages(db: &Db, rows: Vec<(i64, String)>, channel_id: i32
             HashMap::new()
         });
 
-    rows.into_iter()
+    let mut messages: Vec<Value> = rows
+        .into_iter()
         .filter_map(|(id, content)| {
             let mut msg = serde_json::from_str::<Value>(&content).ok()?;
             msg["id"] = Value::from(id);
@@ -84,7 +86,9 @@ pub async fn hydrate_messages(db: &Db, rows: Vec<(i64, String)>, channel_id: i32
                 .unwrap_or_else(|| Value::Object(Map::new()));
             Some(msg)
         })
-        .collect()
+        .collect();
+    super::polls::attach_poll_votes(db, &mut messages).await;
+    messages
 }
 
 /// Send a slice of messages over the WebSocket as a `history` payload.

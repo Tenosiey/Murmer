@@ -57,9 +57,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Outbound webhooks. The bot REST API covers "something else drives
       Murmer"; there is no way round for Murmer to notify something else when
       a message arrives
-- [ ] Polls — a question with options, one vote per account, counts kept by
-      the server (Discord, Teams). Refused in encrypted channels, as
-      forwarding is: the server would have to see the votes to count them
 - [ ] Saved messages — a personal bookmark list, separate from the
       server-wide pins
 - [ ] Synced read state. Last-read ids live in `localStorage`

@@ -198,6 +198,14 @@ pub const MAX_HISTORY_LIMIT: i64 = 200;
 /// Maximum number of characters preserved in a reply's quoted snippet.
 pub const MAX_REPLY_PREVIEW_CHARS: usize = 200;
 
+/// Most options one poll may offer (Discord's limit). Every vote re-sends
+/// the whole tally to the channel, so the cap bounds what one click costs.
+pub const MAX_POLL_OPTIONS: usize = 10;
+
+/// Maximum length in characters of one poll option. The question is the
+/// message's text and answers to the message length limit instead.
+pub const MAX_POLL_OPTION_LENGTH: usize = 55;
+
 /// Maximum number of messages returned for a single thread.
 pub const MAX_THREAD_MESSAGES: i64 = 200;
 

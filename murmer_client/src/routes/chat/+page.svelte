@@ -698,6 +698,17 @@
         );
         return;
       }
+      case 'poll': {
+        // Cosmetic: the server refuses it too, but only after the composer
+        // has been cleared.
+        if (currentChannelEncrypted) {
+          setCommandFeedback(describeServerError('cannot-poll-encrypted'), 'error');
+          return;
+        }
+        const pollError = chat.sendPoll(currentUser ?? 'anon', command.question, command.options);
+        if (pollError) setCommandFeedback(pollError, 'error');
+        return;
+      }
       case 'search':
         openSearch(command.query);
         if (command.query) {

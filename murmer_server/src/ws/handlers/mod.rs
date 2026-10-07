@@ -345,6 +345,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                             "react" => {
                                 messages::handle_react(&state, &mut sender, &v, &user_name).await;
                             }
+                            "poll-vote" => {
+                                messages::handle_poll_vote(&state, &mut sender, &v, &user_name).await;
+                            }
                             "status-update" => {
                                 handle_status_update(&state, &mut sender, &v, &user_name).await;
                             }

@@ -32,6 +32,7 @@
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import RoleIcon from '$lib/components/RoleIcon.svelte';
   import AudioAttachment from './AudioAttachment.svelte';
+  import PollCard from './PollCard.svelte';
   import { isPlayableAudio } from '$lib/voice-message';
 
 
@@ -224,6 +225,9 @@
         <span class="markdown" class:emoji-only={emojiOnly}>
           {@html emojifyHtml(renderMarkdown(message.text), $customEmojis, httpBase)}
         </span>
+      {/if}
+      {#if message.poll && messageId !== null}
+        <PollCard {messageId} poll={message.poll} />
       {/if}
       {#if message.edited}
         <span
