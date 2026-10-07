@@ -34,7 +34,7 @@ rule, and it explains both what is covered and what is not.
 
 Things that qualify, and are covered:
 
-- per-server namespacing of persisted state (unread markers, window layouts);
+- per-server namespacing of persisted state (notification preferences, window layouts);
 - request/response correlation (the wiki store);
 - parsing of untrusted server frames;
 - policy that only manifests later — the channel-key rotation, the rate

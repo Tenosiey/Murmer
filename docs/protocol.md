@@ -34,7 +34,8 @@ is the first decision when adding a frame.
 
 Frames that concern one account and nobody else take the direct route even
 when nothing about them is secret: the ban list, the storage report, and the
-`scheduled-messages`/`reminders`/`reminder-due` frames, and `poke`. A broadcast would cost
+`scheduled-messages`/`reminders`/`reminder-due` frames, `poke`, and the
+`read-marker` that tells an account's other clients where it stopped reading. A broadcast would cost
 every connected client a socket write and a parse for a list that is not
 theirs, and — for the queues — would hand them somebody else's.
 

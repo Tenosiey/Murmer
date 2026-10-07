@@ -62,10 +62,6 @@ the idea comes from and what users will expect it to behave like.
       forwarding is: the server would have to see the votes to count them
 - [ ] Saved messages — a personal bookmark list, separate from the
       server-wide pins
-- [ ] Synced read state. Last-read ids live in `localStorage`
-      (`stores/unread.ts`), so the desktop app and the web client each think
-      the other's reading is still unread. Per-user read markers on the
-      server fix it, DMs included
 
 ### 🎤 Voice Features
 

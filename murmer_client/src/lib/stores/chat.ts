@@ -19,7 +19,7 @@ import { describeServerError } from '../errors';
 import { WebSocketManager } from '../websocket-manager';
 import { connection } from './connection';
 import { typing } from './typing';
-import { unread } from './unread';
+import { parseReadMarkers, unread } from './unread';
 import { threadData } from './thread';
 import { dm } from './dm';
 import { drafts } from './drafts';
@@ -408,6 +408,27 @@ function createChatStore() {
         break;
       }
 
+      // Sent at sign-in, ahead of the channel list, so a channel's marker is
+      // in place by the time the page opens it and draws the divider.
+      case 'read-markers': {
+        const markers = parseReadMarkers(msg);
+        unread.load(markers.channels);
+        dm.loadReadState(
+          Object.fromEntries(Object.entries(markers.dms).filter(([peer]) => !isBlocked(peer)))
+        );
+        break;
+      }
+
+      // Another client of this account read further; catch up so its
+      // badges clear here too.
+      case 'read-marker': {
+        const messageId = msg.messageId;
+        if (typeof messageId !== 'number' || !Number.isSafeInteger(messageId)) break;
+        if (typeof msg.channelId === 'number') unread.markRead(msg.channelId, messageId);
+        else if (typeof msg.with === 'string') dm.markRead(msg.with, messageId);
+        break;
+      }
+
       case 'resync': {
         // The connection fell behind the server-wide broadcast and lost
         // frames. The server has re-sent every snapshot it can; a DM
@@ -585,6 +606,7 @@ function createChatStore() {
         const peer = from === current ? to : from;
         void decryptDmFrame(peer, msg).then((prepared) => {
           dm.receive(prepared, current);
+          if (dm.getActive() === peer) markDmRead(peer);
           if (from !== current && dm.getActive() !== from) {
             const text = (prepared.text ?? '').trim();
             notify(`Direct message from ${from}`, text || 'sent you a message');
@@ -600,6 +622,7 @@ function createChatStore() {
             .filter((item) => !isBlocked(peer) || item.from === current);
           void Promise.all(list.map((item) => decryptDmFrame(peer, item))).then((prepared) => {
             dm.setHistory(peer, prepared);
+            if (dm.getActive() === peer) markDmRead(peer);
           });
         }
         break;
@@ -727,9 +750,8 @@ function createChatStore() {
   function connect(url: string, onOpen?: (challenge: string) => void): void {
     resetSession();
     onChallenge = onOpen;
-    // Per-channel client state (last-read markers, notification preferences)
-    // is persisted per server; switch both stores to this server's slice.
-    unread.setServer(url);
+    // Per-channel notification preferences are persisted per server; switch
+    // the store to this server's slice. Read markers come from the server.
     channelNotifications.setServer(url);
     // Sound ids and usernames are also only unique per server.
     soundboardPrefs.setServer(url);
@@ -1019,6 +1041,23 @@ function createChatStore() {
     wsManager.send(data);
   }
 
+  /** Record that everything up to `messageId` in a channel has been seen,
+   *  telling the server only when that moves the marker. */
+  function markRead(channelId: number, messageId: number): void {
+    if (unread.markRead(channelId, messageId)) {
+      sendRaw({ type: 'mark-read', channelId, messageId });
+    }
+  }
+
+  /** Record that the conversation with `peer` has been read as far as this
+   *  client holds it. */
+  function markDmRead(peer: string): void {
+    const messageId = dm.latestId(peer);
+    if (messageId !== null && dm.markRead(peer, messageId)) {
+      sendRaw({ type: 'mark-read', with: peer, messageId });
+    }
+  }
+
   /** Load message history for a channel. */
   function loadHistory(channelId: number, before?: number, limit = 50): void {
     sendRaw({ type: 'load-history', channelId, before, limit });
@@ -1147,6 +1186,8 @@ function createChatStore() {
     sendRaw,
     loadHistory,
     loadDmHistory,
+    markRead,
+    markDmRead,
     loadThread,
     react,
     search,

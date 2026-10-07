@@ -25,6 +25,7 @@ mod messages;
 mod moderation;
 mod pins;
 mod reactions;
+mod read_markers;
 mod roles;
 mod scheduled;
 mod screenshare;
@@ -50,6 +51,7 @@ pub use messages::*;
 pub use moderation::*;
 pub use pins::*;
 pub use reactions::*;
+pub use read_markers::*;
 pub use roles::*;
 pub use scheduled::*;
 pub use screenshare::*;
@@ -389,6 +391,9 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         conn.execute_batch(&scheduled::scheduled_schema())?;
         // Its trigger hangs off `messages`, created above.
         conn.execute_batch(uploads::uploads_schema())?;
+        // Depends on `direct_messages`, created above: it indexes it and seeds
+        // the DM markers from it.
+        read_markers::read_markers_schema(conn)?;
 
         // Seed built-in roles and migrate any legacy single-role assignments
         // into role_definitions/user_roles. Runs once (marker-guarded); depends
