@@ -333,12 +333,19 @@ below a threshold, an SFU inside the server above it.
 
 ## Relay support
 
-Murmer has no relay today, so two peers behind symmetric NATs cannot
-connect. It will not get TURN: the planned relay is the same SFU that serves
-large channels ([`../plans/hybrid-voice-sfu.md`](../plans/hybrid-voice-sfu.md)).
-A pair that cannot connect moves its channel onto the SFU, which any client
+Murmer has no TURN. Its relay is the same SFU that serves large channels:
+a pair that cannot connect moves its channel onto the SFU, which any client
 can reach because the server is not behind a NAT — no coturn, no second
 credential scheme.
+
+Every new mesh connection, a rebuild included, has 15 s to reach
+`connected`. If it does not, the client sends `voice-p2p-failed` naming the
+other end, and the server marks the channel *sticky*: it stays on the SFU
+at any size until it empties, because the network that broke the pair will
+not mend mid-call. Both ends must be in the sender's channel, and no
+permission is needed — the cost is server bandwidth for a call the sender
+is in. Without the SFU the report is ignored, and two peers behind
+symmetric NATs still cannot connect.
 
 STUN stays, because the mesh needs it. The STUN servers come from the server
 (`STUN_SERVERS`) in an `ice-config` frame after authentication, and both

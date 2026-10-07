@@ -6,7 +6,7 @@
 //! switch, that the hysteresis gap holds, and that a joiner learns the mode
 //! from its `voice-permissions`. The SFU itself is the server's bandwidth,
 //! so they also pin that only a member of an SFU-mode channel may offer to
-//! it.
+//! it, and that only a pair inside a channel can push it there early.
 
 use std::collections::{HashMap, HashSet};
 use std::{net::SocketAddr, sync::Arc, time::Duration};
@@ -233,4 +233,60 @@ async fn sfu_offers_need_membership_and_sfu_mode() {
     let frames = alice.until(|f| f["type"] == "error").await;
     assert_eq!(frames.last().unwrap()["message"], "sfu-offer-rejected");
     assert!(frames.iter().all(|f| f["type"] != "sfu-answer"));
+}
+
+/// `voice-p2p-failed` moves a small channel to the SFU for good, but only
+/// when both ends of the failed pair are in the sender's channel.
+#[tokio::test]
+async fn a_failed_mesh_pair_moves_its_channel_to_the_sfu_until_it_empties() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+    let mut outsider = Client::connect(addr, "erin").await;
+    for member in [&mut alice, &mut bob] {
+        member
+            .send(json!({ "type": "voice-join", "channelId": LOUNGE }))
+            .await;
+        member.until(|f| f["type"] == "voice-permissions").await;
+    }
+    let failed =
+        |target: &str| json!({ "type": "voice-p2p-failed", "channelId": LOUNGE, "target": target });
+
+    // Someone outside the call cannot push it onto the server, and a member
+    // cannot name a pair that is not in the channel.
+    outsider.send(failed("alice")).await;
+    alice.send(failed("erin")).await;
+    assert!(modes_seen(&mut alice).await.is_empty());
+    assert!(modes_seen(&mut bob).await.is_empty());
+
+    // A real pair moves both members, well under the threshold of four.
+    alice.send(failed("bob")).await;
+    for member in [&mut alice, &mut bob] {
+        let modes = next_modes(member).await;
+        assert_eq!(modes.len(), 1, "{} saw {modes:?}", member.name);
+        assert_eq!(modes[0]["mode"], "sfu");
+    }
+    // The other end reporting the same pair changes nothing.
+    bob.send(failed("alice")).await;
+    assert!(modes_seen(&mut alice).await.is_empty());
+
+    // Down to one, below the hysteresis gap, and still on the SFU.
+    bob.send(json!({ "type": "voice-leave", "channelId": LOUNGE }))
+        .await;
+    alice
+        .until(|f| f["type"] == "voice-users" && f["users"].as_array().unwrap().len() == 1)
+        .await;
+    assert!(modes_seen(&mut alice).await.is_empty());
+
+    // Emptying the channel clears it: the next pair starts on the mesh.
+    alice
+        .send(json!({ "type": "voice-leave", "channelId": LOUNGE }))
+        .await;
+    alice
+        .until(|f| f["type"] == "voice-users" && f["users"].as_array().unwrap().is_empty())
+        .await;
+    bob.send(json!({ "type": "voice-join", "channelId": LOUNGE }))
+        .await;
+    let frames = bob.until(|f| f["type"] == "voice-permissions").await;
+    assert_eq!(frames.last().unwrap()["mode"], "mesh");
 }

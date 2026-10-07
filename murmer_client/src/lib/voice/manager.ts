@@ -96,9 +96,17 @@ const MIN_LOSS_SAMPLE_PACKETS = 20;
  * How long a call switching back from the SFU waits for every mesh peer to
  * connect before it drops the SFU anyway. A pair that cannot connect would
  * otherwise keep the whole channel on the server forever; past this it is
- * left to the normal repair path.
+ * left to the normal repair path, and reported once `P2P_CONNECT_TIMEOUT_MS`
+ * runs out.
  */
 const MESH_READY_TIMEOUT_MS = 10_000;
+/**
+ * How long a new mesh connection gets to reach `connected` before the pair
+ * is reported as unreachable (`voice-p2p-failed`) and the server moves the
+ * channel onto its SFU. Long enough for a slow ICE gathering, short enough
+ * that the people who cannot hear each other are not left wondering.
+ */
+const P2P_CONNECT_TIMEOUT_MS = 15_000;
 
 /** The packet counters `scoreStats` turns into a loss percentage. */
 interface StatsSample {
@@ -195,6 +203,8 @@ export class VoiceManager {
     rebuild: () => this.openSfu(),
     setReconnecting: (_, reconnecting) => this.sfu?.setReconnecting(reconnecting)
   });
+  /** Pending `voice-p2p-failed` report per mesh peer not yet connected. */
+  private p2pWatch: Record<string, ReturnType<typeof setTimeout>> = {};
   /** Pending give-up on a mesh that is taking over from the SFU. */
   private meshWait: ReturnType<typeof setTimeout> | null = null;
 
@@ -843,6 +853,7 @@ export class VoiceManager {
 
   private cleanupPeer(id: string) {
     this.recovery.forget(id);
+    this.unwatchP2p(id);
     const pc = this.peers[id];
     if (pc) {
       pc.close();
@@ -901,6 +912,28 @@ export class VoiceManager {
     if (this.userName > id) {
       void this.createPeer(id, true);
     }
+  }
+
+  /**
+   * Report a mesh pair that does not connect in time, so the server carries
+   * the channel instead: the relay of last resort since TURN was dropped.
+   * Every new connection is watched, rebuilds included, so a pair whose
+   * repair keeps failing is caught by the same rule as one that never
+   * connected. The server ignores the report when it runs no SFU.
+   */
+  private watchP2p(id: string) {
+    this.unwatchP2p(id);
+    this.p2pWatch[id] = setTimeout(() => {
+      delete this.p2pWatch[id];
+      if (this.transport.target !== 'mesh' || this.peers[id]?.connectionState === 'connected')
+        return;
+      chat.sendRaw({ type: 'voice-p2p-failed', channelId: this.channelId, target: id });
+    }, P2P_CONNECT_TIMEOUT_MS);
+  }
+
+  private unwatchP2p(id: string) {
+    clearTimeout(this.p2pWatch[id]);
+    delete this.p2pWatch[id];
   }
 
   /** Flag a peer as under repair so the UI can say so instead of going quiet. */
@@ -1097,6 +1130,7 @@ export class VoiceManager {
     if (this.peers[id]) return this.peers[id];
     const pc = new RTCPeerConnection({ iceServers: get(iceServers) });
     this.peers[id] = pc;
+    this.watchP2p(id);
     if (this.localStream) {
       for (const track of this.localStream.getTracks()) {
         const sender = pc.addTrack(track, this.localStream);
@@ -1153,7 +1187,10 @@ export class VoiceManager {
       // `closed` is only ever reached because we closed it ourselves, but the
       // peer still has to leave the list when that happened elsewhere.
       if (pc.connectionState === 'closed') this.cleanupPeer(id);
-      if (pc.connectionState === 'connected') this.checkMeshReady();
+      if (pc.connectionState === 'connected') {
+        this.unwatchP2p(id);
+        this.checkMeshReady();
+      }
     };
     if (initiator) await this.sendOffer(id, pc);
     return pc;
