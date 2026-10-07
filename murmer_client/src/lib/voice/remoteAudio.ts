@@ -23,6 +23,11 @@ export function remoteAudio(node: HTMLAudioElement, data: RemoteAudio) {
   let limiter: DynamicsCompressorNode | null = null;
   let stopTicks: (() => void) | null = null;
   let buffer: Uint8Array<ArrayBuffer> | null = null;
+  // Chromium only decodes a remote WebRTC track while a media element plays
+  // it; a `MediaStreamAudioSourceNode` alone gets silence (crbug.com/933677).
+  // The element below plays the *processed* stream, so the raw one gets a
+  // muted element of its own just to keep it flowing.
+  let rawSink: HTMLAudioElement | null = null;
 
   // The per-user volume is applied by a gain node rather than the audio
   // element, because `HTMLMediaElement.volume` is clamped to 1 and quiet
@@ -104,6 +109,10 @@ export function remoteAudio(node: HTMLAudioElement, data: RemoteAudio) {
     disconnectNode(limiter, 'limiter');
     limiter = null;
     buffer = null;
+    if (rawSink) {
+      rawSink.srcObject = null;
+      rawSink = null;
+    }
     setSpeaking(currentUserId, false);
   };
 
@@ -121,6 +130,10 @@ export function remoteAudio(node: HTMLAudioElement, data: RemoteAudio) {
       if (!audioContext) throw new Error('no audio context');
       resumeAudioContext();
 
+      rawSink = new Audio();
+      rawSink.muted = true;
+      rawSink.srcObject = stream;
+      rawSink.play().catch(() => {});
       sourceNode = audioContext.createMediaStreamSource(stream);
       analyser = audioContext.createAnalyser();
       analyser.fftSize = 512;

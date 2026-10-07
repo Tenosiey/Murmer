@@ -326,6 +326,12 @@ compressor: the spec gives every `DynamicsCompressorNode` an automatic
 make-up gain derived from its settings, so a low threshold would quietly
 raise everyone's level as well as flatten the loud one.
 
+The element plays the processed stream, so the raw remote stream also gets
+a muted `<audio>` of its own. Chromium (and so WebView2) only decodes a
+remote WebRTC track while a media element plays it; fed to Web Audio alone
+it delivers silence, and the call looks fine on both ends — connected, own
+speaking ring lit — while nobody hears anybody.
+
 ## Room size
 
 The mesh is one connection per pair, so a channel of *n* people carries
