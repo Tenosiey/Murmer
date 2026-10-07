@@ -81,6 +81,32 @@ Every real teardown deletes it; `discardIncoming` (rebuild only) deliberately
 does not, and the window keeps its last frame under a "Reconnecting…" overlay
 meanwhile.
 
+## Through the server (SFU)
+
+In a channel the server has put in SFU mode
+([`voice.md`](voice.md#through-the-server-sfu)) a share goes through the
+server instead of the mesh. On the mesh the sharer
+encodes and uploads once per viewer, which at 1080p and 8 Mbps to ten
+viewers is 80 Mbps; through the SFU it is 8.
+
+- **The sharer publishes once**, on one send-only connection to the server,
+  sent as `sfu-screen-offer` with `sharer` set to themselves.
+- **A viewer's offer goes to the server** (`sfu-screen-offer` naming the
+  sharer) instead of to the sharer. Offers still only travel from whoever
+  wants media, so the rest of this page applies unchanged. The server
+  forwards the sharer's media to every viewer connection of that share.
+- **Each connection keeps its route** until it is replaced, so a repair
+  goes the way its connection was opened. A mode change moves every share
+  at once, without voice's make-before-break: a watched share keeps its
+  window and stream, shows "Reconnecting" for the moment the switch takes,
+  and does not spend its rebuild budget.
+- **The server only carries announced shares.** A share is forwarded while
+  it is in `screenshare-start`/`-stop` state, and an offer for any other is
+  dropped silently, as a refused mesh offer is.
+- **The audio m-line is always answered.** The server cannot know whether
+  the sharer will send audio, so a silent share shows its volume controls
+  in SFU mode.
+
 ## Where repair differs from voice
 
 - **A watched share gives up after `MAX_REBUILDS` and closes.** Voice repairs

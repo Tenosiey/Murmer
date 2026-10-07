@@ -429,6 +429,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                                         stats::note_screenshare_start(&state, u).await;
                                     }
                                     broadcast_serialized(&state, text, &v);
+                                    if let Some(ch_id) = voice_channel {
+                                        sync_sfu(&state, ch_id).await;
+                                    }
                                 }
                             }
                             "screenshare-stop" => {
@@ -438,6 +441,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                                         stats::flush_screenshare_session(&state, u).await;
                                     }
                                     broadcast_serialized(&state, text, &v);
+                                    if let Some(ch_id) = i32_field(&v, "channelId") {
+                                        sync_sfu(&state, ch_id).await;
+                                    }
                                 }
                             }
                             // A camera is announced to the channel the same way, but
@@ -465,6 +471,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                             }
                             "sfu-offer" => {
                                 handle_sfu_offer(&state, &mut sender, &v, voice_channel, &user_name).await;
+                            }
+                            "sfu-screen-offer" => {
+                                handle_sfu_screen_offer(&state, &v, voice_channel, &user_name).await;
                             }
                             "voice-p2p-failed" => {
                                 handle_voice_p2p_failed(&state, &v, voice_channel, &user_name).await;
@@ -1177,6 +1186,56 @@ async fn handle_sfu_offer(
     match (channel, slots) {
         (Some(ch_id), Some(slots)) => sfu.offer(user, ch_id, sdp.to_string(), slots),
         _ => send_error(sender, errors::SFU_OFFER_REJECTED).await,
+    }
+}
+
+/// Handle `sfu-screen-offer`: a screen share connection to the SFU, either
+/// the sharer publishing (`sharer` is themselves) or a viewer pulling that
+/// share from the server instead of from the sharer.
+///
+/// The same gate as a mesh `screenshare-offer`, which it replaces in SFU
+/// mode: both ends in the sender's own voice channel. On top of that the
+/// channel must be in SFU mode and the share announced (`screenshare-start`),
+/// so nobody makes the server carry a share that does not exist. A refusal
+/// is silent, as a refused `screenshare-offer` is; the client's repair and
+/// the share's `screenshare-stop` already cover every honest way to get here.
+async fn handle_sfu_screen_offer(
+    state: &Arc<AppState>,
+    v: &Value,
+    voice_channel: Option<i32>,
+    user_name: &Option<String>,
+) {
+    let (Some(user), Some(sfu), Some(ch_id)) = (user_name.as_deref(), &state.sfu, voice_channel)
+    else {
+        return;
+    };
+    let (Some(sdp), Some(sharer)) = (
+        v.get("sdp").and_then(|s| s.as_str()),
+        v.get("sharer").and_then(|s| s.as_str()),
+    ) else {
+        return;
+    };
+    if !names_own_voice_channel(v, voice_channel) {
+        return;
+    }
+    let in_sfu_mode = state
+        .voice_channels
+        .lock()
+        .await
+        .get(&ch_id)
+        .is_some_and(|info| {
+            info.mode == crate::VoiceMode::Sfu
+                && info.users.contains(user)
+                && info.users.contains(sharer)
+        });
+    let announced = state
+        .active_screen_shares
+        .lock()
+        .await
+        .get(&ch_id)
+        .is_some_and(|sharers| sharers.contains(sharer));
+    if in_sfu_mode && announced {
+        sfu.offer_screen(user, sharer, ch_id, sdp.to_string());
     }
 }
 

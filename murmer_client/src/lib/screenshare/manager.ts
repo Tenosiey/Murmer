@@ -4,6 +4,14 @@
  * Handles peer-to-peer screen sharing connections using WebRTC. Allows users
  * to share their screen with configurable quality and frame rate settings.
  * Uses the same signaling infrastructure as voice chat.
+ *
+ * While the voice channel is in SFU mode (`voice/mode.ts`) the same flow
+ * goes through the server instead: the sharer publishes once, on one
+ * send-only connection to the SFU, and every viewer's offer goes to the
+ * server rather than to the sharer (`sfu-screen-offer`). Offers still only
+ * travel from whoever wants media, so nothing else about the protocol
+ * changes. The payoff is the sharer's upload: a 1080p share at 8 Mbps to ten
+ * viewers is 80 Mbps on the mesh and 8 Mbps through the SFU.
  */
 import { chat } from '../stores/chat';
 import { get } from 'svelte/store';
@@ -11,6 +19,7 @@ import { iceServers } from '../stores/iceConfig';
 import { capBitrate } from '../webrtc/bitrate';
 import { remoteFingerprint } from '../webrtc/fingerprint';
 import { PeerRecovery } from '../webrtc/recovery';
+import { parseVoiceMode } from '../voice/mode';
 import type { Message, ScreenShareSettings, ScreenSharePeer } from '../types';
 
 const DEFAULT_SETTINGS: ScreenShareSettings = {
@@ -57,6 +66,12 @@ function recoveryKey(role: ScreenShareRole, remote: string): string {
   return `${role}:${remote}`;
 }
 
+/**
+ * The recovery key of the sharer's one connection to the SFU. It has no `:`,
+ * so it can never be a `recoveryKey`, and is checked before one is split.
+ */
+const PUBLISH_KEY = 'publish';
+
 /** The role and peer a `recoveryKey` was built from. */
 function splitKey(key: string): [ScreenShareRole, string] {
   const separator = key.indexOf(':');
@@ -83,6 +98,21 @@ export class ScreenShareManager {
   /** Server-enforced bitrate cap in bits per second (null = no cap). */
   private serverMaxBitrate: number | null = null;
 
+  /** Our capture's one connection to the SFU, while sharing in SFU mode. */
+  private publish: RTCPeerConnection | null = null;
+  /**
+   * The voice channel the server last said is in SFU mode, or null. Kept
+   * apart from `channelId`, which is only set while sharing or watching: the
+   * mode arrives when we join, long before either.
+   */
+  private sfuChannel: number | null = null;
+  /**
+   * Connections that go to the SFU. A connection keeps the route it was
+   * opened on until it is replaced, so its repairs go the same way even
+   * while the channel's mode is changing under it.
+   */
+  private sfuConnections = new WeakSet<RTCPeerConnection>();
+
   /** Rebuilds spent on each share we are watching, keyed by the sharer. */
   private rebuilds: Record<string, number> = {};
 
@@ -108,7 +138,10 @@ export class ScreenShareManager {
     ['screenshare-offer', (msg) => this.handleOffer(msg)],
     ['screenshare-answer', (msg) => this.handleAnswer(msg)],
     ['screenshare-candidate', (msg) => this.handleCandidate(msg)],
-    ['screenshare-stop', (msg) => this.handleRemoteStop(msg)]
+    ['screenshare-stop', (msg) => this.handleRemoteStop(msg)],
+    ['sfu-screen-answer', (msg) => this.handleSfuAnswer(msg)],
+    ['voice-permissions', (msg) => this.handleVoiceMode(msg)],
+    ['voice-mode', (msg) => this.handleVoiceMode(msg)]
   ];
 
   private setupSignaling() {
@@ -161,6 +194,10 @@ export class ScreenShareManager {
       // receiver with a track, including the audio one of a share that turned
       // out to be silent — going by `getReceivers()` would list that as
       // incoming media and offer volume controls for silence.
+      // ponytail: through the SFU the server answers the audio m-line
+      // whatever the sharer sends, so a silent share there still lists
+      // audio; carry the sharer's own answer in `screenshare-start` if that
+      // matters.
       const tracks: MediaStreamTrack[] = [];
       for (const transceiver of pc.getTransceivers()) {
         const direction = transceiver.currentDirection;
@@ -271,6 +308,9 @@ export class ScreenShareManager {
       track.addEventListener('ended', () => {
         this.stopSharing();
       });
+
+      // After the announcement: the server only takes a share it knows of.
+      if (this.viaSfu()) this.openPublish();
     } catch (error) {
       this.userName = null;
       this.channelId = null;
@@ -297,6 +337,7 @@ export class ScreenShareManager {
     for (const userId of Object.keys(this.outgoing)) {
       this.closeOutgoing(userId);
     }
+    this.closePublish();
 
     this.releaseIdentity();
     this.emit(this.getPeersList());
@@ -334,7 +375,9 @@ export class ScreenShareManager {
   private applyBitrateLimit(): void {
     const limit = this.effectiveMaxBitrate();
     if (!Number.isFinite(limit) || limit <= 0) return;
-    for (const pc of Object.values(this.outgoing)) {
+    const senders = Object.values(this.outgoing);
+    if (this.publish) senders.push(this.publish);
+    for (const pc of senders) {
       for (const sender of pc.getSenders()) {
         if (sender.track?.kind === 'video') capBitrate(sender, limit);
       }
@@ -348,7 +391,10 @@ export class ScreenShareManager {
    */
   private wirePeer(pc: RTCPeerConnection, remote: string, role: ScreenShareRole): void {
     pc.onicecandidate = (ev) => {
-      if (ev.candidate && this.userName) {
+      // The SFU is ICE-lite and learns our address from our own checks, so
+      // its connections trickle nothing; relaying them would only hand our
+      // addresses to the sharer the server is there to stand in for.
+      if (ev.candidate && this.userName && !this.sfuConnections.has(pc)) {
         chat.sendRaw({
           type: 'screenshare-candidate',
           user: this.userName,
@@ -379,22 +425,24 @@ export class ScreenShareManager {
    * side simply waits for the offer that follows.
    */
   private async restartIce(key: string): Promise<void> {
+    if (key === PUBLISH_KEY) {
+      const pc = this.publish;
+      if (!pc || pc.signalingState === 'closed') return;
+      try {
+        pc.restartIce();
+        await this.sendOffer(pc, this.userName ?? '');
+      } catch (error) {
+        console.warn('Screen share ICE restart to the server failed:', error);
+      }
+      return;
+    }
     const [role, remote] = splitKey(key);
     if (role !== 'viewer') return;
     const pc = this.incoming[remote];
     if (!pc || !this.userName || pc.signalingState === 'closed') return;
     try {
       pc.restartIce();
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      chat.sendRaw({
-        type: 'screenshare-offer',
-        user: this.userName,
-        target: remote,
-        channelId: this.channelId,
-        role: 'viewer',
-        sdp: offer
-      });
+      await this.sendOffer(pc, remote);
     } catch (error) {
       // Just an attempt that did not land; the controller retries and the
       // deadline still ends in a rebuild.
@@ -409,6 +457,13 @@ export class ScreenShareManager {
    * that is never coming back stops occupying the screen.
    */
   private rebuildConnection(key: string): void {
+    if (key === PUBLISH_KEY) {
+      // The server replaces our old connection when the new offer brings a
+      // new certificate, and its viewers keep theirs.
+      this.closePublish();
+      this.openPublish();
+      return;
+    }
     const [role, remote] = splitKey(key);
     if (role === 'sharer') {
       // Nothing to rebuild from this end: without a viewer asking there is no
@@ -455,7 +510,7 @@ export class ScreenShareManager {
   private async openIncoming(sharer: string): Promise<void> {
     if (this.incoming[sharer]) return;
 
-    const pc = new RTCPeerConnection({ iceServers: get(iceServers) });
+    const pc = this.newConnection();
     this.incoming[sharer] = pc;
 
     pc.addTransceiver('video', { direction: 'recvonly' });
@@ -473,9 +528,41 @@ export class ScreenShareManager {
     };
 
     this.wirePeer(pc, sharer, 'viewer');
+    await this.sendOffer(pc, sharer);
+  }
 
+  /** Whether our channel's screen shares go through the server. */
+  private viaSfu(): boolean {
+    return this.sfuChannel !== null && this.sfuChannel === this.channelId;
+  }
+
+  /** A connection on the route the channel's mode calls for right now. */
+  private newConnection(): RTCPeerConnection {
+    if (!this.viaSfu()) return new RTCPeerConnection({ iceServers: get(iceServers) });
+    // One transport for everything, as the voice SFU connection does; the
+    // server's single host candidate needs no STUN.
+    const pc = new RTCPeerConnection({ bundlePolicy: 'max-bundle' });
+    this.sfuConnections.add(pc);
+    return pc;
+  }
+
+  /**
+   * Offer `pc` on the route it was opened on: to `sharer` themselves on the
+   * mesh, or to the server, which publishes our share when `sharer` is us
+   * and otherwise forwards theirs.
+   */
+  private async sendOffer(pc: RTCPeerConnection, sharer: string): Promise<void> {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    if (this.sfuConnections.has(pc)) {
+      chat.sendRaw({
+        type: 'sfu-screen-offer',
+        channelId: this.channelId,
+        sharer,
+        sdp: offer.sdp
+      });
+      return;
+    }
     chat.sendRaw({
       type: 'screenshare-offer',
       user: this.userName,
@@ -484,6 +571,89 @@ export class ScreenShareManager {
       role: 'viewer',
       sdp: offer
     });
+  }
+
+  /** Publish our capture to the SFU: one upload, however many watch. */
+  private openPublish(): void {
+    if (this.publish || !this.localStream || !this.userName) return;
+    const pc = this.newConnection();
+    this.publish = pc;
+    for (const track of this.localStream.getTracks()) {
+      pc.addTransceiver(track, { direction: 'sendonly', streams: [this.localStream] });
+    }
+    pc.onconnectionstatechange = () => {
+      this.recovery.observe(PUBLISH_KEY, pc.connectionState);
+    };
+    this.applyBitrateLimit();
+    this.sendOffer(pc, this.userName).catch((error) => {
+      console.error('Failed to publish the screen share to the server:', error);
+    });
+  }
+
+  private closePublish(): void {
+    this.recovery.forget(PUBLISH_KEY);
+    if (!this.publish) return;
+    this.publish.onconnectionstatechange = null;
+    this.publish.close();
+    this.publish = null;
+  }
+
+  /**
+   * The server's answer to an `sfu-screen-offer`: for our publishing
+   * connection when the sharer is us, for the share we watch otherwise. Only
+   * a connection that went to the server and still waits for an answer
+   * takes it.
+   */
+  private async handleSfuAnswer(msg: Message): Promise<void> {
+    const { channelId, sharer, sdp } = msg;
+    if (channelId !== this.channelId || typeof sharer !== 'string' || typeof sdp !== 'string') {
+      return;
+    }
+    const pc = sharer === this.userName ? this.publish : this.incoming[sharer];
+    if (!pc || !this.sfuConnections.has(pc) || pc.signalingState !== 'have-local-offer') return;
+    try {
+      await pc.setRemoteDescription({ type: 'answer', sdp });
+    } catch (error) {
+      // Left for the repair to retry, as a lost answer would be.
+      console.warn('Failed to apply the server screen share answer:', error);
+    }
+  }
+
+  /**
+   * Follow the channel between the mesh and the SFU. Every share moves to
+   * the new route at once, with no make-before-break as voice has: a share
+   * window shows "Reconnecting" for the moment the switch takes, which is
+   * the same thing its repair already shows, rather than a call going
+   * silent. A share being watched keeps its window and its stream (as a
+   * rebuild does), without spending the rebuild budget.
+   */
+  private handleVoiceMode(msg: Message): void {
+    const frame = parseVoiceMode(msg);
+    const before = this.viaSfu();
+    // No usable mode is the mesh, as it is for the voice manager.
+    this.sfuChannel = frame?.mode === 'sfu' ? frame.channelId : null;
+    if (this.viaSfu() === before || this.channelId === null) return;
+
+    if (this.localStream) {
+      if (this.viaSfu()) {
+        // Our viewers are moving to the server too, and will pull from there.
+        for (const viewer of Object.keys(this.outgoing)) this.closeOutgoing(viewer);
+        this.openPublish();
+      } else {
+        // Their mesh offers follow; answering them is what `handleOffer`
+        // always does.
+        this.closePublish();
+      }
+    }
+
+    for (const sharer of Object.keys(this.incoming)) {
+      this.discardIncoming(sharer);
+      this.openIncoming(sharer).catch((error) => {
+        console.error('Failed to move a screen share to the new route:', error);
+        this.closeIncoming(sharer);
+      });
+    }
+    this.emit(this.getPeersList());
   }
 
   /** Whether a signaling frame is addressed to us in our current channel. */

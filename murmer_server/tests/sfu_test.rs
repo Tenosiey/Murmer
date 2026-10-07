@@ -34,17 +34,37 @@ struct Peer {
 
 impl Peer {
     fn offer(name: &'static str, slots: usize) -> (Self, String, SdpPendingOffer) {
+        let mut medias = vec![
+            (MediaKind::Audio, Direction::SendOnly),
+            (MediaKind::Video, Direction::SendOnly),
+        ];
+        for _ in 0..slots {
+            medias.push((MediaKind::Audio, Direction::RecvOnly));
+            medias.push((MediaKind::Video, Direction::RecvOnly));
+        }
+        Self::with_media(name, &medias)
+    }
+
+    /// Offer exactly `medias`, in order. The first audio is what `speak`
+    /// sends on, if it sends; everything else counts as heard.
+    fn with_media(
+        name: &'static str,
+        medias: &[(MediaKind, Direction)],
+    ) -> (Self, String, SdpPendingOffer) {
         let socket = UdpSocket::bind("127.0.0.1:0").expect("bind");
         socket.set_nonblocking(true).expect("nonblocking");
         let mut rtc = Rtc::new(Instant::now());
         rtc.add_local_candidate(Candidate::host(socket.local_addr().unwrap(), "udp").unwrap());
         let mut change = rtc.sdp_api();
-        let send_audio = change.add_media(MediaKind::Audio, Direction::SendOnly, None, None, None);
-        change.add_media(MediaKind::Video, Direction::SendOnly, None, None, None);
-        for _ in 0..slots {
-            change.add_media(MediaKind::Audio, Direction::RecvOnly, None, None, None);
-            change.add_media(MediaKind::Video, Direction::RecvOnly, None, None, None);
-        }
+        let mids: Vec<Mid> = medias
+            .iter()
+            .map(|&(kind, dir)| change.add_media(kind, dir, None, None, None))
+            .collect();
+        let send_audio = medias
+            .iter()
+            .zip(&mids)
+            .find(|((kind, dir), _)| *kind == MediaKind::Audio && *dir == Direction::SendOnly)
+            .map_or(mids[0], |(_, mid)| *mid);
         let (offer, pending) = change.apply().expect("an offer");
         let peer = Self {
             name,
@@ -116,6 +136,7 @@ fn member(user: &str, talk: bool) -> Member {
         user: user.to_string(),
         talk,
         camera: false,
+        screen: false,
     }
 }
 
@@ -239,6 +260,107 @@ async fn an_offer_from_outside_the_channel_gets_no_answer() {
     };
     assert!(
         frames.iter().all(|(user, _)| user != "mallory"),
+        "{frames:?}"
+    );
+}
+
+/// Wait for the SFU's answer to `user` of `kind` and apply it to `peer`.
+async fn accept(outbox: &mut Outbox, peer: &mut Peer, pending: SdpPendingOffer, kind: &str) {
+    let answer = loop {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        if let Some((_, frame)) = drain(outbox)
+            .into_iter()
+            .find(|(user, f)| user == peer.name && f["type"] == kind)
+        {
+            break frame;
+        }
+    };
+    let answer = SdpAnswer::from_sdp_string(answer["sdp"].as_str().unwrap()).unwrap();
+    peer.rtc
+        .sdp_api()
+        .accept_answer(pending, answer)
+        .expect("answer");
+}
+
+fn sharing(user: &str, screen: bool) -> Member {
+    Member {
+        screen,
+        ..member(user, true)
+    }
+}
+
+/// A screen share is published once and pulled from the server: what the
+/// sharer sends reaches a viewer's own connection, and stops the moment the
+/// share is no longer announced, whatever the sharer's client does.
+#[tokio::test]
+async fn a_screen_share_reaches_its_viewer_only_while_announced() {
+    let (sfu, mut outbox) = Sfu::spawn("127.0.0.1".parse().unwrap(), 0)
+        .await
+        .expect("spawn");
+    sfu.sync(CHANNEL, vec![sharing("alice", true), sharing("bob", false)]);
+
+    // The client's shapes: the sharer sends its capture, the viewer
+    // receives video then audio.
+    let (mut alice, sdp, pending) = Peer::with_media(
+        "alice",
+        &[
+            (MediaKind::Video, Direction::SendOnly),
+            (MediaKind::Audio, Direction::SendOnly),
+        ],
+    );
+    sfu.offer_screen("alice", "alice", CHANNEL, sdp);
+    accept(&mut outbox, &mut alice, pending, "sfu-screen-answer").await;
+    let (mut bob, sdp, pending) = Peer::with_media(
+        "bob",
+        &[
+            (MediaKind::Video, Direction::RecvOnly),
+            (MediaKind::Audio, Direction::RecvOnly),
+        ],
+    );
+    sfu.offer_screen("bob", "alice", CHANNEL, sdp);
+    accept(&mut outbox, &mut bob, pending, "sfu-screen-answer").await;
+
+    run(&mut alice, &mut bob, Duration::from_secs(2)).await;
+    assert!(alice.rtc.is_connected() && bob.rtc.is_connected());
+    assert!(bob.heard > 0, "bob saw nothing of {} frames", alice.sent);
+
+    // The share stops: both connections are dropped server-side.
+    sfu.sync(
+        CHANNEL,
+        vec![sharing("alice", false), sharing("bob", false)],
+    );
+    run(&mut alice, &mut bob, Duration::from_millis(300)).await;
+    bob.heard = 0;
+    run(&mut alice, &mut bob, Duration::from_secs(1)).await;
+    assert_eq!(bob.heard, 0, "the share kept flowing after it stopped");
+}
+
+#[tokio::test]
+async fn nobody_can_watch_a_share_that_is_not_announced() {
+    let (sfu, mut outbox) = Sfu::spawn("127.0.0.1".parse().unwrap(), 0)
+        .await
+        .expect("spawn");
+    sfu.sync(
+        CHANNEL,
+        vec![sharing("alice", false), sharing("bob", false)],
+    );
+    let watch = [(MediaKind::Video, Direction::RecvOnly)];
+    let (_bob, sdp, _) = Peer::with_media("bob", &watch);
+    sfu.offer_screen("bob", "alice", CHANNEL, sdp);
+    let (_alice, sdp, _) = Peer::with_media("alice", &watch);
+    sfu.offer_screen("alice", "alice", CHANNEL, sdp);
+    // A voice offer after them, so the task has certainly handled both.
+    let (_alice, sdp, _) = Peer::offer("alice", 1);
+    sfu.offer("alice", CHANNEL, sdp, 1);
+    let frames = loop {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        let frames = drain(&mut outbox);
+        if frames.iter().any(|(_, f)| f["type"] == "sfu-answer") {
+            break frames;
+        }
+    };
+    assert!(
+        frames.iter().all(|(_, f)| f["type"] != "sfu-screen-answer"),
         "{frames:?}"
     );
 }
