@@ -204,9 +204,11 @@ impl Config {
 /// means no STUN at all, which confines calls to peers that can reach each
 /// other directly (a LAN).
 ///
-/// Only `stun:`/`stuns:` is accepted: a `turn:` URL needs credentials, and
-/// `RTCPeerConnection` throws on one without them — which would surface as
-/// voice failing to connect for everybody, far from this setting.
+/// Only `stun:`/`stuns:` is accepted, permanently: Murmer will not use TURN
+/// (the relay fallback is the SFU, `plans/hybrid-voice-sfu.md`), and a
+/// `turn:` URL without credentials makes `RTCPeerConnection` throw — which
+/// would surface as voice failing to connect for everybody, far from this
+/// setting.
 fn parse_stun_servers(raw: Option<&str>) -> Result<Vec<String>> {
     let Some(raw) = raw else {
         return Ok(vec![DEFAULT_STUN_SERVER.to_string()]);

@@ -88,9 +88,9 @@ version (Settings → About), your OS, and whether you were on the desktop app
 or in a browser.
 
 For anything voice-related, say whether the other peer was on the same
-network — Murmer has no TURN relay yet, so two peers behind symmetric NATs
+network — Murmer has no relay yet, so two peers behind symmetric NATs
 cannot connect at all. That is a known gap, not a bug:
-[`plans/turn-support.md`](plans/turn-support.md).
+[`plans/hybrid-voice-sfu.md`](plans/hybrid-voice-sfu.md).
 
 Please **do not** open a public issue for a security problem. Email the
 maintainer instead.

@@ -13,7 +13,11 @@ import type { Message } from '../types';
 
 export const iceServers = writable<RTCIceServer[]>([]);
 
-/** Keep only well-formed STUN entries; anything else is dropped. */
+/**
+ * Keep only well-formed STUN entries; anything else is dropped. This is
+ * permanent: Murmer has no TURN (the relay is the SFU), and a `turn:` entry
+ * without credentials makes `RTCPeerConnection` throw for every call.
+ */
 export function parseIceServers(raw: unknown): RTCIceServer[] {
   if (!Array.isArray(raw)) return [];
   const urls = raw

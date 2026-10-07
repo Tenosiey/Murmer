@@ -296,18 +296,24 @@ stricter of the two caps wins, so a channel limit narrows the operator's cap
 and never widens it. Lowering it below the current headcount removes nobody;
 it only refuses the next joiner. Breakout rooms start without one.
 
-The cap is a bound on the symptom, not a fix for the cause — an SFU is, and
-that is a plan rather than code today.
+The cap is a bound on the symptom, not a fix for the cause — an SFU is. The
+plan is [`../plans/hybrid-voice-sfu.md`](../plans/hybrid-voice-sfu.md): mesh
+below a threshold, an SFU inside the server above it.
 
 ## Relay support
 
-Murmer has no TURN/relay support today, so two peers behind symmetric NATs
-cannot connect. The design note is [`../plans/turn-support.md`](../plans/turn-support.md).
+Murmer has no relay today, so two peers behind symmetric NATs cannot
+connect. It will not get TURN: the planned relay is the same SFU that serves
+large channels ([`../plans/hybrid-voice-sfu.md`](../plans/hybrid-voice-sfu.md)).
+A pair that cannot connect moves its channel onto the SFU, which any client
+can reach because the server is not behind a NAT — no coturn, no second
+credential scheme.
 
-What exists is its first step: the STUN servers come from the server
+STUN stays, because the mesh needs it. The STUN servers come from the server
 (`STUN_SERVERS`) in an `ice-config` frame after authentication, and both
 managers build every peer connection from that store. The client carries no
 default of its own on purpose — a compiled-in URL would be contacted on every
 call whatever the operator chose. The store only admits `stun:`/`stuns:`,
-because `RTCPeerConnection` throws on a `turn:` entry without credentials,
-and that would break every call rather than just the relayed ones.
+and that is permanent rather than a stopgap: with no TURN planned there is
+never a reason to pass a `turn:` entry, and `RTCPeerConnection` throws on one
+without credentials, which would break every call.
