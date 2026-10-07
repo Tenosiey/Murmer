@@ -27,7 +27,8 @@ export const PERMISSIONS = {
   MANAGE_NICKNAMES: 1 << 16,
   VIEW_AUDIT_LOG: 1 << 17,
   CREATE_INVITES: 1 << 18,
-  MENTION_GROUPS: 1 << 19
+  MENTION_GROUPS: 1 << 19,
+  MOVE_MEMBERS: 1 << 20
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;
@@ -184,6 +185,12 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         flag: PERMISSIONS.MANAGE_NICKNAMES,
         label: 'Manage nicknames',
         description: "Set or clear other members' nicknames on this server."
+      },
+      {
+        key: 'MOVE_MEMBERS',
+        flag: PERMISSIONS.MOVE_MEMBERS,
+        label: 'Move members',
+        description: 'Drag members in voice from one voice channel into another.'
       },
       {
         key: 'CREATE_INVITES',

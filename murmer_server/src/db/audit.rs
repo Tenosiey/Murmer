@@ -45,6 +45,8 @@ pub mod actions {
     pub const MUTE: &str = "mute";
     /// A mute was lifted (`unmute-user`).
     pub const UNMUTE: &str = "unmute";
+    /// A member was moved to another voice channel (`move-member`).
+    pub const MOVE: &str = "move";
     /// A role was created (`create-role`).
     pub const ROLE_CREATE: &str = "role-create";
     /// A role's name, color, icon or permissions changed (`update-role`).
