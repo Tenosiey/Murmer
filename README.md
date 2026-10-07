@@ -184,7 +184,7 @@ bun run build && bun run tauri build    # bundles land in src-tauri/target/relea
 
 The build signs the updater artifacts, so it needs `TAURI_SIGNING_PRIVATE_KEY`
 and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` in the environment. Installed apps
-update themselves from GitHub releases (Settings → Updates); how a release is
+update from GitHub releases when asked to (Settings → Updates); how a release is
 cut is [`agents/skills/releasing.md`](agents/skills/releasing.md).
 
 ## Security
