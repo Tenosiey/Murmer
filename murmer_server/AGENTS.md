@@ -37,6 +37,7 @@ the SQLite database on a named volume.
 | `roles.rs` | Role definitions and default role colors |
 | `link_preview.rs` | `/link-preview`, returning OpenGraph metadata |
 | `security.rs` | Rate limiting, replay protection, validation utilities |
+| `sfu/` | The embedded SFU (str0m) that carries large voice channels |
 | `metrics.rs` | Process-global operator counters behind the dashboard's Health tab |
 | `permissions.rs` | The permission bitmask — the authority the client mirrors |
 | `profanity.rs` | The word-list filter applied to chat messages |

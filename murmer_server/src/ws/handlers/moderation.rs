@@ -301,6 +301,7 @@ pub(super) async fn handle_mute_user(
         &describe_mute(until),
     )
     .await;
+    sync_sfu_for_user(state, &target, until).await;
     info!(requester, target, ?until, "User muted");
 }
 
@@ -344,6 +345,7 @@ pub(super) async fn handle_unmute_user(
             });
             broadcast(state, &msg);
             record_audit(state, actions::UNMUTE, &requester, &target, "").await;
+            sync_sfu_for_user(state, &target, None).await;
             info!(requester, target, "User unmuted");
         }
         Ok(_) => {
@@ -363,7 +365,7 @@ pub(super) async fn handle_unmute_user(
 /// holds users connected since startup, so reading it alone made an offline
 /// muted user read as unmuted after a restart, and their scheduled messages
 /// posted anyway.
-pub(super) async fn is_muted(state: &Arc<AppState>, user: &str) -> bool {
+pub(crate) async fn is_muted(state: &Arc<AppState>, user: &str) -> bool {
     let Some(key) = lookup_user_key(state, user).await else {
         return false;
     };
