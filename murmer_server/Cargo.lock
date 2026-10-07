@@ -1465,7 +1465,7 @@ dependencies = [
 
 [[package]]
 name = "murmer_server"
-version = "2026.1007.0"
+version = "2026.1007.1"
 dependencies = [
  "anyhow",
  "axum",
