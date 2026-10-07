@@ -84,9 +84,14 @@ pub async fn send_users(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket,
 /// Every join, leave and disconnect ends here, which is what makes this the
 /// one place the mode can follow the headcount. A change is announced as
 /// `voice-mode` to the channel's members only: who sits in a private voice
-/// channel is not everyone's business, and nobody else acts on it.
+/// channel is not everyone's business, and nobody else acts on it. The
+/// frame carries `slots`, how many other members a client's SFU offer must
+/// make room for.
+///
+/// The SFU learns the new membership here too, so a member who left, was
+/// kicked or was banned stops sending and receiving through it at once.
 pub async fn broadcast_voice(state: &Arc<AppState>, channel_id: i32) {
-    let (list, changed) = {
+    let (list, changed, user_limit) = {
         let mut vc = state.voice_channels.lock().await;
         match vc.get_mut(&channel_id) {
             Some(info) => {
@@ -102,9 +107,9 @@ pub async fn broadcast_voice(state: &Arc<AppState>, channel_id: i32) {
                 );
                 let changed = (mode != info.mode).then_some(mode);
                 info.mode = mode;
-                (list, changed)
+                (list, changed, info.user_limit)
             }
-            None => (Vec::new(), None),
+            None => (Vec::new(), None, 0),
         }
     };
     broadcast(
@@ -120,12 +125,100 @@ pub async fn broadcast_voice(state: &Arc<AppState>, channel_id: i32) {
             "type": "voice-mode",
             "channelId": channel_id,
             "mode": mode,
+            "slots": sfu_slots(user_limit),
         })
         .to_string()
         .into();
         for user in &list {
             send_to_user(state, user, frame.clone()).await;
         }
+    }
+    sync_sfu(state, channel_id).await;
+}
+
+/// How many receive slots a client's SFU offer needs in a channel with this
+/// limit: one per other member the channel could ever hold. The SFU refuses
+/// to start without a finite cap (`config.rs`), so `0` only appears while
+/// it is off.
+pub fn sfu_slots(channel_limit: u32) -> usize {
+    crate::security::voice_channel_cap(channel_limit).map_or(0, |cap| cap.saturating_sub(1))
+}
+
+/// Tell the SFU who is in `channel_id` and what each member may send:
+/// audio with Talk (`SEND_MESSAGES` in the channel) and no server mute,
+/// video while their camera is announced.
+///
+/// Called on every membership change (from [`broadcast_voice`]) and when a
+/// camera or a mute changes. A role or override edit takes effect at the
+/// channel's next such change.
+// ponytail: role edits re-sync lazily; push a sync from the role handlers
+// if a demoted speaker staying audible until the next join matters.
+pub async fn sync_sfu(state: &Arc<AppState>, channel_id: i32) {
+    let Some(sfu) = &state.sfu else {
+        return;
+    };
+    let users: Vec<String> = state
+        .voice_channels
+        .lock()
+        .await
+        .get(&channel_id)
+        .map(|info| info.users.iter().cloned().collect())
+        .unwrap_or_default();
+    let cameras = state
+        .active_webcams
+        .lock()
+        .await
+        .get(&channel_id)
+        .cloned()
+        .unwrap_or_default();
+    let mut members = Vec::with_capacity(users.len());
+    for user in users {
+        let talk = has_channel_permission(
+            state,
+            &user,
+            ChannelKind::Voice,
+            channel_id,
+            permissions::SEND_MESSAGES,
+        )
+        .await
+            && !super::handlers::is_muted(state, &user).await;
+        members.push(crate::sfu::Member {
+            camera: cameras.contains(&user),
+            talk,
+            user,
+        });
+    }
+    sfu.sync(channel_id, members);
+}
+
+/// [`sync_sfu`] for whichever voice channel `user` is in, after a server
+/// mute changed what they may send. A timed mute ends silently, with no
+/// frame to hang a sync on, so `until` schedules one for that moment.
+pub async fn sync_sfu_for_user(state: &Arc<AppState>, user: &str, until: Option<DateTime<Utc>>) {
+    if state.sfu.is_none() {
+        return;
+    }
+    sync_sfu_where(state, user).await;
+    if let Some(until) = until {
+        let state = Arc::clone(state);
+        let user = user.to_string();
+        let wait = (until - Utc::now()).to_std().unwrap_or_default();
+        tokio::spawn(async move {
+            tokio::time::sleep(wait).await;
+            sync_sfu_where(&state, &user).await;
+        });
+    }
+}
+
+async fn sync_sfu_where(state: &Arc<AppState>, user: &str) {
+    let channel = state
+        .voice_channels
+        .lock()
+        .await
+        .iter()
+        .find_map(|(id, info)| info.users.contains(user).then_some(*id));
+    if let Some(channel) = channel {
+        sync_sfu(state, channel).await;
     }
 }
 

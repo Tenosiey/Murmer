@@ -90,11 +90,20 @@ pub fn max_voice_channel_users() -> usize {
 /// it and [`max_voice_channel_users`] wins, so a moderator can narrow the
 /// operator's cap but never widen it.
 pub fn voice_channel_has_room(occupants: &HashSet<String>, user: &str, channel_limit: u32) -> bool {
-    let limit = [max_voice_channel_users(), channel_limit as usize]
+    occupants.contains(user)
+        || voice_channel_cap(channel_limit).is_none_or(|limit| occupants.len() < limit)
+}
+
+/// The most members a voice channel admits: the stricter of its own limit
+/// (`0` for none) and [`max_voice_channel_users`], or `None` without either.
+///
+/// The SFU sizes each client's receive slots from this, one per other
+/// member it could ever have, which is why the SFU needs a finite cap.
+pub fn voice_channel_cap(channel_limit: u32) -> Option<usize> {
+    [max_voice_channel_users(), channel_limit as usize]
         .into_iter()
         .filter(|&n| n > 0)
-        .min();
-    occupants.contains(user) || limit.is_none_or(|limit| occupants.len() < limit)
+        .min()
 }
 
 /// How far below the SFU threshold a channel must shrink before it returns

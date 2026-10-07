@@ -22,8 +22,14 @@ services:
       # Serve the web client at / on this same origin (no CORS needed). Build
       # it first with `bun run build` in murmer_client/ and mount it below.
       # WEB_CLIENT_DIR: /app/web
+      # Carry voice channels of SFU_THRESHOLD (default 7) or more people
+      # through the server instead of peer to peer. Set the address clients
+      # reach this host on, and uncomment the UDP port below with it.
+      # SFU_PUBLIC_IP: 203.0.113.10
+      # SFU_UDP_PORT: 3479
     ports:
       - "3001:3001"
+      # - "3479:3479/udp"
     volumes:
       - db_data:/app/data
       - uploads:/app/uploads

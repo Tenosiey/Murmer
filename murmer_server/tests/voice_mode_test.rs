@@ -4,7 +4,9 @@
 //! that reaches the wrong people or never arrives fails nowhere visible: a
 //! client just keeps the topology it had. These pin who hears about a
 //! switch, that the hysteresis gap holds, and that a joiner learns the mode
-//! from its `voice-permissions`.
+//! from its `voice-permissions`. The SFU itself is the server's bandwidth,
+//! so they also pin that only a member of an SFU-mode channel may offer to
+//! it.
 
 use std::collections::{HashMap, HashSet};
 use std::{net::SocketAddr, sync::Arc, time::Duration};
@@ -13,7 +15,7 @@ use axum::{Router, routing::get};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use ed25519_dalek::{Signer, SigningKey};
 use futures::{SinkExt, StreamExt};
-use murmer_server::{AppState, VoiceChannelState, VoiceMode, db, ws::ws_handler};
+use murmer_server::{AppState, VoiceChannelState, VoiceMode, db, sfu::Sfu, ws::ws_handler};
 use serde_json::{Value, json};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
@@ -31,9 +33,13 @@ fn public_key(name: &str) -> String {
     STANDARD.encode(signing_key(name).verifying_key().to_bytes())
 }
 
-/// Serve `/ws` with one voice channel, Lounge, and the SFU threshold at 4,
-/// so a channel moves to the SFU at four and back to the mesh at one.
+/// Serve `/ws` with one voice channel, Lounge, and a running SFU with its
+/// threshold at 4, so a channel moves to the SFU at four and back to the
+/// mesh at one.
 async fn start_server() -> SocketAddr {
+    let (sfu, outbox) = Sfu::spawn("127.0.0.1".parse().unwrap(), 0)
+        .await
+        .expect("sfu");
     let database = db::init(":memory:").await.expect("in-memory db");
     let role_defs = db::list_role_defs(&database).await.expect("role defs");
     let lounge = VoiceChannelState {
@@ -52,8 +58,10 @@ async fn start_server() -> SocketAddr {
         role_defs: tokio::sync::Mutex::new(role_defs.into_iter().map(|d| (d.id, d)).collect()),
         voice_channels: tokio::sync::Mutex::new(HashMap::from([(LOUNGE, lounge)])),
         sfu_threshold: Some(4),
+        sfu: Some(sfu),
         ..AppState::new(database)
     });
+    murmer_server::sfu::deliver(Arc::clone(&state), outbox);
     let router = Router::new()
         .route("/ws", get(ws_handler))
         .with_state(state);
@@ -176,6 +184,9 @@ async fn members_follow_the_mode_and_outsiders_never_hear_it() {
         assert_eq!(modes.len(), 1, "{} saw {modes:?}", member.name);
         assert_eq!(modes[0]["mode"], "sfu");
         assert_eq!(modes[0]["channelId"], LOUNGE);
+        // One receive slot per other member the channel could hold, under
+        // the default cap of 10.
+        assert_eq!(modes[0]["slots"], 9);
     }
     assert!(modes_seen(&mut outsider).await.is_empty());
 
@@ -197,4 +208,29 @@ async fn members_follow_the_mode_and_outsiders_never_hear_it() {
     assert_eq!(modes[0]["mode"], "mesh");
     // Whoever left is no longer a member, so is not told.
     assert!(modes_seen(&mut members[1]).await.is_empty());
+}
+
+/// An `sfu-offer` is only taken from a member of a channel the server has
+/// put on the SFU; the SFU's bandwidth is the server's to spend.
+#[tokio::test]
+async fn sfu_offers_need_membership_and_sfu_mode() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut outsider = Client::connect(addr, "erin").await;
+    let offer = json!({ "type": "sfu-offer", "channelId": LOUNGE, "sdp": "v=0" });
+
+    // Not in the channel at all.
+    outsider.send(offer.clone()).await;
+    let frames = outsider.until(|f| f["type"] == "error").await;
+    assert_eq!(frames.last().unwrap()["message"], "sfu-offer-rejected");
+
+    // In the channel, but it is still a mesh.
+    alice
+        .send(json!({ "type": "voice-join", "channelId": LOUNGE }))
+        .await;
+    alice.until(|f| f["type"] == "voice-permissions").await;
+    alice.send(offer).await;
+    let frames = alice.until(|f| f["type"] == "error").await;
+    assert_eq!(frames.last().unwrap()["message"], "sfu-offer-rejected");
+    assert!(frames.iter().all(|f| f["type"] != "sfu-answer"));
 }

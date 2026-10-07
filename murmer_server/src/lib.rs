@@ -16,6 +16,7 @@ pub mod permissions;
 pub mod profanity;
 pub mod roles;
 pub mod security;
+pub mod sfu;
 pub mod upload;
 pub mod web_client;
 pub mod ws;
@@ -407,6 +408,8 @@ pub struct AppState {
     /// Headcount at which a voice channel moves to the SFU; `None` while the
     /// SFU is off, which keeps every channel on the mesh.
     pub sfu_threshold: Option<usize>,
+    /// The SFU task, while it runs (`SFU_PUBLIC_IP` set).
+    pub sfu: Option<sfu::Sfu>,
     pub rate_limiter: RateLimiter,
     /// Mirror of the server-wide stat tracking toggle (`server_settings` key
     /// `stats_enabled`), kept in memory so the recording hooks that fire on
@@ -498,6 +501,7 @@ impl AppState {
             admin_token: None,
             stun_servers: Vec::new(),
             sfu_threshold: None,
+            sfu: None,
             rate_limiter: RateLimiter::new(),
             stats_enabled: AtomicBool::new(false),
             chat_settings: Mutex::default(),

@@ -46,7 +46,7 @@ use tower::ServiceBuilder;
 use tower_http::{
     compression::CompressionLayer, set_header::SetResponseHeaderLayer, trace::TraceLayer,
 };
-use tracing::{info, warn};
+use tracing::info;
 
 fn init_tracing() {
     static INIT: OnceLock<()> = OnceLock::new();
@@ -138,12 +138,17 @@ async fn main() -> Result<()> {
             (record.id, info)
         })
         .collect();
-    // The settings are parsed and checked already so a bad value fails now,
-    // but the SFU itself is not built yet: `sfu_threshold` stays `None`, and
-    // with it every channel stays a mesh, until it is.
-    if config.sfu.is_some() {
-        warn!("SFU_PUBLIC_IP is set, but this build has no SFU yet; voice stays peer to peer");
-    }
+    // An operator who set `SFU_PUBLIC_IP` expects large channels to work,
+    // so a port that cannot be bound stops the server rather than quietly
+    // leaving every channel on the mesh.
+    let sfu = match config.sfu {
+        Some(sfu) => Some(
+            murmer_server::sfu::Sfu::spawn(sfu.public_ip, sfu.udp_port)
+                .await
+                .with_context(|| format!("binding the SFU to UDP port {}", sfu.udp_port))?,
+        ),
+        None => None,
+    };
     let state = Arc::new(AppState {
         voice_channels: Mutex::new(voice_channels),
         role_defs: Mutex::new(
@@ -159,6 +164,8 @@ async fn main() -> Result<()> {
         password: config.password.clone(),
         admin_token: config.admin_token.clone(),
         stun_servers: config.stun_servers.clone(),
+        sfu_threshold: config.sfu.map(|sfu| sfu.threshold),
+        sfu: sfu.as_ref().map(|(sfu, _)| sfu.clone()),
         trusted_proxies: config.trusted_proxies.clone(),
         stats_enabled: std::sync::atomic::AtomicBool::new(stats_enabled),
         chat_settings: Mutex::new(chat_settings),
@@ -175,6 +182,9 @@ async fn main() -> Result<()> {
     // failure rather than retried. Must run before the scheduler starts.
     ws::recover_claimed_scheduled_messages(&state).await;
     ws::spawn_scheduler(Arc::clone(&state));
+    if let Some((_, outbox)) = sfu {
+        murmer_server::sfu::deliver(Arc::clone(&state), outbox);
+    }
     upload::spawn_upload_sweep(Arc::clone(&state));
     if let Some(days) = config.message_retention_days {
         info!(
