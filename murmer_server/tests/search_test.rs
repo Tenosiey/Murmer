@@ -22,7 +22,7 @@ async fn finds_messages_by_word_and_prefix() {
     insert_text(&db, channel, "completely unrelated").await;
 
     for query in ["quick", "QUICK", "bro", "quick brown"] {
-        let rows = db::search_messages(&db, channel, query, 50)
+        let rows = db::search_messages(&db, channel, query, &db::SearchFilters::default(), 50)
             .await
             .expect("search");
         assert_eq!(rows.len(), 1, "query {query:?} should match once");
@@ -31,7 +31,7 @@ async fn finds_messages_by_word_and_prefix() {
 
     // Phrase adjacency: the words exist but not next to each other.
     assert!(
-        db::search_messages(&db, channel, "quick fox", 50)
+        db::search_messages(&db, channel, "quick fox", &db::SearchFilters::default(), 50)
             .await
             .expect("search")
             .is_empty()
@@ -49,7 +49,7 @@ async fn respects_channel_boundaries() {
     insert_text(&db, general, "hello world").await;
 
     assert!(
-        db::search_messages(&db, other, "hello", 50)
+        db::search_messages(&db, other, "hello", &db::SearchFilters::default(), 50)
             .await
             .expect("search")
             .is_empty()
@@ -69,13 +69,13 @@ async fn index_follows_edits_and_deletions() {
             .expect("edit")
     );
     assert!(
-        db::search_messages(&db, channel, "original", 50)
+        db::search_messages(&db, channel, "original", &db::SearchFilters::default(), 50)
             .await
             .expect("search")
             .is_empty()
     );
     assert_eq!(
-        db::search_messages(&db, channel, "revised", 50)
+        db::search_messages(&db, channel, "revised", &db::SearchFilters::default(), 50)
             .await
             .expect("search")
             .len(),
@@ -84,7 +84,7 @@ async fn index_follows_edits_and_deletions() {
 
     assert!(db::delete_message(&db, id).await.expect("delete"));
     assert!(
-        db::search_messages(&db, channel, "revised", 50)
+        db::search_messages(&db, channel, "revised", &db::SearchFilters::default(), 50)
             .await
             .expect("search")
             .is_empty()
@@ -116,7 +116,7 @@ async fn backfills_index_for_pre_fts_messages() {
     // backfill the index.
     db::run_schema(&db).await.expect("re-init schema");
 
-    let rows = db::search_messages(&db, channel, "historic", 50)
+    let rows = db::search_messages(&db, channel, "historic", &db::SearchFilters::default(), 50)
         .await
         .expect("search");
     assert_eq!(rows.len(), 1);
@@ -131,11 +131,12 @@ async fn hostile_queries_neither_error_nor_match_everything() {
     // FTS5 operators and punctuation-only input must not reach the MATCH
     // parser: no syntax errors, no accidental wildcard matches.
     for query in ["\"", "*", "AND", "!!!", "( OR )", "text: plain"] {
-        let result = db::search_messages(&db, channel, query, 50).await;
+        let result =
+            db::search_messages(&db, channel, query, &db::SearchFilters::default(), 50).await;
         assert!(result.is_ok(), "query {query:?} must not error");
     }
     assert!(
-        db::search_messages(&db, channel, "!!!", 50)
+        db::search_messages(&db, channel, "!!!", &db::SearchFilters::default(), 50)
             .await
             .expect("search")
             .is_empty()
@@ -143,12 +144,85 @@ async fn hostile_queries_neither_error_nor_match_everything() {
     // Operator words still work as literal search terms.
     insert_text(&db, channel, "mix AND match").await;
     assert_eq!(
-        db::search_messages(&db, channel, "AND", 50)
+        db::search_messages(&db, channel, "AND", &db::SearchFilters::default(), 50)
             .await
             .expect("search")
             .len(),
         1
     );
+}
+
+async fn insert_json(db: &db::Db, channel: i32, content: serde_json::Value) -> i64 {
+    db::insert_message(db, channel, &content.to_string())
+        .await
+        .expect("insert message")
+}
+
+#[tokio::test]
+async fn filters_narrow_by_author_file_and_date() {
+    let (db, channel) = setup().await;
+    let old = insert_json(
+        &db,
+        channel,
+        serde_json::json!({"type": "chat", "user": "alice", "text": "status report",
+            "timestamp": "2026-01-01T10:00:00.5+00:00"}),
+    )
+    .await;
+    let file = insert_json(
+        &db,
+        channel,
+        serde_json::json!({"type": "chat", "user": "bob", "text": "status report",
+            "attachment": {"url": "/files/a", "name": "a.txt", "size": 1},
+            "timestamp": "2026-02-01T10:00:00+00:00"}),
+    )
+    .await;
+    let image = insert_json(
+        &db,
+        channel,
+        serde_json::json!({"type": "chat", "user": "alice", "image": "/files/b",
+            "timestamp": "2026-03-01T10:00:00+00:00"}),
+    )
+    .await;
+    // A malformed row must be skipped, not abort the whole search.
+    db::insert_message(&db, channel, "not json")
+        .await
+        .expect("insert raw");
+
+    let ids = |rows: Vec<(i64, String)>| rows.into_iter().map(|(id, _)| id).collect::<Vec<_>>();
+    let search = |query: &'static str, filters: db::SearchFilters| {
+        let db = db.clone();
+        async move {
+            db::search_messages(&db, channel, query, &filters, 50)
+                .await
+                .expect("search")
+        }
+    };
+
+    let from_alice = db::SearchFilters {
+        from: Some("alice".into()),
+        ..Default::default()
+    };
+    // A filter alone is a search; with words it narrows them.
+    assert_eq!(ids(search("", from_alice.clone()).await), vec![image, old]);
+    assert_eq!(ids(search("status", from_alice).await), vec![old]);
+
+    let has_file = db::SearchFilters {
+        has_file: true,
+        ..Default::default()
+    };
+    assert_eq!(ids(search("", has_file).await), vec![image, file]);
+
+    let window = db::SearchFilters {
+        after: Some("2026-01-01T10:00:00+00:00".into()),
+        before: Some("2026-03-01T10:00:00+00:00".into()),
+        ..Default::default()
+    };
+    // `after` is inclusive and `before` exclusive, and a fractional second
+    // still compares after the whole second it belongs to.
+    assert_eq!(ids(search("", window).await), vec![file, old]);
+
+    // No words and no filters is still no search at all.
+    assert!(search("", db::SearchFilters::default()).await.is_empty());
 }
 
 async fn add_page(db: &db::Db, channel: i32, slug: &str, title: &str, body: &str) {
@@ -274,5 +348,31 @@ async fn hostile_wiki_queries_neither_error_nor_match_everything() {
             .await
             .expect("wiki search")
             .is_empty()
+    );
+}
+
+/// Rows from before the server stamped every message carry the client's
+/// `…Z` form, and plain text comparison put `10:00:00Z` after
+/// `10:00:00.5+00:00` (`Z` sorts above `.`). Dates compare as instants.
+#[tokio::test]
+async fn date_filters_compare_instants_not_text() {
+    let (db, channel) = setup().await;
+    let legacy = insert_json(
+        &db,
+        channel,
+        serde_json::json!({"type": "chat", "user": "alice", "text": "old",
+            "timestamp": "2026-01-01T10:00:00Z"}),
+    )
+    .await;
+    let before = db::SearchFilters {
+        before: Some("2026-01-01T10:00:00.5+00:00".into()),
+        ..Default::default()
+    };
+    let rows = db::search_messages(&db, channel, "", &before, 50)
+        .await
+        .expect("search");
+    assert_eq!(
+        rows.into_iter().map(|(id, _)| id).collect::<Vec<_>>(),
+        vec![legacy]
     );
 }

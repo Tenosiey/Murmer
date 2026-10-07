@@ -5,6 +5,7 @@
   import type { Message } from '$lib/types';
   import { PIN_PREVIEW_LIMIT } from '$lib/chat/constants';
   import { formatLocalDateTime } from '$lib/chat/helpers';
+  import { hideSpoilers } from '$lib/spoilers';
 
   
   interface Props {
@@ -23,7 +24,7 @@
   function formatPinnedPreview(entry: PinnedEntry): string {
     const message = resolvePinnedMessage(entry);
     const base = message?.text ?? entry.text ?? '';
-    const trimmed = base.trim();
+    const trimmed = hideSpoilers(base.trim());
     if (trimmed.length > 0) {
       return trimmed.length > PIN_PREVIEW_LIMIT ? `${trimmed.slice(0, PIN_PREVIEW_LIMIT)}…` : trimmed;
     }

@@ -365,3 +365,13 @@ pttKey.subscribe((value) => {
     localStorage.setItem(PTT_KEY_KEY, value);
   }
 });
+
+// Read `/tts` messages aloud. Off by default and per listener, as Discord
+// has it: a message that starts talking is the sender's choice, hearing it
+// is the listener's.
+const TTS_ENABLED_KEY = 'murmer_tts_enabled';
+export const ttsEnabled = writable<boolean>(loadBool(TTS_ENABLED_KEY, false));
+
+ttsEnabled.subscribe((value) => {
+  if (browser) localStorage.setItem(TTS_ENABLED_KEY, String(value));
+});

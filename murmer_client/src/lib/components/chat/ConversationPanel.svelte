@@ -15,7 +15,7 @@
   import { customEmojis } from '$lib/stores/customEmojis';
   import { displayNames } from '$lib/stores/profiles';
   import { selectedServer } from '$lib/stores/servers';
-  import { httpBaseFromWs } from '$lib/server-url';
+  import { httpBaseFromWs, serverFileUrl } from '$lib/server-url';
   import { formatFullTimestamp, formatShortTime } from '$lib/chat/helpers';
   import { drafts } from '$lib/stores/drafts';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
@@ -149,10 +149,14 @@
             <span class="undecryptable">This message could not be decrypted.</span>
           {:else if msg.text}
             {@html emojifyHtml(renderMarkdown(msg.text), $customEmojis, httpBase)}
-          {:else if msg.image}
-            <img src={msg.image as string} alt="" loading="lazy" />
-          {:else if msg.attachment}
-            <a href={msg.attachment.url} target="_blank" rel="noopener noreferrer">
+          {:else if serverFileUrl(msg.image, httpBase) && msg.spoiler}
+            <span class="spoiler spoiler-media" role="button" tabindex="0" aria-label="Spoiler image, select to reveal">
+              <img src={serverFileUrl(msg.image, httpBase)} alt="" loading="lazy" />
+            </span>
+          {:else if serverFileUrl(msg.image, httpBase)}
+            <img src={serverFileUrl(msg.image, httpBase)} alt="" loading="lazy" />
+          {:else if msg.attachment && serverFileUrl(msg.attachment.url, httpBase)}
+            <a href={serverFileUrl(msg.attachment.url, httpBase)} target="_blank" rel="noopener noreferrer">
               {msg.attachment.name}
             </a>
           {/if}

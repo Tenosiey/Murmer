@@ -18,9 +18,10 @@
 //!   `/upload` -- which is what lets a browser use it with CORS disabled.
 //! - `STUN_SERVERS`: comma separated STUN URLs handed to clients for WebRTC
 //!   (default: Google's public server; empty for none).
+//! - `TRUSTED_PROXIES`: reverse proxies whose `X-Forwarded-For` is believed.
 //! - `MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
-//!   `MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND`, `NONCE_EXPIRY_SECONDS`:
-//!   rate limiting overrides.
+//!   `MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND`: rate limiting
+//!   overrides.
 //!
 //! Run with `cargo run` or via Docker Compose (`docker compose up --build`).
 use anyhow::{Context, Result};
@@ -130,6 +131,7 @@ async fn main() -> Result<()> {
                 category_id: record.category_id,
                 position: record.position,
                 breakout_parent: record.breakout_parent,
+                user_limit: record.user_limit,
             };
             (record.id, info)
         })
@@ -145,9 +147,11 @@ async fn main() -> Result<()> {
         channel_overrides: Mutex::new(existing_overrides),
         mutes: Mutex::new(existing_mutes.into_iter().collect()),
         upload_dir: config.upload_dir.clone(),
+        upload_quota: config.upload_quota,
         password: config.password.clone(),
         admin_token: config.admin_token.clone(),
         stun_servers: config.stun_servers.clone(),
+        trusted_proxies: config.trusted_proxies.clone(),
         stats_enabled: std::sync::atomic::AtomicBool::new(stats_enabled),
         chat_settings: Mutex::new(chat_settings),
         automod: Mutex::new(automod::RuleSet::compile(automod_rules)),
@@ -163,6 +167,7 @@ async fn main() -> Result<()> {
     // failure rather than retried. Must run before the scheduler starts.
     ws::recover_claimed_scheduled_messages(&state).await;
     ws::spawn_scheduler(Arc::clone(&state));
+    upload::spawn_upload_sweep(Arc::clone(&state));
     if let Some(days) = config.message_retention_days {
         info!(
             days,

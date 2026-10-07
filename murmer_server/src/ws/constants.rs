@@ -72,6 +72,19 @@ pub const MAX_NICKNAME_LENGTH: usize = 32;
 /// Maximum length in characters for a user's profile "about" text.
 pub const MAX_ABOUT_LENGTH: usize = 300;
 
+/// Maximum length in characters for a user's custom status line ("back at
+/// 3"). It sits under the name in the member list, so one short line.
+pub const MAX_STATUS_TEXT_LENGTH: usize = 80;
+
+/// The furthest ahead a custom status may be set to expire, in milliseconds
+/// (one week). Past that "expires" means nothing a client would show.
+pub const MAX_STATUS_TEXT_TTL_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+
+/// How long a member must wait between two pokes, in milliseconds. A poke
+/// pops up even in a muted channel, so without a pause it is a harassment
+/// tool rather than a nudge.
+pub const POKE_COOLDOWN_MS: u64 = 10_000;
+
 /// File extensions accepted for image uploads referenced over the WebSocket
 /// (custom emojis, server icon). Subset of the upload endpoint's safe-list.
 pub const UPLOAD_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];
@@ -185,6 +198,14 @@ pub const MAX_HISTORY_LIMIT: i64 = 200;
 /// Maximum number of characters preserved in a reply's quoted snippet.
 pub const MAX_REPLY_PREVIEW_CHARS: usize = 200;
 
+/// Most options one poll may offer (Discord's limit). Every vote re-sends
+/// the whole tally to the channel, so the cap bounds what one click costs.
+pub const MAX_POLL_OPTIONS: usize = 10;
+
+/// Maximum length in characters of one poll option. The question is the
+/// message's text and answers to the message length limit instead.
+pub const MAX_POLL_OPTION_LENGTH: usize = 55;
+
 /// Maximum number of messages returned for a single thread.
 pub const MAX_THREAD_MESSAGES: i64 = 200;
 
@@ -214,6 +235,12 @@ pub const MAX_WIKI_BODY_BYTES: usize = 100_000;
 /// escaping can double. An over-long wiki body below this still arrives and
 /// gets its proper error; anything above closes the connection.
 pub const MAX_WS_MESSAGE_BYTES: usize = 256 * 1024;
+
+/// How long a connection may stay open without a successful `presence` or
+/// `bot-presence`. A real client authenticates as soon as the challenge
+/// arrives; a socket left idle past this only holds a file descriptor, and
+/// there is no per-IP cap on connections to stop someone opening thousands.
+pub const AUTH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// Maximum number of wiki pages per channel.
 pub const MAX_WIKI_PAGES_PER_CHANNEL: i64 = 100;

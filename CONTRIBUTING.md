@@ -8,7 +8,7 @@ one that gets merged.
 
 You need [Rust](https://www.rust-lang.org/tools/install) (the toolchain is
 pinned by `rust-toolchain.toml`, so rustup picks the right one) and
-[Bun](https://bun.sh) 1.x. `README.md` has the full setup, including Docker.
+[Bun](https://bun.sh) 1.x.
 
 ```bash
 cd murmer_server && cargo run
@@ -46,35 +46,8 @@ one set of instructions to keep current.
 
 ## Before you open a pull request
 
-Run the same checks CI runs:
-
-```bash
-cd murmer_server && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
-```
-
-```bash
-cd murmer_client && bun run check && bun run test
-```
-
-```bash
-cd murmer_client/src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings
-```
-
-`bun run check` must report **0 errors and 0 warnings**.
-
-CI sweeps the lockfiles for security advisories once a week
-(`.github/workflows/audit.yml`). The same two checks by hand, worth running
-when you change a dependency rather than waiting for the sweep:
-
-```bash
-cd murmer_server && cargo audit
-```
-
-```bash
-cd murmer_client && bun audit
-```
-
-And two things no command can do for you:
+Run the checks listed under **Quality checks** in [`AGENTS.md`](AGENTS.md) —
+they are the ones CI runs — and two that no command can do for you:
 
 - **Look at the change in the running app** if it has any visible effect.
   There are no component rendering tests here on purpose —
@@ -93,27 +66,11 @@ And two things no command can do for you:
 - **Update the documentation you invalidated.** A change that makes
   `README.md` or a `docs/` page wrong is not finished. Documentation lives
   close to the thing it describes; `AGENTS.md` explains which tree gets what.
-- **Keep it simple.** Prefer the flatter folder, the smaller component, the
-  plain function. A pattern that pays off at ten contributors costs at two.
-- **Don't add compatibility shims.** Only the latest version of everything is
-  supported. The one exception is the identity backup format, which is a
-  promise to anyone holding an old backup — see
-  [`agents/skills/crypto-changes.md`](agents/skills/crypto-changes.md).
 
-## Things that will be sent back
-
-- **A permission check on the client only.** The server is the single
-  enforcement point; client gating is cosmetic.
-- **A plaintext path for encrypted content.** DMs and end-to-end encrypted
-  channels must stay opaque to the server.
-- **A hand-edited version number.** Use `bun run bump` —
-  [`agents/skills/releasing.md`](agents/skills/releasing.md).
-- **A TypeScript 7 upgrade.** `svelte-check` is the blocker; the client
-  stays on major 6, and Dependabot is told not to propose it.
-- **A second copy of a list that already has an authority** — environment
-  variables, permission flags, upload categories. Link to the authority, or
-  add it to the mirror test
-  ([`agents/skills/mirrored-constants.md`](agents/skills/mirrored-constants.md)).
+Pull requests that break a hard constraint or an invariant in
+[`AGENTS.md`](AGENTS.md) — a client-only permission check, a plaintext path
+for encrypted content, a hand-edited version, a second copy of a list that
+already has an authority — are sent back.
 
 ## Branches and releases
 
@@ -131,9 +88,9 @@ version (Settings → About), your OS, and whether you were on the desktop app
 or in a browser.
 
 For anything voice-related, say whether the other peer was on the same
-network — Murmer has no TURN relay yet, so two peers behind symmetric NATs
+network — Murmer has no relay yet, so two peers behind symmetric NATs
 cannot connect at all. That is a known gap, not a bug:
-[`plans/turn-support.md`](plans/turn-support.md).
+[`plans/hybrid-voice-sfu.md`](plans/hybrid-voice-sfu.md).
 
 Please **do not** open a public issue for a security problem. Email the
 maintainer instead.

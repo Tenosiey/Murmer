@@ -23,6 +23,8 @@ bun run check        # TypeScript + Svelte diagnostics — must be 0 errors, 0 w
 bun run test         # Vitest (bun run test:watch while iterating)
 ```
 
+The desktop shell logs to stdout; set `RUST_LOG` to change its verbosity.
+
 ## Code organisation
 
 | Path | Contents |

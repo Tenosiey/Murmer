@@ -5,7 +5,7 @@
   context menu.
 
   Viewing your own profile turns it into an editor for what you own — avatar,
-  display name, nickname and about text. The account name is never editable: it
+  display name, nickname, status line and about text. The account name is never editable: it
   is bound to your key on the server and everything (auth, roles, DMs, message
   authorship) is addressed by it, so it is shown as a read-only handle.
 
@@ -19,17 +19,19 @@
   import { onServerError } from '$lib/stores/chat';
   import { session } from '$lib/stores/session';
   import { avatars } from '$lib/stores/avatars';
-  import { profiles } from '$lib/stores/profiles';
+  import { profiles, statusTexts } from '$lib/stores/profiles';
   import { roleDefinitions } from '$lib/stores/roleDefinitions';
   import { userRoleIds } from '$lib/stores/roles';
   import { selectedServer } from '$lib/stores/servers';
+  import { blockedUsers, confirmBlock } from '$lib/stores/blocks';
   import { httpBaseFromWs } from '$lib/server-url';
   import { uploadImage } from '$lib/upload';
   import {
     MAX_ABOUT_LENGTH,
     MAX_AVATAR_BYTES,
     MAX_DISPLAY_NAME_LENGTH,
-    MAX_NICKNAME_LENGTH
+    MAX_NICKNAME_LENGTH,
+    MAX_STATUS_TEXT_LENGTH
   } from '$lib/chat/constants';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import RoleIcon from '$lib/components/RoleIcon.svelte';
@@ -50,6 +52,7 @@
   const PROFILE_ERROR_CODES = new Set([
     'invalid-display-name',
     'invalid-about',
+    'invalid-status-text',
     'profile-update-failed',
     'invalid-avatar',
     'avatar-update-failed',
@@ -63,6 +66,7 @@
   let profile = $derived(user ? ($profiles[user] ?? null) : null);
   let shownName = $derived(user ? $displayNames(user) : '');
   let avatarUrl = $derived(user ? ($avatars[user] ?? null) : null);
+  let statusText = $derived(user ? $statusTexts(user) : '');
 
   /** The user's roles, highest position first, with `@everyone` left out. */
   let userRoles = $derived.by((): RoleDef[] => {
@@ -85,6 +89,18 @@
   let draftName = $state('');
   let draftNickname = $state('');
   let draftAbout = $state('');
+  let draftStatus = $state('');
+  /** 'keep', 'never', or how many minutes from now the status lapses. */
+  let draftStatusExpiry = $state('never');
+  let canKeepExpiry = $state(false);
+
+  const STATUS_EXPIRY_CHOICES = [
+    { value: '30', label: '30 minutes' },
+    { value: '60', label: '1 hour' },
+    { value: '240', label: '4 hours' },
+    { value: '1440', label: '1 day' },
+    { value: '10080', label: '1 week' }
+  ];
   let feedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
   let avatarInput: HTMLInputElement | null = $state(null);
   let avatarUploading = $state(false);
@@ -101,6 +117,9 @@
     draftName = profile?.displayName ?? '';
     draftNickname = profile?.nickname ?? '';
     draftAbout = profile?.about ?? '';
+    draftStatus = statusText;
+    canKeepExpiry = !!statusText && !!profile?.statusExpiresAt;
+    draftStatusExpiry = canKeepExpiry ? 'keep' : 'never';
     feedback = null;
     editing = true;
   }
@@ -114,7 +133,9 @@
     const name = draftName.trim();
     const nickname = draftNickname.trim();
     const about = draftAbout.trim();
+    const status = draftStatus.trim();
     if (
+      status.length > MAX_STATUS_TEXT_LENGTH ||
       name.length > MAX_DISPLAY_NAME_LENGTH ||
       nickname.length > MAX_NICKNAME_LENGTH ||
       about.length > MAX_ABOUT_LENGTH
@@ -127,6 +148,15 @@
     // The nickname is a separate frame because it is separately authorized —
     // only here it is our own, which never needs a permission.
     if (user && nickname !== (profile?.nickname ?? '')) profiles.setNickname(user, nickname);
+    if (status !== statusText || draftStatusExpiry !== 'keep') {
+      const expiresAt =
+        draftStatusExpiry === 'keep'
+          ? (profile?.statusExpiresAt ?? null)
+          : draftStatusExpiry === 'never'
+            ? null
+            : Date.now() + Number(draftStatusExpiry) * 60_000;
+      profiles.setStatusText(status, expiresAt);
+    }
     feedback = { text: 'Changes sent.', kind: 'info' };
     editing = false;
   }
@@ -221,6 +251,9 @@
               {/if}
             </div>
             <span class="handle">{user}</span>
+            {#if statusText && !(isSelf && editing)}
+              <span class="status-line">{statusText}</span>
+            {/if}
           </div>
         </div>
 
@@ -251,6 +284,27 @@
             <span class="hint">
               Overrides your display name here. Moderators may change it too.
             </span>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label" for="profile-status">Status</label>
+            <input
+              id="profile-status"
+              class="field"
+              bind:value={draftStatus}
+              maxlength={MAX_STATUS_TEXT_LENGTH}
+              placeholder="What are you up to?"
+            />
+            <label class="hint" for="profile-status-expiry">Clear after</label>
+            <select id="profile-status-expiry" class="field" bind:value={draftStatusExpiry}>
+              {#if canKeepExpiry}
+                <option value="keep">Keep the current expiry</option>
+              {/if}
+              <option value="never">Don’t clear</option>
+              {#each STATUS_EXPIRY_CHOICES as choice (choice.value)}
+                <option value={choice.value}>{choice.label}</option>
+              {/each}
+            </select>
           </div>
 
           <div class="field-group">
@@ -355,6 +409,11 @@
             <button class="btn btn-primary" onclick={startEditing}>Edit profile</button>
           {/if}
         {:else}
+          {#if user && $blockedUsers.includes(user)}
+            <button class="btn" onclick={() => user && blockedUsers.setBlocked(user, false)}>Unblock</button>
+          {:else}
+            <button class="btn btn-danger" onclick={() => user && confirmBlock(user, $displayNames(user))}>Block</button>
+          {/if}
           <button class="btn btn-primary" onclick={messageUser}>Send message</button>
         {/if}
       </div>
@@ -450,6 +509,12 @@
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     color: var(--color-muted);
+  }
+
+  .status-line {
+    font-size: var(--text-sm);
+    color: var(--color-on-surface-variant);
+    overflow-wrap: anywhere;
   }
 
   .field-group {

@@ -13,6 +13,32 @@
   let updateMessage = $state('');
   let updating = $state(false);
 
+  // Launch on login. Read back from the OS each time the tab opens rather
+  // than cached: the user can switch it off in their system settings too.
+  // `null` until the answer arrives, which keeps the toggle disabled.
+  let autostart: boolean | null = $state(null);
+
+  $effect(() => {
+    if (!active || !isTauri) return;
+    import('@tauri-apps/plugin-autostart')
+      .then(({ isEnabled }) => isEnabled())
+      .then((enabled) => (autostart = enabled))
+      .catch((e) => console.error('Could not read launch on login', e));
+  });
+
+  async function toggleAutostart(event: Event) {
+    const wanted = (event.currentTarget as HTMLInputElement).checked;
+    autostart = null;
+    try {
+      const { enable, disable, isEnabled } = await import('@tauri-apps/plugin-autostart');
+      await (wanted ? enable() : disable());
+      autostart = await isEnabled();
+    } catch (e) {
+      console.error('Could not change launch on login', e);
+      autostart = !wanted;
+    }
+  }
+
   const REPO_URL = 'https://github.com/Tenosiey/Murmer';
   const ABOUT_LINKS = [
     { label: 'GitHub repository', url: REPO_URL },
@@ -87,6 +113,23 @@
     </div>
 
     {#if isTauri}
+    <div class="setting-group">
+      <label class="toggle-row">
+        <input
+          type="checkbox"
+          checked={autostart ?? false}
+          disabled={autostart === null}
+          onchange={toggleAutostart}
+        />
+        <span class="toggle-text">
+          <span class="toggle-label">Launch on login</span>
+          <span class="toggle-description">
+            Start Murmer when you sign in to your computer.
+          </span>
+        </span>
+      </label>
+    </div>
+
     <div class="setting-group">
       <span class="setting-label">Updates</span>
       <button class="btn update-btn" onclick={checkUpdates} disabled={updating}>Check for Updates</button>

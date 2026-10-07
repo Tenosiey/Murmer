@@ -65,6 +65,10 @@ pub const CREATE_INVITES: Permissions = 1 << 18;
 /// Checked on the frame's `mentions` field rather than the text, which is
 /// what lets it work in an encrypted channel, where the server reads none.
 pub const MENTION_GROUPS: Permissions = 1 << 19;
+/// Move another member from their voice channel into a different one. It is
+/// a request the target's client carries out, like a breakout room move —
+/// audio is peer-to-peer, so the server cannot relocate a call itself.
+pub const MOVE_MEMBERS: Permissions = 1 << 20;
 
 /// Union of every defined permission flag. Used to reject unknown bits from
 /// clients and to expand [`ADMINISTRATOR`] into a concrete mask.
@@ -87,7 +91,8 @@ pub const ALL: Permissions = VIEW_CHANNELS
     | MANAGE_NICKNAMES
     | VIEW_AUDIT_LOG
     | CREATE_INVITES
-    | MENTION_GROUPS;
+    | MENTION_GROUPS
+    | MOVE_MEMBERS;
 
 /// Baseline permissions granted to every user through the `@everyone` role.
 /// Keeps a fresh or unadministered server usable: everyone can read, chat and
@@ -108,7 +113,8 @@ pub const DEFAULT_MOD: Permissions = DEFAULT_EVERYONE
     | MUTE_MEMBERS
     | MANAGE_NICKNAMES
     | CREATE_INVITES
-    | MENTION_GROUPS;
+    | MENTION_GROUPS
+    | MOVE_MEMBERS;
 
 /// Default permissions seeded for the built-in `Admin` role: everything a Mod
 /// can do plus server settings and read-only server/connection insight.

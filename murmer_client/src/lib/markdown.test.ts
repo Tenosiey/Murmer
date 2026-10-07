@@ -55,6 +55,15 @@ describe('renderMarkdown / rendering', () => {
     expect(host.querySelector('a')?.getAttribute('href')).toBe('https://example.com');
   });
 
+  it('opens external links outside the app, without an opener', () => {
+    // Followed in place, a link would replace the app with somebody else's page.
+    for (const text of ['[link](https://example.com)', '<a href="http://example.com" target="_self">x</a>']) {
+      const anchor = render(text).querySelector('a');
+      expect(anchor?.getAttribute('target'), text).toBe('_blank');
+      expect(anchor?.getAttribute('rel'), text).toBe('noopener noreferrer');
+    }
+  });
+
   it('renders lists, whose markers the inline heuristic does not carry', () => {
     for (const [text, expected] of [
       ['- a\n- b', '<ul>\n<li>a</li>\n<li>b</li>\n</ul>\n'],
@@ -100,9 +109,39 @@ describe('renderMarkdown / sanitisation', () => {
   });
 
   it('strips event-handler attributes while keeping the element', () => {
-    const host = render('<img src=x onerror="alert(1)">');
-    expect(host.querySelector('img')?.getAttribute('src')).toBe('x');
-    expect(attributeNames(host)).toEqual(['src']);
+    const host = render('<div title="x" onclick="alert(1)">x</div>');
+    expect(host.querySelector('div')?.getAttribute('title')).toBe('x');
+    expect(attributeNames(host)).toEqual(['title']);
+  });
+
+  // Every reader's client fetches what a message embeds, so an embed is a
+  // tracking pixel: its author learns each reader's IP address.
+  it('never makes the reader fetch a URL on their own', () => {
+    for (const text of [
+      '![cat](https://evil.test/pixel.png)',
+      '<img src="https://evil.test/pixel.png">',
+      '<img srcset="https://evil.test/pixel.png 1x">',
+      '<video poster="https://evil.test/p.png"></video>',
+      '<audio src="https://evil.test/a.mp3"></audio>',
+      '<picture><source srcset="https://evil.test/p.png"></picture>',
+      '<input type="image" src="https://evil.test/p.png">',
+      '<div style="background:url(https://evil.test/p.png)">x</div>',
+      '<table background="https://evil.test/p.png"><tr><td>x</td></tr></table>',
+      '<svg><image href="https://evil.test/p.png"></image></svg>'
+    ]) {
+      const host = render(text);
+      const names = attributeNames(host);
+      expect(host.querySelector('img, audio, video, source, input, svg'), text).toBeNull();
+      for (const name of ['src', 'srcset', 'poster', 'style', 'background']) {
+        expect(names, text).not.toContain(name);
+      }
+    }
+  });
+
+  it('renders a markdown image as a link to it', () => {
+    const link = render('![cat](https://example.test/cat.png)').querySelector('a');
+    expect(link?.getAttribute('href')).toBe('https://example.test/cat.png');
+    expect(link?.textContent).toBe('cat');
   });
 
   it('strips event handlers from every element it keeps', () => {
@@ -166,7 +205,7 @@ describe('renderMarkdown / sanitisation', () => {
 
   it('cannot be escaped through a markdown link title', () => {
     const host = render('[x](https://example.com "title\\" onmouseover=\\"alert(1)")');
-    expect(attributeNames(host).sort()).toEqual(['href', 'title']);
+    expect(attributeNames(host).sort()).toEqual(['href', 'rel', 'target', 'title']);
   });
 });
 
@@ -234,6 +273,29 @@ describe('renderMarkdown / wiki links', () => {
       expect(host.querySelector('a'), text).toBeNull();
       expect(host.textContent?.trim(), text).toBe(text);
     }
+  });
+});
+
+describe('renderMarkdown / spoilers', () => {
+  it('wraps the content in a focusable spoiler that survives sanitisation', () => {
+    // `spoilers.ts` finds these by class and reveals them; a sanitiser that
+    // dropped the class or tabindex would leave the text either always
+    // visible or unreachable from the keyboard.
+    const spoiler = render('the butler did it: ||**he** was the cook||').querySelector('.spoiler');
+    expect(spoiler?.getAttribute('role')).toBe('button');
+    expect(spoiler?.getAttribute('tabindex')).toBe('0');
+    expect(spoiler?.querySelector('strong')?.textContent).toBe('he');
+    expect(spoiler?.textContent).toBe('he was the cook');
+  });
+
+  it('leaves bars that are not a spoiler as text', () => {
+    for (const text of ['a || b', 'a ||| b', '|| padded ||', '||||']) {
+      expect(render(text).querySelector('.spoiler'), text).toBeNull();
+    }
+  });
+
+  it('does not reach into code', () => {
+    expect(render('`||not hidden||`').querySelector('.spoiler')).toBeNull();
   });
 });
 

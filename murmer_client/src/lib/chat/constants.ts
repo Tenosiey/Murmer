@@ -34,6 +34,7 @@ export const MAX_ROLE_ICON_BYTES = 512 * 1024;
 export const MAX_DISPLAY_NAME_LENGTH = 32;
 export const MAX_NICKNAME_LENGTH = 32;
 export const MAX_ABOUT_LENGTH = 300;
+export const MAX_STATUS_TEXT_LENGTH = 80;
 
 /* Upload policy mirror of `murmer_server/src/upload.rs` — the server enforces
    all of this on `/upload`; the client copy only exists to reject a file
@@ -128,6 +129,9 @@ export const STATUS_LABELS: Record<UserStatus, string> = {
 export const MESSAGE_INPUT_MAX_HEIGHT = 360;
 export const MAX_TOPIC_LENGTH = 256;
 export const PIN_PREVIEW_LIMIT = 120;
+/** Poll bounds; mirror `MAX_POLL_OPTIONS` / `MAX_POLL_OPTION_LENGTH` in ws/constants.rs. */
+export const MAX_POLL_OPTIONS = 10;
+export const MAX_POLL_OPTION_LENGTH = 55;
 export const MIN_EPHEMERAL_SECONDS = 5;
 export const MAX_EPHEMERAL_SECONDS = 86_400;
 
@@ -158,6 +162,9 @@ export const DEFAULT_VOICE_PRESET = VOICE_QUALITY_PRESETS[1];
 /** Upper bound the server accepts for a voice bitrate (`MAX_ALLOWED_VOICE_BITRATE`). */
 export const MAX_VOICE_BITRATE = 320_000;
 
+/** Largest per-channel user limit the server accepts (`MAX_VOICE_USER_LIMIT`). */
+export const MAX_VOICE_USER_LIMIT = 99;
+
 export const NOTIFICATION_OPTIONS: Array<{
   value: ChannelNotificationPreference;
   label: string;
@@ -187,6 +194,10 @@ export const HELP_COMMANDS: Array<{
   { usage: '/help', description: 'Show this list of available slash commands.' },
   { usage: '/me <action>', description: 'Send an italicised third-person emote.' },
   {
+    usage: '/tts <message>',
+    description: 'Send a message that listeners who enabled it in Settings → Audio hear read aloud.'
+  },
+  {
     usage: '/shrug [message]',
     description: 'Append the classic shrug emoticon to your message.'
   },
@@ -204,6 +215,12 @@ export const HELP_COMMANDS: Array<{
     description:
       'Send a message that automatically deletes itself after the requested duration.',
     aliases: ['/temp <seconds> <message>']
+  },
+  {
+    usage: '/poll <question> | <option> | <option> …',
+    description:
+      `Post a poll with up to ${MAX_POLL_OPTIONS} options; everyone gets one vote and can ` +
+      'change it. Not available in encrypted channels.'
   },
   {
     usage: '/search [query]',

@@ -74,8 +74,11 @@ pub async fn get_role_def_by_name(db: &Db, name: &str) -> Result<Option<RoleDef>
     .await
 }
 
-/// Insert a new role definition and return its id. Custom roles are never
-/// default or owner roles.
+/// Insert a new role definition at `position` and return its id. Custom roles
+/// are never default or owner roles. Every role at or above `position` moves
+/// up one, so the new role never ties an existing one: `reorder-roles` only
+/// permutes the slots roles already hold, and tied roles could never be
+/// ordered against each other.
 pub async fn create_role_def(
     db: &Db,
     name: &str,
@@ -86,12 +89,20 @@ pub async fn create_role_def(
     let name = name.to_owned();
     let color = color.map(str::to_owned);
     db.call_db(move |conn| {
-        conn.execute(
+        let tx = conn.transaction()?;
+        tx.execute(
+            "UPDATE role_definitions SET position = position + 1 \
+             WHERE position >= ?1 AND is_default = 0",
+            params![position],
+        )?;
+        tx.execute(
             "INSERT INTO role_definitions (name, color, permissions, position, is_default, is_owner) \
              VALUES (?1, ?2, ?3, ?4, 0, 0)",
             params![name, color, permissions as i64, position],
         )?;
-        Ok(conn.last_insert_rowid())
+        let id = tx.last_insert_rowid();
+        tx.commit()?;
+        Ok(id)
     })
     .await
 }
@@ -119,14 +130,18 @@ pub async fn update_role_def(
     .await
 }
 
-/// Set a role's hierarchy position.
-pub async fn set_role_position(db: &Db, id: i64, position: i64) -> Result<(), DbError> {
+/// Set several roles' hierarchy positions at once, all or none.
+pub async fn set_role_positions(db: &Db, positions: Vec<(i64, i64)>) -> Result<(), DbError> {
     db.call_db(move |conn| {
-        conn.execute(
-            "UPDATE role_definitions SET position = ?2 WHERE id = ?1",
-            params![id, position],
-        )?;
-        Ok(())
+        let tx = conn.transaction()?;
+        {
+            let mut stmt =
+                tx.prepare_cached("UPDATE role_definitions SET position = ?2 WHERE id = ?1")?;
+            for (id, position) in positions {
+                stmt.execute(params![id, position])?;
+            }
+        }
+        tx.commit()
     })
     .await
 }
@@ -455,6 +470,22 @@ pub fn migrate_group_mention_permissions(conn: &rusqlite::Connection) -> rusqlit
         grant_to_holders(
             conn,
             crate::permissions::MENTION_GROUPS,
+            crate::permissions::KICK_MEMBERS,
+        )
+    })
+}
+
+/// Grant [`MOVE_MEMBERS`](crate::permissions::MOVE_MEMBERS) to every role
+/// that already moderates members, matching `DEFAULT_MOD` on a freshly seeded
+/// server. `KICK_MEMBERS` marks a moderating role, and a member who may kick
+/// someone out of the server can already do more than move them.
+///
+/// Marker-guarded, so an owner who takes the flag away again keeps it away.
+pub fn migrate_move_members_permissions(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
+    once(conn, "move_members_perms", || {
+        grant_to_holders(
+            conn,
+            crate::permissions::MOVE_MEMBERS,
             crate::permissions::KICK_MEMBERS,
         )
     })

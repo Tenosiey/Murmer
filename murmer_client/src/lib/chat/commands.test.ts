@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { parseSlashCommand } from './commands';
-import { MAX_EPHEMERAL_SECONDS, MAX_TOPIC_LENGTH, MIN_EPHEMERAL_SECONDS } from './constants';
+import {
+  MAX_EPHEMERAL_SECONDS,
+  MAX_POLL_OPTION_LENGTH,
+  MAX_POLL_OPTIONS,
+  MAX_TOPIC_LENGTH,
+  MIN_EPHEMERAL_SECONDS
+} from './constants';
 
 /**
  * Every branch here ends in either a frame to the server or a line of
@@ -20,6 +26,11 @@ describe('parseSlashCommand', () => {
     expect(parse('/frobnicate now')).toEqual({ kind: 'error', message: 'Unknown command: /frobnicate' });
   });
 
+  it('flags /tts messages to be read aloud', () => {
+    expect(parse('/tts hello all')).toEqual({ kind: 'tts', text: 'hello all' });
+    expect(parse('/tts')).toMatchObject({ kind: 'error' });
+  });
+
   it('turns /me and /shrug into plain messages', () => {
     expect(parse('/me waves')).toEqual({ kind: 'send', text: '_waves_' });
     expect(parse('/me')).toMatchObject({ kind: 'error' });
@@ -34,6 +45,30 @@ describe('parseSlashCommand', () => {
   it('accepts only the known statuses', () => {
     expect(parse('/status Away')).toEqual({ kind: 'status', status: 'away' });
     expect(parse('/status asleep')).toMatchObject({ kind: 'error' });
+  });
+
+  describe('/poll', () => {
+    it('splits the question from the options on pipes', () => {
+      expect(parse('/poll Lunch? | Pizza |  Sushi ')).toEqual({
+        kind: 'poll',
+        question: 'Lunch?',
+        options: ['Pizza', 'Sushi']
+      });
+    });
+
+    it('refuses what the server would refuse', () => {
+      const tooMany = Array.from({ length: MAX_POLL_OPTIONS + 1 }, (_, i) => `${i}`).join(' | ');
+      for (const line of [
+        '/poll',
+        '/poll Lunch? | Pizza',
+        '/poll | Pizza | Sushi',
+        '/poll Lunch? | Pizza | ',
+        `/poll Lunch? | Pizza | ${'x'.repeat(MAX_POLL_OPTION_LENGTH + 1)}`,
+        `/poll Lunch? | ${tooMany}`
+      ]) {
+        expect(parse(line), line).toMatchObject({ kind: 'error' });
+      }
+    });
   });
 
   describe('/ephemeral', () => {

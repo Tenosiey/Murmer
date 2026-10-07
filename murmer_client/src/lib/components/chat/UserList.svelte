@@ -1,11 +1,12 @@
-<!-- Right-hand sidebar listing online/offline users with status and roles.
+<!-- Right-hand sidebar listing online/offline users with status, status line
+     and roles.
      Clicking a user opens their profile (which offers "Send message");
      right-clicking opens the user menu (profile, DM, roles, moderation). -->
 <script lang="ts">
   import { onlineUsers } from '$lib/stores/online';
   import { offlineUsers } from '$lib/stores/users';
   import { roles } from '$lib/stores/roles';
-  import { displayNames } from '$lib/stores/profiles';
+  import { displayNames, statusTexts } from '$lib/stores/profiles';
   import { dm } from '$lib/stores/dm';
   import { rightSidebarWidth } from '$lib/stores/layout';
   import { STATUS_LABELS } from '$lib/chat/constants';
@@ -41,11 +42,16 @@
           <UserAvatar name={user} size="sm" />
           <span class={`status ${ensureStatus(statusMap, user, 'online')}`}></span>
         </span>
-        <span
-          class="username"
-          style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
-          >{$displayNames(user)}</span
-        >
+        <span class="name-block">
+          <span
+            class="username"
+            style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
+            >{$displayNames(user)}</span
+          >
+          {#if $statusTexts(user)}
+            <span class="status-text" title={$statusTexts(user)}>{$statusTexts(user)}</span>
+          {/if}
+        </span>
         {#if $roles[user]?.icon}
           <RoleIcon icon={$roles[user].icon} role={$roles[user].iconRole} />
         {/if}
@@ -77,11 +83,16 @@
           <UserAvatar name={user} size="sm" />
           <span class={`status ${ensureStatus(statusMap, user)}`}></span>
         </span>
-        <span
-          class="username"
-          style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
-          >{$displayNames(user)}</span
-        >
+        <span class="name-block">
+          <span
+            class="username"
+            style={$roles[user]?.color ? `color: ${$roles[user].color}` : ''}
+            >{$displayNames(user)}</span
+          >
+          {#if $statusTexts(user)}
+            <span class="status-text" title={$statusTexts(user)}>{$statusTexts(user)}</span>
+          {/if}
+        </span>
         {#if $roles[user]?.icon}
           <RoleIcon icon={$roles[user].icon} role={$roles[user].iconRole} />
         {/if}
@@ -192,8 +203,22 @@
     background: var(--color-outline-strong);
   }
 
-  .username {
+  .name-block {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .status-text {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .username {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;

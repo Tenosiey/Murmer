@@ -85,7 +85,56 @@ const wikilinkExtension = {
   }
 };
 
-marked.use({ renderer, extensions: [wikilinkExtension as any] });
+/**
+ * Inline extension for `||spoiler||`. The content is ordinary inline
+ * markdown; `spoilers.ts` reveals it on click or Enter. Needs a non-space
+ * right inside both bars, so a `||` used as "or" in prose stays text.
+ */
+const spoilerExtension = {
+  name: 'spoiler',
+  level: 'inline' as const,
+  start(src: string) {
+    const index = src.indexOf('||');
+    return index === -1 ? undefined : index;
+  },
+  tokenizer(this: { lexer: { inlineTokens(src: string): Tokens.Generic[] } }, src: string) {
+    const match = /^\|\|(?=\S)([\s\S]*?\S)\|\|/.exec(src);
+    if (!match) return undefined;
+    return {
+      type: 'spoiler',
+      raw: match[0],
+      tokens: this.lexer.inlineTokens(match[1])
+    };
+  },
+  renderer(
+    this: { parser: { parseInline(tokens: Tokens.Generic[]): string } },
+    token: { tokens: Tokens.Generic[] }
+  ) {
+    return `<span class="spoiler" role="button" tabindex="0" aria-label="Spoiler, select to reveal">${this.parser.parseInline(token.tokens)}</span>`;
+  }
+};
+
+/* An image in a message is fetched by every reader's client the moment it
+   renders, so its author learns each reader's IP address, and when they read
+   it. Markdown images therefore render as a plain link to the image; pictures
+   meant for the chat go through `/upload`, whose files live on the server. */
+renderer.image = ({ href, text }: Tokens.Image) =>
+  `<a href="${escapeHtml(href)}">${escapeHtml(text || href)}</a>`;
+
+marked.use({ renderer, extensions: [wikilinkExtension as any, spoilerExtension as any] });
+
+/* A link in a message is somebody else's URL. Followed in place it replaces
+   the app itself — in the desktop shell the page then sits inside the Murmer
+   window, where a copy of the login or backup screen is a convincing way to
+   ask for a recovery phrase. So every external link opens outside the app
+   (the opener plugin hands `_blank` to the system browser), and without an
+   opener or referrer. Wikilinks (`href="#"`) are left to their click handler. */
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  if (node.tagName === 'A' && /^(https?|mailto):/i.test(node.getAttribute('href') ?? '')) {
+    node.setAttribute('target', '_blank');
+    node.setAttribute('rel', 'noopener noreferrer');
+  }
+});
 
 /** Characters that can only appear as markdown syntax often enough to be worth
  *  a full parse: emphasis, code, strikethrough, links, headings, quotes,
@@ -135,7 +184,15 @@ export function renderMarkdown(text: string): string {
      rendered content. */
   const sanitized = DOMPurify.sanitize(html, {
     ALLOW_DATA_ATTR: false,
-    ADD_ATTR: ['data-wiki-channel', 'data-wiki-slug']
+    ADD_ATTR: ['data-wiki-channel', 'data-wiki-slug'],
+    /* Nothing in a message may make the reader's client fetch a URL on its
+       own: that turns any member into a tracker of who read what, from where
+       (see `renderer.image`). Raw HTML is the other way in, so the elements
+       and attributes that load a resource are dropped — SVG and MathML with
+       them, which markdown never emits. */
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ['img', 'audio', 'video', 'source', 'track', 'picture', 'input'],
+    FORBID_ATTR: ['style', 'src', 'srcset', 'poster', 'background']
   });
 
   if (renderCache.size >= MAX_RENDER_CACHE_ENTRIES) {

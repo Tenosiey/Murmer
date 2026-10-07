@@ -16,10 +16,14 @@ use tower::ServiceExt;
 
 const ADMIN_TOKEN: &str = "test-admin-token";
 
+/// The role definitions are loaded the way `main` loads them: a bot sees the
+/// channels `@everyone` may view, so without them it would see none.
 async fn make_app() -> (Router, Arc<AppState>) {
     let database = db::init(":memory:").await.expect("in-memory db");
+    let role_defs = db::list_role_defs(&database).await.expect("role defs");
     let state = Arc::new(AppState {
         admin_token: Some(ADMIN_TOKEN.to_string()),
+        role_defs: tokio::sync::Mutex::new(role_defs.into_iter().map(|d| (d.id, d)).collect()),
         ..AppState::new(database)
     });
     (bot::routes::router().with_state(Arc::clone(&state)), state)
@@ -490,4 +494,83 @@ async fn search_and_emojis() {
     let emojis = body["data"]["emojis"].as_array().expect("emojis");
     assert_eq!(emojis.len(), 1);
     assert_eq!(emojis[0]["name"], "blob_wave");
+}
+
+/// Bots hold no roles, so a private channel is out of their reach: it is not
+/// listed, and its id answers exactly like a missing channel's.
+#[tokio::test]
+async fn a_bot_never_reaches_a_private_channel() {
+    use murmer_server::channel_overrides::{ChannelKind, OverridePair, OverrideSet};
+    let (app, state) = make_app().await;
+    let token = create_bot(&app, "SpyBot", ALL_PERMS).await;
+    let private = db::add_channel(&state.db, "secret", None)
+        .await
+        .expect("add channel")
+        .expect("new channel")
+        .id;
+    state.channel_overrides.lock().await.insert(
+        (ChannelKind::Text, private),
+        OverrideSet {
+            everyone: OverridePair {
+                allow: 0,
+                deny: murmer_server::permissions::VIEW_CHANNELS,
+            },
+            ..OverrideSet::default()
+        },
+    );
+
+    let (status, body) = request(&app, "GET", "/api/v1/channels", &token, None).await;
+    assert_eq!(status, StatusCode::OK);
+    let names: Vec<&str> = body["data"]["channels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["general"]);
+    let (_, info) = request(&app, "GET", "/api/v1/server/info", &token, None).await;
+    assert_eq!(info["data"]["channels"].as_array().unwrap().len(), 1);
+
+    for (method, path, body) in [
+        ("GET", format!("/api/v1/channels/{private}/messages"), None),
+        (
+            "POST",
+            format!("/api/v1/channels/{private}/messages"),
+            Some(json!({"text": "hi"})),
+        ),
+        ("GET", format!("/api/v1/channels/{private}/pins"), None),
+        (
+            "GET",
+            format!("/api/v1/channels/{private}/messages/search?q=x"),
+            None,
+        ),
+    ] {
+        let (status, answer) = request(&app, method, &path, &token, body).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {path}");
+        assert_eq!(answer["error"], "channel-not-found", "{method} {path}");
+    }
+}
+
+/// Roles and presence are keyed by name in memory, so a bot named like a
+/// member would act as that member.
+#[tokio::test]
+async fn a_bot_cannot_take_a_members_or_another_bots_name() {
+    let (app, state) = make_app().await;
+    db::bind_user_key(&state.db, "alice", "alice-key")
+        .await
+        .expect("bind");
+    create_bot(&app, "Helper", ALL_PERMS).await;
+
+    for name in ["alice", "Helper"] {
+        let (status, body) = request(
+            &app,
+            "POST",
+            "/api/v1/bots",
+            ADMIN_TOKEN,
+            Some(json!({"name": name})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT, "{name}: {body}");
+        assert_eq!(body["error"], "name-taken");
+    }
 }

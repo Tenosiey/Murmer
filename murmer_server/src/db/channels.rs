@@ -368,11 +368,13 @@ pub struct VoiceChannelRecord {
     /// The channel this room was split off from, for a breakout room; `None`
     /// for an ordinary voice channel.
     pub breakout_parent: Option<i32>,
+    /// Most members the channel admits; `0` for no limit of its own.
+    pub user_limit: u32,
 }
 
 /// Columns of `voice_channels` in the order [`row_to_voice_channel`] expects.
 const VOICE_CHANNEL_COLUMNS: &str =
-    "id, name, quality, bitrate, category_id, position, breakout_parent";
+    "id, name, quality, bitrate, category_id, position, breakout_parent, user_limit";
 
 fn row_to_voice_channel(row: &rusqlite::Row) -> rusqlite::Result<VoiceChannelRecord> {
     Ok(VoiceChannelRecord {
@@ -383,6 +385,7 @@ fn row_to_voice_channel(row: &rusqlite::Row) -> rusqlite::Result<VoiceChannelRec
         category_id: row.get(4)?,
         position: row.get(5)?,
         breakout_parent: row.get(6)?,
+        user_limit: row.get(7)?,
     })
 }
 
@@ -502,18 +505,19 @@ pub async fn rename_voice_channel(
     .await
 }
 
-/// Update an existing voice channel's audio configuration.
+/// Update an existing voice channel's audio configuration and user limit.
 pub async fn update_voice_channel(
     db: &Db,
     id: i32,
     quality: &str,
     bitrate: Option<i32>,
+    user_limit: u32,
 ) -> Result<bool, DbError> {
     let quality = quality.to_owned();
     db.call_db(move |conn| {
         let count = conn.execute(
-            "UPDATE voice_channels SET quality = ?2, bitrate = ?3 WHERE id = ?1",
-            params![id, quality, bitrate],
+            "UPDATE voice_channels SET quality = ?2, bitrate = ?3, user_limit = ?4 WHERE id = ?1",
+            params![id, quality, bitrate, user_limit],
         )?;
         Ok(count > 0)
     })

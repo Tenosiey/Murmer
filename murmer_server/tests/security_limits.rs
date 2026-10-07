@@ -1,9 +1,9 @@
 use murmer_server::{
     Clock, RateLimiter,
     security::{
-        FRAME_BURST_SECONDS, FrameBudget, RATE_WINDOW, SWEEP_INTERVAL, check_and_store_nonce,
-        check_auth_rate_limit, check_message_rate_limit, validate_channel_name, validate_timestamp,
-        validate_user_name, voice_channel_has_room,
+        FRAME_BURST_SECONDS, FrameBudget, MAX_ADMIN_FAILURES_PER_MINUTE, RATE_WINDOW,
+        SWEEP_INTERVAL, admin_token_matches, check_auth_rate_limit, check_message_rate_limit,
+        validate_channel_name, validate_user_name, voice_channel_has_room,
     },
 };
 use serial_test::serial;
@@ -49,27 +49,6 @@ fn rejects_auth_when_limit_reached() {
     });
 }
 
-#[test]
-#[serial]
-fn allows_nonce_reuse_after_expiry() {
-    with_var("NONCE_EXPIRY_SECONDS", Some("1"), || {
-        with_runtime(|rt| {
-            rt.block_on(async {
-                let clock = Clock::manual();
-                let limiter = RateLimiter::with_clock(clock.clone());
-                assert!(check_and_store_nonce(&limiter, "nonce-1").await);
-                assert!(!check_and_store_nonce(&limiter, "nonce-1").await);
-
-                clock.advance(Duration::from_secs(2));
-                assert!(check_and_store_nonce(&limiter, "nonce-1").await);
-            });
-        });
-    });
-}
-
-/// The sliding window is pruned per key on every access, so a user who hit the
-/// limit is allowed again as soon as their oldest message falls out of it —
-/// and only the messages that fell out are forgiven.
 #[test]
 #[serial]
 fn frees_the_limit_as_the_window_slides() {
@@ -128,30 +107,6 @@ fn sweeps_keys_that_went_quiet() {
     });
 }
 
-/// The nonce store sweeps on the same timer, and its entries are the ones that
-/// grow with every authentication rather than with every distinct user.
-#[test]
-#[serial]
-fn sweeps_expired_nonces() {
-    with_var("NONCE_EXPIRY_SECONDS", Some("1"), || {
-        with_runtime(|rt| {
-            rt.block_on(async {
-                let clock = Clock::manual();
-                let limiter = RateLimiter::with_clock(clock.clone());
-                assert!(check_and_store_nonce(&limiter, "nonce-1").await);
-                assert!(check_and_store_nonce(&limiter, "nonce-2").await);
-                assert_eq!(limiter.used_nonces.lock().await.entries.len(), 2);
-
-                clock.advance(SWEEP_INTERVAL + Duration::from_secs(1));
-                assert!(check_and_store_nonce(&limiter, "nonce-3").await);
-
-                let nonces = limiter.used_nonces.lock().await;
-                assert_eq!(nonces.entries.keys().collect::<Vec<_>>(), vec!["nonce-3"]);
-            });
-        });
-    });
-}
-
 /// The mesh cost is quadratic in the room, so the cap is what stops the
 /// twentieth joiner from being felt as CPU load rather than as an error.
 #[test]
@@ -159,14 +114,18 @@ fn sweeps_expired_nonces() {
 fn caps_voice_channel_occupancy() {
     let occupants: HashSet<String> = ["alice", "bob"].iter().map(|u| u.to_string()).collect();
     with_var("MAX_VOICE_CHANNEL_USERS", Some("2"), || {
-        assert!(!voice_channel_has_room(&occupants, "carol"));
+        assert!(!voice_channel_has_room(&occupants, "carol", 0));
         // Already inside, so a repeated `voice-join` is never a lockout.
-        assert!(voice_channel_has_room(&occupants, "alice"));
-        assert!(voice_channel_has_room(&HashSet::new(), "carol"));
+        assert!(voice_channel_has_room(&occupants, "alice", 0));
+        assert!(voice_channel_has_room(&HashSet::new(), "carol", 0));
+        // A channel's own limit can narrow the operator's cap, never widen it.
+        assert!(!voice_channel_has_room(&occupants, "carol", 5));
     });
     // `0` means no cap at all.
     with_var("MAX_VOICE_CHANNEL_USERS", Some("0"), || {
-        assert!(voice_channel_has_room(&occupants, "carol"));
+        assert!(voice_channel_has_room(&occupants, "carol", 0));
+        assert!(!voice_channel_has_room(&occupants, "carol", 2));
+        assert!(voice_channel_has_room(&occupants, "carol", 3));
     });
 }
 
@@ -188,15 +147,6 @@ fn validates_user_names() {
     assert!(!validate_user_name(
         "TooLongNameThatExceedsThirtyTwoCharacters"
     ));
-}
-
-#[test]
-fn validates_timestamps() {
-    let now = chrono::Utc::now().timestamp_millis();
-    assert!(validate_timestamp(&now.to_string()).is_ok());
-    assert!(validate_timestamp(&(now + 30_000).to_string()).is_ok());
-    assert!(validate_timestamp(&(now - 30_000).to_string()).is_ok());
-    assert!(validate_timestamp("not-a-number").is_err());
 }
 
 #[test]
@@ -239,4 +189,74 @@ fn frame_budget_of_zero_is_unlimited() {
     for _ in 0..10_000 {
         assert!(budget.take(start));
     }
+}
+
+/// A forwarded address is only believed from a configured proxy: anyone can
+/// send the header, and believing it from a client would give that client a
+/// fresh rate-limit bucket per request.
+#[test]
+fn client_ip_believes_forwarded_for_only_from_a_trusted_proxy() {
+    use axum::http::HeaderMap;
+    use murmer_server::security::client_ip;
+    use std::net::IpAddr;
+
+    let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+    let trusted = vec!["10.0.0.0/8".parse().unwrap()];
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "x-forwarded-for",
+        "6.6.6.6, 1.2.3.4, 10.0.0.2".parse().unwrap(),
+    );
+
+    // Not from a proxy: the header is the client's own claim.
+    assert_eq!(client_ip(&trusted, ip("9.9.9.9"), &headers), ip("9.9.9.9"));
+    // From a proxy: the rightmost hop that is not itself a proxy. The
+    // leftmost entry was written by the client and is never believed.
+    assert_eq!(client_ip(&trusted, ip("10.0.0.1"), &headers), ip("1.2.3.4"));
+    // No proxies configured: nothing is believed.
+    assert_eq!(client_ip(&[], ip("10.0.0.1"), &headers), ip("10.0.0.1"));
+    // A proxy that forwarded nothing.
+    assert_eq!(
+        client_ip(&trusted, ip("10.0.0.1"), &HeaderMap::new()),
+        ip("10.0.0.1")
+    );
+}
+
+/// `ADMIN_TOKEN` grants Owner through `/role`. Wrong guesses are capped
+/// server-wide, and once the cap is hit even the right token waits out the
+/// window: answering it would tell a guesser which guess was right.
+#[test]
+fn wrong_admin_tokens_lock_the_admin_endpoints_for_a_minute() {
+    with_runtime(|rt| {
+        rt.block_on(async {
+            let clock = Clock::manual();
+            let limiter = RateLimiter::with_clock(clock.clone());
+            let token = Some("right");
+
+            // The right token never counts against anyone.
+            for _ in 0..(MAX_ADMIN_FAILURES_PER_MINUTE * 2) {
+                assert!(admin_token_matches(&limiter, token, "right").await);
+            }
+            for _ in 0..MAX_ADMIN_FAILURES_PER_MINUTE {
+                assert!(!admin_token_matches(&limiter, token, "guess").await);
+            }
+            assert!(!admin_token_matches(&limiter, token, "right").await);
+
+            clock.advance(RATE_WINDOW);
+            assert!(admin_token_matches(&limiter, token, "right").await);
+            // No token configured matches nothing, the empty string included.
+            assert!(!admin_token_matches(&limiter, None, "").await);
+        });
+    });
+}
+
+#[test]
+#[serial]
+fn a_short_admin_token_stops_the_server_from_starting() {
+    with_var("ADMIN_TOKEN", Some("short"), || {
+        assert!(murmer_server::config::Config::from_env().is_err());
+    });
+    with_var("ADMIN_TOKEN", Some(&"x".repeat(32)), || {
+        assert!(murmer_server::config::Config::from_env().is_ok());
+    });
 }

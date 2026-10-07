@@ -88,6 +88,10 @@ pub fn run() -> tauri::Result<()> {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        // Launch on login. The OS entry is the setting itself: the toggle in
+        // Settings asks the plugin rather than keeping a copy that could
+        // disagree with what the user changed in their system settings.
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .invoke_handler(tauri::generate_handler![set_tray_theme])
         .setup(|app| {
             let open = MenuItemBuilder::with_id("open", "Open").build(app)?;

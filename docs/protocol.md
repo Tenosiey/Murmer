@@ -29,12 +29,13 @@ is the first decision when adding a frame.
 | Route | Mechanism | Use for |
 | --- | --- | --- |
 | Server-wide broadcast | `AppState.tx` | Events every connected client needs: profile updates, role changes, emoji edits. |
-| Channel-scoped broadcast | the per-channel sender | Anything that belongs to one channel: messages, reactions, pins, `screenshare-start`/`-stop`, `webcam-start`/`-stop`, `soundboard-play`, `voice-mute`. |
+| Channel-scoped broadcast | the per-channel sender | Anything that belongs to one channel: messages, reactions, poll tallies, pins, `screenshare-start`/`-stop`, `webcam-start`/`-stop`, `soundboard-play`, `voice-mute`. |
 | Direct | `AppState.direct` | Anything addressed to a single user. |
 
 Frames that concern one account and nobody else take the direct route even
 when nothing about them is secret: the ban list, the storage report, and the
-`scheduled-messages`/`reminders`/`reminder-due` frames. A broadcast would cost
+`scheduled-messages`/`reminders`/`reminder-due` frames, `poke`, and the
+`read-marker` that tells an account's other clients where it stopped reading. A broadcast would cost
 every connected client a socket write and a parse for a list that is not
 theirs, and — for the queues — would hand them somebody else's.
 
@@ -105,8 +106,9 @@ resolve differently and nothing is broadcast for it.
 Both broadcast channels hold `BROADCAST_CAPACITY` frames. A connection that
 cannot drain them in time (a slow client, a stalled socket) gets
 `RecvError::Lagged` and the skipped frames are gone. Closing the socket is
-not the answer: the client does not reconnect on its own, so the person
-would see "Connection lost" and drop out of a call over a burst of traffic.
+not the answer: the client would reconnect, but only after a backoff and a
+fresh rejoin of its call, so the person would drop out of a call over a burst
+of traffic.
 
 So the receive arm puts current state in the frames' place instead:
 
@@ -157,9 +159,9 @@ a 24-byte nonce, a bounded size. The server never sees inside them. See
 
 | Endpoint | Module | Auth |
 | --- | --- | --- |
-| `/upload` | `upload.rs` | Ed25519 proof over `upload:<timestamp>` as multipart fields ahead of the file, plus per-IP rate limit |
+| `/upload` | `upload.rs` | The connection's upload session (its `auth-challenge`, once `presence` proved it) as a multipart field ahead of the file, plus per-IP rate limit |
 | `/files/<key>` | `upload.rs` | none (unguessable key) |
-| `/link-preview` | `link_preview.rs` | none |
+| `/link-preview` | `link_preview.rs` | none; per-IP limit on uncached fetches |
 | `/role` | `admin.rs` | `ADMIN_TOKEN` bearer, constant-time compared |
 | `/api/…` | `bot/` | bot token — [`../murmer_server/BOT_API.md`](../murmer_server/BOT_API.md) |
 

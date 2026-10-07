@@ -14,7 +14,7 @@ most here — what deliberately is **not** tested. To write a test, follow
 | `cargo test` | `murmer_server/` | Integration tests against a real in-memory database |
 | `cargo clippy --all-targets -- -D warnings` | both Rust crates | Lint, as a gate |
 
-`.github/workflows/ci.yml` runs all of them in two parallel jobs on every
+`.github/workflows/ci.yml` runs all of them in three parallel jobs on every
 push to `main`/`dev` and every pull request. It also checks that the
 server's Docker builder image names the Rust release pinned in
 `rust-toolchain.toml`; `.github/workflows/docker.yml` builds that image
@@ -34,7 +34,7 @@ rule, and it explains both what is covered and what is not.
 
 Things that qualify, and are covered:
 
-- per-server namespacing of persisted state (unread markers, window layouts);
+- per-server namespacing of persisted state (notification preferences, window layouts);
 - request/response correlation (the wiki store);
 - parsing of untrusted server frames;
 - policy that only manifests later — the channel-key rotation, the rate
@@ -126,15 +126,12 @@ the sweep interval are both a minute long, so
 Most files call handlers and helpers directly. `tests/ws_routing_test.rs`
 instead serves `/ws` on an ephemeral port and signs in real clients, because
 the per-recipient filter it covers lives in the socket loop itself and is
-reachable no other way. Two things there are easy to get wrong:
+reachable no other way. One thing there is easy to get wrong:
 
 - **Asserting absence without a sleep.** After the action under test, one
   client broadcasts a status change. The global broadcast is ordered, so a
   frame the filter let through arrives before that mark; reading up to it is
   a complete check.
-- **Leaving `ADMIN_TOKEN` unset.** Without it every user holds
-  `MANAGE_CHANNELS` and so sees every private channel — a test of private
-  visibility then fails for a reason that is not a leak.
 
 ## Conventions worth keeping
 

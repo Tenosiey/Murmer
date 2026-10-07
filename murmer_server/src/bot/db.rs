@@ -80,6 +80,23 @@ pub async fn get_bot_by_token_hash(
     .await
 }
 
+/// Whether a bot other than `except_id` already goes by `name`.
+///
+/// Presence, roles, statuses and message authorship are keyed by name in
+/// memory, so two connections under one name are one identity there; the
+/// name has to be unique across bots *and* accounts.
+pub async fn bot_name_taken(db: &Db, name: &str, except_id: Option<&str>) -> Result<bool, DbError> {
+    let name = name.to_owned();
+    let except_id = except_id.unwrap_or("").to_owned();
+    db.call_db(move |conn| {
+        let taken = conn
+            .prepare_cached("SELECT 1 FROM bots WHERE name = ?1 AND id != ?2")?
+            .exists(params![name, except_id])?;
+        Ok(taken)
+    })
+    .await
+}
+
 pub async fn list_bots(db: &Db) -> Result<Vec<BotRecord>, DbError> {
     db.call_db(|conn| {
         let query = format!("SELECT {SELECT_COLS} FROM bots ORDER BY created_at");

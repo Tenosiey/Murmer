@@ -1,5 +1,6 @@
 <!--
   Message composer: auto-growing textarea, file picker with preview chip,
+  voice message recorder (the clip becomes the pending file),
   reply banner, typing indicator, slash-command feedback and `@` mention
   completion (`MentionSuggestions`). Owns only input presentation —
   send/reply/file state live in the chat page, which passes callbacks down.
@@ -12,6 +13,8 @@
   import { MESSAGE_INPUT_MAX_HEIGHT } from '$lib/chat/constants';
   import { uploadAccept } from '$lib/stores/uploadConfig';
   import { chatSettings } from '$lib/stores/chatSettings';
+  import { dialogs } from '$lib/stores/dialogs';
+  import { startVoiceRecording, type VoiceRecording } from '$lib/voice-message';
   import MentionSuggestions from './MentionSuggestions.svelte';
 
 
@@ -23,6 +26,8 @@
     commandFeedbackType?: 'info' | 'error';
     pendingFile?: File | null;
     previewUrl?: string | null;
+    /** Send the pending image as a spoiler. */
+    spoiler?: boolean;
     /** When false, the composer is read-only (no SEND_MESSAGES permission). */
     canSend?: boolean;
     /** The channel is end-to-end encrypted and we hold its key. */
@@ -46,6 +51,7 @@
     commandFeedbackType = 'info',
     pendingFile = null,
     previewUrl = null,
+    spoiler = $bindable(false),
     canSend = true,
     encrypted = false,
     keyPending = false,
@@ -117,6 +123,50 @@
     }
   }
 
+  // ── Voice message ─────────────────────────────────────────────────────────
+  let recording: VoiceRecording | null = $state(null);
+  let recordingSeconds = $state(0);
+  let recordingStarting = $state(false);
+
+  async function toggleRecording() {
+    if (recording) {
+      const active = recording;
+      recording = null;
+      onFileSelected(await active.stop());
+      return;
+    }
+    recordingStarting = true;
+    try {
+      recording = await startVoiceRecording();
+      recordingSeconds = 0;
+    } catch (error) {
+      void dialogs.alert({
+        title: 'Could not record',
+        message: error instanceof Error ? error.message : 'The microphone could not be opened.'
+      });
+    } finally {
+      recordingStarting = false;
+    }
+  }
+
+  function cancelRecording() {
+    recording?.cancel();
+    recording = null;
+  }
+
+  $effect(() => {
+    if (!recording) return;
+    const timer = setInterval(() => recordingSeconds++, 1000);
+    return () => clearInterval(timer);
+  });
+
+  // Leaving the channel mid-recording must release the microphone.
+  $effect(() => () => recording?.cancel());
+
+  function formatSeconds(total: number): string {
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  }
+
   function clearFile() {
     if (fileInput) fileInput.value = '';
     onFileSelected(null);
@@ -186,7 +236,15 @@
     {#if pendingFile}
       <div class="preview-container">
         {#if previewUrl}
-          <img src={previewUrl} alt="preview" class="preview" />
+          <img src={previewUrl} alt="preview" class="preview" class:spoiler-preview={spoiler} />
+          <button
+            type="button"
+            class="btn btn-ghost spoiler-toggle"
+            class:selected={spoiler}
+            aria-pressed={spoiler}
+            title="Blur the image until it is clicked"
+            onclick={() => (spoiler = !spoiler)}
+          >Spoiler</button>
         {:else}
           <span class="file-chip" title={pendingFile.name}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -205,6 +263,40 @@
       </div>
     {/if}
     <div class="input-controls">
+      {#if recording}
+        <span class="recording-time" aria-live="polite">● {formatSeconds(recordingSeconds)}</span>
+        <button
+          type="button"
+          class="file-button"
+          title="Discard recording"
+          aria-label="Discard recording"
+          onclick={cancelRecording}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      {/if}
+      <button
+        type="button"
+        class="file-button"
+        class:recording={!!recording}
+        title={recording ? 'Stop and attach the voice message' : 'Record a voice message'}
+        aria-label={recording ? 'Stop and attach the voice message' : 'Record a voice message'}
+        aria-pressed={!!recording}
+        disabled={!canSend || keyPending || recordingStarting}
+        onclick={toggleRecording}
+      >
+        {#if recording}
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+        {:else}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="9" y="3" width="6" height="11" rx="3" />
+            <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+          </svg>
+        {/if}
+      </button>
       <button
         type="button"
         class="file-button"
@@ -395,6 +487,18 @@
     border-radius: var(--radius-sm);
   }
 
+  .preview-container img.spoiler-preview {
+    filter: blur(8px);
+  }
+
+  .spoiler-toggle {
+    font-size: var(--text-xs);
+  }
+
+  .spoiler-toggle.selected {
+    color: var(--color-primary);
+  }
+
   .preview-remove {
     background: transparent;
     color: var(--color-muted);
@@ -458,6 +562,18 @@
   .file-button:hover {
     border-color: var(--color-outline-strong);
     color: var(--color-on-surface);
+  }
+
+  .file-button.recording {
+    border-color: var(--color-error);
+    color: var(--color-error);
+  }
+
+  .recording-time {
+    align-self: center;
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-error);
   }
 
   .send {

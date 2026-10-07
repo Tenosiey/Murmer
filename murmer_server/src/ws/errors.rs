@@ -18,12 +18,6 @@ pub const INVALID_INVITE: &str = r#"{"type":"error","message":"invalid-invite"}"
 
 pub const AUTH_RATE_LIMIT: &str = r#"{"type":"error","message":"auth-rate-limit"}"#;
 
-/// Timestamp is outside the acceptable window.
-pub const INVALID_TIMESTAMP: &str = r#"{"type":"error","message":"invalid-timestamp"}"#;
-
-/// Nonce has already been used (replay attack detected).
-pub const REPLAY_ATTACK: &str = r#"{"type":"error","message":"replay-attack"}"#;
-
 pub const INVALID_SIGNATURE: &str = r#"{"type":"error","message":"invalid-signature"}"#;
 
 pub const INVALID_SIGNATURE_FORMAT: &str =
@@ -40,6 +34,10 @@ pub const INVALID_USERNAME: &str = r#"{"type":"error","message":"invalid-usernam
 
 /// The name is already bound to a different public key on this server.
 pub const USERNAME_TAKEN: &str = r#"{"type":"error","message":"username-taken"}"#;
+
+/// A check presence depends on (name binding, ban list) could not be read.
+/// The connection is refused rather than admitted unchecked.
+pub const LOGIN_FAILED: &str = r#"{"type":"error","message":"login-failed"}"#;
 
 pub const INVALID_CHANNEL_NAME: &str = r#"{"type":"error","message":"invalid-channel-name"}"#;
 
@@ -76,6 +74,9 @@ pub const MESSAGE_TOO_LONG: &str = r#"{"type":"error","message":"message-too-lon
 pub const INVALID_VOICE_QUALITY: &str = r#"{"type":"error","message":"invalid-voice-quality"}"#;
 
 pub const INVALID_VOICE_BITRATE: &str = r#"{"type":"error","message":"invalid-voice-bitrate"}"#;
+/// A voice channel user limit outside `0..=MAX_VOICE_USER_LIMIT`.
+pub const INVALID_VOICE_USER_LIMIT: &str =
+    r#"{"type":"error","message":"invalid-voice-user-limit"}"#;
 
 pub const UNKNOWN_VOICE_CHANNEL: &str = r#"{"type":"error","message":"unknown-voice-channel"}"#;
 
@@ -205,6 +206,10 @@ pub const INVALID_DISPLAY_NAME: &str = r#"{"type":"error","message":"invalid-dis
 
 pub const INVALID_ABOUT: &str = r#"{"type":"error","message":"invalid-about"}"#;
 
+/// A custom status line was too long, multi-line, or its expiry was in the
+/// past or too far ahead.
+pub const INVALID_STATUS_TEXT: &str = r#"{"type":"error","message":"invalid-status-text"}"#;
+
 pub const PROFILE_UPDATE_FAILED: &str = r#"{"type":"error","message":"profile-update-failed"}"#;
 
 pub const INVALID_NICKNAME: &str = r#"{"type":"error","message":"invalid-nickname"}"#;
@@ -319,6 +324,20 @@ pub const CANNOT_FORWARD_ENCRYPTED: &str =
 /// expiry its author chose.
 pub const CANNOT_FORWARD_EPHEMERAL: &str =
     r#"{"type":"error","message":"cannot-forward-ephemeral"}"#;
+
+/// A poll's options are missing, too few, too many, blank or too long, or
+/// a vote names an option the poll does not have.
+pub const INVALID_POLL: &str = r#"{"type":"error","message":"invalid-poll"}"#;
+
+/// A poll was posted into, or voted on in, an end-to-end encrypted channel.
+/// The server counts the votes, so it would have to see them.
+pub const CANNOT_POLL_ENCRYPTED: &str = r#"{"type":"error","message":"cannot-poll-encrypted"}"#;
+
+/// The message a forward names is a poll. A copy would start a second,
+/// empty tally under the original author's name.
+pub const CANNOT_FORWARD_POLL: &str = r#"{"type":"error","message":"cannot-forward-poll"}"#;
+
+pub const POLL_VOTE_FAILED: &str = r#"{"type":"error","message":"poll-vote-failed"}"#;
 
 /// The message a forward names carries no text, image or attachment to copy.
 pub const NOTHING_TO_FORWARD: &str = r#"{"type":"error","message":"nothing-to-forward"}"#;
@@ -541,3 +560,10 @@ pub const GROUP_MENTION_DENIED: &str = r#"{"type":"error","message":"group-menti
 /// A message's `mentions` field was malformed or named a role that does not
 /// exist (or `@everyone`, which is not a role one can ping).
 pub const INVALID_MENTIONS: &str = r#"{"type":"error","message":"invalid-mentions"}"#;
+
+/// The poke target is not online, is the sender, or is not a member at all.
+/// One code for all three: a poke reaches someone now or not at all.
+pub const POKE_UNAVAILABLE: &str = r#"{"type":"error","message":"poke-unavailable"}"#;
+
+/// The sender poked again inside the cooldown.
+pub const POKE_COOLDOWN: &str = r#"{"type":"error","message":"poke-cooldown"}"#;

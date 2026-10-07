@@ -9,15 +9,16 @@ Before changing anything in here, read
 
 ## Identity
 
-Authentication is an Ed25519 signature with replay protection. The server
-binds an account name to the **first key that claims it**, permanently.
+Authentication is an Ed25519 signature over a challenge the server issues
+per connection. The server binds an account name to the **first key that
+claims it**, permanently.
 
 That single key does more than log you in:
 
 - it authenticates on *every* server, not just one;
 - it derives (via ed2curve) the X25519 keys DMs are encrypted to;
 - it wraps the per-channel keys of end-to-end encrypted channels;
-- it signs `/upload` proofs.
+- it signs the `presence` proof that opens the `/upload` session.
 
 So losing it loses every account at once, plus the ability to read a single
 DM ever received. **That is why the key is backed up, not merely stored.**
@@ -45,9 +46,43 @@ evaluate more secure storage before calling this production-ready.
 
 ### Replay protection
 
-Nonces combine the public key and the timestamp; replayed signatures are
-rejected. A nonce counts as unused once it is older than
-`NONCE_EXPIRY_SECONDS`, whether or not the periodic sweep has removed it yet.
+Every connection is greeted with `{"type":"auth-challenge","challenge":…}`,
+32 random bytes, and `presence` signs `presence:<challenge>`. The challenge
+is what binds the proof to one server and one socket.
+
+The key being the account on every server is why that matters. The proof
+used to sign only a timestamp, so the operator of any server a user visited
+— or anyone reading its traffic — could replay a fresh proof against another
+server within the freshness window and log in there as them. A proof over a
+value only this server issued, on this socket, is worthless anywhere else.
+
+The ceiling: a malicious server could still *relay* another server's live
+challenge to a visiting client and forward the signature. Closing that
+needs the client to sign which server it believes it is talking to, and the
+server to check that against an address it knows to be its own — which
+behind a reverse proxy it does not reliably know.
+
+### Before authentication
+
+Every socket is subscribed to the server-wide broadcast and to the default
+channel the moment it connects, before anyone knows who it is. On a
+password-protected server the socket loop therefore delivers nothing until
+`presence` succeeds — the subscription is not the gate, and a connection that
+simply never authenticated used to read every public message live. For the
+same reason channel frames are filtered by visibility as they are delivered,
+not only at `join`: the default channel can be private, and access to a
+channel can be revoked while somebody sits in it.
+
+Every presence must prove a key, on an open server too. A keyless one used
+to take any name nobody had bound yet; once the real owner bound it, both
+sockets ran as that name and the keyless one acted with the owner's roles,
+out of reach of mute and ban, which resolve a key. The proof comes before
+the password is compared, so a right and a wrong password are answered
+alike: anything else is an oracle outside the authentication rate limit.
+
+A socket that has not authenticated within `AUTH_TIMEOUT` (10 s) is closed.
+There is no per-IP cap on connections, so idle sockets were otherwise a
+cheap way to run the server out of file descriptors.
 
 ## Direct messages
 
@@ -119,12 +154,24 @@ would protect nothing.
 
 ### What encryption does not cover
 
-All of this is deliberate, and is also stated in `README.md` for operators:
+All of this is deliberate, and `README.md` points operators here:
+
+- **The server operator.** This is the limit that matters most. The roster
+  a client wraps the channel key to comes from the server
+  (`channel_members`), so an operator can add a member, or an account bound
+  to a key they hold, and honest clients will hand it the key. Pinning in
+  `stores/peerKeys.ts` catches a member whose key *changed*, never a member
+  who is *new*. Encrypted channels therefore protect against other members
+  and a leaked database, not against whoever runs the server. Closing this
+  would take members seeing, or approving, each new wrap — design work, not
+  a fix.
 
 - **Server-side search** — there is no text to index.
 - **Bots** — `POST /channels/:id/messages` refuses; a bot has no identity key
   to encrypt with.
 - **Uploaded file bytes** — only the attachment's name and URL travel sealed.
+  For the same reason, deleting a sealed message leaves its file on disk;
+  see [Quota and deletion](#quota-and-deletion).
 - **Link previews** and content-derived stats.
 - **The profanity filter and the auto-moderation rules** — the server holds
   no text to mask or match. Doing either would mean handing the server the
@@ -141,6 +188,10 @@ All of this is deliberate, and is also stated in `README.md` for operators:
   works and is client-side for the same reason: the attribution travels
   inside the ciphertext as text, which makes it the sender's claim rather
   than the server's — see [`features.md`](features.md).
+- **Polls.** The server keeps the count, so it would have to see every vote
+  and the options being voted for. A poll is refused rather than sealed, and
+  a poll posted before the channel switched to encryption stops taking votes
+  — see [`features.md`](features.md#polls).
 - **Forward secrecy within an epoch.**
 - **Which groups a message pings.** A group mention's `mentions` field
   travels in plaintext beside the envelope, because the server has to
@@ -160,32 +211,31 @@ when it was written, which is the same epoch a message sent then would have
 used — see [`features.md`](features.md).
 
 `handle_chat` and `handle_edit_message` branch on `channel_is_e2ee` and
-**reject** a `text`, `image` or `attachment` field there rather than
+**reject** a `text`, `image`, `attachment` or `spoiler` field there rather than
 stripping it silently: a client that got this wrong has a bug its user must
 hear about.
 
 ## Upload authentication
 
-`/upload` is authenticated exactly like the WebSocket is.
+`/upload` rides on the WebSocket's authentication rather than repeating it.
 
-`upload::authorize` requires a fresh, single-use Ed25519 proof signed over
-`upload:<timestamp>` — a different message from the presence signature, so a
-presence proof cannot be spent on an upload — from a key that
-`db::user_for_key` resolves to an account on that server. Banned users are
-rejected. This is how the server password carries over to uploads.
+Once `presence` succeeds with a key, the connection's challenge is registered
+in `AppState::upload_sessions` with the account it proved, and removed when
+the socket closes. `upload::authorize` requires that session as the
+`session` field. Banned users are rejected. This is how the server password,
+the name binding and the challenge's server binding all carry over to
+uploads — a signature the client made by itself could carry none of them.
 
 Three ordering details are the whole point of the design:
 
 - the per-IP `check_upload_rate_limit` runs **before the body is touched**;
-- the proof is verified **before any file bytes are buffered**, which is why
-  the credentials are multipart fields *ahead of* the file;
+- the session is checked **before any file bytes are buffered**, which is
+  why it is a multipart field *ahead of* the file;
 - credentials stay **out of headers**, because a custom header makes the
   request preflighted and production servers run with CORS disabled.
 
 Clients must therefore build the body with `uploadForm` in
 `murmer_client/src/lib/upload.ts`. A hand-rolled `FormData` is rejected.
-`security::verify_key_signature` is shared with the presence path, so both
-transports verify a proof the same way.
 
 ### File validation
 
@@ -210,6 +260,30 @@ asserts neither copy ever admits active content. See
 
 Files are streamed to disk after validating type, size and filename.
 
+### Quota and deletion
+
+Every stored file is recorded in the `uploads` table with its uploader and
+size, and `/upload` refuses with `507` once the uploader, or the server as a
+whole, would pass its quota (`UPLOAD_QUOTA_USER_MB`, `UPLOAD_QUOTA_TOTAL_MB`
+in `README.md`). The rate limit alone bounded only how *fast* the disk could
+be filled, never how full.
+
+Deleting a message deletes its file. A trigger on `messages` marks the file
+released on **any** delete, so the author's delete, a moderator's, retention,
+the Danger Zone purge and reset all take files with them without each having
+to remember. `upload::spawn_upload_sweep` then removes released files that
+nothing else names: a server-made forward, an avatar, an emoji, a sound, the
+server icon or a wiki page keeps the file alive. Two gaps are deliberate:
+
+- a file in an **encrypted** message or a DM is never released, because the
+  server cannot see which file a sealed message carries;
+- a file that was uploaded but never posted is kept, and counts against its
+  uploader's quota. Sweeping unposted files would also sweep every file in a
+  sealed message, for the same reason.
+
+A copy a user forwarded into a DM points at the original upload, so it stops
+loading once the original message is deleted. That is what deleting means.
+
 ### Serving files back
 
 `/files` answers from the app's own origin, so the safe-list is not allowed
@@ -217,19 +291,28 @@ to be the only thing between an upload and script execution there. Every
 response carries `Content-Security-Policy: sandbox` — a file that somehow
 rendered as a document would get an opaque origin and no scripts — and
 anything that is not an image, audio or video is sent with
-`Content-Disposition: attachment`. That second header is also what makes an
+`Content-Disposition: attachment`.
+
+`/files` itself is unauthenticated, password or not, and serves files shared
+in private and encrypted channels too. What keeps them private is the key:
+`upload` puts 128 random bits into every one, so knowing that a file was
+posted, and when, is not enough to fetch it. That second header is also what makes an
 attachment download at all: the client marks the link `download`, but
 browsers ignore that attribute across origins, and the desktop app is always
 on a different origin than the server.
 
 ## Rate limiting
 
-Authentication, chat traffic and uploads are all rate limited per IP, so the
-service must run behind a proxy that forwards the real client IP.
+Authentication and uploads are rate limited per IP, chat per user. Behind a
+reverse proxy the socket peer is the proxy, so `security::client_ip` reads
+`X-Forwarded-For` — but only from the peers listed in `TRUSTED_PROXIES`.
+Anyone can send that header; believing it from a client would hand it a
+fresh bucket per request. Left unset behind a proxy, every user shares one
+bucket and five failed logins lock the whole server out.
 
 The limits (`MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
-`MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND`, `NONCE_EXPIRY_SECONDS` —
-documented in `README.md`)
+`MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND` — documented in
+`README.md`)
 are read once when the `RateLimiter` is built rather than on every check, so
 they take effect at startup.
 
@@ -262,6 +345,20 @@ limiter** — which is why it is worth a test at all.
   DOMPurify needs a DOM). Not happy-dom: it mis-drives DOMPurify's tree walk
   and lets `<script>` through, so the tests would pass on broken output.
 - **Avoid `{@html …}`** unless the content is explicitly sanitised.
+- **Links in rendered Markdown open outside the app.** A DOMPurify hook in
+  `markdown.ts` gives every external link `target="_blank"` and
+  `rel="noopener noreferrer"`. Followed in place, a link replaced the app with
+  somebody else's page — inside the desktop window, where a copy of the
+  backup screen is a convincing way to ask for a recovery phrase.
+- **Nothing a member writes makes a reader fetch from a host they chose.**
+  Whatever a message embeds, every reader's client loads as it renders, so
+  an embed on the poster's own host is a tracking pixel that reports each
+  reader's IP address and reading time. Markdown images render as links,
+  the DOMPurify config drops every element and attribute that loads a
+  resource, a message's `image` and `attachment` are shown only when
+  `serverFileUrl` places them under the connected server's `/files/`, and `/link-preview` inlines the
+  OpenGraph image as a `data:` URL instead of returning its address. The
+  CSP cannot do this job: `img-src` has to allow any server a user adds.
 - **A Content-Security-Policy is the second line behind DOMPurify.** The
   desktop shell's is in `tauri.conf.json`; a web client served through
   `WEB_CLIENT_DIR` gets the same policy from `web_client.rs`, held equal by

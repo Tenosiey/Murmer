@@ -1,9 +1,9 @@
 //! HTTP-level tests for the authentication gate on `/upload`.
 //!
 //! Writing a file to disk is the only thing an HTTP caller can make the server
-//! spend storage on, so the endpoint accepts nothing but a fresh, single-use
-//! Ed25519 proof from a key that already owns an account here — and only so
-//! many of those per minute per IP.
+//! spend storage on, so the endpoint accepts nothing but the upload session of
+//! a live, authenticated WebSocket connection — and only so many uploads per
+//! minute per IP.
 
 use std::{
     net::SocketAddr,
@@ -19,8 +19,6 @@ use axum::{
     http::{Request, StatusCode, header},
     routing::post,
 };
-use base64::{Engine as _, engine::general_purpose};
-use ed25519_dalek::{Signer, SigningKey};
 use murmer_server::{AppState, RateLimiter, db, upload};
 use tower::ServiceExt;
 
@@ -102,19 +100,12 @@ async fn post_upload(app: &Router, body: Vec<u8>) -> StatusCode {
         .status()
 }
 
-/// The credentials a client sends: the key, a timestamp, and the signature
-/// over `upload:<timestamp>`.
-fn credentials(key: &SigningKey, timestamp: &str) -> (String, String) {
-    let public = general_purpose::STANDARD.encode(key.verifying_key().to_bytes());
-    let signature = general_purpose::STANDARD.encode(
-        key.sign(format!("upload:{timestamp}").as_bytes())
-            .to_bytes(),
+/// Register `session` the way a successful `presence` does.
+async fn open_session(state: &AppState, session: &str, user: &str) {
+    state.upload_sessions.lock().await.insert(
+        session.to_string(),
+        (user.to_string(), format!("{user}-key")),
     );
-    (public, signature)
-}
-
-fn now_ms() -> String {
-    chrono::Utc::now().timestamp_millis().to_string()
 }
 
 fn stored_files(dir: &Path) -> Vec<String> {
@@ -125,32 +116,12 @@ fn stored_files(dir: &Path) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn a_signed_upload_from_a_bound_key_is_stored() {
+async fn an_upload_with_a_live_session_is_stored() {
     let dir = temp_upload_dir("accepted");
     let (app, state) = make_app(dir.clone(), RateLimiter::new()).await;
+    open_session(&state, "session-a", "alice").await;
 
-    let key = SigningKey::from_bytes(&[7u8; 32]);
-    let timestamp = now_ms();
-    let (public, signature) = credentials(&key, &timestamp);
-    // Presence binds the name to the key; that binding is the account the
-    // upload is made under.
-    db::bind_user_key(&state.db, "alice", &public)
-        .await
-        .expect("bind");
-
-    let status = post_upload(
-        &app,
-        body(
-            &[
-                ("publicKey", &public),
-                ("timestamp", &timestamp),
-                ("signature", &signature),
-            ],
-            "cat.png",
-            PNG,
-        ),
-    )
-    .await;
+    let status = post_upload(&app, body(&[("session", "session-a")], "cat.png", PNG)).await;
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(stored_files(&dir).len(), 1);
@@ -161,27 +132,9 @@ async fn a_signed_upload_from_a_bound_key_is_stored() {
 async fn a_filename_with_a_dot_run_is_stored_under_a_registrable_key() {
     let dir = temp_upload_dir("dot-run");
     let (app, state) = make_app(dir.clone(), RateLimiter::new()).await;
+    open_session(&state, "session-d", "dora").await;
 
-    let key = SigningKey::from_bytes(&[19u8; 32]);
-    let timestamp = now_ms();
-    let (public, signature) = credentials(&key, &timestamp);
-    db::bind_user_key(&state.db, "dora", &public)
-        .await
-        .expect("bind");
-
-    let status = post_upload(
-        &app,
-        body(
-            &[
-                ("publicKey", &public),
-                ("timestamp", &timestamp),
-                ("signature", &signature),
-            ],
-            "wow...png",
-            PNG,
-        ),
-    )
-    .await;
+    let status = post_upload(&app, body(&[("session", "session-d")], "wow...png", PNG)).await;
 
     // Every `/files/<key>` validator refuses "..", so a key stored with one
     // could be uploaded but never registered as an emoji, avatar or sound.
@@ -206,100 +159,17 @@ async fn an_upload_without_credentials_writes_nothing() {
 }
 
 #[tokio::test]
-async fn a_signature_over_the_wrong_message_is_rejected() {
-    let dir = temp_upload_dir("wrong-message");
+async fn a_session_this_server_never_issued_is_rejected() {
+    let dir = temp_upload_dir("unknown-session");
     let (app, state) = make_app(dir.clone(), RateLimiter::new()).await;
+    open_session(&state, "session-m", "mallory").await;
 
-    let key = SigningKey::from_bytes(&[9u8; 32]);
-    let timestamp = now_ms();
-    let public = general_purpose::STANDARD.encode(key.verifying_key().to_bytes());
-    db::bind_user_key(&state.db, "mallory", &public)
-        .await
-        .expect("bind");
-
-    // A presence proof signs the bare timestamp. Uploads sign
-    // `upload:<timestamp>`, so a captured presence signature must not work
-    // here.
-    let presence_signature =
-        general_purpose::STANDARD.encode(key.sign(timestamp.as_bytes()).to_bytes());
-
-    let status = post_upload(
-        &app,
-        body(
-            &[
-                ("publicKey", &public),
-                ("timestamp", &timestamp),
-                ("signature", &presence_signature),
-            ],
-            "cat.png",
-            PNG,
-        ),
-    )
-    .await;
+    // A closed connection's session, or one issued by another server, is not
+    // in the table.
+    let status = post_upload(&app, body(&[("session", "session-x")], "cat.png", PNG)).await;
 
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert!(stored_files(&dir).is_empty());
-    std::fs::remove_dir_all(&dir).ok();
-}
-
-#[tokio::test]
-async fn a_key_without_an_account_here_is_rejected() {
-    let dir = temp_upload_dir("unknown-key");
-    let (app, _state) = make_app(dir.clone(), RateLimiter::new()).await;
-
-    // Valid proof, but this key has never authenticated with this server — on
-    // a password-protected server it could not have.
-    let key = SigningKey::from_bytes(&[11u8; 32]);
-    let timestamp = now_ms();
-    let (public, signature) = credentials(&key, &timestamp);
-
-    let status = post_upload(
-        &app,
-        body(
-            &[
-                ("publicKey", &public),
-                ("timestamp", &timestamp),
-                ("signature", &signature),
-            ],
-            "cat.png",
-            PNG,
-        ),
-    )
-    .await;
-
-    assert_eq!(status, StatusCode::FORBIDDEN);
-    assert!(stored_files(&dir).is_empty());
-    std::fs::remove_dir_all(&dir).ok();
-}
-
-#[tokio::test]
-async fn a_replayed_proof_is_rejected() {
-    let dir = temp_upload_dir("replay");
-    let (app, state) = make_app(dir.clone(), RateLimiter::new()).await;
-
-    let key = SigningKey::from_bytes(&[13u8; 32]);
-    let timestamp = now_ms();
-    let (public, signature) = credentials(&key, &timestamp);
-    db::bind_user_key(&state.db, "bob", &public)
-        .await
-        .expect("bind");
-    let parts = [
-        ("publicKey", public.as_str()),
-        ("timestamp", timestamp.as_str()),
-        ("signature", signature.as_str()),
-    ];
-
-    assert_eq!(
-        post_upload(&app, body(&parts, "cat.png", PNG)).await,
-        StatusCode::OK
-    );
-    // Same timestamp, same signature: the nonce store has already spent it.
-    assert_eq!(
-        post_upload(&app, body(&parts, "cat.png", PNG)).await,
-        StatusCode::UNAUTHORIZED
-    );
-
-    assert_eq!(stored_files(&dir).len(), 1);
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -309,30 +179,10 @@ async fn uploads_are_rate_limited_per_ip() {
     let mut limiter = RateLimiter::new();
     limiter.max_uploads_per_minute = 1;
     let (app, state) = make_app(dir.clone(), limiter).await;
-
-    let key = SigningKey::from_bytes(&[17u8; 32]);
-    let public = general_purpose::STANDARD.encode(key.verifying_key().to_bytes());
-    db::bind_user_key(&state.db, "carol", &public)
-        .await
-        .expect("bind");
+    open_session(&state, "session-c", "carol").await;
 
     for expected in [StatusCode::OK, StatusCode::TOO_MANY_REQUESTS] {
-        // A fresh proof each time, so only the limit can reject the second one.
-        let timestamp = now_ms();
-        let (_, signature) = credentials(&key, &timestamp);
-        let status = post_upload(
-            &app,
-            body(
-                &[
-                    ("publicKey", &public),
-                    ("timestamp", &timestamp),
-                    ("signature", &signature),
-                ],
-                "cat.png",
-                PNG,
-            ),
-        )
-        .await;
+        let status = post_upload(&app, body(&[("session", "session-c")], "cat.png", PNG)).await;
         assert_eq!(status, expected);
     }
 

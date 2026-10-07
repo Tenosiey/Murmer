@@ -4,21 +4,23 @@ import { session } from './session';
 import { notify } from '../notify';
 import { channelNotifications } from './channelNotifications';
 import { soundboardPrefs } from './soundboardSettings';
+import { blockedUsers, isBlocked } from './blocks';
 import { screenShareWindows } from './screenShareWindows';
 import {
   prepareMessage,
   containsMention,
   normalizeReactions,
+  normalizePollVotes,
   mergeHistory
 } from '../message-utils';
-import { parseWikiSearchHits } from '../chat/search';
+import { parseWikiSearchHits, type SearchFilters } from '../chat/search';
 import { parseGroupMentions, pingsMe, type GroupMentions } from '../chat/mentions';
 import { mentionInbox, type InboxEntry } from './mentionInbox';
 import { describeServerError } from '../errors';
 import { WebSocketManager } from '../websocket-manager';
 import { connection } from './connection';
 import { typing } from './typing';
-import { unread } from './unread';
+import { parseReadMarkers, unread } from './unread';
 import { threadData } from './thread';
 import { dm } from './dm';
 import { drafts } from './drafts';
@@ -35,6 +37,7 @@ import {
   type SealedMessage
 } from '../channel-crypto';
 import { loadKeyPair } from '../keypair';
+import { setUploadSession } from '../upload';
 
 /** Maximum number of search results to request from server */
 const MAX_SEARCH_RESULTS = 200;
@@ -76,6 +79,10 @@ function createChatStore() {
   let encryptedChannels = new Set<number>();
   /** The channel this connection is joined to; what `send` seals for. */
   let joinedChannelId = 0;
+  /** Called with every live channel message once opened. A callback rather
+   *  than an import because its one user, text-to-speech, needs the profiles
+   *  store, and that store imports this one. */
+  let liveListener: ((msg: Message) => void) | undefined;
   /** Last pin snapshot per channel, kept so sealed previews can be re-opened
    *  once the channel key arrives. */
   const rawPins = new Map<number, unknown[]>();
@@ -83,6 +90,9 @@ function createChatStore() {
    *  a message written for an encrypted channel is sealed, and its preview can
    *  only be opened once that channel's key has arrived. */
   let rawScheduled: unknown[] = [];
+  /** What to run once the server greets the connection with its challenge;
+   *  the caller's `onOpen`, which signs it into the `presence` frame. */
+  let onChallenge: ((challenge: string) => void) | undefined;
 
   /** In-flight and resolved peer key lookups, cached per connection. */
   const peerKeyRequests = new Map<string, Promise<string | null>>();
@@ -177,6 +187,7 @@ function createChatStore() {
       delete failed.text;
       delete failed.image;
       delete failed.attachment;
+      delete failed.spoiler;
       if (key) {
         failed.decryptFailed = true;
       } else {
@@ -190,6 +201,7 @@ function createChatStore() {
     if (typeof payload.text === 'string') opened.text = payload.text;
     if (typeof payload.image === 'string') opened.image = payload.image;
     if (payload.attachment) opened.attachment = payload.attachment;
+    if (payload.spoiler === true) opened.spoiler = true;
     // The server cannot quote an encrypted message, so it sends the reply's id
     // and author with an empty snippet; the snippet travels sealed instead.
     if (opened.replyTo && typeof payload.replyText === 'string') {
@@ -343,6 +355,7 @@ function createChatStore() {
     text: string,
     mention: boolean
   ): void {
+    if (isBlocked(sender)) return;
     const preference = get(channelNotifications)[channelId] ?? 'all';
     if (preference === 'mentions' ? !mention : preference !== 'all') return;
     const from = sender ?? 'Unknown user';
@@ -356,9 +369,22 @@ function createChatStore() {
     const current = get(session).user;
 
     switch (msg.type) {
+      // The server's first frame on every connection. The challenge is both
+      // what `presence` signs and, once that succeeds, the session `/upload`
+      // accepts; see docs/security.md.
+      case 'auth-challenge': {
+        if (typeof msg.challenge !== 'string' || !msg.challenge) break;
+        setUploadSession(msg.challenge);
+        const run = onChallenge;
+        onChallenge = undefined;
+        run?.(msg.challenge);
+        break;
+      }
+
       case 'chat': {
         const prepared = decryptChannelFrame(msg);
         update((m) => [...m, prepared].slice(-MAX_LIVE_MESSAGES));
+        liveListener?.(prepared);
 
         // The author's message arriving supersedes their typing signal.
         if (typeof prepared.channelId === 'number' && prepared.user) {
@@ -371,7 +397,7 @@ function createChatStore() {
             : { mention: false, findable: false };
           notifyChannelMessage(prepared.channelId ?? 0, prepared.user, prepared.text ?? '', mention);
           // In the open channel, so read as it lands: listed, not counted.
-          const entry = mention ? inboxEntry(prepared, !findable) : null;
+          const entry = mention && !isBlocked(prepared.user) ? inboxEntry(prepared, !findable) : null;
           if (entry) mentionInbox.add(entry, false);
         }
         break;
@@ -380,6 +406,27 @@ function createChatStore() {
       case 'history': {
         const msgs = ((msg.messages as Message[]) || []).map((item) => decryptChannelFrame(item));
         update((m) => mergeHistory(m, msgs));
+        break;
+      }
+
+      // Sent at sign-in, ahead of the channel list, so a channel's marker is
+      // in place by the time the page opens it and draws the divider.
+      case 'read-markers': {
+        const markers = parseReadMarkers(msg);
+        unread.load(markers.channels);
+        dm.loadReadState(
+          Object.fromEntries(Object.entries(markers.dms).filter(([peer]) => !isBlocked(peer)))
+        );
+        break;
+      }
+
+      // Another client of this account read further; catch up so its
+      // badges clear here too.
+      case 'read-marker': {
+        const messageId = msg.messageId;
+        if (typeof messageId !== 'number' || !Number.isSafeInteger(messageId)) break;
+        if (typeof msg.channelId === 'number') unread.markRead(msg.channelId, messageId);
+        else if (typeof msg.with === 'string') dm.markRead(msg.with, messageId);
         break;
       }
 
@@ -400,6 +447,19 @@ function createChatStore() {
             messages.map((m) => (m.id === messageId ? { ...m, reactions } : m))
           );
         }
+        break;
+      }
+
+      case 'poll-update': {
+        const messageId = msg.messageId;
+        if (typeof messageId !== 'number') break;
+        update((messages) =>
+          messages.map((m) =>
+            m.id === messageId && m.poll
+              ? { ...m, poll: { ...m.poll, votes: normalizePollVotes(msg.votes, m.poll.options.length) } }
+              : m
+          )
+        );
         break;
       }
 
@@ -554,9 +614,13 @@ function createChatStore() {
         const from = typeof msg.from === 'string' ? msg.from : null;
         const to = typeof msg.to === 'string' ? msg.to : null;
         if (!from || !to || !current) break;
+        // Dropped on arrival: the server still delivers, since a block is
+        // never sent to it.
+        if (from !== current && isBlocked(from)) break;
         const peer = from === current ? to : from;
         void decryptDmFrame(peer, msg).then((prepared) => {
           dm.receive(prepared, current);
+          if (dm.getActive() === peer) markDmRead(peer);
           if (from !== current && dm.getActive() !== from) {
             const text = (prepared.text ?? '').trim();
             notify(`Direct message from ${from}`, text || 'sent you a message');
@@ -568,9 +632,11 @@ function createChatStore() {
       case 'dm-history': {
         const peer = typeof msg.with === 'string' ? msg.with : null;
         if (peer) {
-          const list: Message[] = Array.isArray(msg.messages) ? (msg.messages as Message[]) : [];
+          const list: Message[] = (Array.isArray(msg.messages) ? (msg.messages as Message[]) : [])
+            .filter((item) => !isBlocked(peer) || item.from === current);
           void Promise.all(list.map((item) => decryptDmFrame(peer, item))).then((prepared) => {
             dm.setHistory(peer, prepared);
+            if (dm.getActive() === peer) markDmRead(peer);
           });
         }
         break;
@@ -635,7 +701,7 @@ function createChatStore() {
           ? mentionOf(text, msg.mentions, current, sealed !== null)
           : { mention: false, findable: false };
         unread.recordIncoming(channelId, messageId, mention);
-        if (mention && sender) {
+        if (mention && sender && !isBlocked(sender)) {
           mentionInbox.add(
             {
               id: messageId,
@@ -676,6 +742,7 @@ function createChatStore() {
    */
   function resetSession(): void {
     set([]);
+    setUploadSession(null);
     typing.reset();
     unread.reset();
     threadData.set(null);
@@ -694,14 +761,15 @@ function createChatStore() {
   }
 
   /** Connect to a WebSocket server. */
-  function connect(url: string, onOpen?: () => void): void {
+  function connect(url: string, onOpen?: (challenge: string) => void): void {
     resetSession();
-    // Per-channel client state (last-read markers, notification preferences)
-    // is persisted per server; switch both stores to this server's slice.
-    unread.setServer(url);
+    onChallenge = onOpen;
+    // Per-channel notification preferences are persisted per server; switch
+    // the store to this server's slice. Read markers come from the server.
     channelNotifications.setServer(url);
     // Sound ids and usernames are also only unique per server.
     soundboardPrefs.setServer(url);
+    blockedUsers.setServer(url);
     // Screen share windows are remembered per sharer, which is a username too.
     screenShareWindows.setServer(url);
     // Key pins persist per server; in-flight lookups belong to the old one.
@@ -715,7 +783,6 @@ function createChatStore() {
       handleMessage,
       () => {
         connection.set('connected');
-        onOpen?.();
       },
       (info) => {
         clearPendingSearches('Connection closed');
@@ -762,12 +829,10 @@ function createChatStore() {
   ): string | null {
     if (!wsManager.isConnected()) return 'Not connected to the server.';
 
-    const now = new Date();
+    // No timestamp: the server stamps every message with its own time.
     const payload: Record<string, unknown> = {
       type: 'chat',
       user,
-      time: now.toLocaleTimeString(),
-      timestamp: now.toISOString(),
       ...extra
     };
 
@@ -810,6 +875,13 @@ function createChatStore() {
     return sendMessage(user, { text, replyText }, extra);
   }
 
+  /** Send a `/tts` message: the text, flagged for listeners to hear it read
+   *  aloud. The flag stays plaintext beside a sealed message, like the reply
+   *  id; it says how to deliver the words, not what they are. */
+  function sendTts(user: string, text: string): string | null {
+    return sendMessage(user, { text }, { tts: true });
+  }
+
   /**
    * Send an uploaded image or file. The bytes live on the server either way;
    * in an encrypted channel the reference to them travels sealed, so who
@@ -818,7 +890,11 @@ function createChatStore() {
    */
   function sendUpload(
     user: string,
-    content: { image?: string; attachment?: { url: string; name: string; size: number } }
+    content: {
+      image?: string;
+      attachment?: { url: string; name: string; size: number };
+      spoiler?: boolean;
+    }
   ): string | null {
     return sendMessage(user, content);
   }
@@ -879,14 +955,11 @@ function createChatStore() {
     }
     const payload = encryptDm(text, key, loadKeyPair().secretKey);
     if (!payload) return 'The message could not be encrypted.';
-    const now = new Date();
     wsManager.send({
       type: 'dm',
       to,
       nonce: payload.nonce,
-      ciphertext: payload.ciphertext,
-      time: now.toLocaleTimeString(),
-      timestamp: now.toISOString()
+      ciphertext: payload.ciphertext
     });
     return null;
   }
@@ -903,6 +976,22 @@ function createChatStore() {
   }
 
   /** Send a self-destructing chat message; `expiresAt` is ISO 8601. */
+  /**
+   * Post a poll: the question is the message text, the options ride beside
+   * it. The server refuses one in an encrypted channel, where it could not
+   * count the votes without seeing them.
+   * @returns null on success, or an error message for the caller to surface
+   */
+  function sendPoll(user: string, question: string, options: string[]): string | null {
+    return sendMessage(user, { text: question }, { poll: { options } });
+  }
+
+  /** Vote for option `option` of a poll, or take the vote back with null. */
+  function votePoll(messageId: number, option: number | null): void {
+    if (!wsManager.isConnected()) return;
+    wsManager.send({ type: 'poll-vote', messageId, option });
+  }
+
   function sendEphemeral(user: string, text: string, expiresAt: string): string | null {
     return sendMessage(user, { text }, { ephemeral: true, expiresAt });
   }
@@ -982,6 +1071,23 @@ function createChatStore() {
     wsManager.send(data);
   }
 
+  /** Record that everything up to `messageId` in a channel has been seen,
+   *  telling the server only when that moves the marker. */
+  function markRead(channelId: number, messageId: number): void {
+    if (unread.markRead(channelId, messageId)) {
+      sendRaw({ type: 'mark-read', channelId, messageId });
+    }
+  }
+
+  /** Record that the conversation with `peer` has been read as far as this
+   *  client holds it. */
+  function markDmRead(peer: string): void {
+    const messageId = dm.latestId(peer);
+    if (messageId !== null && dm.markRead(peer, messageId)) {
+      sendRaw({ type: 'mark-read', with: peer, messageId });
+    }
+  }
+
   /** Load message history for a channel. */
   function loadHistory(channelId: number, before?: number, limit = 50): void {
     sendRaw({ type: 'load-history', channelId, before, limit });
@@ -1003,13 +1109,18 @@ function createChatStore() {
    * Search a channel: its message history and its wiki pages, which the
    * server answers on one frame from two full-text indexes.
    */
-  function search(channelId: number, query: string, limit = 50): Promise<SearchResults> {
+  function search(
+    channelId: number,
+    query: string,
+    limit = 50,
+    filters: SearchFilters = {}
+  ): Promise<SearchResults> {
     if (!wsManager.isConnected()) {
       return Promise.reject(new Error('Not connected to server'));
     }
 
     const trimmedQuery = query.trim();
-    if (!trimmedQuery) {
+    if (!trimmedQuery && Object.keys(filters).length === 0) {
       return Promise.resolve({ messages: [], pages: [] });
     }
 
@@ -1029,6 +1140,7 @@ function createChatStore() {
         type: 'search-history',
         channelId,
         query: trimmedQuery,
+        filters,
         limit: boundedLimit,
         requestId
       };
@@ -1089,10 +1201,13 @@ function createChatStore() {
     connectionLost,
     join,
     send,
+    sendTts,
     sendUpload,
     forward,
     sendDm,
     sendEphemeral,
+    sendPoll,
+    votePoll,
     scheduleMessage,
     cancelScheduledMessage,
     setReminder,
@@ -1103,6 +1218,8 @@ function createChatStore() {
     sendRaw,
     loadHistory,
     loadDmHistory,
+    markRead,
+    markDmRead,
     loadThread,
     react,
     search,
@@ -1110,6 +1227,9 @@ function createChatStore() {
     delete: deleteMessage,
     on,
     off,
+    onLiveMessage: (listener: (msg: Message) => void) => {
+      liveListener = listener;
+    },
     disconnect,
     clear: () => set([])
   };

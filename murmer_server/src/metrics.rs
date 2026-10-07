@@ -95,10 +95,10 @@ pub enum Limit {
     Auth,
     /// Uploads from one address.
     Uploads,
-    /// A signature presented twice — its nonce was already spent.
-    Replays,
     /// Frames of any kind from one connection.
     Frames,
+    /// Link preview fetches from one address.
+    Previews,
 }
 
 /// Count one request refused by a rate limit.
@@ -122,8 +122,8 @@ pub struct Snapshot {
     pub rejected_messages: u64,
     pub rejected_auth: u64,
     pub rejected_uploads: u64,
-    pub rejected_replays: u64,
     pub rejected_frames: u64,
+    pub rejected_previews: u64,
 }
 
 /// Take a snapshot of every counter.
@@ -140,7 +140,7 @@ pub fn snapshot() -> Snapshot {
         rejected_messages: REJECTED[Limit::Messages as usize].load(Relaxed),
         rejected_auth: REJECTED[Limit::Auth as usize].load(Relaxed),
         rejected_uploads: REJECTED[Limit::Uploads as usize].load(Relaxed),
-        rejected_replays: REJECTED[Limit::Replays as usize].load(Relaxed),
         rejected_frames: REJECTED[Limit::Frames as usize].load(Relaxed),
+        rejected_previews: REJECTED[Limit::Previews as usize].load(Relaxed),
     }
 }

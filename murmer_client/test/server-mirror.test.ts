@@ -34,6 +34,7 @@ import {
   MAX_PROFANITY_WORDS,
   MAX_PROFANITY_WORD_LEN,
   MAX_VOICE_BITRATE,
+  MAX_VOICE_USER_LIMIT,
   MIN_MUTE_SECONDS,
   MAX_MUTE_SECONDS,
   MAX_AUTOMOD_RULES,
@@ -52,7 +53,9 @@ import {
   MAX_SCHEDULE_AHEAD_SECONDS,
   MAX_SCHEDULED_MESSAGES_PER_USER,
   MAX_REMINDERS_PER_USER,
-  MAX_REMINDER_TEXT_LENGTH
+  MAX_REMINDER_TEXT_LENGTH,
+  MAX_POLL_OPTIONS,
+  MAX_POLL_OPTION_LENGTH
 } from '../src/lib/chat/constants';
 
 function readServerSource(relative: string): string {
@@ -329,6 +332,17 @@ describe('scheduling mirror', () => {
   });
 });
 
+describe('poll mirror', () => {
+  // The server refuses a poll outside these bounds, so a client that thinks
+  // they are wider posts polls that bounce.
+  it('agrees on the option count and length', () => {
+    expect(serverNumberConstant(wsConstantsRs, 'MAX_POLL_OPTIONS', 'usize')).toBe(MAX_POLL_OPTIONS);
+    expect(serverNumberConstant(wsConstantsRs, 'MAX_POLL_OPTION_LENGTH', 'usize')).toBe(
+      MAX_POLL_OPTION_LENGTH
+    );
+  });
+});
+
 describe('chat policy mirror', () => {
   // The server clamps everything it is sent, so a drift here does not let a
   // client widen a limit — it makes the dashboard offer a value the server
@@ -360,6 +374,12 @@ describe('chat policy mirror', () => {
   it('agrees on the voice bitrate ceiling', () => {
     expect(serverNumberConstant(voiceDefaultsRs, 'MAX_ALLOWED_VOICE_BITRATE', 'i32')).toBe(
       MAX_VOICE_BITRATE
+    );
+  });
+
+  it('agrees on the voice user limit ceiling', () => {
+    expect(serverNumberConstant(voiceDefaultsRs, 'MAX_VOICE_USER_LIMIT', 'u32')).toBe(
+      MAX_VOICE_USER_LIMIT
     );
   });
 });
@@ -432,7 +452,7 @@ describe('audit action mirror', () => {
     const known = serverAuditActions();
     for (const action of known) expect(typeof auditTargetIsMember(action)).toBe('boolean');
     expect(known.filter(auditTargetIsMember).sort()).toEqual(
-      ['admin-role-grant', 'ban', 'kick', 'mute', 'unban', 'unmute', 'user-roles'].sort()
+      ['admin-role-grant', 'ban', 'kick', 'move', 'mute', 'unban', 'unmute', 'user-roles'].sort()
     );
   });
 

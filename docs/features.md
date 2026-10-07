@@ -105,7 +105,7 @@ Forwarding a forward keeps the *first* attribution rather than nesting one
 inside the other. The words are still the first author's, and a chain of
 "forwarded from a forward of…" tells the reader nothing.
 
-Three refusals carry the design:
+Four refusals carry the design:
 
 - **The source is view-checked, and the refusal is deliberately ambiguous.**
   Message ids are small integers, so without the check a member could guess
@@ -120,6 +120,9 @@ Three refusals carry the design:
 - **An ephemeral message refuses.** It was posted on the promise that it
   disappears; a copy without the expiry breaks that promise, and a copy
   carrying it would start a second countdown nobody asked for.
+- **A poll refuses.** Its options and votes belong to the original; a copy
+  would open a second, empty tally under the original author's attribution,
+  and copying only the question would drop what made it a poll.
 
 **A forward cannot be edited.** Editing is normally the author's own right,
 never a moderator's, precisely because it rewrites somebody's words — but a
@@ -138,13 +141,153 @@ honest shape for it and not a weakening: in a two-person conversation the
 sender could type the same words anyway, so there is nothing a stamp would
 protect. See [`security.md`](security.md).
 
+## Polls
+
+Server: `ws/helpers.rs::parse_poll` / `prepare_poll_vote`,
+`ws/handlers/messages.rs::handle_poll_vote`, `db/polls.rs`. Client:
+`/poll` in `src/lib/chat/commands.ts`, `components/chat/PollCard.svelte`.
+
+**A poll is a chat message with a `poll` field.** The question is the
+message's `text`, so it gets the length limit, auto-moderation, the
+profanity mask, mentions, search and editing for free. The options are
+rebuilt from their labels alone (`parse_poll`) and run through the same
+rule screen and mask: otherwise they would be the place to put whatever the
+text may not say. They cannot be edited — changing an option under existing
+votes would change what people voted for.
+
+**The server counts, one vote per account.** Votes live in `poll_votes`,
+keyed on message and account, so changing a vote replaces it and a null
+`option` takes it back. They are never written into the stored frame; the
+tally is attached whenever the message is served (`hydrate_messages`), and
+every change re-sends the whole tally to the channel as `poll-update`. The
+cap on options exists because of that re-send. Voters are named, like
+reactions — Murmer has no anonymous polls. Votes cascade away with their
+message through the foreign key, so every deletion path cleans them up
+without knowing about them.
+
+Voting answers to the rules reacting does: seeing the channel, plus
+`SEND_MESSAGES` to cast a vote; taking one back only needs the channel to be
+visible. A poll in a channel the voter cannot see answers "message not
+found", so the frame cannot probe for hidden ids.
+
+**Encrypted channels have no polls.** Counting means seeing the votes and the
+options they choose between. A poll is refused there rather than sealed, and
+a poll posted before the channel switched to encryption stops taking votes.
+
+## Message links
+
+Client: `src/lib/message-link.ts`, with the jump itself in
+`routes/chat/+page.svelte` (`openMessageLink`).
+
+A link is an ordinary `https://<host>/chat#server=…&channel=…&message=…`,
+shaped like an invite link so one link works in a browser and inside the
+app. Clicked in a message, the chat page catches it before the desktop
+shell's opener would hand it to the system browser.
+
+**A link only opens a server the user already added.** Connecting hands a
+server the account name, the public key and the user's address, so a link
+anyone can post must not be able to start that. A link for an unknown
+server is refused with a message instead of offering to add it — adding a
+server is what invite links are for.
+
+The link names a channel, not a permission: one into a channel the reader
+cannot see stops at "a channel you cannot see", and the history request
+behind the jump is checked by the server like any other.
+
+## Spoilers
+
+Client: `src/lib/spoilers.ts`, the `||…||` extension in `markdown.ts`.
+Server: `spoiler` in `PLAINTEXT_MESSAGE_FIELDS`.
+
+Revealing is one document-wide listener rather than a handler per surface,
+so the channel, threads, DMs and wiki pages all honour `||…||` the moment
+they render markdown. The first click on a hidden spoiler only reveals it:
+a link inside one must not be followed sight unseen.
+
+**Plain-text previews blank spoilers instead of rendering them.** OS
+notifications, reply quotes and the pinned bar show text the app cannot
+blur, so `hideSpoilers` replaces each one with `[spoiler]`. `notify()`
+applies it itself, which keeps a new notification from forgetting to.
+
+**An image spoiler is a flag on the message, sealed like the image.** In an
+encrypted channel it travels inside the envelope — it says something about
+the content — so the server rejects it in the clear there, as it does the
+image itself. It is one of the fields a forward copies; a forward that
+dropped it would show the image unblurred in the next channel.
+
+## Search filters
+
+Client: `parseSearchQuery` in `src/lib/chat/search.ts`. Server:
+`search_filters` in `ws/handlers/messages.rs`, `SearchFilters` in
+`db/messages.rs`.
+
+The search box takes `from:`, `in:`, `has:file`, `before:` and `after:`
+next to its words. `in:` never reaches the server: it only picks which
+channel the frame names, and the server checks that channel as it always
+did. The rest travel as a structured `filters` field rather than inside the
+query text, so the FTS sanitiser never has to know about them.
+
+**`from:` is the account name.** It matches the `user` the server stamped on
+the message, and a display name could name several people.
+
+**Dates are compared as text.** The client turns a day into a UTC instant
+at the user's local midnight; the server re-stamps it with the same
+`to_rfc3339` that writes `timestamp` on every message, and that shared shape
+is what makes a string comparison in SQLite correct.
+
+**A filter alone is a search,** and it reaches into encrypted channels:
+author and timestamp are plaintext metadata there anyway. `has:file` does
+not, because the attachment is sealed. A filter the client cannot honour (an
+unknown channel, an impossible date) is an error, not dropped — searching
+without it would answer a different question.
+
+## Text-to-speech
+
+Client: `src/lib/tts.ts`, `/tts` in `chat/commands.ts`, the toggle in
+Settings → Audio. No server code: `tts: true` is stored like any other
+field the client sends.
+
+**The sender asks, the listener decides.** The toggle is off by default and
+lives in `localStorage`, and a channel muted in its notification settings
+stays silent, so one member's `/tts` cannot make a room talk that did not
+opt in.
+
+**Only live messages speak.** The chat store hands each opened live message
+to `tts.ts` through `onLiveMessage`; history, threads and search never pass
+there, so scrolling back does not replay a conversation.
+
+**The flag is plaintext in an encrypted channel.** It travels beside the
+envelope, like the reply id, because it says how to deliver the words and
+not what they are. The words themselves are read from the opened message,
+with spoilers replaced by `[spoiler]` as in a notification.
+
+## Blocking
+
+Client: `src/lib/stores/blocks.ts`, Block in the member menu and on a
+profile. No server code.
+
+**The server never learns who you blocked.** The list lives in
+`localStorage`, per server since account names are only unique per server,
+so a block hides rather than prevents: the blocked member can still read your
+messages and send you DMs, the client just drops them. That is the price of
+keeping the list private, and the same shape as the per-user soundboard mute.
+
+**Hidden is collapsed, not removed.** A blocked member's channel message
+renders as a one-line placeholder with a Show button, so a reply to it still
+has something to point at and the conversation around it still reads. No
+notification, mention-inbox entry or `/tts` reading comes from them, their
+voice plays at zero and their soundboard clips are not played. DMs from them
+are dropped on arrival and filtered out of history; your own side of the
+conversation stays.
+
 ## Profiles, display names and nicknames
 
 Server: `ws/handlers/profile.rs`, `db/users.rs`. Client:
 `stores/profiles.ts`.
 
 Profiles live on the `user_keys` binding row: `avatar`, `display_name`,
-`nickname`, `about`, and the `created_at` that doubles as "member since".
+`nickname`, `about`, the status line, and the `created_at` that doubles as
+"member since".
 
 `set-avatar` and `set-profile` only ever touch the requester's own row;
 absent fields are left alone and `null` clears one. Every client gets an
@@ -210,6 +353,53 @@ The inbox is held in memory and reset per connection, like the drafts: it
 carries the plaintext of encrypted channels, which must never land on disk.
 
 Rendering rules for the client are in [`client-state.md`](client-state.md).
+
+### Status line
+
+A short custom status ("back at 3") under the name in the member list,
+set in the profile editor with `set-status-text` and an optional expiry.
+**Nothing clears it when the expiry passes.** The server leaves a lapsed
+line out of every profile frame it builds (`UserProfile::active_status`),
+and a connected client drops it against its own clock (`statusTexts`,
+ticking every thirty seconds). A timer to clear it would be another
+background task for a line that is purely cosmetic. Expiries are capped at
+a week ahead and must lie in the future; an empty line has none.
+
+## Pokes
+
+Server: `handle_poke` in `ws/handlers/mod.rs`. Client: `stores/pokes.ts`,
+Poke in the member menu.
+
+A nudge that pops up as a dialog and an OS notification **even when every
+channel is muted** (TeamSpeak). That is the whole feature, so everything
+else is about keeping it from becoming a harassment tool:
+
+- one poke per sender every `POKE_COOLDOWN_MS`, server-side, cleared on
+  disconnect like the soundboard cooldown;
+- a server mute silences pokes too;
+- it goes direct to an online target only — a poke is now or never, so an
+  offline target is refused rather than queued;
+- a blocked member's poke is dropped on arrival, like their DMs. The server
+  still delivers it, because it never learns who is blocked.
+
+## Voice messages
+
+Client only: `src/lib/voice-message.ts`, the microphone button in the
+composer.
+
+**A voice message is an ordinary attachment.** The recorder opens the
+microphone through `openMicrophone` — same device and processing as a call
+— and hands the finished clip to the composer as the pending file, so it
+travels sealed in DMs and encrypted channels like any other file and needs
+no server change. What marks it is the file name the recorder gives it:
+Chromium can only record WebM, which the upload safe-list files under
+video, so the extension alone cannot say "play this as audio". A recording
+stops itself after five minutes rather than holding the microphone open.
+
+Audio attachments get an inline player (`AudioAttachment.svelte`) that
+fetches the clip into a `blob:` URL on the first press of Play: the CSP's
+`media-src` admits `blob:` but not the server's origin, and fetching every
+clip in the history just to render it would download all of them.
 
 ## Reminders and scheduled messages
 

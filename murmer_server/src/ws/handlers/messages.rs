@@ -1,5 +1,13 @@
 //! Handlers for chat messages, message deletion, editing, forwarding,
-//! reactions, history and search.
+//! reactions, poll votes, history and search.
+//!
+//! A poll is a chat message with a `poll` field listing its options; the
+//! question is the text. The server keeps the votes, one per account, and
+//! sends the whole tally to the channel on every change (`poll-update`).
+//! Encrypted channels refuse polls, since counting votes means seeing them.
+//!
+//! A search may carry `filters` (author, has-a-file, a date window) next to
+//! its words; see [`search_filters`]. A filter alone is a whole search.
 //!
 //! A chat frame may carry a `mentions` field naming groups to ping — `@here`
 //! and roles. Recipients ping on that field alone, never on the text, so it
@@ -145,6 +153,42 @@ async fn search_wiki_hits(
     }
 }
 
+/// Read a search frame's `filters` field. Every part is optional; a part
+/// that is present but malformed is an error rather than ignored, because a
+/// silently dropped `before:` answers a different question than the one the
+/// user asked.
+fn search_filters(v: &Value) -> Result<db::SearchFilters, &'static str> {
+    let Some(raw) = v.get("filters").filter(|value| !value.is_null()) else {
+        return Ok(db::SearchFilters::default());
+    };
+    let raw = raw.as_object().ok_or("Invalid search filters")?;
+    let from = match raw.get("from") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(name)) if security::validate_user_name(name) => Some(name.clone()),
+        Some(_) => return Err("Invalid from: filter"),
+    };
+    let has_file = match raw.get("hasFile") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(flag)) => *flag,
+        Some(_) => return Err("Invalid has: filter"),
+    };
+    // Re-stamped in the server's own shape so the database can compare the
+    // bound with stored timestamps as plain strings.
+    let time = |key: &str| match raw.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(text)) => DateTime::parse_from_rfc3339(text)
+            .map(|at| Some(at.with_timezone(&Utc).to_rfc3339()))
+            .map_err(|_| "Invalid date filter"),
+        Some(_) => Err("Invalid date filter"),
+    };
+    Ok(db::SearchFilters {
+        from,
+        has_file,
+        before: time("before")?,
+        after: time("after")?,
+    })
+}
+
 /// Handle search history request.
 ///
 /// Answers with both the matching messages and the channel's matching wiki
@@ -171,8 +215,21 @@ pub(super) async fn handle_search_history(
         return;
     };
 
+    let filters = match search_filters(v) {
+        Ok(filters) => filters,
+        Err(message) => {
+            let payload = serde_json::json!({
+                "type": "search-error",
+                "message": message,
+                "requestId": request_id_for_error,
+            });
+            send_json(sender, &payload).await;
+            return;
+        }
+    };
+
     let trimmed_query = raw_query.trim();
-    if trimmed_query.is_empty() {
+    if trimmed_query.is_empty() && filters == db::SearchFilters::default() {
         let payload = serde_json::json!({
             "type": "search-results",
             "requestId": request_id,
@@ -207,11 +264,17 @@ pub(super) async fn handle_search_history(
         .unwrap_or(DEFAULT_HISTORY_LIMIT);
     limit = limit.clamp(1, MAX_SEARCH_RESULTS);
 
-    match db::search_messages(&state.db, channel_to_search, trimmed_query, limit).await {
+    match db::search_messages(&state.db, channel_to_search, trimmed_query, &filters, limit).await {
         Ok(rows) => {
             let messages = db::hydrate_messages(&state.db, rows, channel_to_search).await;
 
-            let pages = search_wiki_hits(state, channel_to_search, trimmed_query, limit).await;
+            // Wiki pages have no author, file or message time to filter on,
+            // so a filtered search is about messages only.
+            let pages = if filters == db::SearchFilters::default() {
+                search_wiki_hits(state, channel_to_search, trimmed_query, limit).await
+            } else {
+                Vec::new()
+            };
 
             let payload = serde_json::json!({
                 "type": "search-results",
@@ -359,6 +422,34 @@ pub(super) async fn prepare_chat_body(
     // from opting a message out of the channel's encryption.
     let max_length = super::chat_settings::max_message_length(state).await;
     let encrypted = channel_is_e2ee(state, channel_id).await;
+
+    // A poll is refused outright in an encrypted channel rather than sealed:
+    // the server counts the votes, so it would have to see them — and the
+    // options too, to know what was voted for. The question is the message
+    // text, so a poll without one is no poll.
+    let mut poll = None;
+    if let Some(raw) = v.get("poll").filter(|p| !p.is_null()) {
+        if encrypted {
+            send_error(sender, errors::CANNOT_POLL_ENCRYPTED).await;
+            return Err(());
+        }
+        let has_question = v
+            .get("text")
+            .and_then(|t| t.as_str())
+            .is_some_and(|t| !t.trim().is_empty());
+        match parse_poll(raw) {
+            Ok(parsed) if has_question => poll = Some(parsed),
+            Ok(_) => {
+                send_error(sender, errors::INVALID_POLL).await;
+                return Err(());
+            }
+            Err(code) => {
+                send_error(sender, code).await;
+                return Err(());
+            }
+        }
+    }
+
     if encrypted {
         if PLAINTEXT_MESSAGE_FIELDS
             .iter()
@@ -404,16 +495,50 @@ pub(super) async fn prepare_chat_body(
     // which is a limit of the profanity filter rather than a way around it.
     super::chat_settings::apply_profanity_filter(state, v).await;
 
+    // A poll's options are words posted to the channel like the question, so
+    // they clear the same rule screen and mask; otherwise the options would
+    // be the place to put whatever the text may not say.
+    if let Some(mut poll) = poll {
+        if let Some(options) = poll["options"].as_array_mut() {
+            let joined = options
+                .iter()
+                .filter_map(|o| o.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            if super::automod::screen(state, sender, user, &joined).await
+                == super::automod::Screen::Blocked
+            {
+                return Err(());
+            }
+            for option in options.iter_mut() {
+                let masked =
+                    super::chat_settings::mask_text(state, option.as_str().unwrap_or("")).await;
+                *option = Value::String(masked);
+            }
+        }
+        v["poll"] = poll;
+    } else if let Some(map) = v.as_object_mut() {
+        map.remove("poll");
+    }
+
     v["user"] = Value::String(user.to_string());
     v["channelId"] = Value::from(channel_id);
     if let Some(map) = v.as_object_mut() {
         map.remove("channel");
+        // The frame is stored as sent, so every field the *server* stamps on
+        // a message is dropped here: a client-written `forwardedFrom` would
+        // put words under another member's name with the server's own
+        // attribution chip on top (see `forwarded_body`), and the others
+        // would fake reactions or an edit that never happened.
+        for field in ["forwardedFrom", "reactions", "edited", "editedAt", "time"] {
+            map.remove(field);
+        }
         // Group pings are authorized by `handle_chat` alone, which puts them
         // back once checked. A scheduled body must never carry one: it would
         // ping on the strength of a permission that may be gone by then.
         map.remove("mentions");
     }
-    let timestamp = sanitize_message_timestamp(v);
+    let timestamp = stamp_message_time(v);
 
     // Replies carry only the target message id from the client; the quoted
     // snippet and thread root are rebuilt from the stored message so a client
@@ -926,7 +1051,11 @@ pub(super) async fn handle_load_thread(
     sender: &mut SplitSink<WebSocket, Message>,
     v: &Value,
     channel_id: i32,
+    user_name: &Option<String>,
 ) {
+    if !can_view_text(state, user_name, channel_id).await {
+        return;
+    }
     let root_id = match v.get("rootId").and_then(|r| r.as_i64()) {
         Some(id) => id,
         None => {
@@ -979,6 +1108,62 @@ pub(super) async fn handle_typing(
         "type": "typing",
         "user": user,
         "channelId": channel_id,
+    });
+    send_to_channel(state, channel_id, &payload).await;
+}
+
+/// Handle a `poll-vote`: cast, change or (with a null `option`) take back
+/// the sender's one vote on a poll, then send the poll's whole tally to its
+/// channel. The rules live in [`prepare_poll_vote`].
+pub(super) async fn handle_poll_vote(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(user) = user_name.as_deref() else {
+        send_error(sender, errors::NOT_AUTHENTICATED).await;
+        return;
+    };
+    let Some(message_id) = v.get("messageId").and_then(|m| m.as_i64()) else {
+        send_error(sender, errors::INVALID_MESSAGE_ID).await;
+        return;
+    };
+    let option = match v.get("option") {
+        None | Some(Value::Null) => None,
+        Some(raw) => match raw.as_u64().and_then(|o| usize::try_from(o).ok()) {
+            Some(option) => Some(option),
+            None => {
+                send_error(sender, errors::INVALID_POLL).await;
+                return;
+            }
+        },
+    };
+
+    let (channel_id, poll) = match prepare_poll_vote(state, user, message_id, option).await {
+        Ok(found) => found,
+        Err(code) => {
+            send_error(sender, code).await;
+            return;
+        }
+    };
+    if let Err(e) = db::set_poll_vote(&state.db, message_id, user, option).await {
+        error!("db poll vote error: {e}");
+        send_error(sender, errors::POLL_VOTE_FAILED).await;
+        return;
+    }
+    let votes = match db::get_poll_votes_for_messages(&state.db, &[message_id]).await {
+        Ok(mut map) => map.remove(&message_id).unwrap_or_default(),
+        Err(e) => {
+            error!("db poll tally error: {e}");
+            return;
+        }
+    };
+    let payload = serde_json::json!({
+        "type": "poll-update",
+        "channelId": channel_id,
+        "messageId": message_id,
+        "votes": db::poll_tally(&poll, &votes),
     });
     send_to_channel(state, channel_id, &payload).await;
 }

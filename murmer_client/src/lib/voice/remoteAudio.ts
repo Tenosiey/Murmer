@@ -4,6 +4,7 @@
  * output device, and drives that member's speaking indicator.
  */
 import { outputDeviceId, outputMuted, userVolumes, volume } from '../stores/settings';
+import { blockedUsers } from '../stores/blocks';
 import { setSpeaking, SPEAKING_RMS_THRESHOLD } from '../stores/voiceSpeaking';
 import { getAudioContext, resumeAudioContext } from './audioContext';
 import { subscribeTick } from './ticker';
@@ -32,9 +33,10 @@ export function remoteAudio(node: HTMLAudioElement, data: RemoteAudio) {
   let globalVolume = 1;
   let muted = false;
   let perUser: Record<string, number> = {};
+  let blocked: string[] = [];
 
   const updateVolume = () => {
-    const userVol = perUser[currentUserId] ?? 1.0;
+    const userVol = blocked.includes(currentUserId) ? 0 : (perUser[currentUserId] ?? 1.0);
     if (muted) {
       node.volume = 0;
     } else {
@@ -58,6 +60,10 @@ export function remoteAudio(node: HTMLAudioElement, data: RemoteAudio) {
   });
   const unsubUserVol = userVolumes.subscribe((value) => {
     perUser = value;
+    updateVolume();
+  });
+  const unsubBlocked = blockedUsers.subscribe((value) => {
+    blocked = value;
     updateVolume();
   });
 
@@ -174,6 +180,7 @@ export function remoteAudio(node: HTMLAudioElement, data: RemoteAudio) {
       unsubVol();
       unsubMute();
       unsubUserVol();
+      unsubBlocked();
       unsubOut();
       teardownAudio();
     }

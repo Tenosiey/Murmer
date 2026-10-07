@@ -44,8 +44,9 @@ There is no second bundle and no build flag. `src/lib/platform.ts` answers
 `isTauri` at runtime by checking `__TAURI_INTERNALS__` — never `__TAURI__`,
 which only exists with `withGlobalTauri` and would report "browser" inside
 the desktop app. Every native integration (updater, OS-level global hotkeys,
-tray icon, native notifications) asks it first and imports its Tauri plugin
-**dynamically**, so the plugin never lands in the web bundle.
+tray icon, native notifications, launch on login) asks it first and imports
+its Tauri plugin **dynamically**, so the plugin never lands in the web
+bundle.
 
 The static adapter also writes a `200.html` SPA fallback, which is what lets
 a plain static host resolve a deep link such as `/invite#…`.
@@ -54,7 +55,8 @@ The browser cannot do everything the shell can, and the difference is
 enforced by the platform rather than by us:
 
 - Global hotkeys stay in-app (a web page cannot grab a key from the OS) and
-  the updater is hidden — both gated on `isTauri` in `SettingsModal.svelte`.
+  the updater and launch on login are hidden — gated on `isTauri` in the
+  settings tabs.
 - Microphone and screen capture need a **secure context**, so voice only
   works over HTTPS (or on `localhost`).
 - An HTTPS page may not open a `ws://` socket or load `http://` attachments.

@@ -15,7 +15,6 @@ use tokio::sync::mpsc;
 async fn make_state() -> Arc<AppState> {
     let database = db::init(":memory:").await.expect("in-memory db");
     Arc::new(AppState {
-        admin_token: Some("token".to_string()),
         ..AppState::new(database)
     })
 }

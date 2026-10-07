@@ -2,6 +2,7 @@
 
   import { displayNames } from '$lib/stores/profiles';
   import { tick } from 'svelte';
+  import { hideSpoilers } from '$lib/spoilers';
   import type { Message, SearchResults, WikiSearchHit } from '$lib/types';
   import {
     searchResultPreview,
@@ -140,7 +141,7 @@
       <form class="search-form" onsubmit={(event) => { event.preventDefault(); performSearch(); }}>
         <input
           type="search"
-          placeholder="Search messages and wiki pages"
+          placeholder="Search — from: in: has:file before: after:"
           aria-label="Search messages and wiki pages"
           bind:value={query}
           bind:this={inputEl}
@@ -151,7 +152,8 @@
       {#if encrypted}
         <p class="search-status">
           This channel is end-to-end encrypted, so its messages never reach the server as text
-          and cannot be searched. Its wiki pages still can.
+          and cannot be searched by their words. Its wiki pages, and the from:, before: and
+          after: filters, still can.
         </p>
       {/if}
       {#if error}
@@ -171,7 +173,7 @@
                   <button type="button" class="search-result" onclick={() => openPage(page)}>
                     <span class="search-result-text">{page.title}</span>
                     {#if page.snippet}
-                      <span class="search-result-snippet">{page.snippet}</span>
+                      <span class="search-result-snippet">{hideSpoilers(page.snippet)}</span>
                     {/if}
                     <span class="search-result-meta">
                       <span class="search-result-user">

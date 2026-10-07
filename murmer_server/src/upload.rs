@@ -1,13 +1,13 @@
 //! Endpoint for storing uploaded files on disk.
 //!
-//! Every request must prove ownership of a public key that has authenticated
-//! with this server before (see [`authorize`]) and is subject to a per-IP rate
+//! Every request must name the upload session of a live, authenticated
+//! WebSocket connection (see [`authorize`]) and is subject to a per-IP rate
 //! limit: writing a file to disk is the one thing an HTTP caller can make the
 //! server spend storage on, so it may not be reachable by anyone who can open
-//! a socket. Credentials travel as ordinary multipart fields ahead of the file
-//! rather than as headers, which keeps the request a CORS-simple one — a
-//! custom header would add a preflight the server does not answer while CORS
-//! is disabled, i.e. in the recommended production configuration.
+//! a socket. The session travels as an ordinary multipart field ahead of the
+//! file rather than as a header, which keeps the request a CORS-simple one —
+//! a custom header would add a preflight the server does not answer while
+//! CORS is disabled, i.e. in the recommended production configuration.
 //!
 //! Files are sanitized and saved under the `UPLOAD_DIR` directory. Images are
 //! validated by magic bytes; other attachments are restricted to a safe-list
@@ -15,6 +15,11 @@
 //! back from `/files` and executed in a browser context. The returned JSON
 //! contains a relative URL that clients can combine with the server URL to
 //! fetch the file later.
+//!
+//! Every stored file is recorded against its uploader in the `uploads` table,
+//! which is what the per-user and server-wide byte quotas ([`UploadQuota`])
+//! are counted from, and what lets a deleted message take its file with it
+//! ([`spawn_upload_sweep`]).
 //!
 //! The safe-list is grouped into categories (images, documents, archives,
 //! audio, video). Which categories are accepted and how large a file may be
@@ -53,6 +58,69 @@ pub const MIN_CONFIGURABLE_FILE_SIZE: usize = 64 * 1024;
 /// they exceed the *configured* limit, so a high ceiling does not let an
 /// unauthenticated caller buffer more than the operator allowed.
 pub const MAX_CONFIGURABLE_FILE_SIZE: usize = 100 * 1024 * 1024;
+
+/// How many bytes of uploads one user, and the whole server, may keep
+/// stored (`UPLOAD_QUOTA_USER_MB`, `UPLOAD_QUOTA_TOTAL_MB`). Zero means no
+/// limit. Without a quota the per-IP rate limit alone let one member write
+/// about 12 GB an hour onto the disk the database shares.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UploadQuota {
+    pub per_user: u64,
+    pub total: u64,
+}
+
+impl Default for UploadQuota {
+    fn default() -> Self {
+        Self {
+            per_user: 1024 * 1024 * 1024,
+            total: 20 * 1024 * 1024 * 1024,
+        }
+    }
+}
+
+/// Remove a stored upload and return its bytes to its owner's quota.
+/// Best-effort: a file already gone is not an error.
+pub async fn remove_upload(state: &AppState, key: &str) {
+    let _ = tokio::fs::remove_file(state.upload_dir.join(key)).await;
+    if let Err(e) = db::forget_upload(&state.db, key).await {
+        error!("Failed to forget upload {key}: {e}");
+    }
+}
+
+/// Delete the files of messages that are gone and named nowhere else. See
+/// [`db::take_unreferenced_uploads`].
+pub async fn sweep_released_uploads(state: &AppState) {
+    match db::take_unreferenced_uploads(&state.db).await {
+        Ok(keys) => {
+            for key in &keys {
+                let _ = tokio::fs::remove_file(state.upload_dir.join(key)).await;
+            }
+            if !keys.is_empty() {
+                info!(removed = keys.len(), "Deleted uploads of deleted messages");
+            }
+        }
+        Err(e) => error!("Upload sweep failed: {e}"),
+    }
+}
+
+/// How often [`spawn_upload_sweep`] runs.
+const UPLOAD_SWEEP_SECONDS: u64 = 300;
+
+/// Sweep the files of deleted messages every few minutes. Deleting them with
+/// the message would need every delete path (author, moderator, retention,
+/// purge, reset, ephemeral expiry) to remember to; the trigger plus this
+/// sweep cannot be forgotten by a new one.
+pub fn spawn_upload_sweep(state: Arc<AppState>) {
+    tokio::spawn(async move {
+        let mut ticker =
+            tokio::time::interval(std::time::Duration::from_secs(UPLOAD_SWEEP_SECONDS));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            sweep_released_uploads(&state).await;
+        }
+    });
+}
 
 /// Allowed MIME types for image uploads
 static ALLOWED_IMAGE_TYPES: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -115,7 +183,7 @@ pub fn default_category_ids() -> Vec<String> {
 }
 
 /// Detect file type by magic bytes
-fn detect_file_type(data: &[u8]) -> Option<&'static str> {
+pub(crate) fn detect_file_type(data: &[u8]) -> Option<&'static str> {
     if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
         Some("image/jpeg")
     } else if data.starts_with(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
@@ -172,29 +240,11 @@ pub fn classify_extension(filename: &str) -> Option<&'static UploadCategory> {
         .find(|category| category.extensions.contains(&ext.as_str()))
 }
 
-/// Domain separator for the message an upload proof signs.
-///
-/// The signature covers `upload:<timestamp>` rather than the bare timestamp a
-/// presence frame signs, so the two proofs are different messages: one can
-/// never be lifted from a captured frame and spent on the other.
-const UPLOAD_PROOF_PREFIX: &str = "upload:";
-
-/// Upper bound on a single credential field. The values are a base64 key, a
-/// base64 signature and a millisecond timestamp; anything near this cap is
-/// already junk, and the cap is what stops a caller from streaming the whole
-/// request body into memory under the name of a "public key".
+/// Upper bound on the session field. The value is a base64-encoded 32-byte
+/// challenge; anything near this cap is already junk, and the cap is what
+/// stops a caller from streaming the whole request body into memory under
+/// the name of a credential.
 const MAX_CREDENTIAL_BYTES: usize = 1024;
-
-/// The proof of identity a client sends ahead of the file part.
-#[derive(Default)]
-struct Credentials {
-    /// Base64 Ed25519 public key, the same one used for WebSocket presence.
-    public_key: String,
-    /// Milliseconds since the Unix epoch, as a string.
-    timestamp: String,
-    /// Base64 Ed25519 signature over `upload:<timestamp>`.
-    signature: String,
-}
 
 /// Read one small text field, refusing anything larger than `max` bytes.
 ///
@@ -221,79 +271,49 @@ async fn read_text_field(field: &mut Field<'_>, max: usize) -> Result<String, ()
 /// Authenticate an upload and resolve the account making it, or return the
 /// status to answer with.
 ///
-/// The proof is the one presence uses — a fresh, single-use timestamp signed
-/// by the caller's key — plus the requirement that the key already owns an
-/// account here. That last step is what carries the server password over to
-/// this endpoint: a name is only bound to a key by a successful presence, so
-/// on a password-protected server a key that never had the password has no
-/// account to upload under.
-async fn authorize(
-    state: &AppState,
-    client_ip: &str,
-    creds: &Credentials,
-) -> Result<String, StatusCode> {
-    if creds.public_key.is_empty() || creds.timestamp.is_empty() || creds.signature.is_empty() {
+/// The credential is the caller's upload session: the challenge its open
+/// WebSocket connection was greeted with, registered once that connection
+/// proved its key with `presence` and dropped when it closes. That carries
+/// the server password, the name binding and the ban check over to this
+/// endpoint without a second proof — and, unlike a signature the client
+/// makes by itself, it cannot have been issued by any other server.
+async fn authorize(state: &AppState, client_ip: &str, session: &str) -> Result<String, StatusCode> {
+    if session.is_empty() {
         warn!(%client_ip, "Rejected upload without credentials");
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    // A signature on its own only proves possession of the key, so it is
-    // bounded in time (the timestamp must be recent) and to a single use (the
-    // shared nonce store) exactly as in the presence path.
-    if let Err(err) = security::validate_timestamp(&creds.timestamp) {
-        warn!(%client_ip, "Rejected upload - {err}: {}", creds.timestamp);
+    let Some((user, key)) = state.upload_sessions.lock().await.get(session).cloned() else {
+        warn!(%client_ip, "Rejected upload with an unknown session");
         return Err(StatusCode::UNAUTHORIZED);
-    }
-
-    let nonce = format!(
-        "{UPLOAD_PROOF_PREFIX}{}:{}",
-        creds.public_key, creds.timestamp
-    );
-    if !security::check_and_store_nonce(&state.rate_limiter, &nonce).await {
-        warn!(%client_ip, "Rejected upload with a replayed proof");
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-
-    let message = format!("{UPLOAD_PROOF_PREFIX}{}", creds.timestamp);
-    if let Err(err) = security::verify_key_signature(&creds.public_key, &creds.signature, &message)
-    {
-        warn!(%client_ip, ?err, "Rejected upload with an invalid key proof");
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-
-    let user = match db::user_for_key(&state.db, &creds.public_key).await {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            warn!(%client_ip, "Rejected upload from a key with no account on this server");
-            return Err(StatusCode::FORBIDDEN);
-        }
-        Err(e) => {
-            error!("Failed to resolve the account behind an upload key: {e}");
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
     };
 
-    match db::is_banned(&state.db, Some(&creds.public_key), &user).await {
+    match db::is_banned(&state.db, Some(&key), &user).await {
         Ok(true) => {
             warn!(%client_ip, "Rejected upload from banned user: {user}");
             return Err(StatusCode::FORBIDDEN);
         }
         Ok(false) => {}
-        // Mirrors presence: a database failure here must not lock everyone out
-        // of uploading, and every other gate above has already been passed.
-        Err(e) => error!("Failed to check ban state for {user}: {e}"),
+        // Fails closed, like presence: a retry costs a member little, a
+        // banned user's upload cannot be taken back.
+        Err(e) => {
+            error!("Failed to check ban state for {user}: {e}");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
     }
 
     Ok(user)
 }
 
-#[tracing::instrument(skip(state, addr, multipart), fields(client_ip = %addr.ip()))]
+#[tracing::instrument(skip_all, fields(client_ip = tracing::field::Empty))]
 pub async fn upload(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: axum::http::HeaderMap,
     mut multipart: Multipart,
 ) -> Response {
-    let client_ip = addr.ip().to_string();
+    let client_ip = security::client_ip(&state.trusted_proxies, addr.ip(), &headers).to_string();
+    tracing::Span::current().record("client_ip", &client_ip);
 
     // Checked before the body is touched: the limit exists to cap the work one
     // caller can make the server do, so it must not sit behind that work.
@@ -302,8 +322,8 @@ pub async fn upload(
     }
 
     // Credential fields come first and the file part ends the loop, so the
-    // proof is verified before a single byte of the file is buffered.
-    let mut creds = Credentials::default();
+    // session is checked before a single byte of the file is buffered.
+    let mut session = String::new();
     let mut field = loop {
         let mut field = match multipart.next_field().await {
             Ok(Some(field)) => field,
@@ -314,16 +334,12 @@ pub async fn upload(
             }
         };
 
-        let name = field.name().map(str::to_string);
-        let slot = match name.as_deref() {
-            Some("publicKey") => &mut creds.public_key,
-            Some("timestamp") => &mut creds.timestamp,
-            Some("signature") => &mut creds.signature,
-            _ => break field,
-        };
+        if field.name() != Some("session") {
+            break field;
+        }
 
         match read_text_field(&mut field, MAX_CREDENTIAL_BYTES).await {
-            Ok(value) => *slot = value,
+            Ok(value) => session = value,
             Err(()) => {
                 warn!(%client_ip, "Rejected upload with an oversized credential field");
                 return StatusCode::BAD_REQUEST.into_response();
@@ -331,7 +347,7 @@ pub async fn upload(
         }
     };
 
-    let user = match authorize(&state, &client_ip, &creds).await {
+    let user = match authorize(&state, &client_ip, &session).await {
         Ok(user) => user,
         Err(status) => return status.into_response(),
     };
@@ -408,7 +424,38 @@ pub async fn upload(
         return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
     }
 
-    let key = format!("{}-{}", chrono::Utc::now().timestamp_millis(), filename);
+    // `/files` answers anyone who has the URL, password or not, and that
+    // includes files shared in private and encrypted channels. A timestamp
+    // and a filename alone are guessable, so the key carries 128 random bits:
+    // knowing a file was posted is not enough to fetch it.
+    let secret: [u8; 16] = rand::random();
+    let secret: String = secret.iter().map(|b| format!("{b:02x}")).collect();
+    let key = format!(
+        "{}-{secret}-{}",
+        chrono::Utc::now().timestamp_millis(),
+        filename
+    );
+    let quota = state.upload_quota;
+    match db::reserve_upload(
+        &state.db,
+        &key,
+        &user,
+        data.len() as u64,
+        quota.per_user,
+        quota.total,
+    )
+    .await
+    {
+        Ok(true) => {}
+        Ok(false) => {
+            warn!("Rejected upload from {user}: storage quota reached");
+            return StatusCode::INSUFFICIENT_STORAGE.into_response();
+        }
+        Err(e) => {
+            error!("Failed to reserve upload quota for {user}: {e}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    }
     let path = state.upload_dir.join(&key);
     // Append ".tmp" rather than replacing the extension: with_extension()
     // would map same-millisecond uploads of "a.pdf" and "a.zip" onto the same
@@ -432,11 +479,13 @@ pub async fn upload(
             Err(e) => {
                 error!("Failed to move uploaded file: {}", e);
                 let _ = tokio::fs::remove_file(temp_path).await;
+                let _ = db::forget_upload(&state.db, &key).await;
                 StatusCode::INTERNAL_SERVER_ERROR.into_response()
             }
         },
         Err(e) => {
             error!("Failed to write uploaded file: {}", e);
+            let _ = db::forget_upload(&state.db, &key).await;
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }

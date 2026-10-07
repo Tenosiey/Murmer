@@ -22,7 +22,6 @@ use axum_extra::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
-use subtle::ConstantTimeEq;
 use tracing::error;
 
 use crate::roles::default_color;
@@ -42,17 +41,13 @@ pub async fn set_role(
     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
     Json(body): Json<RoleBody>,
 ) -> impl IntoResponse {
-    // Use constant-time comparison to prevent timing attacks
-    let authorized = if let Some(expected_token) = &state.admin_token {
-        expected_token
-            .as_bytes()
-            .ct_eq(bearer.token().as_bytes())
-            .into()
-    } else {
-        false
-    };
-
-    if !authorized {
+    if !crate::security::admin_token_matches(
+        &state.rate_limiter,
+        state.admin_token.as_deref(),
+        bearer.token(),
+    )
+    .await
+    {
         return StatusCode::UNAUTHORIZED;
     }
 

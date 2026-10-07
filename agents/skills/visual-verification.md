@@ -78,9 +78,9 @@ cd murmer_server && DATABASE_PATH=/tmp/scratch.db BIND_ADDRESS=127.0.0.1:3999 ca
 ### Simulating other users
 
 Node has a global `WebSocket`. A scripted peer authenticates with a
-`presence` frame: `{type:'presence', user, publicKey, signature, timestamp}`,
-where `timestamp` is epoch-millis **as a string** and `signature` is
-`nacl.sign.detached` over it.
+`presence` frame: `{type:'presence', user, publicKey, signature}`, where
+`signature` is `nacl.sign.detached` over `presence:<challenge>` — the
+`challenge` of the `auth-challenge` frame the server sends first.
 
 Two things bite:
 

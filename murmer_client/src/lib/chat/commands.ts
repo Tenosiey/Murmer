@@ -8,6 +8,8 @@
 import type { UserStatus } from '../types';
 import {
   MAX_EPHEMERAL_SECONDS,
+  MAX_POLL_OPTION_LENGTH,
+  MAX_POLL_OPTIONS,
   MAX_TOPIC_LENGTH,
   MIN_EPHEMERAL_SECONDS,
   USER_STATUS_VALUES
@@ -21,10 +23,12 @@ export type SlashCommand =
   | { kind: 'help' }
   | { kind: 'reminders' }
   | { kind: 'send'; text: string }
+  | { kind: 'tts'; text: string }
   | { kind: 'topic'; topic: string }
   | { kind: 'status'; status: UserStatus }
   | { kind: 'ephemeral'; text: string; seconds: number; clampNote: string | null }
   | { kind: 'search'; query: string }
+  | { kind: 'poll'; question: string; options: string[] }
   | { kind: 'remind'; text: string; at: Date }
   | { kind: 'schedule'; text: string; at: Date };
 
@@ -61,6 +65,22 @@ function parseEphemeral(rest: string): SlashCommand {
   return { kind: 'ephemeral', text, seconds, clampNote };
 }
 
+/** `/poll <question> | <option> | <option> …`, checked as the server will. */
+function parsePoll(rest: string): SlashCommand {
+  const [question, ...options] = rest.split('|').map((part) => part.trim());
+  if (!question || options.length < 2) {
+    return error('Usage: /poll <question> | <option> | <option> …');
+  }
+  if (options.length > MAX_POLL_OPTIONS) {
+    return error(`A poll can have at most ${MAX_POLL_OPTIONS} options.`);
+  }
+  if (options.some((option) => option === '')) return error('Poll options cannot be empty.');
+  if (options.some((option) => [...option].length > MAX_POLL_OPTION_LENGTH)) {
+    return error(`Poll options are limited to ${MAX_POLL_OPTION_LENGTH} characters.`);
+  }
+  return { kind: 'poll', question, options };
+}
+
 /** Parse a composer line that starts with `/`. */
 export function parseSlashCommand(raw: string, now: Date = new Date()): SlashCommand {
   const content = raw.slice(1).trim();
@@ -76,6 +96,8 @@ export function parseSlashCommand(raw: string, now: Date = new Date()): SlashCom
       return { kind: 'reminders' };
     case 'me':
       return rest ? { kind: 'send', text: `_${rest}_` } : error('Usage: /me <action>');
+    case 'tts':
+      return rest ? { kind: 'tts', text: rest } : error('Usage: /tts <message>');
     case 'shrug':
       return { kind: 'send', text: rest ? `${rest} ${SHRUG}` : SHRUG };
     case 'topic':
@@ -94,6 +116,8 @@ export function parseSlashCommand(raw: string, now: Date = new Date()): SlashCom
       return parseEphemeral(rest);
     case 'search':
       return { kind: 'search', query: rest };
+    case 'poll':
+      return parsePoll(rest);
     case 'remind':
     case 'remindme': {
       const timed = parseTimed(rest, 'Usage: /remind <when> <note> — e.g. /remind 15m stretch', now);

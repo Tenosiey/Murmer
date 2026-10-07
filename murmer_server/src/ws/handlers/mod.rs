@@ -25,6 +25,7 @@ mod messages;
 mod moderation;
 mod pins;
 mod profile;
+mod read_markers;
 mod roles;
 mod scheduled;
 mod screenshare;
@@ -117,14 +118,31 @@ async fn general_channel_id(state: &Arc<AppState>) -> i32 {
 }
 
 /// Main WebSocket loop handling incoming messages and broadcasting events.
-#[tracing::instrument(skip(socket, state), fields(client_ip = %peer_addr.ip()))]
-async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::net::SocketAddr) {
-    let client_ip = peer_addr.ip().to_string();
+#[tracing::instrument(skip(socket, state), fields(client_ip = %client_ip))]
+async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::net::IpAddr) {
+    let client_ip = client_ip.to_string();
     // Counted for the lifetime of this function, however it ends.
     let _counted = crate::metrics::Connection::open();
     info!("Client connected");
 
+    // Measured from the moment the socket opened, before any of the setup
+    // below has to wait on the database.
+    let login_deadline = tokio::time::sleep(state.auth_timeout);
+    tokio::pin!(login_deadline);
     let (mut sender, mut receiver) = socket.split();
+    // What this connection's `presence` must sign. Fresh per socket, so a
+    // proof made for another server — or another connection — is worthless
+    // here; see `auth::verify_key_proof`. Once the proof succeeds it doubles
+    // as the connection's `/upload` session (`AppState::upload_sessions`).
+    let challenge = {
+        use base64::Engine as _;
+        base64::engine::general_purpose::STANDARD.encode(rand::random::<[u8; 32]>())
+    };
+    send_json(
+        &mut sender,
+        &serde_json::json!({ "type": "auth-challenge", "challenge": challenge }),
+    )
+    .await;
     let mut global_rx = state.tx.subscribe();
     // Mailbox for frames addressed to this connection's user specifically;
     // registered once `presence` establishes who that is.
@@ -152,6 +170,11 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
 
     loop {
         tokio::select! {
+            () = &mut login_deadline, if user_name.is_none() => {
+                info!("Closing a connection that never authenticated");
+                send_error(&mut sender, errors::UNAUTHENTICATED).await;
+                break;
+            }
             incoming = receiver.next() => {
                 let text = match incoming {
                     Some(Ok(Message::Text(t))) => t,
@@ -187,7 +210,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
 
                         match t {
                             "presence" => {
-                                if auth::handle_presence(&mut sender, &state, &mut v, &mut authenticated, &mut user_name, &client_ip, default_channel_id).await.is_err() {
+                                if auth::handle_presence(&mut sender, &state, &mut v, &mut authenticated, &mut user_name, &client_ip, &challenge, default_channel_id).await.is_err() {
                                     break;
                                 }
                                 sync_direct_registration(&state, conn_id, &direct_tx, &user_name, &mut registered_as).await;
@@ -205,7 +228,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 messages::handle_load_history(&state, &mut sender, &v, channel_id, &user_name).await;
                             }
                             "load-thread" => {
-                                messages::handle_load_thread(&state, &mut sender, &v, channel_id).await;
+                                messages::handle_load_thread(&state, &mut sender, &v, channel_id, &user_name).await;
                             }
                             "pin-message" => {
                                 pins::handle_pin_message(&state, &mut sender, &v, &user_name).await;
@@ -226,7 +249,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                                 wiki::handle_wiki_restore(&state, &mut sender, &v, &user_name).await;
                             }
                             "wiki-resolve" => {
-                                wiki::handle_wiki_resolve(&state, &mut sender, &v).await;
+                                wiki::handle_wiki_resolve(&state, &mut sender, &v, &user_name).await;
                             }
                             "wiki-create" => {
                                 wiki::handle_wiki_create(&state, &mut sender, &v, &user_name).await;
@@ -251,6 +274,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "typing" => {
                                 messages::handle_typing(&state, channel_id, &user_name, &mut last_typing_broadcast).await;
+                            }
+                            "mark-read" => {
+                                read_markers::handle_mark_read(&state, &v, &user_name).await;
                             }
                             "load-mentions" => {
                                 mentions::handle_load_mentions(&state, &mut sender, &user_name).await;
@@ -323,6 +349,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "react" => {
                                 messages::handle_react(&state, &mut sender, &v, &user_name).await;
                             }
+                            "poll-vote" => {
+                                messages::handle_poll_vote(&state, &mut sender, &v, &user_name).await;
+                            }
                             "status-update" => {
                                 handle_status_update(&state, &mut sender, &v, &user_name).await;
                             }
@@ -331,6 +360,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             }
                             "set-profile" => {
                                 profile::handle_set_profile(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "set-status-text" => {
+                                profile::handle_set_status_text(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "poke" => {
+                                handle_poke(&state, &mut sender, &v, &user_name).await;
                             }
                             "set-nickname" => {
                                 profile::handle_set_nickname(&state, &mut sender, &v, &user_name).await;
@@ -455,6 +490,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                             "voice-hand" => {
                                 hands::handle_voice_hand(&state, &v, &user_name, voice_channel).await;
                             }
+                            "move-member" => {
+                                moderation::handle_move_member(&state, &mut sender, &v, &user_name).await;
+                            }
                             "kick-user" => {
                                 moderation::handle_kick_user(&state, &mut sender, &v, &user_name).await;
                             }
@@ -574,6 +612,17 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                 if sender.send(Message::Text(frame)).await.is_err() { break; }
             }
             result = chan_rx.recv() => {
+                // Every connection starts subscribed to the default channel
+                // before anyone knows who it is, and stays subscribed to the
+                // channel it joined after its access to it is taken away. So
+                // the subscription is not the gate: nothing is delivered
+                // before authentication, and nothing from a channel the user
+                // may not (or no longer) see.
+                if !authenticated
+                    || !visibility.can_receive(&state, user_name.as_deref(), ChannelKind::Text, channel_id).await
+                {
+                    continue;
+                }
                 match result {
                     Ok(msg) => {
                         // The frame arrives ready to send: `recv` handed us a
@@ -594,6 +643,10 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
                 }
             }
             result = global_rx.recv() => {
+                // The password protects reading as much as posting.
+                if !authenticated {
+                    continue;
+                }
                 match result {
                     Ok(routed) => {
                         // The sender decided who this frame is for; nothing
@@ -654,6 +707,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, peer_addr: std::
     if let Some(user) = registered_as.as_deref() {
         unregister_direct(&state, user, conn_id).await;
     }
+    state.upload_sessions.lock().await.remove(&challenge);
     handle_disconnect(&state, user_name, voice_channel).await;
     info!(%client_ip, "Client disconnected");
 }
@@ -764,6 +818,12 @@ async fn handle_status_update(
         send_error(sender, errors::INVALID_STATUS).await;
         return;
     };
+    // Every change reaches every connection, so it is paced like a message.
+    // No mute check: online/away is not something a member says.
+    if !crate::security::check_message_rate_limit(&state.rate_limiter, &user).await {
+        send_error(sender, errors::MESSAGE_RATE_LIMIT).await;
+        return;
+    }
 
     state
         .statuses
@@ -771,6 +831,52 @@ async fn handle_status_update(
         .await
         .insert(user.clone(), status.to_string());
     broadcast_status(state, &user, status);
+}
+
+/// Handle `poke`: deliver a short nudge to one online member, which their
+/// client shows even when every channel is muted (TeamSpeak's poke).
+///
+/// Anyone authenticated may poke, like sending a DM; a server mute silences
+/// it, and a per-sender cooldown keeps it a nudge. Blocking is the
+/// recipient's client's job, as it is for DMs — the server keeps no block
+/// list. It goes direct: nobody but the target has any use for the frame.
+async fn handle_poke(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(from) = user_name.as_deref() else {
+        send_error(sender, errors::NOT_AUTHENTICATED).await;
+        return;
+    };
+    let Some(target) = v.get("target").and_then(|t| t.as_str()) else {
+        send_error(sender, errors::POKE_UNAVAILABLE).await;
+        return;
+    };
+    if target == from || !state.direct.lock().await.contains_key(target) {
+        send_error(sender, errors::POKE_UNAVAILABLE).await;
+        return;
+    }
+    if moderation::is_muted(state, from).await {
+        send_error(sender, errors::MUTED).await;
+        return;
+    }
+    {
+        let cooldown = std::time::Duration::from_millis(super::constants::POKE_COOLDOWN_MS);
+        let now = std::time::Instant::now();
+        let mut last = state.poke_cooldowns.lock().await;
+        if last
+            .get(from)
+            .is_some_and(|at| now.duration_since(*at) < cooldown)
+        {
+            send_error(sender, errors::POKE_COOLDOWN).await;
+            return;
+        }
+        last.insert(from.to_string(), now);
+    }
+    let frame = serde_json::json!({ "type": "poke", "from": from });
+    send_to_user(state, target, frame.to_string().into()).await;
 }
 
 async fn handle_ping(sender: &mut SplitSink<WebSocket, Message>, v: &Value) {
@@ -845,8 +951,8 @@ async fn handle_get_server_metrics(
         "rejectedMessages": m.rejected_messages,
         "rejectedAuth": m.rejected_auth,
         "rejectedUploads": m.rejected_uploads,
-        "rejectedReplays": m.rejected_replays,
         "rejectedFrames": m.rejected_frames,
+        "rejectedPreviews": m.rejected_previews,
     });
     send_json(sender, &msg).await;
 }
@@ -945,7 +1051,7 @@ async fn handle_voice_join(
         // Capacity is decided before the user is pulled out of whatever
         // channel they are in, so a full target leaves them where they were
         // instead of dropping them out of voice entirely.
-        if !crate::security::voice_channel_has_room(&entry.users, u) {
+        if !crate::security::voice_channel_has_room(&entry.users, u, entry.user_limit) {
             drop(map);
             info!("voice channel {ch_id} is full; refused join from {u}");
             send_error(sender, errors::VOICE_CHANNEL_FULL).await;
@@ -1298,6 +1404,7 @@ async fn handle_disconnect(
     broadcast_users(state).await;
     state.connection_stats.lock().await.remove(&name);
     soundboard::clear_cooldown(state, &name).await;
+    state.poke_cooldowns.lock().await.remove(&name);
     // Slow mode paces a live conversation; a member who leaves and comes
     // back is not made to wait out an interval they never spent typing.
     state.slow_mode_sends.lock().await.remove(&name);
@@ -1315,8 +1422,10 @@ pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
+    headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
+    let client_ip = crate::security::client_ip(&state.trusted_proxies, addr.ip(), &headers);
     ws.max_message_size(MAX_WS_MESSAGE_BYTES)
         .max_frame_size(MAX_WS_MESSAGE_BYTES)
-        .on_upgrade(move |socket| handle_socket(socket, state, addr))
+        .on_upgrade(move |socket| handle_socket(socket, state, client_ip))
 }

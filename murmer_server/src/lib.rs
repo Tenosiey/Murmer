@@ -206,7 +206,7 @@ impl Clock {
     }
 }
 
-/// A set of sliding windows keyed by user name, IP or nonce, plus the last
+/// A set of sliding windows keyed by user name or IP, plus the last
 /// time the whole map was swept for entries that fell out of their window.
 ///
 /// Keeping the sweep marker next to the data it describes means one lock
@@ -230,8 +230,7 @@ impl<T> SlidingWindows<T> {
     }
 }
 
-/// Tracks rate limiting state for authentication, messaging, uploads and
-/// nonce usage.
+/// Tracks rate limiting state for authentication, messaging and uploads.
 ///
 /// The limits are resolved from the environment once, when the limiter
 /// is built, instead of on every check: `check_message_rate_limit` runs on
@@ -244,8 +243,11 @@ pub struct RateLimiter {
     pub auth_attempts: Mutex<SlidingWindows<VecDeque<Instant>>>,
     /// Upload attempt timestamps per IP (ip -> timestamps).
     pub upload_attempts: Mutex<SlidingWindows<VecDeque<Instant>>>,
-    /// Used nonces to prevent replay attacks (nonce -> first seen time).
-    pub used_nonces: Mutex<SlidingWindows<Instant>>,
+    /// Link preview fetches per IP (ip -> timestamps).
+    pub preview_attempts: Mutex<SlidingWindows<VecDeque<Instant>>>,
+    /// Wrong `ADMIN_TOKEN`s presented, server-wide; see
+    /// [`security::admin_token_matches`].
+    pub admin_failures: Mutex<VecDeque<Instant>>,
     /// Messages one user may send per minute.
     pub max_messages_per_minute: usize,
     /// Authentication attempts one IP may make per minute.
@@ -255,8 +257,6 @@ pub struct RateLimiter {
     /// Frames one connection may send per second, sustained; see
     /// [`security::FrameBudget`].
     pub max_frames_per_second: u32,
-    /// How long a used nonce stays remembered.
-    pub nonce_expiry: std::time::Duration,
     /// Where every window and expiry check reads "now" from.
     pub clock: Clock,
 }
@@ -274,12 +274,12 @@ impl RateLimiter {
             message_times: Mutex::new(SlidingWindows::new(now)),
             auth_attempts: Mutex::new(SlidingWindows::new(now)),
             upload_attempts: Mutex::new(SlidingWindows::new(now)),
-            used_nonces: Mutex::new(SlidingWindows::new(now)),
+            preview_attempts: Mutex::new(SlidingWindows::new(now)),
+            admin_failures: Mutex::default(),
             max_messages_per_minute: security::get_max_messages_per_minute(),
             max_auth_attempts_per_minute: security::get_max_auth_attempts_per_minute(),
             max_uploads_per_minute: security::get_max_uploads_per_minute(),
             max_frames_per_second: security::get_max_frames_per_second(),
-            nonce_expiry: std::time::Duration::from_secs(security::get_nonce_expiry_seconds()),
             clock,
         }
     }
@@ -321,6 +321,9 @@ pub struct VoiceChannelState {
     /// Breakout rooms are deleted when the split is closed, so this is also
     /// what marks a row as temporary.
     pub breakout_parent: Option<i32>,
+    /// Most members the channel admits; `0` for no limit of its own. The
+    /// server-wide `MAX_VOICE_CHANNEL_USERS` applies on top either way.
+    pub user_limit: u32,
 }
 
 /// Shared application state passed to handlers.
@@ -373,7 +376,11 @@ pub struct AppState {
     /// When each user last played a soundboard sound, for the server-side
     /// playback cooldown. Entries are dropped on disconnect.
     pub soundboard_cooldowns: Mutex<HashMap<String, Instant>>,
+    /// When each connected user last poked someone; see `handle_poke`.
+    pub poke_cooldowns: Mutex<HashMap<String, Instant>>,
     pub upload_dir: PathBuf,
+    /// Byte quotas `/upload` enforces (see `upload::UploadQuota`).
+    pub upload_quota: upload::UploadQuota,
     pub password: Option<String>,
     pub admin_token: Option<String>,
     /// STUN URLs sent to each client in its `ice-config` frame
@@ -419,6 +426,21 @@ pub struct AppState {
     /// `user-roles`) plus `cleanup_channel`. A mutation that reaches clients
     /// therefore cannot skip the invalidation.
     pub visibility_epoch: AtomicU64,
+    /// Upload sessions: each authenticated connection's challenge, mapped to
+    /// the account name and key that proved it. `/upload` is plain HTTP and
+    /// cannot see the socket, so this is how it learns that a caller holds a
+    /// live, authenticated connection to *this* server. A signature the
+    /// caller made by itself could not show that: the same identity key is
+    /// the account on every server, so any other server it signed for could
+    /// replay the proof here. Removed when the connection closes.
+    pub upload_sessions: Mutex<HashMap<String, (String, String)>>,
+    /// Reverse proxies whose `X-Forwarded-For` is believed; see
+    /// [`security::client_ip`].
+    pub trusted_proxies: Vec<ipnet::IpNet>,
+    /// How long a connection may stay unauthenticated; see
+    /// [`ws::constants::AUTH_TIMEOUT`]. A field only so tests need not wait
+    /// out the real ten seconds.
+    pub auth_timeout: std::time::Duration,
 }
 
 impl AppState {
@@ -448,7 +470,9 @@ impl AppState {
             voice_session_starts: Mutex::default(),
             screenshare_session_starts: Mutex::default(),
             soundboard_cooldowns: Mutex::default(),
+            poke_cooldowns: Mutex::default(),
             upload_dir: PathBuf::from("uploads"),
+            upload_quota: upload::UploadQuota::default(),
             password: None,
             admin_token: None,
             stun_servers: Vec::new(),
@@ -458,6 +482,9 @@ impl AppState {
             automod: Mutex::default(),
             slow_mode_sends: Mutex::default(),
             visibility_epoch: AtomicU64::new(0),
+            upload_sessions: Mutex::default(),
+            trusted_proxies: Vec::new(),
+            auth_timeout: ws::constants::AUTH_TIMEOUT,
         }
     }
 }

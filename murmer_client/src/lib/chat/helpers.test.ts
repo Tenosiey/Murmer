@@ -26,7 +26,8 @@ import {
   pingToStrength,
   parseTimestampValue,
   reactionEntries,
-  searchResultPreview
+  searchResultPreview,
+  parseUserLimit
 } from './helpers';
 
 /** Local wall-clock timestamp, so day grouping does not depend on the TZ. */
@@ -328,6 +329,12 @@ describe('searchResultPreview', () => {
     expect(preview.endsWith('…')).toBe(true);
   });
 
+  it('blanks spoilers, which a plain-text preview cannot hide', () => {
+    expect(searchResultPreview(message({ text: 'it was ||the butler|| all along' }))).toBe(
+      'it was [spoiler] all along'
+    );
+  });
+
   it('falls back to the attachment kind when there is no text', () => {
     expect(searchResultPreview(message({ text: '   ', image: 'https://host/a.png' }))).toBe(
       '[Image]'
@@ -338,6 +345,19 @@ describe('searchResultPreview', () => {
       )
     ).toBe('[File] a.pdf');
     expect(searchResultPreview(message({ text: undefined }))).toBe('Message');
+  });
+});
+
+describe('parseUserLimit', () => {
+  it('reads empty as no limit and rejects anything out of range', () => {
+    expect(parseUserLimit('  ')).toBe(0);
+    expect(parseUserLimit('0')).toBe(0);
+    expect(parseUserLimit(' 5 ')).toBe(5);
+    expect(parseUserLimit('99')).toBe(99);
+    expect(parseUserLimit('100')).toBeNull();
+    expect(parseUserLimit('-1')).toBeNull();
+    expect(parseUserLimit('2.5')).toBeNull();
+    expect(parseUserLimit('five')).toBeNull();
   });
 });
 
@@ -398,7 +418,16 @@ describe('orderVoiceChannels', () => {
     position: number,
     breakoutParent: number | null = null
   ): VoiceChannelInfo {
-    return { id, name, quality: 'standard', bitrate: null, categoryId: null, position, breakoutParent };
+    return {
+      id,
+      name,
+      quality: 'standard',
+      bitrate: null,
+      categoryId: null,
+      position,
+      breakoutParent,
+      userLimit: 0
+    };
   }
 
   it('places breakout rooms under the channel they were split off from', () => {

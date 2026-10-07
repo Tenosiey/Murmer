@@ -26,11 +26,23 @@ export interface ForwardInfo {
   channelId: number;
 }
 
+/**
+ * A poll riding on a message: the question is the message's text. `votes`
+ * holds, per option in order, the accounts that chose it — counted by the
+ * server, which is why encrypted channels have no polls.
+ */
+export interface PollInfo {
+  options: string[];
+  votes: string[][];
+}
+
 export interface Message {
   type: string;
   user?: string;
   text?: string;
   attachment?: AttachmentInfo;
+  /** The image is a spoiler, blurred until clicked. */
+  spoiler?: boolean;
   time?: string;
   timestamp?: string;
   channelId?: number;
@@ -45,6 +57,7 @@ export interface Message {
   threadId?: number;
   /** Set on a message forwarded from elsewhere; `user` stays the forwarder. */
   forwardedFrom?: ForwardInfo;
+  poll?: PollInfo;
   /** Direct messages: sender/recipient names (metadata stays plaintext). */
   from?: string;
   to?: string;
@@ -135,6 +148,10 @@ export interface UserProfile {
   nickname: string;
   /** Free-text "about me", empty when unset. */
   about: string;
+  /** Custom status line ("back at 3"), empty when unset. */
+  statusText: string;
+  /** When the status line lapses, in Unix milliseconds; null is never. */
+  statusExpiresAt: number | null;
   /** RFC 3339 timestamp of when the name was first claimed ("member since"). */
   createdAt: string;
 }
@@ -180,6 +197,8 @@ export interface VoiceChannelInfo {
   /** Set on a breakout room: the voice channel it was split off from. The
    *  room disappears again when the split is closed. */
   breakoutParent?: number | null;
+  /** Most members the channel admits; 0 for no limit of its own. */
+  userLimit: number;
 }
 
 /** One per-channel permission override target, as sent to managers. */

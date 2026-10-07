@@ -24,6 +24,11 @@ pub const DEFAULT_VOICE_BITRATE: i32 = 64_000;
 /// Upper bound to reject unreasonable bitrate configuration values.
 pub const MAX_ALLOWED_VOICE_BITRATE: i32 = 320_000;
 
+/// Largest per-channel user limit a moderator may set; `0` means none. Past
+/// this the mesh is unusable anyway, and `MAX_VOICE_CHANNEL_USERS` is the
+/// server-wide cap that applies on top.
+pub const MAX_VOICE_USER_LIMIT: u32 = 99;
+
 /// The quality/bitrate pair new voice channels are created with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VoiceDefaults {

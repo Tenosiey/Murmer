@@ -2,6 +2,7 @@
  * Translation of server error codes (the `message` field of
  * `{"type":"error"}` frames) into user-facing text.
  */
+import { MAX_POLL_OPTION_LENGTH, MAX_POLL_OPTIONS } from './chat/constants';
 
 const SERVER_ERROR_MESSAGES: Record<string, string> = {
   unauthenticated: 'You are not authenticated with this server.',
@@ -9,8 +10,6 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-invite':
     'That invite is no longer valid — it expired, ran out of uses or was withdrawn. Ask for a fresh one.',
   'auth-rate-limit': 'Too many connection attempts. Please wait a moment and try again.',
-  'invalid-timestamp': 'Authentication failed: your system clock appears to be wrong.',
-  'replay-attack': 'Authentication failed. Please try connecting again.',
   'invalid-signature': 'Authentication failed: invalid signature.',
   'invalid-signature-format': 'Authentication failed: invalid signature.',
   'invalid-public-key': 'Authentication failed: invalid key.',
@@ -19,6 +18,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-username': 'That username is not allowed on this server.',
   'username-taken': 'That username is already in use by someone else on this server.',
   banned: 'You are banned from this server.',
+  'login-failed': 'The server could not sign you in right now. Please try again shortly.',
   'invalid-channel-name': 'That channel name is not allowed.',
   'channel-permission-denied': 'You do not have permission to manage channels on this server.',
   'channel-creation-failed': 'The server could not create the channel. Please try again.',
@@ -33,6 +33,7 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'message-too-long': 'That message is too long to send.',
   'invalid-voice-quality': 'Invalid voice quality setting.',
   'invalid-voice-bitrate': 'Invalid voice bitrate setting.',
+  'invalid-voice-user-limit': 'A user limit must be a whole number from 0 to 99.',
   'unknown-voice-channel': 'That voice channel no longer exists.',
   'voice-channel-full': 'That voice channel is full. Try again once somebody leaves.',
   'voice-channel-update-failed': 'The server could not update the voice channel.',
@@ -53,6 +54,9 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'invalid-role-permissions': 'Those permissions are not valid.',
   'invalid-display-name': 'That display name is not allowed.',
   'invalid-about': 'That about text is not allowed.',
+  'invalid-status-text': 'That status is too long, or its expiry is not allowed.',
+  'poke-unavailable': 'That member is not online to be poked.',
+  'poke-cooldown': 'Slow down — you can only poke someone every few seconds.',
   'profile-update-failed': 'The server could not update your profile. Please try again.',
   'invalid-avatar': 'That image cannot be used as an avatar.',
   'avatar-update-failed': 'The server could not update your avatar. Please try again.',
@@ -119,6 +123,12 @@ const SERVER_ERROR_MESSAGES: Record<string, string> = {
   'cannot-forward-encrypted':
     'Messages cannot be forwarded into or out of an end-to-end encrypted channel.',
   'cannot-forward-ephemeral': 'A disappearing message cannot be forwarded.',
+  'invalid-poll':
+    `A poll needs a question and 2 to ${MAX_POLL_OPTIONS} options of at most ${MAX_POLL_OPTION_LENGTH} characters.`,
+  'cannot-poll-encrypted':
+    'Polls are not available in end-to-end encrypted channels — counting the votes would mean the server sees them.',
+  'cannot-forward-poll': 'A poll cannot be forwarded.',
+  'poll-vote-failed': 'Your vote could not be recorded. Please try again.',
   'nothing-to-forward': 'That message has nothing that can be forwarded.',
   'cannot-edit-forward': 'A forwarded message cannot be edited — its words are someone else’s.',
   'thread-load-failed': 'The server could not load that thread. Please try again.',
@@ -220,8 +230,6 @@ const FATAL_CONNECTION_ERRORS = new Set([
   'invalid-password',
   'invalid-invite',
   'auth-rate-limit',
-  'invalid-timestamp',
-  'replay-attack',
   'invalid-signature',
   'invalid-signature-format',
   'invalid-public-key',
@@ -229,7 +237,8 @@ const FATAL_CONNECTION_ERRORS = new Set([
   'invalid-encoding',
   'invalid-username',
   'username-taken',
-  'banned'
+  'banned',
+  'login-failed'
 ]);
 
 /** Convert a server error code into a message suitable for display. */

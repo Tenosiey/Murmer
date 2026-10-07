@@ -1,11 +1,12 @@
 //! Integration tests for the in-memory permission resolver: effective
 //! permissions (union of `@everyone` + assigned roles), the hierarchy position,
-//! and the no-`ADMIN_TOKEN` channel/wiki fallback.
+//! and the absence of any no-`ADMIN_TOKEN` fallback.
 
 use std::sync::Arc;
 
 use murmer_server::permissions::{
-    ADMINISTRATOR, DEFAULT_EVERYONE, MANAGE_CHANNELS, MANAGE_EMOJIS, SEND_MESSAGES, VIEW_CHANNELS,
+    ADMINISTRATOR, DEFAULT_EVERYONE, MANAGE_CHANNELS, MANAGE_EMOJIS, MANAGE_WIKI, SEND_MESSAGES,
+    VIEW_CHANNELS,
 };
 use murmer_server::ws::helpers::{effective_permissions, has_permission, top_position};
 use murmer_server::{AppState, RoleDef, db};
@@ -105,12 +106,32 @@ async fn permissions_stack_and_administrator_grants_all() {
 }
 
 #[tokio::test]
-async fn channel_management_is_open_without_admin_token() {
+async fn channel_management_stays_role_gated_without_admin_token() {
     let state = make_state(None).await;
     seed(&state, vec![role(1, VIEW_CHANNELS, 0, true, false)], &[]).await;
 
-    // No ADMIN_TOKEN: channel and wiki management fall open, but other
-    // capabilities stay role-gated.
-    assert!(has_permission(&state, "anyone", MANAGE_CHANNELS).await);
-    assert!(!has_permission(&state, "anyone", MANAGE_EMOJIS).await);
+    // Managing channels means seeing every private one and holding every
+    // encrypted channel's key, so it must not fall open on a server that
+    // simply never set ADMIN_TOKEN.
+    assert!(!has_permission(&state, "anyone", MANAGE_CHANNELS).await);
+    assert!(!has_permission(&state, "anyone", MANAGE_WIKI).await);
+}
+
+#[tokio::test]
+async fn an_offline_owner_still_outranks_a_moderator() {
+    let state = make_state(Some("token")).await;
+    // Bound and assigned in the database, but not connected since the server
+    // started, so absent from the in-memory assignments.
+    db::bind_user_key(&state.db, "owner", "owner-key")
+        .await
+        .expect("bind");
+    db::assign_named_role(&state.db, "owner-key", "Owner", None)
+        .await
+        .expect("assign owner");
+    let mut defs = db::list_role_defs(&state.db).await.expect("role defs");
+    defs.push(role(100, MANAGE_EMOJIS, 50, false, false));
+    seed(&state, defs, &[("mod", vec![100])]).await;
+
+    assert_eq!(top_position(&state, "owner").await, i64::MAX);
+    assert!(top_position(&state, "mod").await < top_position(&state, "owner").await);
 }

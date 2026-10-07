@@ -96,17 +96,16 @@ pub async fn broadcast_voice(state: &Arc<AppState>, channel_id: i32) {
     );
 }
 
-/// Sanitize and normalize a message timestamp.
-pub fn sanitize_message_timestamp(value: &mut Value) -> DateTime<Utc> {
+/// Stamp a message with the time the server received it.
+///
+/// Whatever timestamp the client sent is overwritten, not validated: keeping
+/// any well-formed value let a sender backdate or future-date what every
+/// reader sees, and sort a message in among ones posted long before it.
+/// Clients format the stamp in their own time zone.
+pub fn stamp_message_time(value: &mut Value) -> DateTime<Utc> {
     let now = Utc::now();
-    let parsed = value
-        .get("timestamp")
-        .and_then(|ts| ts.as_str())
-        .and_then(|ts| DateTime::parse_from_rfc3339(ts).ok())
-        .map(|dt| dt.with_timezone(&Utc))
-        .unwrap_or(now);
-    value["timestamp"] = Value::String(parsed.to_rfc3339());
-    parsed
+    value["timestamp"] = Value::String(now.to_rfc3339());
+    now
 }
 
 /// Create a JSON descriptor for a voice channel.
@@ -119,6 +118,7 @@ pub fn voice_channel_descriptor(id: i32, info: &VoiceChannelState) -> Value {
         "categoryId": info.category_id,
         "position": info.position,
         "breakoutParent": info.breakout_parent,
+        "userLimit": info.user_limit,
     })
 }
 
@@ -302,6 +302,7 @@ pub fn broadcast_new_voice_channel(state: &Arc<AppState>, id: i32, info: &VoiceC
             "categoryId": info.category_id,
             "position": info.position,
             "breakoutParent": info.breakout_parent,
+            "userLimit": info.user_limit,
         }),
     );
 }
@@ -320,6 +321,7 @@ pub fn broadcast_voice_channel_update(
             "name": info.name,
             "quality": info.quality,
             "bitrate": info.bitrate,
+            "userLimit": info.user_limit,
         }),
     );
 }
@@ -447,10 +449,19 @@ pub async fn voice_channel_list_frame(
     }))
 }
 
-/// Send all voice channel member lists to a client.
-pub async fn send_all_voice(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
+/// Send the member lists of every voice channel `user` can see to a client.
+/// Who sits in a private call is as private as the call: the live
+/// `voice-users` broadcast is filtered the same way (see `Route::of`).
+pub async fn send_all_voice(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    user: &str,
+) {
     let map = state.voice_channels.lock().await.clone();
     for (id, info) in map {
+        if !can_view_channel(state, user, ChannelKind::Voice, id).await {
+            continue;
+        }
         let frame = serde_json::json!({
             "type": "voice-users",
             "channelId": id,
@@ -605,15 +616,12 @@ pub async fn record_audit(
 
 /// Whether `user` is authorised for `required`.
 ///
-/// Without an `ADMIN_TOKEN` configured, channel and wiki management stay open
-/// to everyone so a small unadministered server remains usable (mirrors the
-/// historical fallback). Every other permission is always role-gated.
+/// Every permission is role-gated. Channel and wiki management used to be
+/// open to everyone on a server without `ADMIN_TOKEN`, and since managing
+/// channels also means seeing every private one and holding every encrypted
+/// channel's key, that fallback made private and encrypted channels protect
+/// nothing on the default deployment.
 pub async fn has_permission(state: &Arc<AppState>, user: &str, required: Permissions) -> bool {
-    if state.admin_token.is_none()
-        && (required == permissions::MANAGE_CHANNELS || required == permissions::MANAGE_WIKI)
-    {
-        return true;
-    }
     permissions::mask_allows(effective_permissions(state, user).await, required)
 }
 
@@ -621,24 +629,40 @@ pub async fn has_permission(state: &Arc<AppState>, user: &str, required: Permiss
 /// the default role's position as the floor. Administrators sit above everyone
 /// (used so moderation and role management require strictly outranking the
 /// target). Returns [`i64::MAX`] for administrators.
+///
+/// The target of a ban or a role change is often offline, and `user_roles`
+/// only holds the accounts that connected since the server started. Reading
+/// an absent entry as "no roles" put every such Owner at the bottom of the
+/// hierarchy, where any moderator outranked them — so a user missing from
+/// memory is resolved from the database instead.
 pub async fn top_position(state: &Arc<AppState>, user: &str) -> i64 {
+    let loaded = state.user_roles.lock().await.get(user).cloned();
+    let ids = match loaded {
+        Some(ids) => ids,
+        None => match lookup_user_key(state, user).await {
+            Some(key) => match db::get_user_role_ids(&state.db, &key).await {
+                Ok(ids) => ids,
+                // Only an offline target gets here (a requester is always
+                // loaded), so failing closed means "nobody outranks them".
+                Err(e) => {
+                    error!("Failed to load the roles of {user}: {e}");
+                    return i64::MAX;
+                }
+            },
+            None => Vec::new(),
+        },
+    };
+
     let defs = state.role_defs.lock().await;
     let default = defs.values().find(|d| d.is_default);
     let mut pos = default.map(|d| d.position).unwrap_or(0);
     let mut is_admin = default
         .map(|d| d.permissions & permissions::ADMINISTRATOR != 0)
         .unwrap_or(false);
-    {
-        let assignments = state.user_roles.lock().await;
-        if let Some(ids) = assignments.get(user) {
-            for id in ids {
-                if let Some(def) = defs.get(id) {
-                    pos = pos.max(def.position);
-                    if def.permissions & permissions::ADMINISTRATOR != 0 {
-                        is_admin = true;
-                    }
-                }
-            }
+    for def in ids.iter().filter_map(|id| defs.get(id)) {
+        pos = pos.max(def.position);
+        if def.permissions & permissions::ADMINISTRATOR != 0 {
+            is_admin = true;
         }
     }
     if is_admin { i64::MAX } else { pos }
@@ -1145,8 +1169,12 @@ pub fn reply_preview(text: &str, max_chars: usize) -> String {
 /// client that got this wrong has a bug its user needs to hear about, not a
 /// message that silently loses its attachment.
 ///
+/// `spoiler` belongs with them: it says the image is one, which is a fact
+/// about the content, and a forward that dropped it would show the image
+/// unblurred in the next channel.
+///
 /// They are also exactly what a forward copies — see [`forwarded_body`].
-pub const PLAINTEXT_MESSAGE_FIELDS: [&str; 3] = ["text", "image", "attachment"];
+pub const PLAINTEXT_MESSAGE_FIELDS: [&str; 4] = ["text", "image", "attachment", "spoiler"];
 
 /// Build the body of a forwarded message from the stored copy of its source.
 ///
@@ -1287,6 +1315,18 @@ pub async fn prepare_forward(
         return Err(super::errors::CANNOT_FORWARD_EPHEMERAL);
     }
 
+    // A poll's options and votes stay with the original: a copy would open a
+    // second, empty tally under the forwarder's name with the original
+    // author's attribution on top, and copying only the question would drop
+    // what made it a poll.
+    if record
+        .content
+        .get("poll")
+        .is_some_and(|poll| !poll.is_null())
+    {
+        return Err(super::errors::CANNOT_FORWARD_POLL);
+    }
+
     let source_channel_name = db::get_channel_by_id(&state.db, record.channel_id)
         .await
         .map(|channel| channel.name)
@@ -1356,4 +1396,92 @@ pub fn ensure_time(value: &mut Value, timestamp: &DateTime<Utc>) {
     if value.get("time").and_then(|t| t.as_str()).is_none() {
         value["time"] = Value::String(timestamp.format("%H:%M:%S").to_string());
     }
+}
+
+/// Validate the `poll` field of a client `chat` frame and rebuild it from its
+/// known parts: the trimmed option labels and nothing else, so a client cannot
+/// store a `votes` tally of its own making.
+///
+/// The question is the message's `text`, which is why it is not checked
+/// here: it already answers to the length limit, auto-moderation and the
+/// profanity filter like any other message.
+pub fn parse_poll(raw: &Value) -> Result<Value, &'static str> {
+    use super::constants::{MAX_POLL_OPTION_LENGTH, MAX_POLL_OPTIONS};
+    let options = raw
+        .get("options")
+        .and_then(Value::as_array)
+        .ok_or(super::errors::INVALID_POLL)?;
+    if !(2..=MAX_POLL_OPTIONS).contains(&options.len()) {
+        return Err(super::errors::INVALID_POLL);
+    }
+    let mut labels = Vec::with_capacity(options.len());
+    for option in options {
+        let label = option
+            .as_str()
+            .map(str::trim)
+            .ok_or(super::errors::INVALID_POLL)?;
+        if label.is_empty() || label.chars().count() > MAX_POLL_OPTION_LENGTH {
+            return Err(super::errors::INVALID_POLL);
+        }
+        labels.push(label);
+    }
+    Ok(serde_json::json!({ "options": labels }))
+}
+
+/// Decide whether `user` may cast (`Some(option)`) or take back (`None`) a
+/// vote on poll message `message_id`. Returns the poll's channel and its
+/// stored `poll` field, or the error frame to send back.
+///
+/// Voting answers to the same rules as reacting: seeing the channel, and
+/// for a new vote `SEND_MESSAGES` there; taking a vote back only needs the
+/// channel to be visible. A message in a channel the voter cannot see is
+/// reported as missing, so ids cannot be probed through this frame.
+///
+/// An encrypted channel refuses votes even on a poll posted before the
+/// channel was switched to encryption: the server would go on learning who
+/// chose what in a channel whose members were promised it learns nothing.
+pub async fn prepare_poll_vote(
+    state: &Arc<AppState>,
+    user: &str,
+    message_id: i64,
+    option: Option<usize>,
+) -> Result<(i32, Value), &'static str> {
+    let record = match db::get_message_record(&state.db, message_id).await {
+        Ok(Some(record)) => record,
+        Ok(None) => return Err(super::errors::MESSAGE_NOT_FOUND),
+        Err(error) => {
+            error!("failed to load poll {message_id}: {error}");
+            return Err(super::errors::POLL_VOTE_FAILED);
+        }
+    };
+    if !can_view_channel(state, user, ChannelKind::Text, record.channel_id).await {
+        return Err(super::errors::MESSAGE_NOT_FOUND);
+    }
+    let Some(poll) = record.content.get("poll").filter(|p| p.is_object()) else {
+        return Err(super::errors::INVALID_POLL);
+    };
+    if channel_is_e2ee(state, record.channel_id).await {
+        return Err(super::errors::CANNOT_POLL_ENCRYPTED);
+    }
+    if let Some(option) = option {
+        if !has_channel_permission(
+            state,
+            user,
+            ChannelKind::Text,
+            record.channel_id,
+            permissions::SEND_MESSAGES,
+        )
+        .await
+        {
+            return Err(super::errors::SEND_PERMISSION_DENIED);
+        }
+        let count = poll
+            .get("options")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        if option >= count {
+            return Err(super::errors::INVALID_POLL);
+        }
+    }
+    Ok((record.channel_id, poll.clone()))
 }

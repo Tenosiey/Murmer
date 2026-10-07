@@ -11,6 +11,7 @@
   import WebcamControls from '$lib/components/WebcamControls.svelte';
   import SoundboardPanel from '$lib/components/SoundboardPanel.svelte';
   import RoleIcon from '$lib/components/RoleIcon.svelte';
+  import { chat } from '$lib/stores/chat';
   import { channels } from '$lib/stores/channels';
   import { voiceChannels } from '$lib/stores/voiceChannels';
   import { categories } from '$lib/stores/categories';
@@ -84,6 +85,8 @@
   // Cosmetic soundboard gates; the server re-checks both on every frame.
   let canUseSoundboard = $derived($can(PERMISSIONS.USE_SOUNDBOARD));
   let canManageSounds = $derived($can(PERMISSIONS.MANAGE_SOUNDS));
+  // Cosmetic too: the server also checks that the mover outranks the member.
+  let canMoveMembers = $derived($can(PERMISSIONS.MOVE_MEMBERS));
   let handRaised = $derived(
     inVoice &&
       currentVoiceChannelId !== null &&
@@ -96,6 +99,7 @@
      dragged files) never mistakes a channel or category drag for an upload. */
   const CHANNEL_DRAG_MIME = 'application/x-murmer-channel';
   const CATEGORY_DRAG_MIME = 'application/x-murmer-category';
+  const MEMBER_DRAG_MIME = 'application/x-murmer-member';
 
   function loadCollapsed(): number[] {
     if (!browser) return [];
@@ -243,6 +247,48 @@
     const after = target?.id === category.id && target.after;
     order.splice(order.indexOf(category.id) + (after ? 1 : 0), 0, dragged);
     categories.reorder(order);
+  }
+
+  /* Dragging a member out of one voice channel onto another asks the server
+     to move them. It reaches the member as the same request a breakout room
+     sends, and their client switches channel as if they had clicked. */
+  let draggedMember: { user: string; channelId: number } | null = $state(null);
+  let memberDropTarget: number | null = $state(null);
+
+  function handleMemberDragStart(event: DragEvent, user: string, channelId: number) {
+    draggedMember = { user, channelId };
+    if (!event.dataTransfer) return;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData(MEMBER_DRAG_MIME, user);
+  }
+
+  function handleMemberDragEnd() {
+    draggedMember = null;
+    memberDropTarget = null;
+  }
+
+  function handleMemberDragOver(event: DragEvent, channelId: number) {
+    if (!draggedMember || draggedMember.channelId === channelId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    memberDropTarget = channelId;
+  }
+
+  function handleMemberDragLeave(event: DragEvent, channelId: number) {
+    const related = event.relatedTarget;
+    const current = event.currentTarget;
+    if (related instanceof Node && current instanceof Node && current.contains(related)) return;
+    if (memberDropTarget === channelId) memberDropTarget = null;
+  }
+
+  function handleMemberDrop(event: DragEvent, channelId: number) {
+    const dragged = draggedMember;
+    handleMemberDragEnd();
+    if (!dragged || dragged.channelId === channelId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    chat.sendRaw({ type: 'move-member', user: dragged.user, channelId });
   }
 
   /** A channel can only be dropped on a category it is not already in. */
@@ -429,7 +475,16 @@
           {/if}
           {#each orderVoiceChannels(group.voiceChannels) as row (row.channel.id)}
             {@const ch = row.channel}
-            <div class="voice-group" class:breakout={row.room}>
+            <div
+              class="voice-group"
+              class:breakout={row.room}
+              class:member-drop-target={memberDropTarget === ch.id}
+              role="group"
+              aria-label={ch.name}
+              ondragover={(e) => handleMemberDragOver(e, ch.id)}
+              ondragleave={(e) => handleMemberDragLeave(e, ch.id)}
+              ondrop={(e) => handleMemberDrop(e, ch.id)}
+            >
               <button
                 class:dragging={draggedChannel?.id === ch.id && draggedChannel.voice}
                 class:drop-before={channelDropTarget?.id === ch.id && channelDropTarget.voice && !channelDropTarget.after}
@@ -456,6 +511,11 @@
                   </span>
                 {/if}
                 <span class="voice-channel-quality">{formatVoiceQuality(ch)}</span>
+                {#if ch.userLimit > 0}
+                  <span class="voice-channel-limit" title="User limit">
+                    {$voiceUsers[ch.id]?.length ?? 0}/{ch.userLimit}
+                  </span>
+                {/if}
               </button>
               {#if $voiceUsers[ch.id]?.length}
                 {@const queue = handQueue($voiceHands, ch.id)}
@@ -466,7 +526,12 @@
                         ? { micMuted: $microphoneMuted, outputMuted: $outputMuted }
                         : ($voiceMuteStates[user] ?? { micMuted: false, outputMuted: false })}
                     {@const talking = Boolean($speakingUsers[user]) && !mute.micMuted}
+                    {@const movable = canMoveMembers && user !== $session.user}
                     <li
+                      draggable={movable}
+                      class:dragging={draggedMember?.user === user}
+                      ondragstart={(e) => movable && handleMemberDragStart(e, user, ch.id)}
+                      ondragend={handleMemberDragEnd}
                       oncontextmenu={(e) => user !== $session.user && onOpenUserVolumeMenu(e, user)}
                       class:clickable={user !== $session.user}
                       class:talking
@@ -696,6 +761,12 @@
     border: 1px dashed transparent;
   }
 
+  .voice-group.member-drop-target {
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+    outline: 1px dashed var(--color-primary);
+    border-radius: var(--radius-sm);
+  }
+
   .category-group.drop-target {
     background: color-mix(in srgb, var(--color-primary) 8%, transparent);
     border-color: var(--color-primary);
@@ -710,7 +781,8 @@
   }
 
   .channels button.dragging,
-  .category-header.dragging {
+  .category-header.dragging,
+  .voice-user-list li.dragging {
     opacity: 0.5;
   }
 
@@ -935,8 +1007,11 @@
     font-weight: 600;
   }
 
+  /* Name and quality both shrink from their content width, so at the
+     default sidebar width the name keeps a share instead of collapsing to
+     nothing behind a fixed "Standard (64 kbps)". */
   .voice-channel-name {
-    flex: 1;
+    flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -947,6 +1022,16 @@
     margin-left: auto;
     font-size: var(--text-xs);
     font-weight: 500;
+    color: var(--color-muted);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .voice-channel-limit {
+    font-size: var(--text-xs);
+    font-family: var(--font-mono);
     color: var(--color-muted);
     flex-shrink: 0;
   }

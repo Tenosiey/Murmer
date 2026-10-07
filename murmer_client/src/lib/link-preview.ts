@@ -1,6 +1,7 @@
 import { get } from 'svelte/store';
 import { selectedServer } from './stores/servers';
 import { httpBaseFromWs } from './server-url';
+import { parseMessageLink } from './message-link';
 
 export interface LinkPreviewData {
   url: string;
@@ -40,7 +41,11 @@ export function fetchLinkPreview(url: string): Promise<LinkPreviewData | null> {
     .then(async (res) => {
       if (!res.ok) return null;
       const data = (await res.json()) as LinkPreviewData;
-      return data && (data.title || data.description) ? data : null;
+      if (!data || !(data.title || data.description)) return null;
+      // The server inlines the image. A URL would be fetched by every reader
+      // from a host the link's poster chose, reporting their IP address.
+      const inlined = typeof data.image === 'string' && data.image.startsWith('data:image/');
+      return { ...data, image: inlined ? data.image : undefined };
     })
     .catch(() => {
       // Don't cache network failures so a reconnect can retry.
@@ -88,7 +93,12 @@ export function extractLinks(text: string | undefined | null): string[] {
     url = url.replace(/[).,!?"'\]]+$/g, '');
     try {
       const parsed = new URL(url);
-      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      // A message link jumps inside Murmer; previewing it would only show
+      // the web client's empty page.
+      if (
+        (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+        !parseMessageLink(url)
+      ) {
         results.add(parsed.toString());
       }
     } catch (error) {

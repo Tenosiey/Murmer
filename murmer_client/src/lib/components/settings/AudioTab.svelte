@@ -4,7 +4,8 @@
     appSoundVolume,
     outputDeviceId,
     screenShareVolume,
-    screenShareMuted
+    screenShareMuted,
+    ttsEnabled
   } from '$lib/stores/settings';
   import { soundboardEnabled, soundboardVolume } from '$lib/stores/soundboardSettings';
   import { audioOutputs, refreshAudioDevices } from '$lib/stores/audioDevices';
@@ -148,6 +149,23 @@
           <span class="toggle-description">
             Play sounds others trigger in your voice channel. Individual sounds and people
             can be muted from the soundboard panel.
+          </span>
+        </span>
+      </label>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <h3 class="section-title">Text-to-speech</h3>
+
+    <div class="setting-group">
+      <label class="toggle-row">
+        <input type="checkbox" bind:checked={$ttsEnabled} />
+        <span class="toggle-text">
+          <span class="toggle-label">Read /tts messages aloud</span>
+          <span class="toggle-description">
+            Speak messages sent with /tts in the channel you have open, using your system's
+            voice. Channels you muted stay silent.
           </span>
         </span>
       </label>

@@ -1,6 +1,8 @@
 services:
   server:
     build: ./murmer_server
+    # Or skip the build and run a released server; README.md has the details.
+    # image: ghcr.io/tenosiey/murmer-server:latest
     restart: unless-stopped
     # Load optional settings like ADMIN_TOKEN from a `.env` file
     env_file:
@@ -13,7 +15,6 @@ services:
       # Rate limiting configuration
       MAX_MESSAGES_PER_MINUTE: 300
       MAX_AUTH_ATTEMPTS_PER_MINUTE: 5
-      NONCE_EXPIRY_SECONDS: 300
       # People allowed in one voice channel; 0 removes the cap
       MAX_VOICE_CHANNEL_USERS: 10
       # Allow the desktop client dev server to access the HTTP endpoints during development

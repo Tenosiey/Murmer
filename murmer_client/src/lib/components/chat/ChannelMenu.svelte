@@ -1,7 +1,7 @@
 <!--
   Right-click menu on the channel list, for members with MANAGE_CHANNELS:
   creating, renaming, moving and deleting channels and categories, a voice
-  channel's quality and breakout rooms, and the per-channel permissions
+  channel's quality, user limit and breakout rooms, and the per-channel permissions
   editor it opens. Hiding the menu from everyone else is cosmetic; the server
   checks the permission on every one of these frames.
 -->
@@ -13,7 +13,12 @@
   import { voiceDefaults } from '$lib/stores/voiceDefaults';
   import { dialogs } from '$lib/stores/dialogs';
   import { PERMISSIONS } from '$lib/chat/permissions';
-  import { VOICE_QUALITY_PRESETS, DEFAULT_VOICE_PRESET } from '$lib/chat/constants';
+  import {
+    VOICE_QUALITY_PRESETS,
+    DEFAULT_VOICE_PRESET,
+    MAX_VOICE_USER_LIMIT
+  } from '$lib/chat/constants';
+  import { parseUserLimit } from '$lib/chat/helpers';
   import type { CategoryInfo, ContextMenuItem } from '$lib/types';
   import ContextMenu from '$lib/components/ContextMenu.svelte';
   import ChannelPermissionsModal from '$lib/components/ChannelPermissionsModal.svelte';
@@ -159,6 +164,29 @@
     if (name) voiceChannels.rename(id, name.trim());
   }
 
+  async function setUserLimitPrompt(id: number) {
+    const ch = $voiceChannels.find((c) => c.id === id);
+    const text = await dialogs.prompt({
+      title: 'Set user limit',
+      message: `How many members may be in the channel at once, up to ${MAX_VOICE_USER_LIMIT}. 0 or empty removes the limit. Nobody already inside is moved out.`,
+      label: 'User limit',
+      initial: ch?.userLimit ? String(ch.userLimit) : '',
+      maxLength: 2,
+      confirmLabel: 'Save',
+      required: false
+    });
+    if (text === null) return;
+    const limit = parseUserLimit(text);
+    if (limit === null) {
+      await dialogs.alert({
+        title: 'Invalid user limit',
+        message: `Enter a whole number from 0 to ${MAX_VOICE_USER_LIMIT}.`
+      });
+      return;
+    }
+    voiceChannels.setUserLimit(id, limit);
+  }
+
   /** Builds the "Move to" submenu; empty when there is nowhere to move to. */
   function buildMoveToItems(channelId: number, voice: boolean): ContextMenuItem[] {
     const targets: ContextMenuItem[] = [];
@@ -272,6 +300,7 @@
                 })
             }))
           },
+          { label: 'Set User Limit', action: () => setUserLimitPrompt(menuVoiceChannelId!) },
           ...buildBreakoutItems(menuVoiceChannelId),
           { label: 'Rename Voice Channel', action: () => renameVoiceChannelPrompt(menuVoiceChannelId!) },
           ...buildMoveToItems(menuVoiceChannelId, true),

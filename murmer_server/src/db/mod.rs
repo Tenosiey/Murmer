@@ -24,7 +24,9 @@ mod maintenance;
 mod messages;
 mod moderation;
 mod pins;
+mod polls;
 mod reactions;
+mod read_markers;
 mod roles;
 mod scheduled;
 mod screenshare;
@@ -49,7 +51,9 @@ pub use maintenance::*;
 pub use messages::*;
 pub use moderation::*;
 pub use pins::*;
+pub use polls::*;
 pub use reactions::*;
+pub use read_markers::*;
 pub use roles::*;
 pub use scheduled::*;
 pub use screenshare::*;
@@ -180,7 +184,8 @@ fn ensure_column(
     definition: &str,
 ) -> rusqlite::Result<()> {
     let exists: i64 = conn.query_row(
-        &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+        // `xinfo`, because `table_info` leaves generated columns out.
+        &format!("SELECT COUNT(*) FROM pragma_table_xinfo('{table}') WHERE name = ?1"),
         [column],
         |row| row.get(0),
     )?;
@@ -221,7 +226,8 @@ CREATE TABLE IF NOT EXISTS voice_channels (
     bitrate INTEGER,
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     position INTEGER NOT NULL DEFAULT 0,
-    breakout_parent INTEGER
+    breakout_parent INTEGER,
+    user_limit INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -234,6 +240,12 @@ CREATE TABLE IF NOT EXISTS reactions (
     user_name TEXT NOT NULL,
     emoji TEXT NOT NULL,
     PRIMARY KEY (message_id, user_name, emoji)
+);
+CREATE TABLE IF NOT EXISTS poll_votes (
+    message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    user_name TEXT NOT NULL,
+    option INTEGER NOT NULL,
+    PRIMARY KEY (message_id, user_name)
 );
 CREATE TABLE IF NOT EXISTS roles (
     public_key TEXT PRIMARY KEY,
@@ -287,6 +299,8 @@ CREATE TABLE IF NOT EXISTS user_keys (
     display_name TEXT NOT NULL DEFAULT '',
     nickname TEXT NOT NULL DEFAULT '',
     about TEXT NOT NULL DEFAULT '',
+    status_text TEXT NOT NULL DEFAULT '',
+    status_expires_at INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT ({NOW_UTC})
 );
 -- `user_for_key` resolves an account from the key that signed an upload, on
@@ -344,6 +358,36 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
 "#
         ))?;
 
+        // A message's author and send time, read out of its JSON by SQLite
+        // instead of by every query that filters on them: search, retention
+        // and `from:`/`before:` each parsed every row of the table on the one
+        // connection thread. VIRTUAL, so they cost no storage, need no
+        // backfill and can never disagree with `content`; the indexes are
+        // what make them cheap. `sent_at` is a Julian day number, so rows
+        // stamped `…Z` and `…+00:00` compare correctly. The GLOB guard keeps
+        // `julianday('now')`, which SQLite refuses in an index, out of reach
+        // of a crafted timestamp.
+        ensure_column(
+            conn,
+            "messages",
+            "author",
+            "TEXT GENERATED ALWAYS AS (CASE WHEN json_valid(content) \
+             THEN json_extract(content, '$.user') END) VIRTUAL",
+        )?;
+        ensure_column(
+            conn,
+            "messages",
+            "sent_at",
+            "REAL GENERATED ALWAYS AS (CASE WHEN json_valid(content) \
+             AND json_extract(content, '$.timestamp') GLOB '[0-9]*' \
+             THEN julianday(json_extract(content, '$.timestamp')) END) VIRTUAL",
+        )?;
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_messages_channel_sent ON messages (channel_id, sent_at);
+             CREATE INDEX IF NOT EXISTS idx_messages_channel_author ON messages (channel_id, author);
+             CREATE INDEX IF NOT EXISTS idx_messages_sent ON messages (sent_at);",
+        )?;
+
         conn.execute_batch(&invites::invites_schema())?;
         conn.execute_batch(&stats::stats_schema())?;
         conn.execute_batch(&audit::audit_schema())?;
@@ -353,6 +397,11 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         // Depends on `channels`, created above: a scheduled message references
         // the channel it is bound for.
         conn.execute_batch(&scheduled::scheduled_schema())?;
+        // Its trigger hangs off `messages`, created above.
+        conn.execute_batch(uploads::uploads_schema())?;
+        // Depends on `direct_messages`, created above: it indexes it and seeds
+        // the DM markers from it.
+        read_markers::read_markers_schema(conn)?;
 
         // Seed built-in roles and migrate any legacy single-role assignments
         // into role_definitions/user_roles. Runs once (marker-guarded); depends
@@ -375,6 +424,8 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         // And for group mentions, which shipped after them. Marker-guarded,
         // runs once.
         roles::migrate_group_mention_permissions(conn)?;
+        // And for moving members between voice channels.
+        roles::migrate_move_members_permissions(conn)?;
 
         // Columns added after a table first shipped; CREATE TABLE IF NOT
         // EXISTS does not extend existing tables.
@@ -396,6 +447,14 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         )?;
         ensure_column(conn, "user_keys", "about", "TEXT NOT NULL DEFAULT ''")?;
         ensure_column(conn, "user_keys", "nickname", "TEXT NOT NULL DEFAULT ''")?;
+        ensure_column(conn, "user_keys", "status_text", "TEXT NOT NULL DEFAULT ''")?;
+        // 0 is "never expires", which is what an empty status already means.
+        ensure_column(
+            conn,
+            "user_keys",
+            "status_expires_at",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
         ensure_column(
             conn,
             "user_stats",
@@ -405,6 +464,13 @@ INSERT OR IGNORE INTO channels (name) VALUES ('general');
         // Nullable on purpose: NULL is "not a breakout room", which is what
         // every existing row is.
         ensure_column(conn, "voice_channels", "breakout_parent", "INTEGER")?;
+        // 0 is "no limit of its own", which is what every existing channel had.
+        ensure_column(
+            conn,
+            "voice_channels",
+            "user_limit",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
 
         // Breakout rooms exist only for as long as the session that opened
         // them. Nobody is in one after a restart, and an empty room nobody

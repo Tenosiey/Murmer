@@ -1,40 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import nacl from 'tweetnacl';
-import { fromBase64, loadKeyPair } from './keypair';
-import { uploadAttachment, uploadForm, uploadErrorMessage } from './upload';
+import { setUploadSession, uploadAttachment, uploadForm, uploadErrorMessage } from './upload';
 
 describe('uploadForm', () => {
-  it('signs upload:<timestamp> with the stored identity key', () => {
-    const before = Date.now();
-    const form = uploadForm(new Blob(['data']), 'cat.png');
-    const after = Date.now();
+  afterEach(() => setUploadSession(null));
 
-    const publicKey = form.get('publicKey') as string;
-    const timestamp = form.get('timestamp') as string;
-    const signature = form.get('signature') as string;
-
-    expect(publicKey).toBe(loadKeyPair().publicKey);
-    expect(Number(timestamp)).toBeGreaterThanOrEqual(before);
-    expect(Number(timestamp)).toBeLessThanOrEqual(after);
-
-    // The server verifies this exact message. Signing the bare timestamp
-    // instead — what a presence frame signs — would make the two proofs
-    // interchangeable and every upload fail.
-    expect(
-      nacl.sign.detached.verify(
-        new TextEncoder().encode(`upload:${timestamp}`),
-        fromBase64(signature),
-        fromBase64(publicKey)
-      )
-    ).toBe(true);
-  });
-
-  it('puts the credentials ahead of the file', () => {
+  it('sends the connection\'s upload session ahead of the file', () => {
+    setUploadSession('challenge-1');
     const form = uploadForm(new Blob(['data']), 'cat.png');
 
+    expect(form.get('session')).toBe('challenge-1');
     // The server authenticates as soon as it reaches the file part, so a file
-    // sent first would be rejected however valid the credentials behind it.
-    expect([...form.keys()]).toEqual(['publicKey', 'timestamp', 'signature', 'file']);
+    // sent first would be rejected however valid the session behind it.
+    expect([...form.keys()]).toEqual(['session', 'file']);
   });
 
   it('keeps the filename the server classifies the upload by', () => {
@@ -55,6 +32,7 @@ describe('uploadErrorMessage', () => {
     expect(uploadErrorMessage(429)).toMatch(/too quickly/i);
     expect(uploadErrorMessage(413, 'image')).toBe('That image is too large to upload.');
     expect(uploadErrorMessage(415, 'sound')).toBe('This sound type is not allowed on the server.');
+    expect(uploadErrorMessage(507)).toMatch(/upload space/i);
   });
 
   it('leaves other statuses to the caller', () => {

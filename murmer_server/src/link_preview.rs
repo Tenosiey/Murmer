@@ -2,19 +2,24 @@
 //!
 //! `GET /link-preview?url=<http(s) url>` fetches the target page server-side
 //! and returns the OpenGraph metadata (title, description, image, site name)
-//! as JSON. Fetching on the server keeps client IPs hidden from linked sites
-//! and works for pages that forbid framing.
+//! as JSON, with the image inlined as a `data:` URL. Fetching on the server
+//! keeps client IPs hidden from linked sites and works for pages that forbid
+//! framing.
 //!
 //! Because the server fetches attacker-supplied URLs, requests are restricted
 //! to public IP addresses on default HTTP(S) ports: the hostname is resolved
 //! first, every resolved address must be public, and the connection is pinned
 //! to the vetted address so a DNS rebind cannot redirect the request into the
 //! local network. Redirects are followed manually and re-vetted per hop.
+//!
+//! The endpoint is unauthenticated (previews render before and outside any
+//! socket), so uncached fetches are rate limited per IP: without that the
+//! server is a free anonymous fetch proxy for anyone who finds it.
 
 use axum::{
     Json,
-    extract::Query,
-    http::{StatusCode, header},
+    extract::{ConnectInfo, Query, State},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use reqwest::{Url, redirect};
@@ -22,13 +27,15 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 use tracing::debug;
 
 /// Maximum HTML bytes read from the target page.
 const MAX_BODY_BYTES: usize = 512 * 1024;
+/// Largest preview image inlined into the response; larger ones are dropped.
+const MAX_IMAGE_BYTES: usize = 256 * 1024;
 /// Timeout for each HTTP request to the target.
 const FETCH_TIMEOUT: Duration = Duration::from_secs(6);
 /// Maximum redirects followed (each hop is re-vetted).
@@ -71,7 +78,12 @@ fn lock_cache() -> std::sync::MutexGuard<'static, HashMap<String, (Instant, Prev
 }
 
 #[tracing::instrument(skip_all, fields(url = %q.url))]
-pub async fn link_preview(Query(q): Query<PreviewQuery>) -> Response {
+pub async fn link_preview(
+    State(state): State<Arc<crate::AppState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(q): Query<PreviewQuery>,
+) -> Response {
     let url = match validate_url(&q.url) {
         Ok(url) => url,
         Err(reason) => {
@@ -89,6 +101,12 @@ pub async fn link_preview(Query(q): Query<PreviewQuery>) -> Response {
             .map(|(_, preview)| preview.clone())
     } {
         return Json(hit).into_response();
+    }
+
+    let client_ip = crate::security::client_ip(&state.trusted_proxies, addr.ip(), &headers);
+    if !crate::security::check_preview_rate_limit(&state.rate_limiter, &client_ip.to_string()).await
+    {
+        return StatusCode::TOO_MANY_REQUESTS.into_response();
     }
 
     match fetch_preview(url).await {
@@ -187,11 +205,24 @@ fn is_public_v6(ip: Ipv6Addr) -> bool {
         // fc00::/7 (unique local)
         || (segments[0] & 0xfe00) == 0xfc00
         // fe80::/10 (link-local unicast)
-        || (segments[0] & 0xffc0) == 0xfe80)
+        || (segments[0] & 0xffc0) == 0xfe80
+        // The ranges below carry an IPv4 address inside the IPv6 one, which a
+        // gateway on the path may unwrap into the local network: NAT64
+        // (64:ff9b::/96 and the local-use 64:ff9b:1::/48), 6to4 (2002::/16),
+        // Teredo (2001::/32) and the deprecated IPv4-compatible ::/96. None
+        // is needed to reach a real web page.
+        || (segments[0] == 0x64 && segments[1] == 0xff9b)
+        || segments[0] == 0x2002
+        || (segments[0] == 0x2001 && segments[1] == 0)
+        || segments[..6].iter().all(|s| *s == 0)
+        // 2001:db8::/32 (documentation), 100::/64 (discard)
+        || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+        || (segments[0] == 0x100 && segments[1..4].iter().all(|s| *s == 0)))
 }
 
-/// Fetch the page, following redirects manually so every hop is re-vetted.
-async fn fetch_preview(mut url: Url) -> Result<Preview, String> {
+/// Fetch `url`, following redirects manually so every hop is re-vetted, and
+/// return the final successful response.
+async fn fetch_vetted(mut url: Url, accept: &str) -> Result<(Url, reqwest::Response), String> {
     for _ in 0..=MAX_REDIRECTS {
         let addr = resolve_public(&url).await.map_err(str::to_string)?;
         let host = url.host_str().ok_or("missing host")?.to_string();
@@ -205,7 +236,7 @@ async fn fetch_preview(mut url: Url) -> Result<Preview, String> {
 
         let response = client
             .get(url.clone())
-            .header(header::ACCEPT, "text/html")
+            .header(header::ACCEPT, accept)
             .send()
             .await
             .map_err(|e| e.to_string())?;
@@ -224,35 +255,66 @@ async fn fetch_preview(mut url: Url) -> Result<Preview, String> {
         if !response.status().is_success() {
             return Err(format!("target returned status {}", response.status()));
         }
-
-        let content_type = response
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-        if !content_type.starts_with("text/html")
-            && !content_type.starts_with("application/xhtml+xml")
-        {
-            return Err(format!("unsupported content type '{content_type}'"));
-        }
-
-        let html = read_limited(response).await?;
-        return Ok(extract_preview(&html, &url));
+        return Ok((url, response));
     }
     Err("too many redirects".to_string())
 }
 
-/// Read at most `MAX_BODY_BYTES` of the response body as a lossy UTF-8 string.
-async fn read_limited(mut response: reqwest::Response) -> Result<String, String> {
+/// Fetch the page and pull its preview out of it.
+async fn fetch_preview(url: Url) -> Result<Preview, String> {
+    let (url, response) = fetch_vetted(url, "text/html").await?;
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !content_type.starts_with("text/html") && !content_type.starts_with("application/xhtml+xml")
+    {
+        return Err(format!("unsupported content type '{content_type}'"));
+    }
+
+    let html = read_limited(response, MAX_BODY_BYTES).await?;
+    let mut preview = extract_preview(&String::from_utf8_lossy(&html), &url);
+    preview.image = match preview.image.take() {
+        Some(src) => inline_image(&src).await,
+        None => None,
+    };
+    Ok(preview)
+}
+
+/// Fetch a preview's image and return it as a `data:` URL, or `None` when it
+/// is not a small enough JPEG, PNG, GIF or WebP.
+///
+/// The image is inlined rather than handed to clients as a link because every
+/// reader's client would then fetch it from a host the link's poster chose —
+/// a tracking pixel that reports each reader's IP address to them.
+async fn inline_image(src: &str) -> Option<String> {
+    use base64::Engine as _;
+    let url = validate_url(src).ok()?;
+    let (_, response) = fetch_vetted(url, "image/*").await.ok()?;
+    let bytes = read_limited(response, MAX_IMAGE_BYTES + 1).await.ok()?;
+    // Truncated is unusable, not smaller.
+    if bytes.len() > MAX_IMAGE_BYTES {
+        return None;
+    }
+    let mime = crate::upload::detect_file_type(&bytes)?;
+    Some(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    ))
+}
+
+/// Read at most `max` bytes of the response body.
+async fn read_limited(mut response: reqwest::Response, max: usize) -> Result<Vec<u8>, String> {
     let mut body: Vec<u8> = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-        let remaining = MAX_BODY_BYTES - body.len();
+        let remaining = max - body.len();
         body.extend_from_slice(&chunk[..chunk.len().min(remaining)]);
-        if body.len() >= MAX_BODY_BYTES {
+        if body.len() >= max {
             break;
         }
     }
-    Ok(String::from_utf8_lossy(&body).into_owned())
+    Ok(body)
 }
 
 /// Pull OpenGraph (with Twitter-card and plain HTML fallbacks) metadata out
@@ -518,6 +580,13 @@ mod tests {
             "fc00::1",
             "fe80::1",
             "::ffff:192.168.1.1",
+            "64:ff9b::a00:1",
+            "64:ff9b:1::1",
+            "2002:c0a8:101::1",
+            "2001:0:4136:e378::1",
+            "::7f00:1",
+            "2001:db8::1",
+            "100::1",
         ] {
             assert!(!is_public_ip(ip.parse().unwrap()), "{ip} should be blocked");
         }

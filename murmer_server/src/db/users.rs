@@ -133,7 +133,26 @@ pub struct UserProfile {
     pub display_name: String,
     pub nickname: String,
     pub about: String,
+    /// Custom status line, empty when unset.
+    pub status_text: String,
+    /// When the status line lapses, in Unix milliseconds; 0 is never. Kept
+    /// as stored rather than cleared by a timer: readers drop a lapsed line,
+    /// see [`UserProfile::active_status`].
+    pub status_expires_at: i64,
     pub created_at: String,
+}
+
+impl UserProfile {
+    /// The status line and its expiry as of `now_ms`, or `("", 0)` once it
+    /// has lapsed — so a status set a week ago is not handed to a client
+    /// that connects today just because nobody came along to clear it.
+    pub fn active_status(&self, now_ms: i64) -> (&str, i64) {
+        if self.status_expires_at != 0 && self.status_expires_at <= now_ms {
+            ("", 0)
+        } else {
+            (&self.status_text, self.status_expires_at)
+        }
+    }
 }
 
 /// Update the profile fields of a user's binding row. Only the fields present
@@ -165,6 +184,27 @@ pub async fn set_user_profile(
     .await
 }
 
+/// Set (or with an empty string clear) a user's custom status line, with its
+/// expiry in Unix milliseconds (0 for never). Returns `true` if the user has a
+/// binding row.
+pub async fn set_user_status_text(
+    db: &Db,
+    user_name: &str,
+    text: &str,
+    expires_at: i64,
+) -> Result<bool, DbError> {
+    let user_name = user_name.to_owned();
+    let text = text.to_owned();
+    db.call_db(move |conn| {
+        let updated = conn.execute(
+            "UPDATE user_keys SET status_text = ?2, status_expires_at = ?3 WHERE user_name = ?1",
+            params![user_name, text, expires_at],
+        )?;
+        Ok(updated > 0)
+    })
+    .await
+}
+
 /// Set (or with an empty string clear) a user's nickname. Unlike the profile
 /// fields this may be written by somebody else, which is why it is its own
 /// statement: an authorized nickname change must never be able to carry a
@@ -187,7 +227,8 @@ pub async fn set_user_nickname(db: &Db, user_name: &str, nickname: &str) -> Resu
 pub async fn get_all_profiles(db: &Db) -> Result<Vec<UserProfile>, DbError> {
     db.call_db(|conn| {
         let mut stmt = conn.prepare_cached(
-            "SELECT user_name, display_name, nickname, about, created_at FROM user_keys",
+            "SELECT user_name, display_name, nickname, about, status_text, status_expires_at, \
+             created_at FROM user_keys",
         )?;
         let rows = stmt
             .query_map([], |row| {
@@ -196,7 +237,9 @@ pub async fn get_all_profiles(db: &Db) -> Result<Vec<UserProfile>, DbError> {
                     display_name: row.get(1)?,
                     nickname: row.get(2)?,
                     about: row.get(3)?,
-                    created_at: row.get(4)?,
+                    status_text: row.get(4)?,
+                    status_expires_at: row.get(5)?,
+                    created_at: row.get(6)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -210,7 +253,8 @@ pub async fn get_user_profile(db: &Db, user_name: &str) -> Result<Option<UserPro
     let user_name = user_name.to_owned();
     db.call_db(move |conn| {
         conn.query_row(
-            "SELECT user_name, display_name, nickname, about, created_at FROM user_keys \
+            "SELECT user_name, display_name, nickname, about, status_text, status_expires_at, \
+             created_at FROM user_keys \
              WHERE user_name = ?1",
             params![user_name],
             |row| {
@@ -219,7 +263,9 @@ pub async fn get_user_profile(db: &Db, user_name: &str) -> Result<Option<UserPro
                     display_name: row.get(1)?,
                     nickname: row.get(2)?,
                     about: row.get(3)?,
-                    created_at: row.get(4)?,
+                    status_text: row.get(4)?,
+                    status_expires_at: row.get(5)?,
+                    created_at: row.get(6)?,
                 })
             },
         )

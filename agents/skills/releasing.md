@@ -57,7 +57,9 @@ six versioned files:
    must already be on `main`.
 
 Either way `.github/workflows/release.yml` builds the NSIS installer, signs
-the updater artifacts and publishes a regular GitHub release.
+the updater artifacts and publishes a regular GitHub release. Once that
+succeeds it pushes the server image to `ghcr.io/tenosiey/murmer-server`,
+tagged with the version and `latest`.
 
 **Agent sessions stop after step 2.** A cloud agent cannot push tags or
 start workflows, so it bumps, opens the pull requests and then tells the
@@ -83,6 +85,12 @@ GitHub instead.
 Merges straight to a branch without a pull request do not appear, which is
 one more reason everything lands by pull request.
 
+`.github/release.yml` drops what a user would not notice: Dependabot's
+pull requests (labelled `dependencies`) and anything labelled
+`ignore-for-release`. Put that label on the `Release v<version>` pull
+request and the `dev` → `main` one when opening them; otherwise each shows
+up as a patch-notes line.
+
 **The release must not be marked pre-release.** The updater endpoint
 `releases/latest/download/latest.json` ignores prereleases, so a prerelease
 publishes artifacts nobody receives.
@@ -101,12 +109,18 @@ cd murmer_client && bun run check && bun run test && bun run build
 
 ## The signing key
 
-Updater artifacts are signed with a keypair generated once
-(`bun run tauri signer generate`). The public half lives in
+Updater artifacts are signed with a keypair generated once, from
+`murmer_client/`:
+
+```bash
+bun run tauri signer generate -- -w ~/.tauri/murmer.key
+```
+
+The public half lives in
 `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`; the private half and
 its password are the `TAURI_SIGNING_PRIVATE_KEY` and
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repository secrets.
 
 **If the private key is lost, every existing install stops receiving updates
-and users must reinstall manually.** Full setup instructions are in the
-Releases section of [`../../README.md`](../../README.md).
+and users must reinstall manually.** A local `bun run tauri build` signs too,
+so it needs both variables set to the same values.

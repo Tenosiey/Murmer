@@ -4,7 +4,8 @@
   render compactly and reveal their timestamp in the gutter on hover.
   A floating action toolbar (react/reply/forward/remind/edit/pin/delete) appears on
   hover or keyboard focus. A forwarded message keeps the forwarder as its
-  author and carries the original's attribution above it.
+  author and carries the original's attribution above it. A blocked author's
+  message collapses to a one-line placeholder until "Show" is pressed.
 -->
 <script lang="ts">
   import type { ForwardInfo, Message } from '$lib/types';
@@ -13,6 +14,7 @@
   import { displayNames } from '$lib/stores/profiles';
   import { session } from '$lib/stores/session';
   import { renderMarkdown } from '$lib/markdown';
+  import { hideSpoilers } from '$lib/spoilers';
   import { emojifyHtml, isEmojiOnlyText } from '$lib/emoji';
   import {
     ephemeralInfo,
@@ -24,10 +26,14 @@
   import { giphyGifUrl } from '$lib/link-preview';
   import { customEmojis, shortcodeToEmoji } from '$lib/stores/customEmojis';
   import { selectedServer } from '$lib/stores/servers';
-  import { httpBaseFromWs } from '$lib/server-url';
+  import { blockedUsers } from '$lib/stores/blocks';
+  import { httpBaseFromWs, serverFileUrl } from '$lib/server-url';
   import LinkPreview from '$lib/components/LinkPreview.svelte';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import RoleIcon from '$lib/components/RoleIcon.svelte';
+  import AudioAttachment from './AudioAttachment.svelte';
+  import PollCard from './PollCard.svelte';
+  import { isPlayableAudio } from '$lib/voice-message';
 
 
   interface Props {
@@ -45,6 +51,7 @@
     onReply: (msg: Message) => void;
     onForward: (msg: Message) => void;
     onRemind: (msg: Message) => void;
+    onCopyLink: (msg: Message) => void;
     onEdit: (msg: Message) => void;
     onTogglePin: (msg: Message) => void;
     onDelete: (msg: Message) => void;
@@ -69,6 +76,7 @@
     onReply,
     onForward,
     onRemind,
+    onCopyLink,
     onEdit,
     onTogglePin,
     onDelete,
@@ -79,6 +87,9 @@
   }: Props = $props();
 
   let messageId = $derived(typeof message.id === 'number' ? message.id : null);
+  let blocked = $derived(!!message.user && $blockedUsers.includes(message.user));
+  /** Shown for this render only; scrolling it away hides it again. */
+  let revealBlocked = $state(false);
   let roleInfo = $derived(message.user ? $roles[message.user] : undefined);
   let reactions = $derived(reactionEntries(message));
   let eInfo = $derived(message.ephemeral ? ephemeralInfo(message, now) : null);
@@ -91,6 +102,13 @@
     /^https?:\/\/\S+$/.test(message.text.trim()));
 
   let httpBase = $derived($selectedServer ? httpBaseFromWs($selectedServer) : '');
+  let imageUrl = $derived(serverFileUrl(message.image, httpBase));
+  /* Held to this server's /files/ like images: an attachment card, or a
+     voice message the listener presses Play on, would otherwise fetch from
+     whatever host the sender wrote and report the reader's address to it. */
+  let attachmentUrl = $derived(
+    message.attachment ? serverFileUrl(message.attachment.url, httpBase) : null
+  );
 
   let shortTime = $derived(formatShortTime(message));
   let fullTime = $derived(formatFullTimestamp(message));
@@ -103,6 +121,17 @@
   );
 </script>
 
+{#if blocked && !revealBlocked}
+<div class="message blocked-message" data-message-id={messageId ?? undefined} class:highlighted>
+  <span class="gutter" aria-hidden="true"></span>
+  <span class="blocked-note">
+    Message from a blocked member
+    <button type="button" class="btn btn-ghost blocked-show" onclick={() => (revealBlocked = true)}>
+      Show
+    </button>
+  </span>
+</div>
+{:else}
 <div
   class="message"
   class:continuation
@@ -158,7 +187,7 @@
       >
         <span class="reply-quote-arrow" aria-hidden="true">↪</span>
         <span class="reply-quote-user">{$displayNames(reply.user)}</span>
-        <span class="reply-quote-text">{reply.text || 'Original message'}</span>
+        <span class="reply-quote-text">{reply.text ? hideSpoilers(reply.text) : 'Original message'}</span>
       </button>
     {/if}
 
@@ -197,6 +226,9 @@
           {@html emojifyHtml(renderMarkdown(message.text), $customEmojis, httpBase)}
         </span>
       {/if}
+      {#if message.poll && messageId !== null}
+        <PollCard {messageId} poll={message.poll} />
+      {/if}
       {#if message.edited}
         <span
           class="edited-badge"
@@ -212,13 +244,20 @@
           {/each}
         </div>
       {/if}
-      {#if message.image}
-        <img src={message.image as string} alt="" loading="lazy" />
+      {#if imageUrl && message.spoiler}
+        <span class="spoiler spoiler-media" role="button" tabindex="0" aria-label="Spoiler image, select to reveal">
+          <img src={imageUrl} alt="" loading="lazy" />
+        </span>
+      {:else if imageUrl}
+        <img src={imageUrl} alt="" loading="lazy" />
       {/if}
-      {#if message.attachment}
+      {#if message.attachment && attachmentUrl && isPlayableAudio(message.attachment.name)}
+        <AudioAttachment url={attachmentUrl} name={message.attachment.name} />
+      {/if}
+      {#if message.attachment && attachmentUrl}
         <a
           class="attachment-card"
-          href={message.attachment.url}
+          href={attachmentUrl}
           download={message.attachment.name}
           target="_blank"
           rel="noopener noreferrer"
@@ -308,6 +347,10 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M5 3 2.5 5.5"/><path d="m19 3 2.5 2.5"/></svg>
         <span class="sr-only">Remind me about this</span>
       </button>
+      <button type="button" class="message-action" onclick={() => onCopyLink(message)} title="Copy link">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <span class="sr-only">Copy link</span>
+      </button>
       {#if canEdit}
         <button type="button" class="message-action" onclick={() => onEdit(message)} title="Edit message">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
@@ -338,6 +381,7 @@
     </div>
   {/if}
 </div>
+{/if}
 
 <style>
   /* Two-column grid: fixed gutter (avatar / hover timestamp), then content.
@@ -352,6 +396,19 @@
     border-left: 2px solid transparent;
     /* Isolate layout/style recalculation per message so long histories stay cheap. */
     contain: layout style;
+  }
+
+  .blocked-note {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+    font-style: italic;
+  }
+
+  .blocked-show {
+    font-style: normal;
   }
 
   .message.continuation {

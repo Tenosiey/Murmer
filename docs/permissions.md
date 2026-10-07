@@ -23,9 +23,12 @@ user's effective permissions are the **union** of the built-in `@everyone`
 baseline and every role assigned to them. `ADMINISTRATOR` (the Owner role)
 grants everything.
 
-Without `ADMIN_TOKEN`, channel and wiki management stay open to everyone —
-the historical fallback, kept so a small unadministered server remains
-usable. Every other capability is role-gated regardless.
+Every capability is role-gated, with or without `ADMIN_TOKEN`. Channel and
+wiki management used to fall open to everyone on a server without the token.
+Managing channels also means seeing every private channel and being on every
+encrypted channel's key roster, so on the default deployment — which leaves
+the token unset — private and encrypted channels protected nothing. The
+first Owner comes from the `set-role` CLI subcommand instead.
 
 ## Roles and hierarchy
 
@@ -35,6 +38,19 @@ what a manager can do, and both exist to prevent escalation:
 
 - moderation and role management require **strictly outranking** the target;
 - a manager can never grant a permission it does not itself hold.
+
+Positions are what the first rule compares, so neither frame that moves them
+may create one a manager could not reach before. `reorder-roles` only
+permutes the slots the listed roles already hold; numbering the list afresh
+let a manager list enough roles to lift one past every Admin. `create-role`
+takes the manager's own slot and pushes everything at or above it up one,
+because a new role that tied an existing one could never be ordered against
+it by such a permutation.
+
+The target is usually offline, and the in-memory `user_roles` only holds
+accounts that connected since the server started. `top_position` reads a
+missing account from the database rather than as "no roles" — otherwise
+every Owner who had not logged in since a restart sat below any moderator.
 
 Role CRUD and assignment flow through the `create-role`/`update-role`/
 `delete-role`/`reorder-roles`/`set-user-roles` frames

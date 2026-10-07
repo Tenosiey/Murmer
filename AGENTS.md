@@ -124,7 +124,7 @@ that is not obvious until it ships.
 | The raw user name, or `profile.displayName` | `$displayNames(user)` from `stores/profiles.ts` | Skips the nickname a moderator may have set. The raw name is the account name and stays the lookup key |
 | New CSS for a button or input | The tokens and primitives from `src/routes/+layout.svelte` | A hardcoded color or size follows neither the theme nor the accent re-tint |
 | Inlining the logo artwork | `MurmerLogo.svelte` | It reads the brand tokens and switches with the theme itself |
-| Touching the WebSocket directly | `chat.on(type, cb)` / `chat.off` | The manager owns reconnect and per-server reset |
+| Touching the WebSocket directly | `chat.on(type, cb)` / `chat.off` | The chat store owns the socket and its per-server reset, and the chat page reconnects it |
 | A hand-written permission check | `has_permission` / `can_view_channel` in `ws/helpers.rs` | One enforcement point, and private channels change the answer |
 | `conn.prepare` | `prepare_cached` | Every query shares one connection thread |
 | A raw `ALTER TABLE` | `ensure_column` in `db/mod.rs` | SQLite has no `ADD COLUMN IF NOT EXISTS` |
@@ -137,8 +137,10 @@ that is not obvious until it ships.
 Run these before pushing; `.github/workflows/ci.yml` runs the same ones on
 every push to `main`/`dev` and on every pull request. A second workflow,
 `.github/workflows/audit.yml`, audits the lockfiles for security advisories
-every Monday and fails on nothing else. A third, `.github/workflows/docker.yml`,
-builds the server image whenever its Dockerfile changes.
+every Monday and fails on nothing else; run `cargo audit` and `bun audit` by
+hand when you change a dependency rather than waiting for it. A third,
+`.github/workflows/docker.yml`, builds the server image whenever its
+Dockerfile changes.
 
 ```bash
 cd murmer_server && cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
