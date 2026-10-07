@@ -1057,14 +1057,20 @@ async fn handle_voice_join(
             send_error(sender, errors::VOICE_CHANNEL_FULL).await;
             return;
         }
-        for info in map.values_mut() {
-            info.users.remove(u);
-        }
+        let left: Vec<i32> = map
+            .iter_mut()
+            .filter_map(|(id, info)| (*id != ch_id && info.users.remove(u)).then_some(*id))
+            .collect();
         if let Some(entry) = map.get_mut(&ch_id) {
             entry.users.insert(u.to_string());
         }
         *voice_channel = Some(ch_id);
         drop(map);
+        // The channel they switched out of shrank too, and its mode follows
+        // its headcount.
+        for old in left {
+            broadcast_voice(state, old).await;
+        }
         // Switching channels: a hand raised in the old one does not follow.
         if state
             .voice_hands
@@ -1087,6 +1093,15 @@ async fn handle_voice_join(
         // Tell the joiner whether they may speak here (Talk = SEND in the
         // channel). Voice audio is peer-to-peer, so the client enforces this by
         // disabling its microphone; the server enforces View/join only.
+        // The channel's mode rides along, so a joiner never builds a mesh it
+        // is about to tear down.
+        let mode = state
+            .voice_channels
+            .lock()
+            .await
+            .get(&ch_id)
+            .map(|info| info.mode)
+            .unwrap_or_default();
         let can_speak = has_channel_permission(
             state,
             u,
@@ -1099,6 +1114,7 @@ async fn handle_voice_join(
             "type": "voice-permissions",
             "channelId": ch_id,
             "canSpeak": can_speak,
+            "mode": mode,
         });
         send_json(sender, &perms).await;
 

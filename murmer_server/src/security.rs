@@ -6,7 +6,7 @@
 //! limit set too low, and none of those are noticed by reading the log
 //! afterwards.
 
-use crate::{Clock, RateLimiter, SlidingWindows, metrics};
+use crate::{Clock, RateLimiter, SlidingWindows, VoiceMode, metrics};
 use base64::{Engine as _, engine::general_purpose};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use std::{
@@ -64,6 +64,18 @@ pub fn get_max_frames_per_second() -> u32 {
         .unwrap_or(20)
 }
 
+/// The server-wide cap on one voice channel's headcount
+/// (`MAX_VOICE_CHANNEL_USERS`, default 10, `0` for none).
+///
+/// Resolved per call rather than cached because it is read on a join, which
+/// is a human action — one environment lookup per join costs nothing.
+pub fn max_voice_channel_users() -> usize {
+    std::env::var("MAX_VOICE_CHANNEL_USERS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10)
+}
+
 /// Whether a voice channel holding `occupants` has room for `user`.
 ///
 /// Voice is a full mesh: one peer connection per pair, so the work every
@@ -71,26 +83,47 @@ pub fn get_max_frames_per_second() -> u32 {
 /// symptom of a crowded channel is everyone's CPU rather than an error, which
 /// is why the limit exists at all.
 ///
-/// Reads `MAX_VOICE_CHANNEL_USERS`, defaulting to 10; `0` disables the cap.
-/// Resolved per call rather than cached because a join is a human action —
-/// one environment lookup per join costs nothing.
-///
 /// Someone already in the channel is never refused: a client re-sending
 /// `voice-join` for the channel it is already in must not lock itself out.
 ///
 /// `channel_limit` is the channel's own limit (`0` for none); the stricter of
-/// the two caps wins, so a moderator can narrow the operator's cap but never
-/// widen it.
+/// it and [`max_voice_channel_users`] wins, so a moderator can narrow the
+/// operator's cap but never widen it.
 pub fn voice_channel_has_room(occupants: &HashSet<String>, user: &str, channel_limit: u32) -> bool {
-    let server_limit: usize = std::env::var("MAX_VOICE_CHANNEL_USERS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(10);
-    let limit = [server_limit, channel_limit as usize]
+    let limit = [max_voice_channel_users(), channel_limit as usize]
         .into_iter()
         .filter(|&n| n > 0)
         .min();
     occupants.contains(user) || limit.is_none_or(|limit| occupants.len() < limit)
+}
+
+/// How far below the SFU threshold a channel must shrink before it returns
+/// to the mesh. Without the gap a channel sitting at the threshold would
+/// tear down and rebuild every connection each time someone's Wi-Fi
+/// blinked. A constant, because nobody tunes two numbers.
+pub const SFU_HYSTERESIS: usize = 3;
+
+/// The mode a voice channel of `headcount` members should be in.
+///
+/// `threshold` is `None` while the SFU is off, which keeps every channel on
+/// the mesh. An empty channel always resets to the mesh; the caller clears
+/// `sticky` with it.
+pub fn next_mode(
+    current: VoiceMode,
+    headcount: usize,
+    sticky: bool,
+    threshold: Option<usize>,
+) -> VoiceMode {
+    let Some(threshold) = threshold else {
+        return VoiceMode::Mesh;
+    };
+    let sfu = match current {
+        _ if headcount == 0 => false,
+        _ if sticky => true,
+        VoiceMode::Mesh => headcount >= threshold,
+        VoiceMode::Sfu => headcount > threshold.saturating_sub(SFU_HYSTERESIS),
+    };
+    if sfu { VoiceMode::Sfu } else { VoiceMode::Mesh }
 }
 
 /// How often the sliding-window maps are swept end to end to drop entries for
@@ -491,4 +524,44 @@ pub fn validate_channel_name(name: &str) -> bool {
 /// - Not be composed entirely of whitespace
 pub fn validate_user_name(name: &str) -> bool {
     validate_name(name, 32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use VoiceMode::{Mesh, Sfu};
+
+    #[test]
+    fn next_mode_switches_with_hysteresis() {
+        let t = Some(7);
+        // (current, headcount, sticky) -> expected
+        let table = [
+            ((Mesh, 6, false), Mesh),
+            ((Mesh, 7, false), Sfu),
+            ((Sfu, 7, false), Sfu),
+            // Inside the band the channel keeps whatever it had.
+            ((Sfu, 5, false), Sfu),
+            ((Mesh, 5, false), Mesh),
+            ((Sfu, 4, false), Mesh),
+            // A sticky channel stays on the SFU at any size but empty.
+            ((Mesh, 2, true), Sfu),
+            ((Sfu, 1, true), Sfu),
+            ((Sfu, 0, true), Mesh),
+            ((Sfu, 0, false), Mesh),
+        ];
+        for ((current, headcount, sticky), want) in table {
+            assert_eq!(
+                next_mode(current, headcount, sticky, t),
+                want,
+                "{current:?} with {headcount} people, sticky {sticky}"
+            );
+        }
+    }
+
+    #[test]
+    fn next_mode_is_always_mesh_without_the_sfu() {
+        for (current, headcount, sticky) in [(Mesh, 50, false), (Sfu, 8, true)] {
+            assert_eq!(next_mode(current, headcount, sticky, None), Mesh);
+        }
+    }
 }
