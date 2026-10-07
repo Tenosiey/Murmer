@@ -9,6 +9,8 @@ repair layer and lives in [`screen-sharing.md`](screen-sharing.md).
 Audio is peer-to-peer. Everyone in a voice channel holds a connection to
 everyone else and the server relays only signaling, which is why per-peer
 cost shows up so often below as the reason something is the way it is.
+On a server with the SFU enabled, a large channel runs over one connection
+to the server instead — see [Through the server](#through-the-server-sfu).
 
 ## One AudioContext
 
@@ -205,6 +207,35 @@ Video is a full mesh like the audio — one encode per peer — so a channel of
 five with cameras on already costs each machine four encodes and four
 decodes. Senders use `maintain-framerate`: a face reads fine soft and badly
 stuttering, the opposite trade-off from a screen share.
+
+## Through the server (SFU)
+
+When the server puts a channel in SFU mode (`voice-mode`, or the `mode` in
+the `voice-permissions` reply to a join), the call moves onto one
+connection to the server (`voice/sfu.ts`). The microphone chain and the
+camera track are untouched; only what they are attached to changes.
+
+- **Offered once, never renegotiated.** The offer carries a send-only audio
+  and video transceiver plus a receive-only pair per *slot* (one per other
+  member the channel could hold). After that the server only says who is in
+  which slot (`sfu-slots`), so joins, leaves and camera toggles never cause
+  an offer — the same glare-avoidance as the mesh's camera transceiver.
+- **Make before break.** `voice/mode.ts` keeps the old transport live until
+  the new one is up: mesh peers close only once the SFU connection reports
+  `connected`; going back, the SFU closes once every mesh peer connects or
+  after 10 s. Only the live transport's peers are listed, so nobody is
+  played twice during a switch. These rules are a pure function and
+  unit-tested, because every way of getting them wrong sounds like a normal
+  call.
+- **Repair** uses the same `PeerRecovery` policy through a controller of its
+  own (a reserved peer id could collide with an account name). A rebuild is
+  a fresh offer; its new certificate tells the server to replace its end.
+- **Stats** take one rtt from the server connection and loss and jitter per
+  member from the receive slot carrying their audio, so the bars beside each
+  name still mean something.
+
+While the SFU carries the call the voice panel shows a "Via server" badge:
+the server terminates DTLS there and can see the media.
 
 ## Breakout rooms
 

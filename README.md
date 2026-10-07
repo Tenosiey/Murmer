@@ -90,6 +90,9 @@ Environment variables recognised by the server:
 | `MAX_FRAMES_PER_SECOND` | No | Sustained WebSocket frames one connection may send per second, with ten seconds' worth allowed in a burst (default: 20, `0` for no limit) |
 | `STUN_SERVERS` | No | Comma-separated `stun:`/`stuns:` URLs clients use to set up voice and screen share (defaults to `stun:stun.l.google.com:19302`; set it empty to contact no STUN server, which limits calls to peers on the same network) |
 | `MAX_VOICE_CHANNEL_USERS` | No | People allowed in one voice channel (default: 10, `0` for no limit). A channel's own user limit can only lower this |
+| `SFU_PUBLIC_IP` | No | Public address of this server. Setting it turns on the built-in SFU: once a voice channel reaches `SFU_THRESHOLD` people, its voice and camera video go through the server instead of between every pair of members, so nobody uploads their microphone to everyone. While a channel is on the SFU the server can see its media, and members see a "Via server" badge. Unset keeps every channel peer-to-peer. Needs `MAX_VOICE_CHANNEL_USERS` above `0`, and a real interface address even for local testing: browsers will not connect to `127.0.0.1` |
+| `SFU_UDP_PORT` | No | The one UDP port the SFU uses for all media (default: 3479); open it in your firewall and, under Docker, publish it as `udp` |
+| `SFU_THRESHOLD` | No | People in a voice channel at which it moves to the SFU (default: 7, at least 2). It moves back once it is down to three fewer |
 | `MESSAGE_RETENTION_DAYS` | No | Delete channel messages, with their reactions and pins, once they are this many days old; checked hourly. DMs are kept. Unset or `0` keeps everything |
 
 Every capability, channel and wiki management included, is gated by roles

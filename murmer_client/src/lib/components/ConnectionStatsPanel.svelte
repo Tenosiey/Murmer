@@ -1,12 +1,14 @@
 <!--
   Dropdown panel with detailed connection stats: own server ping plus voice
-  RTT/jitter/packet loss per peer. Owners/Admins additionally get a list of
+  RTT/jitter/packet loss per peer (through the SFU, one RTT to the server
+  and jitter/loss per member). Owners/Admins additionally get a list of
   every user's self-reported stats, refreshed while the panel is open.
 -->
 <script lang="ts">
   import { displayNames } from '$lib/stores/profiles';
   import { ping } from '$lib/stores/ping';
   import { voiceStats } from '$lib/stores/voice';
+  import { viaServer } from '$lib/stores/voiceTransport';
   import {
     allConnectionStats,
     canViewAllConnectionStats
@@ -47,13 +49,20 @@
       <span class="label">Server ping</span>
       <span class="value">{$ping > 0 ? `${$ping} ms` : '—'}</span>
     </div>
+    {#if $viaServer}
+      <div class="row">
+        <span class="label">Voice server</span>
+        <span class="value">{$viaServer.rtt > 0 ? fmtMs($viaServer.rtt) : '—'}</span>
+      </div>
+    {/if}
     {#if voicePeers.length > 0}
       <div class="subsection-title">Voice (per peer)</div>
       {#each voicePeers as [peer, stats] (peer)}
         <div class="row">
-          <span class="label peer">{peer}</span>
+          <span class="label peer">{$displayNames(peer)}</span>
           <span class="value">
-            {fmtMs(stats.rtt)} · {fmtMs(stats.jitter)} jitter · {fmtPct(stats.packetLoss)} loss
+            {#if !$viaServer}{fmtMs(stats.rtt)} ·{/if}
+            {fmtMs(stats.jitter)} jitter · {fmtPct(stats.packetLoss)} loss
           </span>
         </div>
       {/each}
