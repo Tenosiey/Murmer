@@ -255,6 +255,8 @@ pub struct RateLimiter {
     pub max_auth_attempts_per_minute: usize,
     /// Uploads one IP may make per minute.
     pub max_uploads_per_minute: usize,
+    /// Link previews one IP may make the server fetch per minute.
+    pub max_previews_per_minute: usize,
     /// Frames one connection may send per second, sustained; see
     /// [`security::FrameBudget`].
     pub max_frames_per_second: u32,
@@ -280,6 +282,7 @@ impl RateLimiter {
             max_messages_per_minute: security::get_max_messages_per_minute(),
             max_auth_attempts_per_minute: security::get_max_auth_attempts_per_minute(),
             max_uploads_per_minute: security::get_max_uploads_per_minute(),
+            max_previews_per_minute: security::get_max_previews_per_minute(),
             max_frames_per_second: security::get_max_frames_per_second(),
             clock,
         }

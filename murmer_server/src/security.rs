@@ -370,7 +370,15 @@ pub async fn admin_token_matches(
 /// Link previews one IP may have fetched per minute. Cached previews are
 /// free; this caps the pages a caller can make the server go and fetch, which
 /// is what keeps `/link-preview` from being a free anonymous fetch proxy.
-pub const MAX_PREVIEWS_PER_MINUTE: usize = 30;
+///
+/// Reads from the `MAX_PREVIEWS_PER_MINUTE` environment variable, defaulting
+/// to 30. Resolved once per [`RateLimiter`], like the limits above.
+pub fn get_max_previews_per_minute() -> usize {
+    std::env::var("MAX_PREVIEWS_PER_MINUTE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(30)
+}
 
 /// Check if an IP may make the server fetch another link preview.
 pub async fn check_preview_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool {
@@ -378,7 +386,7 @@ pub async fn check_preview_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> b
         &rate_limiter.preview_attempts,
         &rate_limiter.clock,
         ip,
-        MAX_PREVIEWS_PER_MINUTE,
+        rate_limiter.max_previews_per_minute,
     )
     .await;
     if !allowed {
