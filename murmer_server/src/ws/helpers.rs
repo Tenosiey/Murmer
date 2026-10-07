@@ -146,10 +146,10 @@ pub fn sfu_slots(channel_limit: u32) -> usize {
 
 /// Tell the SFU who is in `channel_id` and what each member may send:
 /// audio with Talk (`SEND_MESSAGES` in the channel) and no server mute,
-/// video while their camera is announced.
+/// video while their camera is announced, a screen share while it is.
 ///
 /// Called on every membership change (from [`broadcast_voice`]) and when a
-/// camera or a mute changes. A role or override edit takes effect at the
+/// camera, a screen share or a mute changes. A role or override edit takes effect at the
 /// channel's next such change.
 // ponytail: role edits re-sync lazily; push a sync from the role handlers
 // if a demoted speaker staying audible until the next join matters.
@@ -171,6 +171,13 @@ pub async fn sync_sfu(state: &Arc<AppState>, channel_id: i32) {
         .get(&channel_id)
         .cloned()
         .unwrap_or_default();
+    let screens = state
+        .active_screen_shares
+        .lock()
+        .await
+        .get(&channel_id)
+        .cloned()
+        .unwrap_or_default();
     let mut members = Vec::with_capacity(users.len());
     for user in users {
         let talk = has_channel_permission(
@@ -184,6 +191,7 @@ pub async fn sync_sfu(state: &Arc<AppState>, channel_id: i32) {
             && !super::handlers::is_muted(state, &user).await;
         members.push(crate::sfu::Member {
             camera: cameras.contains(&user),
+            screen: screens.contains(&user),
             talk,
             user,
         });

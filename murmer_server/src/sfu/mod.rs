@@ -24,6 +24,13 @@
 //!   member who left, was kicked or banned loses their `Rtc` at once,
 //!   whatever their client does.
 //!
+//! Screen shares ride the same task on connections of their own: the sharer
+//! publishes once ([`Sfu::offer_screen`] with themselves as the sharer) and
+//! every viewer pulls from the server instead of from the sharer, so a share
+//! costs the sharer one upload however many people watch. A share is
+//! forwarded only while it is announced (`screenshare-start`), and a viewer
+//! connection only lives while both ends are in the channel.
+//!
 //! The server terminates DTLS-SRTP here, so in SFU mode it can see media;
 //! `docs/security.md` says so, and the SFU is off unless the operator sets
 //! `SFU_PUBLIC_IP`.
@@ -52,11 +59,49 @@ pub struct Member {
     pub talk: bool,
     /// Camera announced with `webcam-start`: their video is forwarded.
     pub camera: bool,
+    /// Screen share announced with `screenshare-start`: it is forwarded to
+    /// whoever watches it.
+    pub screen: bool,
+}
+
+/// What one of the task's connections carries.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum Conn {
+    /// A member's voice and camera, with a receive slot per other member.
+    Voice(String),
+    /// A member publishing their screen share.
+    Share(String),
+    /// `viewer` watching `sharer`'s screen share: one receive slot, filled
+    /// by the sharer for as long as the connection lives.
+    Watch { viewer: String, sharer: String },
+}
+
+impl Conn {
+    /// The account the connection belongs to, who gets its frames.
+    fn user(&self) -> &str {
+        match self {
+            Conn::Voice(user) | Conn::Share(user) => user,
+            Conn::Watch { viewer, .. } => viewer,
+        }
+    }
+
+    /// Whether the channel's members, as the server last described them,
+    /// still allow this connection.
+    fn allowed(&self, members: &[Member]) -> bool {
+        let member = |user: &str| members.iter().find(|m| m.user == user);
+        match self {
+            Conn::Voice(user) => member(user).is_some(),
+            Conn::Share(sharer) => member(sharer).is_some_and(|m| m.screen),
+            Conn::Watch { viewer, sharer } => {
+                member(viewer).is_some() && member(sharer).is_some_and(|m| m.screen)
+            }
+        }
+    }
 }
 
 enum Command {
     Offer {
-        user: String,
+        conn: Conn,
         channel: i32,
         sdp: String,
         max_slots: usize,
@@ -108,15 +153,39 @@ impl Sfu {
     /// membership again against its own copy, which [`Sfu::sync`] keeps.
     pub fn offer(&self, user: &str, channel: i32, sdp: String, max_slots: usize) {
         let _ = self.tx.send(Command::Offer {
-            user: user.to_string(),
+            conn: Conn::Voice(user.to_string()),
             channel,
             sdp,
             max_slots,
         });
     }
 
+    /// Hand a screen share offer to the task: `user` publishing their own
+    /// share when `sharer` is themselves, watching `sharer`'s otherwise. The
+    /// caller has checked that both sit in `channel`, that it is in SFU mode
+    /// and that the share is announced; the task checks against its own copy
+    /// again. It answers with `sfu-screen-answer`, and a refused offer gets
+    /// no answer at all, as a refused mesh `screenshare-offer` does.
+    pub fn offer_screen(&self, user: &str, sharer: &str, channel: i32, sdp: String) {
+        let conn = if user == sharer {
+            Conn::Share(user.to_string())
+        } else {
+            Conn::Watch {
+                viewer: user.to_string(),
+                sharer: sharer.to_string(),
+            }
+        };
+        let _ = self.tx.send(Command::Offer {
+            conn,
+            channel,
+            sdp,
+            max_slots: 1,
+        });
+    }
+
     /// Tell the task who is in `channel` now and what each may send. Anyone
-    /// with an `Rtc` in the channel who is not listed loses it.
+    /// with an `Rtc` in the channel who is not listed loses it, and so does
+    /// every connection of a screen share that is no longer announced.
     pub fn sync(&self, channel: i32, members: Vec<Member>) {
         let _ = self.tx.send(Command::Sync { channel, members });
     }
@@ -160,9 +229,9 @@ struct Client {
 
 /// Something one client produced that another needs.
 enum Propagated {
-    Media(String, Box<MediaData>),
+    Media(Conn, Box<MediaData>),
     /// A subscriber asked for a keyframe of whoever fills its slot's video.
-    Keyframe(String),
+    Keyframe(Conn),
 }
 
 /// How often a sender is asked for a keyframe at most. Every subscriber that
@@ -172,10 +241,10 @@ const KEYFRAME_INTERVAL: Duration = Duration::from_secs(1);
 struct Task {
     socket: UdpSocket,
     public: SocketAddr,
-    clients: HashMap<String, Client>,
+    clients: HashMap<Conn, Client>,
     channels: HashMap<i32, Vec<Member>>,
     outbox: mpsc::UnboundedSender<(String, Frame)>,
-    last_keyframe: HashMap<String, Instant>,
+    last_keyframe: HashMap<Conn, Instant>,
 }
 
 impl Task {
@@ -234,17 +303,17 @@ impl Task {
     fn handle_command(&mut self, command: Command) {
         match command {
             Command::Offer {
-                user,
+                conn,
                 channel,
                 sdp,
                 max_slots,
-            } => self.handle_offer(user, channel, &sdp, max_slots),
+            } => self.handle_offer(conn, channel, &sdp, max_slots),
             Command::Sync { channel, members } => {
-                for (user, client) in &mut self.clients {
+                for (conn, client) in &mut self.clients {
                     if client.channel != channel {
                         continue;
                     }
-                    if !members.iter().any(|m| &m.user == user) {
+                    if !conn.allowed(&members) {
                         client.rtc.disconnect();
                     }
                     client.slots_dirty = true;
@@ -258,17 +327,17 @@ impl Task {
         }
     }
 
-    fn handle_offer(&mut self, user: String, channel: i32, sdp: &str, max_slots: usize) {
-        let member = self
+    fn handle_offer(&mut self, conn: Conn, channel: i32, sdp: &str, max_slots: usize) {
+        let allowed = self
             .channels
             .get(&channel)
-            .is_some_and(|members| members.iter().any(|m| m.user == user));
-        if !member {
-            debug!(user, channel, "SFU offer from a non-member");
+            .is_some_and(|members| conn.allowed(members));
+        if !allowed {
+            debug!(?conn, channel, "SFU offer the channel does not allow");
             return;
         }
         let Ok(offer) = SdpOffer::from_sdp_string(sdp) else {
-            self.reject(&user);
+            self.reject(&conn);
             return;
         };
         let fingerprint = sdp
@@ -280,10 +349,10 @@ impl Task {
 
         let restart = self
             .clients
-            .get(&user)
+            .get(&conn)
             .filter(|c| c.channel == channel && c.fingerprint == fingerprint && c.rtc.is_alive());
         let answer = if restart.is_some() {
-            let client = self.clients.get_mut(&user).expect("checked above");
+            let client = self.clients.get_mut(&conn).expect("checked above");
             client.rtc.sdp_api().accept_offer(offer)
         } else {
             let mut rtc = Rtc::builder().set_ice_lite(true).build(Instant::now());
@@ -298,11 +367,19 @@ impl Task {
             }
             let answer = rtc.sdp_api().accept_offer(offer);
             if answer.is_ok() {
-                if let Some(mut old) = self.clients.remove(&user) {
+                if let Some(mut old) = self.clients.remove(&conn) {
                     old.rtc.disconnect();
                 }
+                // A viewer's one slot belongs to the sharer for good.
+                let slots = match &conn {
+                    Conn::Watch { sharer, .. } => vec![Slot {
+                        user: Some(sharer.clone()),
+                        ..Slot::default()
+                    }],
+                    _ => Vec::new(),
+                };
                 self.clients.insert(
-                    user.clone(),
+                    conn.clone(),
                     Client {
                         channel,
                         rtc,
@@ -310,7 +387,7 @@ impl Task {
                         max_slots,
                         upstream_audio: None,
                         upstream_video: None,
-                        slots: Vec::new(),
+                        slots,
                         slots_dirty: true,
                         told: false,
                     },
@@ -318,20 +395,28 @@ impl Task {
             }
             answer
         };
-        match answer {
-            Ok(answer) => self.send(
-                &user,
-                serde_json::json!({
-                    "type": "sfu-answer",
-                    "channelId": channel,
-                    "sdp": answer.to_sdp_string(),
-                }),
-            ),
+        let sdp = match answer {
+            Ok(answer) => answer.to_sdp_string(),
             Err(e) => {
-                debug!(user, "SFU rejected an offer: {e}");
-                self.reject(&user);
+                debug!(?conn, "SFU rejected an offer: {e}");
+                self.reject(&conn);
+                return;
             }
-        }
+        };
+        let frame = match &conn {
+            Conn::Voice(_) => serde_json::json!({
+                "type": "sfu-answer",
+                "channelId": channel,
+                "sdp": sdp,
+            }),
+            Conn::Share(sharer) | Conn::Watch { sharer, .. } => serde_json::json!({
+                "type": "sfu-screen-answer",
+                "channelId": channel,
+                "sharer": sharer,
+                "sdp": sdp,
+            }),
+        };
+        self.send(conn.user(), frame);
     }
 
     /// Drive every client until it has nothing more to say, forward what
@@ -340,8 +425,8 @@ impl Task {
         let mut deadline = Instant::now() + Duration::from_millis(100);
         loop {
             let mut propagated = Vec::new();
-            for (user, client) in &mut self.clients {
-                if let Some(t) = poll_client(user, client, &self.socket, &mut propagated) {
+            for (conn, client) in &mut self.clients {
+                if let Some(t) = poll_client(conn, client, &self.socket, &mut propagated) {
                     deadline = deadline.min(t);
                 }
             }
@@ -368,11 +453,12 @@ impl Task {
     }
 
     /// Forward one sender's media to every subscriber in their channel, if
-    /// the server lets them send it.
+    /// the server lets them send it: a member's voice and camera to every
+    /// other member's voice connection, a screen share to its viewers.
     // ponytail: one video layer, no per-subscriber bandwidth estimation.
     // Cameras stop at 720p / 1.5 Mbps; add simulcast when a slow member
     // drags a big channel's video down.
-    fn forward(&mut self, from: &str, data: &MediaData) {
+    fn forward(&mut self, from: &Conn, data: &MediaData) {
         let Some(sender) = self.clients.get(from) else {
             return;
         };
@@ -384,11 +470,17 @@ impl Task {
         } else {
             return;
         };
+        let from_user = from.user();
         let allowed = self.channels.get(&channel).and_then(|members| {
-            members.iter().find(|m| m.user == from).map(|m| match kind {
-                MediaKind::Audio => m.talk,
-                MediaKind::Video => m.camera,
-            })
+            members
+                .iter()
+                .find(|m| m.user == from_user)
+                .map(|m| match (from, kind) {
+                    (Conn::Voice(_), MediaKind::Audio) => m.talk,
+                    (Conn::Voice(_), MediaKind::Video) => m.camera,
+                    (Conn::Share(_), _) => m.screen,
+                    (Conn::Watch { .. }, _) => false,
+                })
         });
         if allowed != Some(true) {
             return;
@@ -396,14 +488,22 @@ impl Task {
         if kind == MediaKind::Video && !data.contiguous {
             self.request_keyframe(from);
         }
-        for (user, client) in &mut self.clients {
-            if user == from || client.channel != channel {
+        for (conn, client) in &mut self.clients {
+            if client.channel != channel {
+                continue;
+            }
+            let subscribed = match (from, conn) {
+                (Conn::Voice(_), Conn::Voice(user)) => user != from_user,
+                (Conn::Share(_), Conn::Watch { sharer, .. }) => sharer == from_user,
+                _ => false,
+            };
+            if !subscribed {
                 continue;
             }
             let Some(slot) = client
                 .slots
                 .iter()
-                .find(|s| s.user.as_deref() == Some(from))
+                .find(|s| s.user.as_deref() == Some(from_user))
             else {
                 continue;
             };
@@ -418,13 +518,13 @@ impl Task {
                 continue;
             };
             if let Err(e) = writer.write(pt, data.network_time, data.time, data.data.clone()) {
-                debug!(user, "SFU write failed: {e}");
+                debug!(?conn, "SFU write failed: {e}");
                 client.rtc.disconnect();
             }
         }
     }
 
-    fn request_keyframe(&mut self, from: &str) {
+    fn request_keyframe(&mut self, from: &Conn) {
         let now = Instant::now();
         if self
             .last_keyframe
@@ -443,7 +543,7 @@ impl Task {
             .request_keyframe(None, KeyframeRequestKind::Pli)
             .is_ok()
         {
-            self.last_keyframe.insert(from.to_string(), now);
+            self.last_keyframe.insert(from.clone(), now);
         }
     }
 
@@ -452,7 +552,11 @@ impl Task {
     /// a join or leave moves nobody else's stream.
     fn publish_slots(&mut self) {
         let mut keyframes = Vec::new();
-        for (user, client) in &mut self.clients {
+        for (conn, client) in &mut self.clients {
+            // Only voice connections have slots that move.
+            let Conn::Voice(user) = conn else {
+                continue;
+            };
             if !client.slots_dirty {
                 continue;
             }
@@ -478,7 +582,7 @@ impl Task {
             for (slot, user) in client.slots.iter_mut().zip(next) {
                 if slot.user != user {
                     // A new face in a video slot needs a keyframe to show.
-                    keyframes.extend(user.clone());
+                    keyframes.extend(user.clone().map(Conn::Voice));
                     slot.user = user;
                 }
             }
@@ -508,11 +612,15 @@ impl Task {
         }
     }
 
-    fn reject(&self, user: &str) {
-        let _ = self.outbox.send((
-            user.to_string(),
-            crate::ws::errors::SFU_OFFER_REJECTED.into(),
-        ));
+    /// Tell a voice client its offer failed. A screen share offer that fails
+    /// is dropped silently, like a refused mesh `screenshare-offer`: the
+    /// share's window and its repair already cover it.
+    fn reject(&self, conn: &Conn) {
+        if let Conn::Voice(user) = conn {
+            let _ = self
+                .outbox
+                .send((user.clone(), crate::ws::errors::SFU_OFFER_REJECTED.into()));
+        }
     }
 
     fn send(&self, user: &str, frame: serde_json::Value) {
@@ -525,7 +633,7 @@ impl Task {
 /// Poll one client until it asks for time, sending what it transmits and
 /// collecting what others need. Returns when it next wants a timeout.
 fn poll_client(
-    user: &str,
+    conn: &Conn,
     client: &mut Client,
     socket: &UdpSocket,
     propagated: &mut Vec<Propagated>,
@@ -534,7 +642,7 @@ fn poll_client(
         let output = match client.rtc.poll_output() {
             Ok(output) => output,
             Err(e) => {
-                debug!(user, "SFU client failed: {e}");
+                debug!(?conn, "SFU client failed: {e}");
                 client.rtc.disconnect();
                 return None;
             }
@@ -558,7 +666,7 @@ fn poll_client(
                 }
             }
             Output::Event(Event::MediaData(data)) => {
-                propagated.push(Propagated::Media(user.to_string(), Box::new(data)));
+                propagated.push(Propagated::Media(conn.clone(), Box::new(data)));
             }
             Output::Event(Event::KeyframeRequest(req)) => {
                 if let Some(source) = client
@@ -567,6 +675,12 @@ fn poll_client(
                     .find(|s| s.video == Some(req.mid))
                     .and_then(|s| s.user.clone())
                 {
+                    // A viewer's slot carries the sharer's screen, a voice
+                    // slot that member's camera.
+                    let source = match conn {
+                        Conn::Watch { .. } => Conn::Share(source),
+                        _ => Conn::Voice(source),
+                    };
                     propagated.push(Propagated::Keyframe(source));
                 }
             }
