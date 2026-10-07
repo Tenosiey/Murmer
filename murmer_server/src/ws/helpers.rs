@@ -78,13 +78,34 @@ pub async fn send_users(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket,
     send_json(sender, &users_frame(state).await).await;
 }
 
-/// Broadcast the users currently in a voice channel to all clients.
+/// Broadcast the users currently in a voice channel to all clients, and
+/// re-decide the channel's mode for its new headcount.
+///
+/// Every join, leave and disconnect ends here, which is what makes this the
+/// one place the mode can follow the headcount. A change is announced as
+/// `voice-mode` to the channel's members only: who sits in a private voice
+/// channel is not everyone's business, and nobody else acts on it.
 pub async fn broadcast_voice(state: &Arc<AppState>, channel_id: i32) {
-    let list: Vec<String> = {
-        let vc = state.voice_channels.lock().await;
-        vc.get(&channel_id)
-            .map(|info| info.users.iter().cloned().collect())
-            .unwrap_or_default()
+    let (list, changed) = {
+        let mut vc = state.voice_channels.lock().await;
+        match vc.get_mut(&channel_id) {
+            Some(info) => {
+                let list: Vec<String> = info.users.iter().cloned().collect();
+                if list.is_empty() {
+                    info.sticky = false;
+                }
+                let mode = crate::security::next_mode(
+                    info.mode,
+                    list.len(),
+                    info.sticky,
+                    state.sfu_threshold,
+                );
+                let changed = (mode != info.mode).then_some(mode);
+                info.mode = mode;
+                (list, changed)
+            }
+            None => (Vec::new(), None),
+        }
     };
     broadcast(
         state,
@@ -94,6 +115,18 @@ pub async fn broadcast_voice(state: &Arc<AppState>, channel_id: i32) {
             "users": list,
         }),
     );
+    if let Some(mode) = changed {
+        let frame: crate::Frame = serde_json::json!({
+            "type": "voice-mode",
+            "channelId": channel_id,
+            "mode": mode,
+        })
+        .to_string()
+        .into();
+        for user in &list {
+            send_to_user(state, user, frame.clone()).await;
+        }
+    }
 }
 
 /// Stamp a message with the time the server received it.

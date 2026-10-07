@@ -33,8 +33,8 @@ use axum::{
 };
 use dotenvy::dotenv;
 use murmer_server::{
-    AppState, VoiceChannelState, admin, automod, bot, config::Config, db, link_preview, upload,
-    web_client, ws,
+    AppState, VoiceChannelState, VoiceMode, admin, automod, bot, config::Config, db, link_preview,
+    upload, web_client, ws,
 };
 use std::{
     collections::HashSet,
@@ -46,7 +46,7 @@ use tower::ServiceBuilder;
 use tower_http::{
     compression::CompressionLayer, set_header::SetResponseHeaderLayer, trace::TraceLayer,
 };
-use tracing::info;
+use tracing::{info, warn};
 
 fn init_tracing() {
     static INIT: OnceLock<()> = OnceLock::new();
@@ -132,10 +132,18 @@ async fn main() -> Result<()> {
                 position: record.position,
                 breakout_parent: record.breakout_parent,
                 user_limit: record.user_limit,
+                mode: VoiceMode::Mesh,
+                sticky: false,
             };
             (record.id, info)
         })
         .collect();
+    // The settings are parsed and checked already so a bad value fails now,
+    // but the SFU itself is not built yet: `sfu_threshold` stays `None`, and
+    // with it every channel stays a mesh, until it is.
+    if config.sfu.is_some() {
+        warn!("SFU_PUBLIC_IP is set, but this build has no SFU yet; voice stays peer to peer");
+    }
     let state = Arc::new(AppState {
         voice_channels: Mutex::new(voice_channels),
         role_defs: Mutex::new(

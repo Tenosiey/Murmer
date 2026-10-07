@@ -324,6 +324,24 @@ pub struct VoiceChannelState {
     /// Most members the channel admits; `0` for no limit of its own. The
     /// server-wide `MAX_VOICE_CHANNEL_USERS` applies on top either way.
     pub user_limit: u32,
+    /// How the channel's media travels; decided by
+    /// [`security::next_mode`] on every join and leave.
+    pub mode: VoiceMode,
+    /// Set when a mesh pair in the channel could not connect: the channel
+    /// then stays on the SFU until it empties, because the network that
+    /// broke the pair will not mend mid-call.
+    pub sticky: bool,
+}
+
+/// Whether a voice channel's media runs peer to peer or through the
+/// server's SFU (`plans/hybrid-voice-sfu.md`). The server decides and
+/// announces it in `voice-mode`; clients follow.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VoiceMode {
+    #[default]
+    Mesh,
+    Sfu,
 }
 
 /// Shared application state passed to handlers.
@@ -386,6 +404,9 @@ pub struct AppState {
     /// STUN URLs sent to each client in its `ice-config` frame
     /// (`STUN_SERVERS`, see `config.rs`).
     pub stun_servers: Vec<String>,
+    /// Headcount at which a voice channel moves to the SFU; `None` while the
+    /// SFU is off, which keeps every channel on the mesh.
+    pub sfu_threshold: Option<usize>,
     pub rate_limiter: RateLimiter,
     /// Mirror of the server-wide stat tracking toggle (`server_settings` key
     /// `stats_enabled`), kept in memory so the recording hooks that fire on
@@ -476,6 +497,7 @@ impl AppState {
             password: None,
             admin_token: None,
             stun_servers: Vec::new(),
+            sfu_threshold: None,
             rate_limiter: RateLimiter::new(),
             stats_enabled: AtomicBool::new(false),
             chat_settings: Mutex::default(),
