@@ -55,10 +55,6 @@ the idea comes from and what users will expect it to behave like.
       server address). One key on every server lets any two operators, or a
       member of both, link a person's communities. Keeps the single backup;
       it is a crypto-format change, see `agents/skills/crypto-changes.md`
-- [ ] Production-shaped `docker-compose.yml`. Today it is a development file:
-      plaintext port published, `CORS_ALLOW_ORIGINS=http://localhost:1420`,
-      `MAX_MESSAGES_PER_MINUTE: 300` (ten times the default), no password.
-      Move the dev settings into an override file
 - [ ] Raid protection. On a password-less server anyone can mint unlimited
       keys and accounts; there is no join verification, account-age gate or
       captcha (Discord verification levels)
