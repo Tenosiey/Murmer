@@ -405,9 +405,9 @@ pub struct AppState {
     /// STUN URLs sent to each client in its `ice-config` frame
     /// (`STUN_SERVERS`, see `config.rs`).
     pub stun_servers: Vec<String>,
-    /// Headcount at which a voice channel moves to the SFU; `None` while the
-    /// SFU is off, which keeps every channel on the mesh.
-    pub sfu_threshold: Option<usize>,
+    /// Headcounts at which a voice channel moves to the SFU and back; `None`
+    /// while the SFU is off, which keeps every channel on the mesh.
+    pub sfu_thresholds: Option<security::SfuThresholds>,
     /// The SFU task, while it runs (`SFU_PUBLIC_IP` set).
     pub sfu: Option<sfu::Sfu>,
     pub rate_limiter: RateLimiter,
@@ -500,7 +500,7 @@ impl AppState {
             password: None,
             admin_token: None,
             stun_servers: Vec::new(),
-            sfu_threshold: None,
+            sfu_thresholds: None,
             sfu: None,
             rate_limiter: RateLimiter::new(),
             stats_enabled: AtomicBool::new(false),

@@ -93,7 +93,8 @@ Environment variables recognised by the server:
 | `MAX_VOICE_CHANNEL_USERS` | No | People allowed in one voice channel (default: 10, `0` for no limit). A channel's own user limit can only lower this |
 | `SFU_PUBLIC_IP` | No | Public address of this server. Setting it turns on the built-in SFU: once a voice channel reaches `SFU_THRESHOLD` people, its voice, camera video and screen shares go through the server instead of between every pair of members, so nobody uploads their microphone to everyone. A channel where two members cannot connect directly (for example both behind strict NATs) moves to the SFU too, whatever its size. While a channel is on the SFU the server can see its media, and members see a "Via server" badge. Unset keeps every channel peer-to-peer. Needs `MAX_VOICE_CHANNEL_USERS` above `0`, and a real interface address even for local testing: browsers will not connect to `127.0.0.1` |
 | `SFU_UDP_PORT` | No | The one UDP port the SFU uses for all media (default: 3479); open it in your firewall and, under Docker, publish it as `udp` |
-| `SFU_THRESHOLD` | No | People in a voice channel at which it moves to the SFU (default: 7, at least 2). It moves back once it is down to three fewer |
+| `SFU_THRESHOLD` | No | People in a voice channel at which it moves to the SFU (default: 7, at least 2). It moves back at `SFU_RETURN_THRESHOLD` |
+| `SFU_RETURN_THRESHOLD` | No | People in an SFU channel at which it moves back to peer-to-peer (default: three below `SFU_THRESHOLD`, must be below it). The gap stops a channel at the threshold from switching back and forth whenever someone reconnects |
 | `MESSAGE_RETENTION_DAYS` | No | Delete channel messages, with their reactions and pins, once they are this many days old; checked hourly. DMs are kept. Unset or `0` keeps everything |
 
 Every capability, channel and wiki management included, is gated by roles

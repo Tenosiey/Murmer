@@ -27,6 +27,8 @@ services:
       # reach this host on, and uncomment the UDP port below with it.
       # SFU_PUBLIC_IP: 203.0.113.10
       # SFU_UDP_PORT: 3479
+      # SFU_THRESHOLD: 7
+      # SFU_RETURN_THRESHOLD: 4
     ports:
       - "3001:3001"
       # - "3479:3479/udp"

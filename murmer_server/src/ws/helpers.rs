@@ -103,7 +103,7 @@ pub async fn broadcast_voice(state: &Arc<AppState>, channel_id: i32) {
                     info.mode,
                     list.len(),
                     info.sticky,
-                    state.sfu_threshold,
+                    state.sfu_thresholds,
                 );
                 let changed = (mode != info.mode).then_some(mode);
                 info.mode = mode;

@@ -51,8 +51,8 @@ pub struct SfuConfig {
     pub public_ip: IpAddr,
     /// The single UDP port all SFU media uses.
     pub udp_port: u16,
-    /// Headcount at which a voice channel moves to the SFU.
-    pub threshold: usize,
+    /// Headcounts at which a voice channel moves to the SFU and back.
+    pub thresholds: crate::security::SfuThresholds,
 }
 
 /// Read a quota given in megabytes as bytes, or `default` when unset. Like
@@ -75,6 +75,9 @@ const DEFAULT_STUN_SERVER: &str = "stun:stun.l.google.com:19302";
 
 const DEFAULT_SFU_UDP_PORT: u16 = 3479;
 const DEFAULT_SFU_THRESHOLD: usize = 7;
+/// How far below `SFU_THRESHOLD` a channel shrinks before it returns to the
+/// mesh when `SFU_RETURN_THRESHOLD` is unset.
+const DEFAULT_SFU_RETURN_GAP: usize = 3;
 
 /// Shortest `ADMIN_TOKEN` the server starts with.
 const MIN_ADMIN_TOKEN_CHARS: usize = 32;
@@ -103,6 +106,8 @@ impl Config {
     /// - `SFU_UDP_PORT`, `SFU_THRESHOLD` (optional): the SFU's UDP port
     ///   (default 3479) and the headcount that moves a channel onto it
     ///   (default 7)
+    /// - `SFU_RETURN_THRESHOLD` (optional): the headcount that moves it back
+    ///   (default three below `SFU_THRESHOLD`)
     pub fn from_env() -> Result<Self> {
         let database_path = env::var("DATABASE_PATH").unwrap_or_else(|_| "murmer.db".to_string());
 
@@ -167,6 +172,7 @@ impl Config {
             env::var("SFU_PUBLIC_IP").ok().as_deref(),
             env::var("SFU_UDP_PORT").ok().as_deref(),
             env::var("SFU_THRESHOLD").ok().as_deref(),
+            env::var("SFU_RETURN_THRESHOLD").ok().as_deref(),
             crate::security::max_voice_channel_users(),
         )?;
 
@@ -262,7 +268,7 @@ fn parse_stun_servers(raw: Option<&str>) -> Result<Vec<String>> {
 }
 
 /// Parse the `SFU_*` variables. `SFU_PUBLIC_IP` unset or empty turns the SFU
-/// off, and the other two are then ignored. Like the other settings, a typo
+/// off, and the others are then ignored. Like the other settings, a typo
 /// is fatal rather than read as a default.
 ///
 /// The SFU offers each client a fixed set of receive slots, one per other
@@ -273,6 +279,7 @@ fn parse_sfu(
     public_ip: Option<&str>,
     udp_port: Option<&str>,
     threshold: Option<&str>,
+    return_threshold: Option<&str>,
     max_voice_users: usize,
 ) -> Result<Option<SfuConfig>> {
     fn set(v: Option<&str>) -> Option<&str> {
@@ -300,6 +307,18 @@ fn parse_sfu(
             .with_context(|| format!("SFU_THRESHOLD {n:?} must be a whole number of at least 2"))?,
         None => DEFAULT_SFU_THRESHOLD,
     };
+    // Equal thresholds would flip a channel back and forth on every join and
+    // leave at that size, rebuilding everyone's connections each time.
+    let return_threshold = match set(return_threshold) {
+        Some(n) => n
+            .parse::<usize>()
+            .ok()
+            .filter(|&n| n < threshold)
+            .with_context(|| {
+                format!("SFU_RETURN_THRESHOLD {n:?} must be a whole number below SFU_THRESHOLD")
+            })?,
+        None => threshold.saturating_sub(DEFAULT_SFU_RETURN_GAP),
+    };
     if max_voice_users == 0 {
         anyhow::bail!(
             "the SFU needs a finite voice channel size; set MAX_VOICE_CHANNEL_USERS \
@@ -309,7 +328,10 @@ fn parse_sfu(
     Ok(Some(SfuConfig {
         public_ip,
         udp_port,
-        threshold,
+        thresholds: crate::security::SfuThresholds {
+            to_sfu: threshold,
+            to_mesh: return_threshold,
+        },
     }))
 }
 
@@ -364,22 +386,36 @@ mod tests {
 
     #[test]
     fn sfu_is_off_unless_an_address_is_set() {
-        assert!(parse_sfu(None, Some("4000"), None, 10).unwrap().is_none());
-        assert!(parse_sfu(Some(" "), None, None, 10).unwrap().is_none());
-        let sfu = parse_sfu(Some("203.0.113.5"), None, None, 10)
+        assert!(
+            parse_sfu(None, Some("4000"), None, None, 10)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            parse_sfu(Some(" "), None, None, None, 10)
+                .unwrap()
+                .is_none()
+        );
+        let sfu = parse_sfu(Some("203.0.113.5"), None, None, None, 10)
             .unwrap()
             .unwrap();
         assert_eq!(
-            (sfu.udp_port, sfu.threshold),
-            (DEFAULT_SFU_UDP_PORT, DEFAULT_SFU_THRESHOLD)
+            (sfu.udp_port, sfu.thresholds.to_sfu, sfu.thresholds.to_mesh),
+            (DEFAULT_SFU_UDP_PORT, DEFAULT_SFU_THRESHOLD, 4)
         );
+        let sfu = parse_sfu(Some("::1"), None, Some("10"), Some("8"), 10)
+            .unwrap()
+            .unwrap();
+        assert_eq!((sfu.thresholds.to_sfu, sfu.thresholds.to_mesh), (10, 8));
     }
 
     #[test]
     fn sfu_rejects_typos_and_an_unlimited_channel() {
-        assert!(parse_sfu(Some("sfu.example"), None, None, 10).is_err());
-        assert!(parse_sfu(Some("::1"), Some("0"), None, 10).is_err());
-        assert!(parse_sfu(Some("::1"), None, Some("1"), 10).is_err());
-        assert!(parse_sfu(Some("::1"), None, None, 0).is_err());
+        assert!(parse_sfu(Some("sfu.example"), None, None, None, 10).is_err());
+        assert!(parse_sfu(Some("::1"), Some("0"), None, None, 10).is_err());
+        assert!(parse_sfu(Some("::1"), None, Some("1"), None, 10).is_err());
+        assert!(parse_sfu(Some("::1"), None, Some("5"), Some("5"), 10).is_err());
+        assert!(parse_sfu(Some("::1"), None, None, Some("seven"), 10).is_err());
+        assert!(parse_sfu(Some("::1"), None, None, None, 0).is_err());
     }
 }

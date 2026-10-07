@@ -15,7 +15,9 @@ use axum::{Router, routing::get};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use ed25519_dalek::{Signer, SigningKey};
 use futures::{SinkExt, StreamExt};
-use murmer_server::{AppState, VoiceChannelState, VoiceMode, db, sfu::Sfu, ws::ws_handler};
+use murmer_server::{
+    AppState, VoiceChannelState, VoiceMode, db, security::SfuThresholds, sfu::Sfu, ws::ws_handler,
+};
 use serde_json::{Value, json};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
@@ -57,7 +59,10 @@ async fn start_server() -> SocketAddr {
     let state = Arc::new(AppState {
         role_defs: tokio::sync::Mutex::new(role_defs.into_iter().map(|d| (d.id, d)).collect()),
         voice_channels: tokio::sync::Mutex::new(HashMap::from([(LOUNGE, lounge)])),
-        sfu_threshold: Some(4),
+        sfu_thresholds: Some(SfuThresholds {
+            to_sfu: 4,
+            to_mesh: 1,
+        }),
         sfu: Some(sfu),
         ..AppState::new(database)
     });
