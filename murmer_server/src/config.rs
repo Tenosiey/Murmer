@@ -44,7 +44,7 @@ pub struct Config {
 }
 
 /// Settings for the SFU that carries large voice channels
-/// (`plans/hybrid-voice-sfu.md`).
+/// (`docs/voice.md`).
 #[derive(Debug, Clone, Copy)]
 pub struct SfuConfig {
     /// Address advertised in the SFU's one ICE candidate.
@@ -240,7 +240,7 @@ impl Config {
 /// other directly (a LAN).
 ///
 /// Only `stun:`/`stuns:` is accepted, permanently: Murmer will not use TURN
-/// (the relay fallback is the SFU, `plans/hybrid-voice-sfu.md`), and a
+/// (the relay fallback is the SFU, `docs/voice.md`), and a
 /// `turn:` URL without credentials makes `RTCPeerConnection` throw — which
 /// would surface as voice failing to connect for everybody, far from this
 /// setting.

@@ -32,11 +32,6 @@ the idea comes from and what users will expect it to behave like.
       would delete every attachment of every encrypted channel. The options
       that remain are the author's client naming the files when it deletes
       its own message, or an operator-chosen age limit for attachments
-- [ ] Voice does not connect at all behind symmetric NAT, and the mesh caps a
-      channel at a handful of people. Both are answered by a hybrid SFU
-      (mesh for small channels, an SFU inside the server above a threshold);
-      TURN is deliberately not part of it. See
-      [`plans/hybrid-voice-sfu.md`](plans/hybrid-voice-sfu.md)
 
 ---
 
@@ -119,8 +114,14 @@ the idea comes from and what users will expect it to behave like.
       talking (Discord, TeamSpeak overlays)
 - [ ] LAN server discovery over mDNS, so a LAN party finds its server without
       anyone typing an address
-- [ ] Local transcription and meeting notes. The server never sees media, so
-      this can only run on a client (a local Whisper model in the desktop
-      app), and only with the same visible indicator as recording
+- [ ] Local transcription and meeting notes. The server sees no media in a
+      mesh channel, so this can only run on a client (a local Whisper model
+      in the desktop app), and only with the same visible indicator as
+      recording
 - [ ] Positional audio for games (Mumble)
 - [ ] Screen-share annotations
+- [ ] End-to-end encryption through the SFU (encoded transforms / SFrame),
+      so a large call stays private from the operator too. Check
+      `RTCRtpScriptTransform` in WebView2, WebKitGTK and WKWebView first
+- [ ] ICE-TCP on the SFU port, for networks that block UDP entirely. str0m
+      supports TCP candidates; nobody has asked yet

@@ -215,6 +215,25 @@ the `voice-permissions` reply to a join), the call moves onto one
 connection to the server (`voice/sfu.ts`). The microphone chain and the
 camera track are untouched; only what they are attached to changes.
 
+The server decides, in `security::next_mode`, on every join and leave. A
+channel moves to the SFU at `SFU_THRESHOLD` people (default 7) and back to
+the mesh only once it is three below that. The band stops a channel sitting
+at the threshold from tearing down every connection each time somebody's
+Wi-Fi blinks; it is a constant because nobody will tune two numbers. A
+channel the relay fallback made *sticky* ([Relay support](#relay-support))
+stays on the SFU at any size, and an empty channel resets to the mesh. With
+`SFU_PUBLIC_IP` unset every channel is mesh, always.
+
+The SFU is embedded in the server (str0m, one tokio task, one UDP port)
+rather than a separate media server such as LiveKit or mediasoup: those
+bring their own SDK, tokens and client library, which would mean a second
+voice client beside the mesh one. Embedded, its signaling rides the
+existing WebSocket and inherits authentication, channel visibility and the
+rate limiter. It is ICE-lite with a single host candidate, so it needs no
+STUN and the client never trickles candidates to it. It forwards one layer
+of each stream: no simulcast and no per-viewer bandwidth estimation, which
+the 720p camera cap makes affordable at the channel sizes Murmer allows.
+
 - **Offered once, never renegotiated.** The offer carries a send-only audio
   and video transceiver plus a receive-only pair per *slot* (one per other
   member the channel could hold). After that the server only says who is in
@@ -327,9 +346,10 @@ stricter of the two caps wins, so a channel limit narrows the operator's cap
 and never widens it. Lowering it below the current headcount removes nobody;
 it only refuses the next joiner. Breakout rooms start without one.
 
-The cap is a bound on the symptom, not a fix for the cause — an SFU is. The
-plan is [`../plans/hybrid-voice-sfu.md`](../plans/hybrid-voice-sfu.md): mesh
-below a threshold, an SFU inside the server above it.
+The cap is a bound on the symptom, not a fix for the cause — the SFU is
+([Through the server](#through-the-server-sfu)). Its receive slots are
+sized from the cap, which is why a server with the SFU enabled refuses to
+start with `MAX_VOICE_CHANNEL_USERS=0`.
 
 ## Relay support
 
@@ -345,7 +365,9 @@ at any size until it empties, because the network that broke the pair will
 not mend mid-call. Both ends must be in the sender's channel, and no
 permission is needed — the cost is server bandwidth for a call the sender
 is in. Without the SFU the report is ignored, and two peers behind
-symmetric NATs still cannot connect.
+symmetric NATs still cannot connect. A network that blocks UDP entirely
+is not covered either way: the SFU listens on UDP only, and ICE-TCP on the
+same port is the follow-up if anybody needs it.
 
 STUN stays, because the mesh needs it. The STUN servers come from the server
 (`STUN_SERVERS`) in an `ice-config` frame after authentication, and both

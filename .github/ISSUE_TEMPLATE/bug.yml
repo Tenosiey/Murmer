@@ -61,4 +61,4 @@ body:
       label: If this is a voice or screen-sharing issue
       options:
         - label: The other peer was on a different network
-        - label: I know Murmer has no relay yet, so peers behind symmetric NATs cannot connect (plans/hybrid-voice-sfu.md)
+        - label: The server has its SFU enabled (`SFU_PUBLIC_IP`); without it, peers behind symmetric NATs cannot connect

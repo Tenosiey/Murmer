@@ -1,4 +1,4 @@
-//! The SFU that carries large voice channels (`plans/hybrid-voice-sfu.md`).
+//! The SFU that carries large voice channels (`docs/voice.md`).
 //!
 //! One tokio task owns one UDP socket and a `str0m::Rtc` per member in SFU
 //! mode, in the shape of str0m's `chat` example: poll every `Rtc`, route each
