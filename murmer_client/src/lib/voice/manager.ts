@@ -236,8 +236,8 @@ export class VoiceManager {
    */
   private captureSwap: Promise<void> = Promise.resolve();
 
-  private joinSound = new Audio('/sounds/user_join_voice_sound.mp3');
-  private leaveSound = new Audio('/sounds/user_leave_voice_sound.mp3');
+  private joinSound = new Audio('/sounds/user_join_voice_sound.wav');
+  private leaveSound = new Audio('/sounds/user_leave_voice_sound.wav');
   private muteSound = new Audio('/sounds/mute_sound.wav');
   private unmuteSound = new Audio('/sounds/unmute_sound.wav');
 
