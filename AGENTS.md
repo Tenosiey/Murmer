@@ -125,6 +125,7 @@ that is not obvious until it ships.
 | A hand-rolled `FormData` for `/upload` | `uploadForm` in `src/lib/upload.ts` | The signed proof must be a multipart field ahead of the file; the server rejects anything else |
 | The raw user name, or `profile.displayName` | `$displayNames(user)` from `stores/profiles.ts` | Skips the nickname a moderator may have set. The raw name is the account name and stays the lookup key |
 | New CSS for a button or input | The tokens and primitives from `src/routes/+layout.svelte` | A hardcoded color or size follows neither the theme nor the accent re-tint |
+| An English string in markup or a `.ts` module | `t('area.key')` from `src/lib/i18n`, text in `i18n/en.ts` | Strings left inline are the ones a translation can never reach; `{name}` placeholders and plural objects keep word order and grammar out of the code |
 | Inlining the logo artwork | `MurmerLogo.svelte` | It reads the brand tokens and switches with the theme itself |
 | Touching the WebSocket directly | `chat.on(type, cb)` / `chat.off` | The chat store owns the socket and its per-server reset, and the chat page reconnects it |
 | A hand-written permission check | `has_permission` / `can_view_channel` in `ws/helpers.rs` | One enforcement point, and private channels change the answer |

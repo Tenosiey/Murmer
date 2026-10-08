@@ -167,9 +167,11 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Scheduled events — a time, a description, a voice channel and an RSVP
       list, with a reminder to everyone who said yes (Discord events). The
       reminder scheduler (`ws/handlers/scheduled.rs`) already runs
-- [ ] Translatable UI. Every string is hardcoded English, so this is a
-      structural change (extraction plus a lookup) rather than a translation
-      job, and it only gets more expensive with every screen added
+- [ ] Translatable UI, the rest of the extraction. The lookup and English
+      catalog exist (`src/lib/i18n/`) and the login, invite and server hub
+      pages plus the server error texts go through them; the chat page, its
+      components, Settings and the Server Dashboard are still hardcoded
+      English. Then a second catalog and a language picker
 - [ ] Update prompt at startup. Updates only happen when someone presses
       Settings → Updates (`AboutTab.svelte`), so members drift behind the
       server

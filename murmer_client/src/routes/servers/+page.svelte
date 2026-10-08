@@ -21,6 +21,7 @@
   import { pendingInvite } from '$lib/stores/pendingInvite';
   import { isWebClient } from '$lib/platform';
   import { pendingMessageLink } from '$lib/message-link';
+  import { t } from '$lib/i18n';
 
   onMount(() => {
     if (!get(session).user) {
@@ -37,7 +38,7 @@
         return;
       }
       pendingMessageLink.set(null);
-      error = 'That message link is for a server you have not added.';
+      error = t('servers.unknownMessageLink');
     }
     serverStatus.start();
     // Surface the reason we were sent back here (wrong password, ban, ...).
@@ -103,7 +104,7 @@
   function mixedContentWarning(url: string): string | null {
     if (!isWebClient || typeof location === 'undefined') return null;
     if (location.protocol !== 'https:' || !url.startsWith('ws://')) return null;
-    return `${url} is unencrypted, and this page is served over HTTPS — your browser will block the connection. Use a wss:// address.`;
+    return t('servers.mixedContent', { url });
   }
 
   function clearCopyTimeout() {
@@ -117,7 +118,7 @@
     error = null;
     const rawServer = newServer.trim();
     if (!rawServer) {
-      error = 'Enter a server address or invite link.';
+      error = t('servers.addressRequired');
       return;
     }
 
@@ -129,7 +130,7 @@
     // address path treats it as a hostname to normalize.
     const parsed = parseInviteLink(rawServer);
     if (!parsed && looksLikeInviteLink(rawServer)) {
-      error = 'That invite link could not be parsed.';
+      error = t('servers.inviteUnparseable');
       return;
     }
     if (parsed) {
@@ -206,7 +207,7 @@
         copyTimeout = null;
       }, 2000);
     } catch (err) {
-      error = 'Could not copy the invite link. Please copy it manually.';
+      error = t('servers.copyFailed');
       if (import.meta.env.DEV) {
         console.error('Failed to copy invite link', err);
       }
@@ -217,14 +218,14 @@
 <main class="servers-page page-container">
   <header class="page-header">
     <div class="title-group">
-      <div class="eyebrow">Server hub</div>
-      <h1>Choose where to connect</h1>
-      <p class="body-muted">Curate the spaces you visit most often and jump in with a single click.</p>
+      <div class="eyebrow">{t('servers.eyebrow')}</div>
+      <h1>{t('servers.title')}</h1>
+      <p class="body-muted">{t('servers.intro')}</p>
     </div>
     <div class="account-card surface-card" aria-live="polite">
       <div class="avatar" aria-hidden="true">{($session.user ?? '??').slice(0, 2).toUpperCase()}</div>
       <div class="account-meta">
-        <span class="label">Signed in as</span>
+        <span class="label">{t('servers.signedInAs')}</span>
         <strong>{$session.user}</strong>
       </div>
       <div class="quick-actions">
@@ -245,7 +246,7 @@
             />
             <circle cx="12" cy="12" r="3" />
           </svg>
-          <span class="sr-only">Open settings</span>
+          <span class="sr-only">{t('servers.openSettings')}</span>
         </button>
         <button type="button" class="icon-btn danger" onclick={logout}>
           <svg
@@ -262,7 +263,7 @@
             <path d="M12 2v10" />
             <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
           </svg>
-          <span class="sr-only">Sign out</span>
+          <span class="sr-only">{t('servers.signOut')}</span>
         </button>
       </div>
     </div>
@@ -278,65 +279,59 @@
     {@const warning = mixedContentWarning(invite.url)}
     <section class="invite-banner surface-card" aria-labelledby="invite-title">
       <div class="invite-copy">
-        <div class="eyebrow">You have been invited</div>
+        <div class="eyebrow">{t('servers.invitedEyebrow')}</div>
         <h2 id="invite-title">{invite.name || invite.url}</h2>
         <p class="meta">{invite.url}</p>
         {#if inviteKnown}
-          <p class="body-muted">
-            This server is already saved as “{inviteKnown.name}”. Joining updates it with the
-            details from the invite.
-          </p>
+          <p class="body-muted">{t('servers.inviteKnown', { name: inviteKnown.name })}</p>
         {/if}
         {#if invite.code}
-          <p class="body-muted">
-            The invite carries a one-time code, which stays on this device. It may expire or be
-            withdrawn, so join while it is fresh.
-          </p>
+          <p class="body-muted">{t('servers.inviteCode')}</p>
         {:else if invite.password}
-          <p class="body-muted">The invite carries a server password, which stays on this device.</p>
+          <p class="body-muted">{t('servers.invitePassword')}</p>
         {/if}
         {#if warning}
           <p class="invite-warning" role="alert">{warning}</p>
         {/if}
       </div>
       <div class="invite-actions">
-        <button type="button" class="btn btn-primary" onclick={acceptInvite}>Join server</button>
-        <button type="button" class="btn btn-ghost" onclick={dismissInvite}>Dismiss</button>
+        <button type="button" class="btn btn-primary" onclick={acceptInvite}>{t('servers.joinServer')}</button>
+        <button type="button" class="btn btn-ghost" onclick={dismissInvite}>{t('servers.dismiss')}</button>
       </div>
     </section>
   {/if}
 
   <section class="create-card surface-card" aria-labelledby="create-title">
     <div class="card-copy">
-      <h2 id="create-title">Add a server</h2>
-      <p>Use a Murmer server address or invite URL. Passwords stay on your device.</p>
+      <h2 id="create-title">{t('servers.addTitle')}</h2>
+      <p>{t('servers.addIntro')}</p>
     </div>
     <form class="add" onsubmit={(event) => { event.preventDefault(); add(); }}>
       <label class="field address-field">
-        <span>Address</span>
-        <input bind:value={newServer} placeholder="host:port or wss://example" required />
+        <span>{t('servers.address')}</span>
+        <input bind:value={newServer} placeholder={t('servers.addressPlaceholder')} required />
       </label>
       <label class="field">
-        <span>Custom name</span>
-        <input bind:value={newName} placeholder="Community" />
+        <span>{t('servers.customName')}</span>
+        <input bind:value={newName} placeholder={t('servers.customNamePlaceholder')} />
       </label>
       <label class="field">
-        <span>Password</span>
-        <input type="password" bind:value={newPassword} placeholder="Optional" />
+        <span>{t('servers.password')}</span>
+        <input type="password" bind:value={newPassword} placeholder={t('servers.passwordPlaceholder')} />
       </label>
-      <button type="submit" class="btn btn-primary primary-action">Save server</button>
+      <button type="submit" class="btn btn-primary primary-action">{t('servers.save')}</button>
     </form>
   </section>
 
   <section class="server-list" aria-live="polite">
     <header class="section-header">
-      <h2>Saved servers</h2>
-      <span class="count">{$servers.length} saved</span>
+      <h2>{t('servers.savedTitle')}</h2>
+      <span class="count">{t('servers.savedCount', { count: $servers.length })}</span>
     </header>
     {#if $servers.length === 0}
       <div class="empty-state surface-card">
-        <h3>No servers yet</h3>
-        <p>Add your first server to start chatting and sharing voice rooms.</p>
+        <h3>{t('servers.emptyTitle')}</h3>
+        <p>{t('servers.emptyBody')}</p>
       </div>
     {:else}
       <div class="grid">
@@ -345,7 +340,7 @@
           <article class="server-card surface-card">
             <div class="status">
               <StatusDot online={$serverStatus[server.url]} />
-              <span class="status-label">{$serverStatus[server.url] === null ? 'Checking...' : $serverStatus[server.url] ? 'Online' : 'Offline'}</span>
+              <span class="status-label">{$serverStatus[server.url] === null ? t('servers.checking') : $serverStatus[server.url] ? t('servers.online') : t('servers.offline')}</span>
             </div>
             <div class="card-title">
               {#if identity?.icon && httpBase(server.url)}
@@ -366,20 +361,20 @@
             {/if}
             <div class="card-actions">
               <button type="button" class="btn btn-primary join" onclick={() => join(server)}>
-                Join
+                {t('servers.join')}
               </button>
               <button
                 type="button"
                 class="icon-btn"
                 onclick={() => copyInvite(server)}
-                title={copiedServer === server.url ? 'Copied!' : 'Copy invite link'}
+                title={copiedServer === server.url ? t('servers.copiedTooltip') : t('servers.copyInvite')}
               >
                 {#if copiedServer === server.url}
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                 {:else}
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 {/if}
-                <span class="sr-only">{copiedServer === server.url ? 'Copied' : 'Copy invite link'}</span>
+                <span class="sr-only">{copiedServer === server.url ? t('servers.copied') : t('servers.copyInvite')}</span>
               </button>
               <button type="button" class="icon-btn danger" onclick={() => removeServer(server.url)}>
                 <svg
@@ -399,7 +394,7 @@
                   <path d="M3 6h18" />
                   <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                 </svg>
-                <span class="sr-only">Remove {server.name}</span>
+                <span class="sr-only">{t('servers.remove', { name: server.name })}</span>
               </button>
             </div>
           </article>
