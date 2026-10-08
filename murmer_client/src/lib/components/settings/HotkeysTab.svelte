@@ -10,6 +10,7 @@
   } from '$lib/stores/hotkeys';
   import { suspendGlobalHotkeys, resumeGlobalHotkeys } from '$lib/stores/globalHotkeys';
   import { isTauri } from '$lib/platform';
+  import { t } from '$lib/i18n';
 
   interface Props {
     active: boolean;
@@ -66,7 +67,7 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">Hotkeys</h3>
+    <h3 class="section-title">{t('settings.tab.hotkeys')}</h3>
 
     <div class="setting-group">
       {#each HOTKEY_ACTIONS as action (action.id)}
@@ -75,7 +76,7 @@
             <span class="toggle-label">
               {action.label}
               {#if action.global}
-                <span class="global-badge" title="Also works while another app is focused">system-wide</span>
+                <span class="global-badge" title={t('hotkeys.globalTooltip')}>{t('hotkeys.globalBadge')}</span>
               {/if}
             </span>
             <span class="toggle-description">{action.description}</span>
@@ -86,11 +87,11 @@
               class:capturing={capturingHotkeyId === action.id}
               class:unset={!$hotkeys[action.id] && capturingHotkeyId !== action.id}
               onclick={() => captureHotkey(action.id)}
-              title="Click, then press the new key combination"
+              title={t('hotkeys.captureTooltip')}
             >
               <span class="hotkey-combo">
                 {#if capturingHotkeyId === action.id}
-                  Press keys…
+                  {t('hotkeys.pressKeys')}
                 {:else}
                   {formatCombo($hotkeys[action.id])}
                 {/if}
@@ -100,8 +101,8 @@
               class="icon-btn hotkey-clear"
               onclick={() => hotkeys.unbind(action.id)}
               disabled={!$hotkeys[action.id]}
-              title="Remove hotkey"
-              aria-label={`Remove hotkey for ${action.label}`}
+              title={t('hotkeys.remove')}
+              aria-label={t('hotkeys.removeFor', { action: action.label })}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -113,28 +114,23 @@
       {/each}
 
       <div class="setting-description">
-        Click a hotkey and press the new key combination — Esc cancels, and assigning a
-        combination that is already in use moves it to the new action. Hotkeys without
-        Ctrl, Alt or a function key stay inactive while you are typing a message. The
-        push-to-talk key is configured in the Microphone &amp; Voice tab.
+        {t('hotkeys.hint')}
       </div>
 
       {#if isTauri}
       <label class="toggle-row">
         <input type="checkbox" bind:checked={$globalHotkeysEnabled} />
         <span class="toggle-text">
-          <span class="toggle-label">System-wide voice hotkeys</span>
+          <span class="toggle-label">{t('hotkeys.systemWide')}</span>
           <span class="toggle-description">
-            Keep the hotkeys marked "system-wide" working while another application is
-            focused, e.g. to mute your microphone during a game. Note that Murmer then
-            reserves those key combinations for itself while it is running.
+            {t('hotkeys.systemWideHint')}
           </span>
         </span>
       </label>
       {/if}
 
       <button class="btn reset-hotkeys" onclick={() => hotkeys.resetAll()}>
-        Reset to defaults
+        {t('hotkeys.resetAll')}
       </button>
     </div>
   </div>

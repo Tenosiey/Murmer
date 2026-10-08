@@ -27,6 +27,7 @@ import { entropyToMnemonic, mnemonicToEntropy, validateMnemonic } from '@scure/b
 // v2 of the package exports the wordlists with their `.js` suffix only.
 import { wordlist } from '@scure/bip39/wordlists/english.js';
 import { fromBase64, toBase64, SEED_LENGTH } from './keypair';
+import { t } from './i18n';
 
 /** What a backup restores: the identity itself, and the name it goes by. */
 export interface Identity {
@@ -93,9 +94,9 @@ export async function exportIdentityFile(
   identity: Identity,
   passphrase: string
 ): Promise<string> {
-  if (!passphrase) throw new IdentityError('A passphrase is required.');
+  if (!passphrase) throw new IdentityError(t('identityError.passphraseRequired'));
   if (identity.seed.length !== SEED_LENGTH) {
-    throw new IdentityError('Refusing to export a malformed identity.');
+    throw new IdentityError(t('identityError.malformedExport'));
   }
 
   const salt = nacl.randomBytes(SALT_LENGTH);
@@ -131,18 +132,14 @@ export async function importIdentityFile(text: string, passphrase: string): Prom
   try {
     envelope = JSON.parse(text);
   } catch {
-    throw new IdentityError('That file is not a Murmer recovery file.');
+    throw new IdentityError(t('identityError.notRecoveryFile'));
   }
 
   if (envelope?.format !== FILE_FORMAT) {
-    throw new IdentityError('That file is not a Murmer recovery file.');
+    throw new IdentityError(t('identityError.notRecoveryFile'));
   }
   if (envelope.version !== FILE_VERSION) {
-    throw new IdentityError(
-      `This recovery file was written by a different version of Murmer (format ${String(
-        envelope.version
-      )}).`
-    );
+    throw new IdentityError(t('identityError.otherVersion', { version: String(envelope.version) }));
   }
 
   const kdf = envelope.kdf as { iterations?: unknown; salt?: unknown } | undefined;
@@ -158,7 +155,7 @@ export async function importIdentityFile(text: string, passphrase: string): Prom
     typeof envelope.nonce !== 'string' ||
     typeof envelope.ciphertext !== 'string'
   ) {
-    throw new IdentityError('This recovery file is incomplete or damaged.');
+    throw new IdentityError(t('identityError.damaged'));
   }
 
   let opened: Uint8Array | null;
@@ -170,25 +167,25 @@ export async function importIdentityFile(text: string, passphrase: string): Prom
       key
     );
   } catch {
-    throw new IdentityError('This recovery file is incomplete or damaged.');
+    throw new IdentityError(t('identityError.damaged'));
   }
   if (!opened) {
-    throw new IdentityError('Wrong passphrase, or the file has been damaged.');
+    throw new IdentityError(t('identityError.wrongPassphrase'));
   }
 
   let payload: { seed?: unknown; user?: unknown };
   try {
     payload = JSON.parse(new TextDecoder().decode(opened));
   } catch {
-    throw new IdentityError('This recovery file is incomplete or damaged.');
+    throw new IdentityError(t('identityError.damaged'));
   }
   if (typeof payload.seed !== 'string') {
-    throw new IdentityError('This recovery file is incomplete or damaged.');
+    throw new IdentityError(t('identityError.damaged'));
   }
 
   const seed = fromBase64(payload.seed);
   if (seed.length !== SEED_LENGTH) {
-    throw new IdentityError('This recovery file does not contain a usable key.');
+    throw new IdentityError(t('identityError.noUsableKey'));
   }
   return { seed, user: typeof payload.user === 'string' ? payload.user : '' };
 }
@@ -202,7 +199,7 @@ export async function importIdentityFile(text: string, passphrase: string): Prom
  */
 export function seedToPhrase(seed: Uint8Array): string {
   if (seed.length !== SEED_LENGTH) {
-    throw new IdentityError('Refusing to export a malformed identity.');
+    throw new IdentityError(t('identityError.malformedExport'));
   }
   return entropyToMnemonic(seed, wordlist);
 }
@@ -217,28 +214,26 @@ export function seedToPhrase(seed: Uint8Array): string {
  */
 export function phraseToSeed(phrase: string): Uint8Array {
   const normalized = phrase.trim().toLowerCase().split(/\s+/).join(' ');
-  if (!normalized) throw new IdentityError('Enter your 24-word recovery phrase.');
+  if (!normalized) throw new IdentityError(t('identityError.phraseRequired'));
 
   const words = normalized.split(' ');
   if (words.length !== 24) {
-    throw new IdentityError(`A recovery phrase is 24 words; this one has ${words.length}.`);
+    throw new IdentityError(t('identityError.wordCount', { count: words.length }));
   }
 
   const unknown = words.filter((word) => !wordlist.includes(word));
   if (unknown.length > 0) {
     throw new IdentityError(
-      `Not part of a recovery phrase: ${[...new Set(unknown)].slice(0, 3).join(', ')}`
+      t('identityError.unknownWords', { words: [...new Set(unknown)].slice(0, 3).join(', ') })
     );
   }
   if (!validateMnemonic(normalized, wordlist)) {
-    throw new IdentityError(
-      'That phrase does not check out — a word is probably in the wrong place or mistyped.'
-    );
+    throw new IdentityError(t('identityError.checksum'));
   }
 
   const seed = mnemonicToEntropy(normalized, wordlist);
   if (seed.length !== SEED_LENGTH) {
-    throw new IdentityError('That phrase does not encode a usable key.');
+    throw new IdentityError(t('identityError.phraseUnusable'));
   }
   return seed;
 }

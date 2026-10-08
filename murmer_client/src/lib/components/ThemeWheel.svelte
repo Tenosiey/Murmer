@@ -6,6 +6,7 @@
   colors below are the wheel's content, not UI chrome.
 -->
 <script lang="ts">
+  import { t } from '$lib/i18n';
   interface Props {
     hue: number;
     saturation: number;
@@ -75,11 +76,11 @@
   bind:this={wheel}
   role="slider"
   tabindex="0"
-  aria-label="Theme color wheel"
+  aria-label={t('themeWheel.label')}
   aria-valuemin={0}
   aria-valuemax={360}
   aria-valuenow={Math.round(hue)}
-  aria-valuetext={`Hue ${Math.round(hue)} degrees, intensity ${Math.round(saturation)} percent`}
+  aria-valuetext={t('themeWheel.value', { hue: Math.round(hue), saturation: Math.round(saturation) })}
   onpointerdown={handlePointerDown}
   onpointermove={handlePointerMove}
   onpointerup={handlePointerUp}

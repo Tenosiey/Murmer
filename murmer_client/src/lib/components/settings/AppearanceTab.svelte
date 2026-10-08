@@ -9,6 +9,7 @@
     type Accent
   } from '$lib/stores/theme';
   import ThemeWheel from '$lib/components/ThemeWheel.svelte';
+  import { t } from '$lib/i18n';
 
   interface Props {
     active: boolean;
@@ -25,13 +26,13 @@
   // and #84b800) sit on this hue and differ only in lightness, which the
   // wheel does not carry.
   const ACCENT_PRESETS = [
-    { name: 'Lime', hue: DEFAULT_ACCENT.hue, saturation: DEFAULT_ACCENT.saturation },
-    { name: 'Sky', hue: 215, saturation: 78 },
-    { name: 'Indigo', hue: 250, saturation: 68 },
-    { name: 'Violet', hue: 285, saturation: 68 },
-    { name: 'Rose', hue: 340, saturation: 72 },
-    { name: 'Ember', hue: 22, saturation: 80 },
-    { name: 'Moss', hue: 150, saturation: 55 }
+    { name: t('appearance.accent.lime'), hue: DEFAULT_ACCENT.hue, saturation: DEFAULT_ACCENT.saturation },
+    { name: t('appearance.accent.sky'), hue: 215, saturation: 78 },
+    { name: t('appearance.accent.indigo'), hue: 250, saturation: 68 },
+    { name: t('appearance.accent.violet'), hue: 285, saturation: 68 },
+    { name: t('appearance.accent.rose'), hue: 340, saturation: 72 },
+    { name: t('appearance.accent.ember'), hue: 22, saturation: 80 },
+    { name: t('appearance.accent.moss'), hue: 150, saturation: 55 }
   ];
 
   // The hex field mirrors the wheel. Edits only take effect on Enter or on
@@ -94,29 +95,30 @@
 </script>
 
 {#if active}
+  {@const share = t('appearance.shareHint').split('{code}')}
   <div class="settings-section">
-    <h3 class="section-title">Appearance</h3>
+    <h3 class="section-title">{t('settings.tab.appearance')}</h3>
 
     <div class="setting-group">
-      <span class="setting-label" id="theme-mode-label">Theme</span>
+      <span class="setting-label" id="theme-mode-label">{t('appearance.theme')}</span>
       <div class="mode-toggle" role="group" aria-labelledby="theme-mode-label">
         <button
           class="btn mode-btn"
           class:selected={$theme === 'dark'}
           aria-pressed={$theme === 'dark'}
           onclick={() => theme.set('dark')}
-        >Dark</button>
+        >{t('appearance.dark')}</button>
         <button
           class="btn mode-btn"
           class:selected={$theme === 'light'}
           aria-pressed={$theme === 'light'}
           onclick={() => theme.set('light')}
-        >Light</button>
+        >{t('appearance.light')}</button>
       </div>
     </div>
 
     <div class="setting-group">
-      <span class="setting-label">Theme color</span>
+      <span class="setting-label">{t('appearance.themeColor')}</span>
       <div class="accent-picker">
         <ThemeWheel
           hue={($accent ?? DEFAULT_ACCENT).hue}
@@ -131,13 +133,13 @@
                 class:selected={$accent?.hue === preset.hue && $accent?.saturation === preset.saturation}
                 style={`background: hsl(${preset.hue} ${preset.saturation}% 50%);`}
                 title={preset.name}
-                aria-label={`Use ${preset.name} theme color`}
+                aria-label={t('appearance.useColor', { name: preset.name })}
                 onclick={() => accent.set({ hue: preset.hue, saturation: preset.saturation })}
               ></button>
             {/each}
           </div>
           <label class="field hex-field">
-            <span>Hex or theme code</span>
+            <span>{t('appearance.hexField')}</span>
             <input
               class="hex-input"
               class:invalid={hexInvalid}
@@ -154,17 +156,16 @@
             />
           </label>
           <button class="btn reset-accent" onclick={copyThemeCode}>
-            {copied ? 'Copied' : 'Copy theme code'}
+            {copied ? t('appearance.copied') : t('appearance.copyCode')}
           </button>
           <button class="btn reset-accent" onclick={() => accent.reset()} disabled={$accent === null}>
-            Reset to default
+            {t('appearance.reset')}
           </button>
         </div>
       </div>
       <div class="setting-description">
-        Drag the dot to recolor the whole app — the angle picks the color, the distance from the center picks how strong it is.
-        You can also type a hex code; its brightness is set by the theme, so only the color and its strength are taken from it.
-        To share your theme, copy its code and send it on — pasting a code like <code>dark #8fbf26</code> here applies both the mode and the color.
+        {t('appearance.wheelHint')}
+        {share[0]}<code>dark #8fbf26</code>{share[1]}
       </div>
     </div>
   </div>

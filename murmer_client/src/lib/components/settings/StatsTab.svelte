@@ -3,6 +3,7 @@
   import { stats, statsConfig, statsSnapshot } from '$lib/stores/stats';
   import { session } from '$lib/stores/session';
   import UserStatsPanel from '$lib/components/UserStatsPanel.svelte';
+  import { t } from '$lib/i18n';
 
   interface Props {
     active: boolean;
@@ -17,10 +18,9 @@
 
   async function deleteMyStats() {
     const confirmed = await dialogs.confirm({
-      title: 'Delete your stats?',
-      message:
-        'This permanently removes all recorded lifetime stats and achievements for your user on this server.',
-      confirmLabel: 'Delete stats',
+      title: t('stats.deleteTitle'),
+      message: t('stats.deleteMessage'),
+      confirmLabel: t('stats.deleteConfirm'),
       danger: true
     });
     if (confirmed) stats.resetStats();
@@ -39,7 +39,7 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">Stats &amp; Privacy</h3>
+    <h3 class="section-title">{t('settings.tab.stats')}</h3>
 
     <div class="setting-group">
       <label class="toggle-row">
@@ -50,25 +50,21 @@
           onchange={toggleStatsOptIn}
         />
         <span class="toggle-text">
-          <span class="toggle-label">Track my lifetime stats</span>
+          <span class="toggle-label">{t('stats.track')}</span>
           <span class="toggle-description">
-            Record activity counters (messages, voice time, reactions, …) and unlock
-            achievements. Nothing is recorded unless both this server and you enable it —
-            only totals are stored, never message contents. Other members can see your
-            stats while you are opted in.
+            {t('stats.trackHint')}
           </span>
         </span>
       </label>
       {#if $statsConfig === null}
-        <div class="setting-description">Waiting for the server…</div>
+        <div class="setting-description">{t('stats.waiting')}</div>
       {:else if !$statsConfig.serverEnabled}
         <div class="setting-description">
-          Stat tracking is switched off server-wide. A server Owner or Admin can enable it
-          in the server dashboard.
+          {t('stats.serverOff')}
         </div>
       {/if}
       <div>
-        <button class="btn btn-danger" onclick={deleteMyStats}>Delete my stats…</button>
+        <button class="btn btn-danger" onclick={deleteMyStats}>{t('stats.deleteMine')}</button>
       </div>
     </div>
 
@@ -76,7 +72,7 @@
       {#if ownSnapshot}
         <UserStatsPanel snapshot={ownSnapshot} />
       {:else}
-        <div class="setting-description">Loading your stats…</div>
+        <div class="setting-description">{t('stats.loading')}</div>
       {/if}
     {/if}
   </div>

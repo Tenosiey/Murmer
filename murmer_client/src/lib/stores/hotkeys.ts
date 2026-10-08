@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
+import { t } from '$lib/i18n';
 
 /**
  * Customizable app-wide hotkeys. A binding is a combo string like
@@ -34,41 +35,41 @@ export interface HotkeyAction {
 export const HOTKEY_ACTIONS: HotkeyAction[] = [
   {
     id: 'toggleMic',
-    label: 'Toggle microphone',
-    description: 'Mute or unmute your microphone',
+    label: t('hotkey.toggleMic.label'),
+    description: t('hotkey.toggleMic.description'),
     default: 'Ctrl+Shift+M',
     global: true
   },
   {
     id: 'toggleDeafen',
-    label: 'Toggle speakers',
-    description: 'Mute or unmute all incoming voice audio',
+    label: t('hotkey.toggleDeafen.label'),
+    description: t('hotkey.toggleDeafen.description'),
     default: 'Ctrl+Shift+O',
     global: true
   },
   {
     id: 'toggleVoice',
-    label: 'Join / leave voice',
-    description: 'Join the last voice channel or leave the current one',
+    label: t('hotkey.toggleVoice.label'),
+    description: t('hotkey.toggleVoice.description'),
     default: 'Ctrl+Shift+V',
     global: true
   },
   {
     id: 'openSearch',
-    label: 'Search messages',
-    description: 'Open the message search overlay',
+    label: t('hotkey.openSearch.label'),
+    description: t('hotkey.openSearch.description'),
     default: 'Ctrl+F'
   },
   {
     id: 'openSettings',
-    label: 'Open settings',
-    description: 'Open the settings window',
+    label: t('hotkey.openSettings.label'),
+    description: t('hotkey.openSettings.description'),
     default: 'Ctrl+Shift+S'
   },
   {
     id: 'openHelp',
-    label: 'Show help',
-    description: 'Open the slash-command and hotkey reference',
+    label: t('hotkey.openHelp.label'),
+    description: t('hotkey.openHelp.description'),
     default: 'F1'
   }
 ];
