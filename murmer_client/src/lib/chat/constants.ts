@@ -1,5 +1,6 @@
 import type { ChannelNotificationPreference } from '../stores/channelNotifications';
 import type { UserStatus } from '../types';
+import { t } from '../i18n';
 
 /* Custom server emoji naming rules; must match the server's validation. */
 export const EMOJI_NAME_RE = /^[a-z0-9_]{2,32}$/;
@@ -48,18 +49,18 @@ export const UPLOAD_CATEGORIES: Array<{
   label: string;
   extensions: string[];
 }> = [
-  { id: 'images', label: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] },
+  { id: 'images', label: t('uploadCategory.images'), extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] },
   {
     id: 'documents',
-    label: 'Documents',
+    label: t('uploadCategory.documents'),
     extensions: [
       'pdf', 'txt', 'md', 'log', 'csv', 'json', 'toml', 'yaml', 'yml', 'rtf', 'doc', 'docx',
       'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp'
     ]
   },
-  { id: 'archives', label: 'Archives', extensions: ['zip', 'gz', 'tar', 'bz2', 'xz', '7z', 'rar'] },
-  { id: 'audio', label: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'opus'] },
-  { id: 'video', label: 'Video', extensions: ['mp4', 'webm', 'mkv', 'mov', 'avi'] }
+  { id: 'archives', label: t('uploadCategory.archives'), extensions: ['zip', 'gz', 'tar', 'bz2', 'xz', '7z', 'rar'] },
+  { id: 'audio', label: t('uploadCategory.audio'), extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'opus'] },
+  { id: 'video', label: t('uploadCategory.video'), extensions: ['mp4', 'webm', 'mkv', 'mov', 'avi'] }
 ];
 
 /* The channel every server is seeded with. The server places new connections
@@ -98,23 +99,23 @@ export const DEFAULT_AUTOMOD_MUTE_SECONDS = 300;
 export const AUTOMOD_KINDS: Array<{ id: AutomodKind; label: string; description: string }> = [
   {
     id: 'word',
-    label: 'Whole word',
-    description: 'The word on its own, ignoring case — “ass” leaves “class” alone.'
+    label: t('automodKind.word'),
+    description: t('automodKind.word.description')
   },
-  { id: 'substring', label: 'Contains', description: 'Anywhere in the message, ignoring case.' },
+  { id: 'substring', label: t('automodKind.substring'), description: t('automodKind.substring.description') },
   {
     id: 'regex',
-    label: 'Regular expression',
-    description: 'Rust regex syntax, ignoring case. No lookaround or backreferences.'
+    label: t('automodKind.regex'),
+    description: t('automodKind.regex.description')
   }
 ];
 
 /* Ordered from least to most severe, the same order the server resolves two
    matching rules by. */
 export const AUTOMOD_ACTIONS: Array<{ id: AutomodAction; label: string; description: string }> = [
-  { id: 'warn', label: 'Warn', description: 'Deliver it and tell the sender it matched.' },
-  { id: 'delete', label: 'Delete', description: 'Refuse it; nobody else ever sees it.' },
-  { id: 'mute', label: 'Mute', description: 'Refuse it and mute the sender.' }
+  { id: 'warn', label: t('automodAction.warn'), description: t('automodAction.warn.description') },
+  { id: 'delete', label: t('automodAction.delete'), description: t('automodAction.delete.description') },
+  { id: 'mute', label: t('automodAction.mute'), description: t('automodAction.mute.description') }
 ];
 
 export const USER_STATUS_VALUES = ['online', 'away', 'busy', 'offline'] as const;
@@ -150,11 +151,11 @@ export const VOICE_QUALITY_PRESETS: Array<{
   bitrate: number | null;
   label: string;
 }> = [
-  { quality: 'low', bitrate: 32_000, label: 'Low' },
-  { quality: 'standard', bitrate: 64_000, label: 'Standard' },
-  { quality: 'high', bitrate: 96_000, label: 'High' },
-  { quality: 'ultra', bitrate: 128_000, label: 'Ultra' },
-  { quality: 'lossless', bitrate: null, label: 'Lossless' }
+  { quality: 'low', bitrate: 32_000, label: t('voiceQuality.low') },
+  { quality: 'standard', bitrate: 64_000, label: t('voiceQuality.standard') },
+  { quality: 'high', bitrate: 96_000, label: t('voiceQuality.high') },
+  { quality: 'ultra', bitrate: 128_000, label: t('voiceQuality.ultra') },
+  { quality: 'lossless', bitrate: null, label: t('voiceQuality.lossless') }
 ];
 
 export const DEFAULT_VOICE_PRESET = VOICE_QUALITY_PRESETS[1];

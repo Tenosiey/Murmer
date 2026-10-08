@@ -3,6 +3,7 @@
   import { onServerError } from '$lib/stores/chat';
   import { displayNames } from '$lib/stores/profiles';
   import { auditLog } from '$lib/stores/auditLog';
+  import { t } from '$lib/i18n';
   import {
     auditActionLabel,
     auditTargetIsMember,
@@ -36,9 +37,9 @@
 
   /** Full date and time: an audit entry's value is knowing exactly when. */
   function formatAuditDate(value: string | null): string {
-    if (!value) return 'unknown time';
+    if (!value) return t('audit.unknownTime');
     const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? 'unknown time' : parsed.toLocaleString();
+    return Number.isNaN(parsed.getTime()) ? t('audit.unknownTime') : parsed.toLocaleString();
   }
 
   /**
@@ -48,7 +49,7 @@
    * sentinel's parentheses exist to prevent.
    */
   function auditActorLabel(actor: string): string {
-    if (!actor) return 'unknown';
+    if (!actor) return t('audit.unknownActor');
     if (actor === AUDIT_ACTOR_ADMIN_TOKEN) return actor;
     return $displayNames(actor);
   }
@@ -73,28 +74,23 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">Audit Log</h3>
+    <h3 class="section-title">{t('audit.auditLog')}</h3>
     <div class="setting-group">
       <div class="setting-description">
-        Who kicked, banned or muted a member, who changed a role or a channel's
-        permissions, and who ran a Danger Zone action. Written by the server as each
-        action succeeds — a refused action is not an action and leaves no entry. The log
-        survives a server reset on purpose, and the oldest entries are dropped once it
-        fills up.
+        {t('audit.whoKickedBannedOr')}
       </div>
       <div class="rule-actions">
-        <button class="btn" onclick={refreshAuditLog}>Refresh</button>
+        <button class="btn" onclick={refreshAuditLog}>{t('audit.refresh')}</button>
         {#if $auditLog !== null}
           <span class="setting-description">
-            {$auditLog.length}
-            {$auditLog.length === 1 ? 'entry' : 'entries'}
+            {t('audit.entries', { count: $auditLog.length })}
           </span>
         {/if}
       </div>
       {#if $auditLog === null}
-        <div class="setting-description">Loading…</div>
+        <div class="setting-description">{t('audit.loading')}</div>
       {:else if $auditLog.length === 0}
-        <div class="setting-description">Nothing has been recorded yet.</div>
+        <div class="setting-description">{t('audit.nothingHasBeenRecorded')}</div>
       {:else}
         <ul class="audit-list">
           {#each $auditLog as entry (entry.id)}

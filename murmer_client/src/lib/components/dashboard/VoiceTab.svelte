@@ -6,6 +6,7 @@
     MAX_VOICE_BITRATE
   } from '$lib/chat/constants';
   import { voiceDefaults, setVoiceDefaults } from '$lib/stores/voiceDefaults';
+  import { t } from '$lib/i18n';
 
   interface Props {
     active: boolean;
@@ -32,7 +33,7 @@
   $effect(() => {
     if (voiceSavePending && !voiceDirty) {
       voiceSavePending = false;
-      voiceFeedback = { text: 'Changes saved.', kind: 'info' };
+      voiceFeedback = { text: t('voiceTab.saved'), kind: 'info' };
     }
   });
 
@@ -46,12 +47,12 @@
 
   function saveVoiceDefaults() {
     if (!voiceQuality.trim()) {
-      voiceFeedback = { text: 'Pick a quality preset.', kind: 'error' };
+      voiceFeedback = { text: t('voiceTab.pickPreset'), kind: 'error' };
       return;
     }
     if (voiceBitrateDraft < 0 || voiceBitrateDraft > MAX_VOICE_BITRATE) {
       voiceFeedback = {
-        text: `Enter a bitrate up to ${MAX_VOICE_BITRATE / 1000} kbps, or 0 for uncompressed.`,
+        text: t('voiceTab.bitrateRange', { max: MAX_VOICE_BITRATE / 1000 }),
         kind: 'error'
       };
       return;
@@ -80,14 +81,12 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">Voice</h3>
+    <h3 class="section-title">{t('voiceTab.voice')}</h3>
     <div class="setting-description">
-      What a newly created voice channel starts with. These are defaults, not a cap:
-      existing channels keep their own setting, and whoever creates a channel can pick
-      a different preset.
+      {t('voiceTab.whatANewlyCreated')}
     </div>
     <div class="setting-group">
-      <label class="setting-label" for="voice-default-quality">Default quality</label>
+      <label class="setting-label" for="voice-default-quality">{t('voiceTab.defaultQuality')}</label>
       <select id="voice-default-quality" value={voiceQuality} onchange={pickVoicePreset}>
         {#each VOICE_QUALITY_PRESETS as preset (preset.quality)}
           <option value={preset.quality}>{preset.label}</option>
@@ -100,11 +99,11 @@
         {/if}
       </select>
       <div class="setting-description">
-        Quality preset assigned to new voice channels. Picking one fills in its bitrate.
+        {t('voiceTab.qualityPresetAssignedTo')}
       </div>
     </div>
     <div class="setting-group">
-      <label class="setting-label" for="voice-default-bitrate">Default bitrate</label>
+      <label class="setting-label" for="voice-default-bitrate">{t('voiceTab.defaultBitrate')}</label>
       <input
         id="voice-default-bitrate"
         type="number"
@@ -114,12 +113,11 @@
         step="1"
       />
       <div class="setting-description">
-        Bitrate in kbps for new voice channels, up to {MAX_VOICE_BITRATE / 1000} kbps.
-        0 means uncompressed audio.
+        {t('voiceTab.bitrateHint', { max: MAX_VOICE_BITRATE / 1000 })}
       </div>
       <div>
         <button class="btn btn-primary" onclick={saveVoiceDefaults} disabled={!voiceDirty}>
-          Save changes
+          {t('voiceTab.saveChanges')}
         </button>
       </div>
       {#if voiceFeedback}

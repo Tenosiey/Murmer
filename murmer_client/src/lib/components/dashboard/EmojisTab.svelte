@@ -6,6 +6,7 @@
   import { dialogs } from '$lib/stores/dialogs';
   import { httpBaseFromWs } from '$lib/server-url';
   import { uploadImage } from '$lib/upload';
+  import { t } from '$lib/i18n';
   import {
     EMOJI_NAME_RE,
     MAX_EMOJI_FILE_BYTES
@@ -59,9 +60,9 @@
 
   async function deleteEmoji(name: string) {
     const ok = await dialogs.confirm({
-      title: 'Delete emoji',
-      message: `Remove :${name}: from this server? Existing reactions will show the shortcode as text.`,
-      confirmLabel: 'Delete',
+      title: t('emojis.deleteTitle'),
+      message: t('emojis.deleteMessage', { name }),
+      confirmLabel: t('emojis.delete'),
       danger: true
     });
     if (!ok) return;
@@ -87,26 +88,25 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">Custom Emojis</h3>
+    <h3 class="section-title">{t('emojis.customEmojis')}</h3>
     <div class="setting-group">
       <div class="setting-description">
-        Upload custom emojis for everyone on this server. They can be used as
-        reactions via the emoji picker. Images up to 512 KB (PNG, JPEG, GIF or WebP).
+        {t('emojis.uploadCustomEmojisFor')}
       </div>
       <form class="emoji-form" onsubmit={(event) => { event.preventDefault(); uploadEmoji(); }}>
         <label class="field emoji-name-field">
-          <span>Name</span>
+          <span>{t('emojis.name')}</span>
           <input
             type="text"
             bind:value={emojiName}
-            placeholder="party_parrot"
+            placeholder={t('emojis.partyParrot')}
             maxlength="32"
             spellcheck="false"
             autocomplete="off"
           />
         </label>
         <label class="field">
-          <span>Image</span>
+          <span>{t('emojis.image')}</span>
           <input
             bind:this={emojiFileInput}
             type="file"
@@ -115,15 +115,15 @@
           />
         </label>
         <button class="btn btn-primary" type="submit" disabled={!canUploadEmoji}>
-          {uploading ? 'Uploading…' : 'Upload'}
+          {uploading ? t('emojis.uploading') : t('emojis.upload')}
         </button>
       </form>
       {#if emojiName && !emojiNameValid}
-        <div class="emoji-hint">Names use 2-32 lowercase letters, digits or underscores.</div>
+        <div class="emoji-hint">{t('emojis.namesUse232')}</div>
       {:else if emojiNameTaken}
-        <div class="emoji-hint">An emoji with this name already exists.</div>
+        <div class="emoji-hint">{t('emojis.anEmojiWithThis')}</div>
       {:else if emojiFileTooLarge}
-        <div class="emoji-hint">Emoji images must be 512 KB or smaller.</div>
+        <div class="emoji-hint">{t('emojis.emojiImagesMustBe')}</div>
       {/if}
       {#if emojiFeedback}
         <div class="emoji-feedback" class:error={emojiFeedback.kind === 'error'}>
@@ -134,7 +134,7 @@
 
     <div class="setting-group">
       {#if $customEmojiList.length === 0}
-        <div class="setting-description">No custom emojis yet.</div>
+        <div class="setting-description">{t('emojis.noCustomEmojisYet')}</div>
       {:else}
         <ul class="emoji-list">
           {#each $customEmojiList as emoji (emoji.name)}
@@ -142,12 +142,12 @@
               <img src={httpBase + emoji.url} alt={`:${emoji.name}:`} width="24" height="24" loading="lazy" />
               <span class="emoji-code">:{emoji.name}:</span>
               {#if emoji.uploadedBy}
-                <span class="emoji-uploader">by {emoji.uploadedBy}</span>
+                <span class="emoji-uploader">{t('emojis.uploadedBy', { name: emoji.uploadedBy })}</span>
               {/if}
               <button
                 class="icon-btn danger"
-                title={`Delete :${emoji.name}:`}
-                aria-label={`Delete emoji ${emoji.name}`}
+                title={t('emojis.deleteTooltip', { name: emoji.name })}
+                aria-label={t('emojis.deleteLabel', { name: emoji.name })}
                 onclick={() => deleteEmoji(emoji.name)}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
