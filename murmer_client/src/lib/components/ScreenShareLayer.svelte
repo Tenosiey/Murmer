@@ -12,6 +12,7 @@
   import ScreenShareWindow from './ScreenShareWindow.svelte';
   import { screenShareWindows } from '$lib/stores/screenShareWindows';
   import type { WatchedScreenShare } from '$lib/types';
+  import { t } from '$lib/i18n';
 
   interface Props {
     /** The shares to show, in the order they were opened. */
@@ -54,11 +55,11 @@
 <div class="layer">
   {#if tiles.length > 1}
     <div class="layer-bar">
-      <span class="layer-count">Watching {tiles.length} screens</span>
+      <span class="layer-count">{t('screenShareLayer.watching', { count: tiles.length })}</span>
       <button class="btn btn-ghost" onclick={() => screenShareWindows.tileAll(viewport)}>
-        Tile
+        {t('screenShareLayer.tile')}
       </button>
-      <button class="btn btn-ghost" onclick={onCloseAll}>Close all</button>
+      <button class="btn btn-ghost" onclick={onCloseAll}>{t('screenShareLayer.closeAll')}</button>
     </div>
   {/if}
 

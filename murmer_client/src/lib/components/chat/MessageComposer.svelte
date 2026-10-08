@@ -16,7 +16,10 @@
   import { dialogs } from '$lib/stores/dialogs';
   import { startVoiceRecording, type VoiceRecording } from '$lib/voice-message';
   import MentionSuggestions from './MentionSuggestions.svelte';
+  import { t } from '$lib/i18n';
 
+  /** Split around the name, which is rendered bold. */
+  const replyingToLabel = t('messageComposer.replyingTo').split('{name}');
 
   interface Props {
     value?: string;
@@ -141,8 +144,8 @@
       recordingSeconds = 0;
     } catch (error) {
       void dialogs.alert({
-        title: 'Could not record',
-        message: error instanceof Error ? error.message : 'The microphone could not be opened.'
+        title: t('messageComposer.recordFailedTitle'),
+        message: error instanceof Error ? error.message : t('messageComposer.recordFailedMessage')
       });
     } finally {
       recordingStarting = false;
@@ -181,10 +184,10 @@
   {#if replyingTo}
     <div class="reply-bar">
       <span class="reply-bar-label">
-        Replying to <strong>{replyingTo.user ? $displayNames(replyingTo.user) : ''}</strong>
+        {replyingToLabel[0]}<strong>{replyingTo.user ? $displayNames(replyingTo.user) : ''}</strong>{replyingToLabel[1]}
         <span class="reply-bar-preview">{searchResultPreview(replyingTo)}</span>
       </span>
-      <button type="button" class="reply-bar-cancel" onclick={onCancelReply} aria-label="Cancel reply">
+      <button type="button" class="reply-bar-cancel" onclick={onCancelReply} aria-label={t('messageComposer.cancelReply')}>
         ✕
       </button>
     </div>
@@ -205,13 +208,15 @@
       class:scrollable
       rows="1"
       maxlength={$chatSettings.maxMessageLength}
-      placeholder={!canSend
-        ? 'You do not have permission to send messages'
-        : keyPending
-          ? 'Waiting for this channel’s encryption key…'
-          : encrypted
-            ? 'Message (end-to-end encrypted)'
-            : 'Message'}
+      placeholder={t(
+        !canSend
+          ? 'messageComposer.noPermission'
+          : keyPending
+            ? 'messageComposer.keyPending'
+            : encrypted
+              ? 'messageComposer.encryptedPlaceholder'
+              : 'messageComposer.placeholder'
+      )}
       disabled={!canSend || keyPending}
       oninput={onInput}
       onpaste={handlePaste}
@@ -236,15 +241,15 @@
     {#if pendingFile}
       <div class="preview-container">
         {#if previewUrl}
-          <img src={previewUrl} alt="preview" class="preview" class:spoiler-preview={spoiler} />
+          <img src={previewUrl} alt={t('messageComposer.preview')} class="preview" class:spoiler-preview={spoiler} />
           <button
             type="button"
             class="btn btn-ghost spoiler-toggle"
             class:selected={spoiler}
             aria-pressed={spoiler}
-            title="Blur the image until it is clicked"
+            title={t('messageComposer.blurTheImageUntil')}
             onclick={() => (spoiler = !spoiler)}
-          >Spoiler</button>
+          >{t('messageComposer.spoiler')}</button>
         {:else}
           <span class="file-chip" title={pendingFile.name}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -254,7 +259,7 @@
             {/if}
           </span>
         {/if}
-        <button class="preview-remove" onclick={clearFile} aria-label="Remove file">
+        <button class="preview-remove" onclick={clearFile} aria-label={t('messageComposer.removeFile')}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -268,8 +273,8 @@
         <button
           type="button"
           class="file-button"
-          title="Discard recording"
-          aria-label="Discard recording"
+          title={t('messageComposer.discardRecording')}
+          aria-label={t('messageComposer.discardRecording')}
           onclick={cancelRecording}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -282,8 +287,8 @@
         type="button"
         class="file-button"
         class:recording={!!recording}
-        title={recording ? 'Stop and attach the voice message' : 'Record a voice message'}
-        aria-label={recording ? 'Stop and attach the voice message' : 'Record a voice message'}
+        title={t(recording ? 'messageComposer.stopRecording' : 'messageComposer.record')}
+        aria-label={t(recording ? 'messageComposer.stopRecording' : 'messageComposer.record')}
         aria-pressed={!!recording}
         disabled={!canSend || keyPending || recordingStarting}
         onclick={toggleRecording}
@@ -300,8 +305,8 @@
       <button
         type="button"
         class="file-button"
-        title="Upload file"
-        aria-label="Upload file"
+        title={t('messageComposer.uploadFile')}
+        aria-label={t('messageComposer.uploadFile')}
         disabled={!canSend || keyPending}
         onclick={() => fileInput?.click()}
       >
@@ -309,7 +314,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
         </svg>
       </button>
-      <button class="send" onclick={onSend} disabled={!canSend || keyPending} title="Send message" aria-label="Send message">
+      <button class="send" onclick={onSend} disabled={!canSend || keyPending} title={t('messageComposer.sendMessage')} aria-label={t('messageComposer.sendMessage')}>
         <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
         </svg>

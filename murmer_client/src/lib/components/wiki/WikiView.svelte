@@ -18,6 +18,7 @@
   import { httpBaseFromWs } from '$lib/server-url';
   import { formatLocalDateTime } from '$lib/chat/helpers';
   import type { ContextMenuItem } from '$lib/types';
+  import { t } from '$lib/i18n';
 
   
   
@@ -82,9 +83,9 @@
   async function confirmDiscard(): Promise<boolean> {
     if (mode !== 'edit' || !editorDirty) return true;
     return dialogs.confirm({
-      title: 'Discard changes?',
-      message: 'Your unsaved wiki edits will be lost.',
-      confirmLabel: 'Discard',
+      title: t('wikiView.discardTitle'),
+      message: t('wikiView.discardMessage'),
+      confirmLabel: t('wikiView.discard'),
       danger: true
     });
   }
@@ -115,15 +116,15 @@
 
   async function createPagePrompt(prefillSlug?: string) {
     const title = await dialogs.prompt({
-      title: 'New wiki page',
-      label: 'Page title',
+      title: t('wikiView.newTitle'),
+      label: t('wikiView.pageTitle'),
       initial: prefillSlug ? titleFromSlug(prefillSlug) : '',
       maxLength: 100
     });
     if (!title) return;
     const slug = prefillSlug ?? slugify(title);
     if (!slug) {
-      await dialogs.alert({ title: 'Wiki', message: 'That title does not produce a usable page name.' });
+      await dialogs.alert({ title: t('wiki.title'), message: t('wikiView.badTitle') });
       return;
     }
     if (pages.some((p) => p.slug === slug)) {
@@ -147,13 +148,13 @@
     mode = 'view';
     if (!pages.some((p) => p.slug === nav.slug)) {
       if (!canEdit) {
-        await dialogs.alert({ title: 'Wiki', message: 'This page does not exist yet.' });
+        await dialogs.alert({ title: t('wiki.title'), message: t('wikiView.missing') });
         return;
       }
       const create = await dialogs.confirm({
-        title: 'Create wiki page?',
-        message: `"${nav.slug}" does not exist in this channel yet.`,
-        confirmLabel: 'Create'
+        title: t('wikiView.createTitle'),
+        message: t('wikiView.createMessage', { slug: nav.slug }),
+        confirmLabel: t('wikiView.create')
       });
       if (!create) return;
       wiki.createPage(channelId, nav.slug, titleFromSlug(nav.slug));
@@ -172,10 +173,10 @@
 
   async function renamePrompt(slug: string) {
     const input = await dialogs.prompt({
-      title: 'Rename wiki page',
-      label: 'Page name (slug)',
+      title: t('wikiView.renameTitle'),
+      label: t('wikiView.slug'),
       initial: slug,
-      message: 'Links to the old name will show as missing pages.',
+      message: t('wikiView.renameMessage'),
       maxLength: 64
     });
     if (!input) return;
@@ -190,9 +191,9 @@
   async function deletePrompt(slug: string) {
     const meta = pages.find((p) => p.slug === slug);
     const confirmed = await dialogs.confirm({
-      title: 'Delete wiki page?',
-      message: `"${meta?.title ?? slug}" and its history will be removed for everyone.`,
-      confirmLabel: 'Delete',
+      title: t('wikiView.deleteTitle'),
+      message: t('wikiView.deleteMessage', { title: meta?.title ?? slug }),
+      confirmLabel: t('wikiView.delete'),
       danger: true
     });
     if (!confirmed) return;
@@ -233,17 +234,17 @@
     }
   });
   let pageMenuItems = $derived([
-    { label: 'Rename', action: () => void renamePrompt(menuSlug) },
-    { label: 'Delete', danger: true, action: () => void deletePrompt(menuSlug) }
+    { label: t('wikiView.rename'), action: () => void renamePrompt(menuSlug) },
+    { label: t('wikiView.delete'), danger: true, action: () => void deletePrompt(menuSlug) }
   ] satisfies ContextMenuItem[]);
 </script>
 
 <div class="wiki">
   <aside class="sidebar">
     <div class="sidebar-header">
-      <h2>Wiki</h2>
+      <h2>{t('wikiView.wiki')}</h2>
       {#if canEdit}
-        <button class="icon-btn" onclick={() => createPagePrompt()} title="New wiki page">
+        <button class="icon-btn" onclick={() => createPagePrompt()} title={t('wikiView.newWikiPage')}>
           <svg
             width="18"
             height="18"
@@ -258,7 +259,7 @@
             <path d="M12 5v14" />
             <path d="M5 12h14" />
           </svg>
-          <span class="sr-only">New wiki page</span>
+          <span class="sr-only">{t('wikiView.newWikiPage')}</span>
         </button>
       {/if}
     </div>
@@ -279,7 +280,7 @@
         {/each}
       </ul>
     {:else}
-      <p class="sidebar-empty">No pages yet</p>
+      <p class="sidebar-empty">{t('wikiView.noPagesYet')}</p>
     {/if}
   </aside>
 
@@ -321,14 +322,17 @@
         <div class="page-title">
           <h3>{currentPage.title}</h3>
           <span class="page-meta">
-            updated by {currentPage.updatedBy || currentPage.author || 'unknown'} · rev
-            {currentPage.revision} · {formatLocalDateTime(currentPage.updatedAt) ?? currentPage.updatedAt}
+            {t('wikiView.meta', {
+              author: currentPage.updatedBy || currentPage.author || t('wikiView.unknownAuthor'),
+              revision: currentPage.revision,
+              date: formatLocalDateTime(currentPage.updatedAt) ?? currentPage.updatedAt
+            })}
           </span>
         </div>
         <div class="page-actions">
-          <button class="btn btn-ghost" onclick={showHistory}>History</button>
+          <button class="btn btn-ghost" onclick={showHistory}>{t('wikiView.history')}</button>
           {#if canEdit}
-            <button class="btn btn-ghost" onclick={startEditing}>Edit</button>
+            <button class="btn btn-ghost" onclick={startEditing}>{t('wikiView.edit')}</button>
           {/if}
         </div>
       </div>
@@ -339,24 +343,28 @@
         {@html emojifyHtml(renderMarkdown(currentPage.body), $customEmojis, httpBase)}
       </div>
     {:else if loading}
-      <div class="placeholder">Loading page…</div>
+      <div class="placeholder">{t('wikiView.loadingPage')}</div>
     {:else if pages.length === 0}
       <div class="placeholder">
-        <p>This channel has no wiki pages yet.</p>
+        <p>{t('wikiView.thisChannelHasNo')}</p>
         {#if canEdit}
           <button class="btn btn-primary" onclick={() => createPagePrompt()}>
-            Create the first page
+            {t('wikiView.createTheFirstPage')}
           </button>
         {:else}
-          <p class="placeholder-hint">Moderators can create pages here.</p>
+          <p class="placeholder-hint">{t('wikiView.moderatorsCanCreatePages')}</p>
         {/if}
       </div>
     {:else}
       <div class="placeholder">
-        <p>This page does not exist{selectedSlug ? ` (${selectedSlug})` : ''}.</p>
+        <p>
+          {selectedSlug
+            ? t('wikiView.notFoundSlug', { slug: selectedSlug })
+            : t('wikiView.notFound')}
+        </p>
         {#if canEdit && selectedSlug}
           <button class="btn btn-primary" onclick={() => createPagePrompt(selectedSlug ?? undefined)}>
-            Create it
+            {t('wikiView.createIt')}
           </button>
         {/if}
       </div>

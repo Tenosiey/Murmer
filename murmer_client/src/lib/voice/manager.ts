@@ -58,6 +58,7 @@ import {
   type TransportEvent
 } from './mode';
 import { viaServer } from '../stores/voiceTransport';
+import { t } from '../i18n';
 
 const DEFAULT_AUDIO_BITRATE = 64_000;
 
@@ -623,7 +624,7 @@ export class VoiceManager {
     this.rawStream = inputStream;
     this.audioContext = getAudioContext();
     if (!this.audioContext) {
-      throw new Error('Audio processing is unavailable on this system');
+      throw new Error(t('audio.processingUnavailable'));
     }
     resumeAudioContext();
     try {

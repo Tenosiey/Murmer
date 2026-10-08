@@ -32,6 +32,7 @@
     SOUND_EXTENSIONS
   } from '$lib/chat/constants';
   import type { Message, SoundboardSound } from '$lib/types';
+  import { t } from '$lib/i18n';
 
   interface Props {
     /** The voice channel the user is in, or null when not connected. */
@@ -148,7 +149,7 @@
     const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
     if (!SOUND_EXTENSIONS.includes(ext)) {
       feedback = {
-        text: `Sounds must be one of: ${SOUND_EXTENSIONS.join(', ')}.`,
+        text: t('soundboardPanel.badExtension', { extensions: SOUND_EXTENSIONS.join(', ') }),
         kind: 'error'
       };
       return;
@@ -156,7 +157,7 @@
 
     if (file.size > MAX_SOUND_FILE_BYTES) {
       feedback = {
-        text: `Sounds must be at most ${Math.round(MAX_SOUND_FILE_BYTES / 1024)} KB.`,
+        text: t('soundboardPanel.tooLarge', { kb: Math.round(MAX_SOUND_FILE_BYTES / 1024) }),
         kind: 'error'
       };
       return;
@@ -164,9 +165,9 @@
 
     const suggested = nameFromFile(file);
     const name = await dialogs.prompt({
-      title: 'Name this sound',
-      label: 'Name',
-      message: `${MIN_SOUND_NAME_LEN}-${MAX_SOUND_NAME_LEN} characters.`,
+      title: t('soundboardPanel.nameTitle'),
+      label: t('soundboardPanel.name'),
+      message: t('soundboardPanel.nameRange', { min: MIN_SOUND_NAME_LEN, max: MAX_SOUND_NAME_LEN }),
       initial: suggested,
       maxLength: MAX_SOUND_NAME_LEN
     });
@@ -174,7 +175,7 @@
     const trimmed = name.trim();
     if (trimmed.length < MIN_SOUND_NAME_LEN || trimmed.length > MAX_SOUND_NAME_LEN) {
       feedback = {
-        text: `Names must be ${MIN_SOUND_NAME_LEN}-${MAX_SOUND_NAME_LEN} characters.`,
+        text: t('soundboardPanel.badName', { min: MIN_SOUND_NAME_LEN, max: MAX_SOUND_NAME_LEN }),
         kind: 'error'
       };
       return;
@@ -186,7 +187,7 @@
       const res = await fetch(httpBase + '/upload', { method: 'POST', body: uploadForm(file) });
       if (res.status === 415) {
         feedback = {
-          text: 'Audio uploads are disabled on this server. Enable the Audio category in Files & Uploads.',
+          text: t('soundboardPanel.audioDisabled'),
           kind: 'error'
         };
         return;
@@ -204,7 +205,7 @@
       chat.sendRaw({ type: 'add-sound', name: trimmed, url: data.url });
     } catch (e) {
       console.error('sound upload failed', e);
-      feedback = { text: 'Sound upload failed. Please try again.', kind: 'error' };
+      feedback = { text: t('soundboardPanel.uploadFailed'), kind: 'error' };
     } finally {
       uploading = false;
     }
@@ -212,9 +213,9 @@
 
   async function renameSound(sound: SoundboardSound) {
     const name = await dialogs.prompt({
-      title: 'Rename sound',
-      label: 'Name',
-      message: `${MIN_SOUND_NAME_LEN}-${MAX_SOUND_NAME_LEN} characters.`,
+      title: t('soundboardPanel.renameTitle'),
+      label: t('soundboardPanel.name'),
+      message: t('soundboardPanel.nameRange', { min: MIN_SOUND_NAME_LEN, max: MAX_SOUND_NAME_LEN }),
       initial: sound.name,
       maxLength: MAX_SOUND_NAME_LEN
     });
@@ -223,7 +224,7 @@
     if (trimmed === sound.name) return;
     if (trimmed.length < MIN_SOUND_NAME_LEN || trimmed.length > MAX_SOUND_NAME_LEN) {
       feedback = {
-        text: `Names must be ${MIN_SOUND_NAME_LEN}-${MAX_SOUND_NAME_LEN} characters.`,
+        text: t('soundboardPanel.badName', { min: MIN_SOUND_NAME_LEN, max: MAX_SOUND_NAME_LEN }),
         kind: 'error'
       };
       return;
@@ -234,9 +235,9 @@
 
   async function deleteSound(sound: SoundboardSound) {
     const confirmed = await dialogs.confirm({
-      title: 'Delete sound',
-      message: `Delete "${sound.name}" from this server's soundboard? This cannot be undone.`,
-      confirmLabel: 'Delete',
+      title: t('soundboardPanel.deleteTitle'),
+      message: t('soundboardPanel.deleteMessage', { name: sound.name }),
+      confirmLabel: t('soundboardPanel.delete'),
       danger: true
     });
     if (!confirmed) return;
@@ -260,8 +261,8 @@
     class:active={open}
     onclick={toggle}
     disabled={!inVoice}
-    title={inVoice ? 'Soundboard' : 'Join a voice channel to use the soundboard'}
-    aria-label="Soundboard"
+    title={t(inVoice ? 'soundboardPanel.soundboard' : 'soundboardPanel.joinVoice')}
+    aria-label={t('soundboardPanel.soundboard')}
     aria-expanded={open}
   >
     <svg
@@ -275,17 +276,17 @@
       <circle cx="6" cy="18" r="3" />
       <circle cx="16" cy="16" r="3" />
     </svg>
-    Soundboard
+    {t('soundboardPanel.soundboard')}
   </button>
 </div>
 
 {#if open}
   <div class="soundboard-panel">
     <div class="panel-head">
-      <h4>Soundboard</h4>
+      <h4>{t('soundboardPanel.soundboard')}</h4>
       {#if canManage}
         <button class="link-btn" onclick={pickFile} disabled={uploading}>
-          {uploading ? 'Uploading…' : 'Add sound'}
+          {t(uploading ? 'soundboardPanel.uploading' : 'soundboardPanel.addSound')}
         </button>
         <input
           bind:this={fileInput}
@@ -298,25 +299,25 @@
     </div>
 
     {#if !canPlay}
-      <p class="panel-note">You do not have permission to play sounds on this server.</p>
+      <p class="panel-note">{t('soundboardPanel.youDoNotHave')}</p>
     {/if}
 
     {#if $soundsByPopularity.length > 4}
       <input
         class="sound-search"
         type="search"
-        placeholder="Search sounds"
+        placeholder={t('soundboardPanel.searchSounds')}
         bind:value={search}
-        aria-label="Search sounds"
+        aria-label={t('soundboardPanel.searchSounds')}
       />
     {/if}
 
     {#if filtered.length === 0}
       <p class="panel-note">
         {#if $soundsByPopularity.length === 0}
-          No sounds yet.{#if canManage} Add one to get started.{/if}
+          {t(canManage ? 'soundboardPanel.emptyManager' : 'soundboardPanel.empty')}
         {:else}
-          No sounds match "{search}".
+          {t('soundboardPanel.noMatch', { search })}
         {/if}
       </p>
     {:else}
@@ -332,8 +333,8 @@
               }}
               disabled={!canPlay || onCooldown || !$soundboardEnabled}
               title={isMuted(sound)
-                ? `${sound.name} (muted for you)`
-                : `${sound.name} — right-click for volume`}
+                ? t('soundboardPanel.mutedTooltip', { name: sound.name })
+                : t('soundboardPanel.soundTooltip', { name: sound.name })}
             >
               <span class="sound-name">{sound.name}</span>
               <span class="sound-plays">{sound.playCount}</span>
@@ -341,8 +342,8 @@
             <button
               class="sound-menu-btn"
               onclick={() => (tweaking = tweaking === sound.id ? null : sound.id)}
-              title="Sound options"
-              aria-label={`Options for ${sound.name}`}
+              title={t('soundboardPanel.soundOptions')}
+              aria-label={t('soundboardPanel.optionsFor', { name: sound.name })}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -370,7 +371,7 @@
                   value={soundVolume(sound)}
                   oninput={(e) =>
                     soundboardPrefs.setSoundVolume(sound.id, parseFloat(e.currentTarget.value))}
-                  aria-label={`Volume for ${sound.name}`}
+                  aria-label={t('soundboardPanel.volumeFor', { name: sound.name })}
                 />
                 <span class="volume-value">{Math.round(soundVolume(sound) * 100)}%</span>
               </div>
@@ -379,17 +380,17 @@
                   class="option-btn"
                   onclick={() => soundboardPrefs.setSoundMuted(sound.id, !isMuted(sound))}
                 >
-                  {isMuted(sound) ? 'Unmute' : 'Mute'}
+                  {t(isMuted(sound) ? 'soundboardPanel.unmute' : 'soundboardPanel.mute')}
                 </button>
                 {#if canManage}
-                  <button class="option-btn" onclick={() => renameSound(sound)}>Rename</button>
+                  <button class="option-btn" onclick={() => renameSound(sound)}>{t('soundboardPanel.rename')}</button>
                   <button class="option-btn danger" onclick={() => deleteSound(sound)}>
-                    Delete
+                    {t('soundboardPanel.delete')}
                   </button>
                 {/if}
               </div>
               {#if sound.uploadedBy}
-                <p class="option-meta">Added by {sound.uploadedBy}</p>
+                <p class="option-meta">{t('soundboardPanel.addedBy', { name: sound.uploadedBy })}</p>
               {/if}
             </div>
           {/if}
@@ -400,7 +401,7 @@
     <div class="panel-footer">
       <label class="master-toggle">
         <input type="checkbox" bind:checked={$soundboardEnabled} />
-        Hear sounds
+        {t('soundboardPanel.hearSounds')}
       </label>
       <div class="volume-row">
         <span class="volume-icon" aria-hidden="true">
@@ -426,7 +427,7 @@
           step="0.01"
           bind:value={$soundboardVolume}
           disabled={!$soundboardEnabled}
-          aria-label="Soundboard volume"
+          aria-label={t('soundboardPanel.soundboardVolume')}
         />
         <span class="volume-value">{Math.round($soundboardVolume * 100)}%</span>
       </div>

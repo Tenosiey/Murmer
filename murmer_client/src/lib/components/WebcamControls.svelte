@@ -15,6 +15,7 @@
   import { CAMERA_QUALITIES, type CameraQuality } from '$lib/voice/camera';
   import { session } from '$lib/stores/session';
   import { dialogs } from '$lib/stores/dialogs';
+  import { t } from '$lib/i18n';
 
   interface Props {
     currentVoiceChannel?: number | null;
@@ -38,8 +39,8 @@
     if (busy) return;
     if (!inVoice || currentVoiceChannel === null || !$session.user) {
       await dialogs.alert({
-        title: 'Join a voice channel first',
-        message: 'You must be in a voice channel to turn your camera on.'
+        title: t('webcamControls.joinVoiceTitle'),
+        message: t('webcamControls.joinVoiceMessage')
       });
       return;
     }
@@ -49,10 +50,8 @@
     } catch (error) {
       console.error('Failed to start the camera:', error);
       await dialogs.alert({
-        title: 'Camera unavailable',
-        message:
-          'Could not start your camera. Check that it is plugged in and that ' +
-          'Murmer is allowed to use it.'
+        title: t('webcamControls.unavailableTitle'),
+        message: t('webcamControls.unavailableMessage')
       });
     } finally {
       busy = false;
@@ -67,11 +66,9 @@
     onclick={toggle}
     disabled={!inVoice || busy}
     title={inVoice
-      ? $cameraOn
-        ? 'Turn your camera off'
-        : 'Turn your camera on'
-      : 'Join a voice channel to use your camera'}
-    aria-label={$cameraOn ? 'Turn your camera off' : 'Turn your camera on'}
+      ? t($cameraOn ? 'webcamControls.turnOff' : 'webcamControls.turnOn')
+      : t('webcamControls.joinVoiceTooltip')}
+    aria-label={t($cameraOn ? 'webcamControls.turnOff' : 'webcamControls.turnOn')}
     aria-pressed={$cameraOn}
   >
     {#if $cameraOn}
@@ -79,15 +76,15 @@
     {:else}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
     {/if}
-    {$cameraOn ? 'Stop Video' : 'Start Video'}
+    {t($cameraOn ? 'webcamControls.stop' : 'webcamControls.start')}
   </button>
 
   <button
     class="settings-button"
     class:active={showSettings}
     onclick={openSettings}
-    title="Camera settings"
-    aria-label="Camera settings"
+    title={t('webcamControls.cameraSettings')}
+    aria-label={t('webcamControls.cameraSettings')}
     aria-expanded={showSettings}
   >
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -96,23 +93,23 @@
 
 {#if showSettings}
   <div class="settings-panel">
-    <h4>Camera</h4>
+    <h4>{t('webcamControls.camera')}</h4>
 
     <label class="field-label">
-      Device
+      {t('webcamControls.device')}
       <select
         class="field"
         value={$cameraDeviceId ?? ''}
         onchange={(e) => cameraDeviceId.set((e.currentTarget as HTMLSelectElement).value || null)}
       >
-        <option value="">System default</option>
+        <option value="">{t('webcamControls.systemDefault')}</option>
         {#each $videoInputs as device (device.deviceId)}
           <option value={device.deviceId}>{device.label || device.deviceId}</option>
         {/each}
       </select>
     </label>
 
-    <div class="preset-buttons" role="group" aria-label="Camera quality">
+    <div class="preset-buttons" role="group" aria-label={t('webcamControls.cameraQuality')}>
       {#each CAMERA_QUALITIES as quality (quality)}
         <button
           class="preset-button"
@@ -126,13 +123,11 @@
 
     <label class="checkbox">
       <input type="checkbox" bind:checked={$mirrorSelfView} />
-      Mirror my own preview
+      {t('webcamControls.mirrorMyOwnPreview')}
     </label>
 
     <p class="settings-note">
-      Video is sent to everyone in the channel directly, one stream per person —
-      a lower resolution is the cheaper choice in a busy channel. Changes apply
-      to a running camera straight away.
+      {t('webcamControls.videoIsSentTo')}
     </p>
   </div>
 {/if}

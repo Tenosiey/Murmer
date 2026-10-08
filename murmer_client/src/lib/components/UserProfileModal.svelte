@@ -37,6 +37,10 @@
   import RoleIcon from '$lib/components/RoleIcon.svelte';
   import type { RoleDef } from '$lib/types';
   import { modalFocus } from '$lib/focus';
+  import { t } from '$lib/i18n';
+
+  /** Split around the name, which is rendered bold. */
+  const nicknameHint = t('userProfileModal.nicknameHint').split('{name}');
 
   interface Props {
     open: boolean;
@@ -95,11 +99,11 @@
   let canKeepExpiry = $state(false);
 
   const STATUS_EXPIRY_CHOICES = [
-    { value: '30', label: '30 minutes' },
-    { value: '60', label: '1 hour' },
-    { value: '240', label: '4 hours' },
-    { value: '1440', label: '1 day' },
-    { value: '10080', label: '1 week' }
+    { value: '30', label: t('duration.minutes', { count: 30 }) },
+    { value: '60', label: t('duration.hours', { count: 1 }) },
+    { value: '240', label: t('duration.hours', { count: 4 }) },
+    { value: '1440', label: t('duration.days', { count: 1 }) },
+    { value: '10080', label: t('duration.weeks', { count: 1 }) }
   ];
   let feedback: { text: string; kind: 'error' | 'info' } | null = $state(null);
   let avatarInput: HTMLInputElement | null = $state(null);
@@ -140,7 +144,7 @@
       nickname.length > MAX_NICKNAME_LENGTH ||
       about.length > MAX_ABOUT_LENGTH
     ) {
-      feedback = { text: 'That is longer than the server allows.', kind: 'error' };
+      feedback = { text: t('userProfileModal.tooLong'), kind: 'error' };
       return;
     }
     // Empty clears the field server-side; the broadcast confirms the change.
@@ -157,7 +161,7 @@
             : Date.now() + Number(draftStatusExpiry) * 60_000;
       profiles.setStatusText(status, expiresAt);
     }
-    feedback = { text: 'Changes sent.', kind: 'info' };
+    feedback = { text: t('userProfileModal.sent'), kind: 'info' };
     editing = false;
   }
 
@@ -231,8 +235,8 @@
       tabindex="0"
     >
       <div class="modal-header">
-        <h2 id="user-profile-title">Profile</h2>
-        <button class="icon-btn close-btn" onclick={close} aria-label="Close profile">
+        <h2 id="user-profile-title">{t('userProfileModal.profile')}</h2>
+        <button class="icon-btn close-btn" onclick={close} aria-label={t('userProfileModal.closeProfile')}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -259,7 +263,7 @@
 
         {#if isSelf && editing}
           <div class="field-group">
-            <label class="field-label" for="profile-display-name">Display name</label>
+            <label class="field-label" for="profile-display-name">{t('userProfileModal.displayName')}</label>
             <input
               id="profile-display-name"
               class="field"
@@ -268,12 +272,12 @@
               placeholder={user}
             />
             <span class="hint">
-              Shown instead of your account name. Leave empty to use <strong>{user}</strong>.
+              {nicknameHint[0]}<strong>{user}</strong>{nicknameHint[1]}
             </span>
           </div>
 
           <div class="field-group">
-            <label class="field-label" for="profile-nickname">Nickname on this server</label>
+            <label class="field-label" for="profile-nickname">{t('userProfileModal.nicknameOnThisServer')}</label>
             <input
               id="profile-nickname"
               class="field"
@@ -282,25 +286,25 @@
               placeholder={profile?.displayName || user}
             />
             <span class="hint">
-              Overrides your display name here. Moderators may change it too.
+              {t('userProfileModal.overridesYourDisplayName')}
             </span>
           </div>
 
           <div class="field-group">
-            <label class="field-label" for="profile-status">Status</label>
+            <label class="field-label" for="profile-status">{t('userProfileModal.status')}</label>
             <input
               id="profile-status"
               class="field"
               bind:value={draftStatus}
               maxlength={MAX_STATUS_TEXT_LENGTH}
-              placeholder="What are you up to?"
+              placeholder={t('userProfileModal.whatAreYouUp')}
             />
-            <label class="hint" for="profile-status-expiry">Clear after</label>
+            <label class="hint" for="profile-status-expiry">{t('userProfileModal.clearAfter')}</label>
             <select id="profile-status-expiry" class="field" bind:value={draftStatusExpiry}>
               {#if canKeepExpiry}
-                <option value="keep">Keep the current expiry</option>
+                <option value="keep">{t('userProfileModal.keepTheCurrentExpiry')}</option>
               {/if}
-              <option value="never">Don’t clear</option>
+              <option value="never">{t('userProfileModal.donTClear')}</option>
               {#each STATUS_EXPIRY_CHOICES as choice (choice.value)}
                 <option value={choice.value}>{choice.label}</option>
               {/each}
@@ -308,31 +312,33 @@
           </div>
 
           <div class="field-group">
-            <label class="field-label" for="profile-about">About</label>
+            <label class="field-label" for="profile-about">{t('userProfileModal.about')}</label>
             <textarea
               id="profile-about"
               class="field about-input"
               bind:value={draftAbout}
               maxlength={MAX_ABOUT_LENGTH}
               rows="4"
-              placeholder="Something about you"
+              placeholder={t('userProfileModal.somethingAboutYou')}
             ></textarea>
             <span class="hint">{draftAbout.length} / {MAX_ABOUT_LENGTH}</span>
           </div>
 
           <div class="field-group">
-            <span class="field-label">Avatar</span>
+            <span class="field-label">{t('userProfileModal.avatar')}</span>
             <div class="avatar-actions">
               <button
                 class="btn"
                 onclick={() => avatarInput?.click()}
                 disabled={avatarUploading || !httpBase}
               >
-                {avatarUploading ? 'Uploading…' : avatarUrl ? 'Change image' : 'Upload image'}
+                {avatarUploading
+                  ? t('userProfileModal.uploading')
+                  : t(avatarUrl ? 'userProfileModal.changeImage' : 'userProfileModal.uploadImage')}
               </button>
               {#if avatarUrl}
                 <button class="btn btn-danger" onclick={removeAvatar} disabled={avatarUploading}>
-                  Remove
+                  {t('userProfileModal.remove')}
                 </button>
               {/if}
               <input
@@ -347,11 +353,11 @@
         {:else}
           {#if profile?.nickname}
             <div class="field-group">
-              <span class="field-label">Nickname on this server</span>
+              <span class="field-label">{t('userProfileModal.nicknameOnThisServer')}</span>
               <span class="member-since">
                 {profile.nickname}
                 {#if profile.displayName}
-                  <span class="hint">(display name: {profile.displayName})</span>
+                  <span class="hint">{t('userProfileModal.displayNameHint', { name: profile.displayName })}</span>
                 {/if}
               </span>
             </div>
@@ -359,7 +365,7 @@
 
           {#if userRoles.length > 0}
             <div class="field-group">
-              <span class="field-label">Roles</span>
+              <span class="field-label">{t('userProfileModal.roles')}</span>
               <div class="role-chips">
                 {#each userRoles as role (role.id)}
                   <span class="role-chip">
@@ -380,14 +386,14 @@
 
           {#if memberSince}
             <div class="field-group">
-              <span class="field-label">Member since</span>
+              <span class="field-label">{t('userProfileModal.memberSince')}</span>
               <span class="member-since">{memberSince}</span>
             </div>
           {/if}
 
           {#if profile?.about}
             <div class="field-group">
-              <span class="field-label">About</span>
+              <span class="field-label">{t('userProfileModal.about')}</span>
               <p class="about-text">{profile.about}</p>
             </div>
           {/if}
@@ -403,18 +409,18 @@
       <div class="modal-footer">
         {#if isSelf}
           {#if editing}
-            <button class="btn" onclick={cancelEditing}>Cancel</button>
-            <button class="btn btn-primary" onclick={saveProfile}>Save profile</button>
+            <button class="btn" onclick={cancelEditing}>{t('userProfileModal.cancel')}</button>
+            <button class="btn btn-primary" onclick={saveProfile}>{t('userProfileModal.saveProfile')}</button>
           {:else}
-            <button class="btn btn-primary" onclick={startEditing}>Edit profile</button>
+            <button class="btn btn-primary" onclick={startEditing}>{t('userProfileModal.editProfile')}</button>
           {/if}
         {:else}
           {#if user && $blockedUsers.includes(user)}
-            <button class="btn" onclick={() => user && blockedUsers.setBlocked(user, false)}>Unblock</button>
+            <button class="btn" onclick={() => user && blockedUsers.setBlocked(user, false)}>{t('userProfileModal.unblock')}</button>
           {:else}
-            <button class="btn btn-danger" onclick={() => user && confirmBlock(user, $displayNames(user))}>Block</button>
+            <button class="btn btn-danger" onclick={() => user && confirmBlock(user, $displayNames(user))}>{t('userProfileModal.block')}</button>
           {/if}
-          <button class="btn btn-primary" onclick={messageUser}>Send message</button>
+          <button class="btn btn-primary" onclick={messageUser}>{t('userProfileModal.sendMessage')}</button>
         {/if}
       </div>
     </div>

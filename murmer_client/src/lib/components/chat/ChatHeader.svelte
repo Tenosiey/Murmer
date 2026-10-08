@@ -19,6 +19,7 @@
   import { NOTIFICATION_OPTIONS } from '$lib/chat/constants';
   import { ensureStatus } from '$lib/chat/helpers';
   import type { UserStatus } from '$lib/types';
+  import { t } from '$lib/i18n';
 
   interface Props {
     channelId: number;
@@ -89,7 +90,7 @@
   let currentNotificationPreference = $derived(($channelNotifications[channelId] ?? 'all') as ChannelNotificationPreference);
   let notificationMenuLabel = $derived((() => {
     const found = NOTIFICATION_OPTIONS.find((option) => option.value === currentNotificationPreference);
-    return found ? found.label : 'All messages';
+    return found ? found.label : t('chatHeader.allMessages');
   })());
 
   // Close any open menu when the user switches channels.
@@ -143,17 +144,17 @@
       {#if encrypted}
         <span
           class="encrypted-badge"
-          title="End-to-end encrypted — the server stores ciphertext only"
+          title={t('chatHeader.endToEndEncrypted2')}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          <span class="sr-only">End-to-end encrypted</span>
+          <span class="sr-only">{t('chatHeader.endToEndEncrypted')}</span>
         </span>
       {/if}
     </h1>
     {#if topic}
       <p class="topic" title={topic}>{topic}</p>
     {:else}
-      <p class="topic empty">No topic set</p>
+      <p class="topic empty">{t('chatHeader.noTopicSet')}</p>
     {/if}
   </div>
   <div class="actions">
@@ -161,7 +162,7 @@
       <button
         class="user"
         onclick={onOpenProfile}
-        title="Your profile"
+        title={t('chatHeader.yourProfile')}
       >{$session.user ? $displayNames($session.user) : ''}</button>
       <div class="status-control">
       <button
@@ -169,7 +170,7 @@
         aria-haspopup="true"
         aria-expanded={openMenu === 'status'}
         onclick={(event) => toggleMenu('status', event)}
-        title={`Set status (${currentUserStatusLabel})`}
+        title={t('chatHeader.setStatus', { status: currentUserStatusLabel })}
       >
         <span class={`status ${currentUserStatus}`}></span>
         <span class="status-button-label">{currentUserStatusLabel}</span>
@@ -215,7 +216,7 @@
           aria-haspopup="true"
           aria-expanded={openMenu === 'stats'}
           onclick={(event) => toggleMenu('stats', event)}
-          title="Connection stats"
+          title={t('chatHeader.connectionStats')}
         >
           <PingDot ping={$ping} />
           <ConnectionBars strength={serverStrength} />
@@ -237,7 +238,7 @@
     <button
       class="icon-btn"
       onclick={() => theme.toggle()}
-      title={$theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+      title={t($theme === 'dark' ? 'chatHeader.lightTheme' : 'chatHeader.darkTheme')}
       aria-pressed={$theme === 'light'}
     >
       {#if $theme === 'dark'}
@@ -262,7 +263,7 @@
           <path d="m6.34 17.66-1.41 1.41" />
           <path d="m19.07 4.93-1.41 1.41" />
         </svg>
-        <span class="sr-only">Switch to light theme</span>
+        <span class="sr-only">{t('chatHeader.switchToLightTheme')}</span>
       {:else}
         <svg
           width="20"
@@ -277,10 +278,10 @@
         >
           <path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
         </svg>
-        <span class="sr-only">Switch to dark theme</span>
+        <span class="sr-only">{t('chatHeader.switchToDarkTheme')}</span>
       {/if}
     </button>
-    <button class="icon-btn" onclick={onEditTopic} title="Edit channel topic">
+    <button class="icon-btn" onclick={onEditTopic} title={t('chatHeader.editChannelTopic')}>
       <svg
         width="20"
         height="20"
@@ -297,7 +298,7 @@
         />
         <path d="m15 5 4 4" />
       </svg>
-      <span class="sr-only">Edit channel topic</span>
+      <span class="sr-only">{t('chatHeader.editChannelTopic')}</span>
     </button>
     <div class="notification-control">
       <button
@@ -305,7 +306,7 @@
         aria-haspopup="true"
         aria-expanded={openMenu === 'notifications'}
         onclick={(event) => toggleMenu('notifications', event)}
-        title={`Channel notifications: ${notificationMenuLabel}`}
+        title={t('chatHeader.notifications', { preference: notificationMenuLabel })}
       >
         <span class="notification-icon" aria-hidden="true">
           {#if currentNotificationPreference === 'mute'}
@@ -316,7 +317,7 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
           {/if}
         </span>
-        <span class="sr-only">Configure channel notifications</span>
+        <span class="sr-only">{t('chatHeader.configureChannelNotifications')}</span>
       </button>
       {#if openMenu === 'notifications'}
         <div
@@ -348,7 +349,7 @@
     <button
       class="icon-btn"
       onclick={onToggleWiki}
-      title={wikiOpen ? 'Close channel wiki' : 'Open channel wiki'}
+      title={t(wikiOpen ? 'chatHeader.closeWiki' : 'chatHeader.openWiki')}
       aria-pressed={wikiOpen}
     >
       <svg
@@ -367,9 +368,9 @@
           d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"
         />
       </svg>
-      <span class="sr-only">Toggle channel wiki</span>
+      <span class="sr-only">{t('chatHeader.toggleChannelWiki')}</span>
     </button>
-    <button class="icon-btn attention-btn" onclick={onOpenMentions} title="Mentions">
+    <button class="icon-btn attention-btn" onclick={onOpenMentions} title={t('chatHeader.mentions')}>
       <svg
         width="20"
         height="20"
@@ -388,13 +389,15 @@
         <span class="attention mention" aria-hidden="true"></span>
       {/if}
       <span class="sr-only">
-        Mentions{mentionsUnseen > 0 ? ` (${mentionsUnseen} new)` : ''}
+        {mentionsUnseen > 0
+          ? t('chatHeader.mentionsNew', { count: mentionsUnseen })
+          : t('chatHeader.mentionsLabel')}
       </span>
     </button>
     <button
       class="icon-btn attention-btn"
       onclick={onOpenReminders}
-      title="Reminders and scheduled messages"
+      title={t('chatHeader.remindersAndScheduledMessages')}
     >
       <svg
         width="20"
@@ -416,12 +419,12 @@
         <span class="attention" aria-hidden="true"></span>
       {/if}
       <span class="sr-only">
-        Reminders and scheduled messages{reminderAttention > 0
-          ? ` (${reminderAttention} need attention)`
-          : ''}
+        {reminderAttention > 0
+          ? t('chatHeader.remindersAttention', { count: reminderAttention })
+          : t('chatHeader.remindersLabel')}
       </span>
     </button>
-    <button class="icon-btn" onclick={onOpenSearch} title="Search messages">
+    <button class="icon-btn" onclick={onOpenSearch} title={t('chatHeader.searchMessages')}>
       <svg
         width="20"
         height="20"
@@ -436,10 +439,10 @@
         <circle cx="11" cy="11" r="7" />
         <line x1="20" y1="20" x2="16.65" y2="16.65" />
       </svg>
-      <span class="sr-only">Search messages</span>
+      <span class="sr-only">{t('chatHeader.searchMessages')}</span>
     </button>
     {#if showServerDashboard}
-      <button class="icon-btn" onclick={onOpenServerDashboard} title="Server dashboard">
+      <button class="icon-btn" onclick={onOpenServerDashboard} title={t('chatHeader.serverDashboard')}>
         <svg
           width="20"
           height="20"
@@ -454,10 +457,10 @@
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
           <path d="M9.5 12l1.8 1.8 3.2-3.6" />
         </svg>
-        <span class="sr-only">Open server dashboard</span>
+        <span class="sr-only">{t('chatHeader.openServerDashboard')}</span>
       </button>
     {/if}
-    <button class="icon-btn" onclick={onOpenSettings} title="Settings">
+    <button class="icon-btn" onclick={onOpenSettings} title={t('chatHeader.settings')}>
       <svg
         width="20"
         height="20"
@@ -474,9 +477,9 @@
         />
         <circle cx="12" cy="12" r="3" />
       </svg>
-      <span class="sr-only">Open settings</span>
+      <span class="sr-only">{t('chatHeader.openSettings')}</span>
     </button>
-    <button class="icon-btn" onclick={onLeaveServer} title="Leave Server">
+    <button class="icon-btn" onclick={onLeaveServer} title={t('chatHeader.leaveServer2')}>
       <svg
         width="20"
         height="20"
@@ -492,11 +495,11 @@
         <path d="M21 12H9" />
         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
       </svg>
-      <span class="sr-only">Leave server</span>
+      <span class="sr-only">{t('chatHeader.leaveServer')}</span>
     </button>
     </div>
     <div class="action-group">
-    <button class="icon-btn danger" onclick={onLogout} title="Logout">
+    <button class="icon-btn danger" onclick={onLogout} title={t('chatHeader.logout')}>
       <svg
         width="20"
         height="20"
@@ -511,7 +514,7 @@
         <path d="M12 2v10" />
         <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
       </svg>
-      <span class="sr-only">Sign out</span>
+      <span class="sr-only">{t('chatHeader.signOut')}</span>
     </button>
     </div>
   </div>

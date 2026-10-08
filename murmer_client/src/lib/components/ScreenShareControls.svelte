@@ -16,6 +16,7 @@
   import { session } from '$lib/stores/session';
   import { QUALITY_PRESETS, type QualityPreset } from '$lib/screenshare/manager';
   import { dialogs } from '$lib/stores/dialogs';
+  import { t } from '$lib/i18n';
   
   interface Props {
     currentVoiceChannel?: number | null;
@@ -57,8 +58,8 @@
     } else {
       if (!inVoice || !currentVoiceChannel || !$session.user) {
         await dialogs.alert({
-          title: 'Join a voice channel first',
-          message: 'You must be in a voice channel to share your screen.'
+          title: t('screenShareControls.joinVoiceTitle'),
+          message: t('screenShareControls.joinVoiceMessage')
         });
         return;
       }
@@ -86,8 +87,8 @@
       } catch (error) {
         console.error('Failed to start screen share:', error);
         dialogs.alert({
-          title: 'Screen sharing failed',
-          message: 'Could not start screen sharing. Please ensure you granted permission.'
+          title: t('screenShareControls.failedTitle'),
+          message: t('screenShareControls.failedMessage')
         });
       }
     }
@@ -109,13 +110,15 @@
     class:active={$isScreenSharing}
     onclick={toggleScreenShare}
     disabled={!inVoice}
-    title={inVoice ? ($isScreenSharing ? 'Stop sharing screen' : 'Share screen') : 'Join a voice channel to share screen'}
-    aria-label={$isScreenSharing ? 'Stop sharing screen' : 'Share screen'}
+    title={inVoice
+      ? t($isScreenSharing ? 'screenShareControls.stopTooltip' : 'screenShareControls.startTooltip')
+      : t('screenShareControls.joinVoiceTooltip')}
+    aria-label={t($isScreenSharing ? 'screenShareControls.stopTooltip' : 'screenShareControls.startTooltip')}
   >
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
       <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
     </svg>
-    {$isScreenSharing ? 'Stop Sharing' : 'Share Screen'}
+    {t($isScreenSharing ? 'screenShareControls.stop' : 'screenShareControls.start')}
   </button>
 
   {#if $isScreenSharing}
@@ -123,10 +126,8 @@
       class="settings-button"
       class:active={$screenSharePreview}
       onclick={toggleScreenSharePreview}
-      title={$screenSharePreview
-        ? 'Hide your screen preview (saves CPU)'
-        : 'Preview your own screen'}
-      aria-label={$screenSharePreview ? 'Hide your screen preview' : 'Preview your own screen'}
+      title={t($screenSharePreview ? 'screenShareControls.hidePreviewTooltip' : 'screenShareControls.showPreview')}
+      aria-label={t($screenSharePreview ? 'screenShareControls.hidePreview' : 'screenShareControls.showPreview')}
       aria-pressed={$screenSharePreview}
     >
       {#if $screenSharePreview}
@@ -145,8 +146,8 @@
   <button
     class="settings-button"
     onclick={() => showSettings = !showSettings}
-    title="Screen share settings"
-    aria-label="Screen share settings"
+    title={t('screenShareControls.screenShareSettings')}
+    aria-label={t('screenShareControls.screenShareSettings')}
     disabled={$isScreenSharing}
   >
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -158,7 +159,7 @@
 
 {#if showSettings}
   <div class="settings-panel">
-    <h4>Screen Share Quality</h4>
+    <h4>{t('screenShareControls.screenShareQuality')}</h4>
     
     <div class="preset-buttons">
       {#each Object.keys(QUALITY_PRESETS) as preset}
@@ -175,11 +176,11 @@
     <div class="bitrate-setting">
       <div class="stream-inputs">
         <label>
-          Frame Rate (fps)
+          {t('screenShareControls.frameRateFps')}
           <input type="number" bind:value={frameRate} min="5" max="60" step="5" />
         </label>
         <label>
-          Max Bitrate (Mbps)
+          {t('screenShareControls.maxBitrateMbps')}
           <input
             type="number"
             bind:value={maxBitrateMbps}
@@ -190,24 +191,24 @@
         </label>
       </div>
       {#if serverCapMbps !== null}
-        <p class="settings-note">This server caps the screen share bitrate at {serverCapMbps} Mbps.</p>
+        <p class="settings-note">{t('screenShareControls.serverCap', { mbps: serverCapMbps })}</p>
       {/if}
     </div>
 
     <div class="custom-settings">
       <label>
         <input type="checkbox" bind:checked={useCustom} />
-        Custom Settings
+        {t('screenShareControls.customSettings')}
       </label>
 
       {#if useCustom}
         <div class="custom-inputs">
           <label>
-            Width
+            {t('screenShareControls.width')}
             <input type="number" bind:value={customWidth} min="640" max="3840" step="1" />
           </label>
           <label>
-            Height
+            {t('screenShareControls.height')}
             <input type="number" bind:value={customHeight} min="480" max="2160" step="1" />
           </label>
         </div>
@@ -215,7 +216,7 @@
     </div>
 
     <p class="settings-note">
-      Note: Settings only apply when starting a new screen share. Higher quality requires more bandwidth.
+      {t('screenShareControls.noteSettingsOnlyApply')}
     </p>
   </div>
 {/if}

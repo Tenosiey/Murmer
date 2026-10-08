@@ -6,6 +6,7 @@
   import { PIN_PREVIEW_LIMIT } from '$lib/chat/constants';
   import { formatLocalDateTime } from '$lib/chat/helpers';
   import { hideSpoilers } from '$lib/spoilers';
+  import { t } from '$lib/i18n';
 
   
   interface Props {
@@ -29,14 +30,14 @@
       return trimmed.length > PIN_PREVIEW_LIMIT ? `${trimmed.slice(0, PIN_PREVIEW_LIMIT)}…` : trimmed;
     }
     if (message?.image || entry.image) {
-      return 'Image attachment';
+      return t('pinnedBar.image');
     }
-    return 'Message';
+    return t('pinnedBar.message');
   }
 
   function pinnedAuthor(entry: PinnedEntry): string {
     const message = resolvePinnedMessage(entry);
-    return message?.user ?? entry.user ?? 'Unknown';
+    return message?.user ?? entry.user ?? t('pinnedBar.unknownAuthor');
   }
 
   function pinnedTimestamp(entry: PinnedEntry): string {
@@ -46,9 +47,9 @@
 </script>
 
 {#if entries.length > 0}
-  <div class="pinned-bar" role="region" aria-label="Pinned messages">
+  <div class="pinned-bar" role="region" aria-label={t('pinnedBar.pinnedMessages')}>
     <div class="pinned-header">
-      <span class="pinned-title">Pinned</span>
+      <span class="pinned-title">{t('pinnedBar.pinned')}</span>
       <span class="pinned-count">{entries.length}</span>
     </div>
     <ul class="pinned-list">
@@ -64,7 +65,7 @@
           <button
             class="pinned-remove"
             onclick={() => chat.sendRaw({ type: 'unpin-message', messageId: entry.id })}
-            aria-label="Unpin message"
+            aria-label={t('pinnedBar.unpinMessage')}
           >
             ✕
           </button>

@@ -16,6 +16,7 @@
   import { blockedUsers, confirmBlock } from '$lib/stores/blocks';
   import { onlineUsers } from '$lib/stores/online';
   import { dialogs } from '$lib/stores/dialogs';
+  import { t } from '$lib/i18n';
   import { poke } from '$lib/stores/pokes';
   import { PERMISSIONS, computeTopPosition } from '$lib/chat/permissions';
   import { MAX_NICKNAME_LENGTH } from '$lib/chat/constants';
@@ -78,9 +79,9 @@
 
   async function banUser(user: string) {
     const confirmed = await dialogs.confirm({
-      title: `Ban ${user}?`,
-      message: 'They will be disconnected and unable to rejoin until unbanned.',
-      confirmLabel: 'Ban user',
+      title: t('userMenu.banTitle', { name: user }),
+      message: t('userMenu.banMessage'),
+      confirmLabel: t('userMenu.banConfirm'),
       danger: true
     });
     if (!confirmed) return;
@@ -105,12 +106,12 @@
   async function changeNicknamePrompt(user: string) {
     const current = $profiles[user]?.nickname ?? '';
     const nickname = await dialogs.prompt({
-      title: `Nickname for ${user}`,
-      message: 'Shown instead of their display name on this server. Leave empty to clear it.',
-      label: 'Nickname',
+      title: t('userMenu.nicknameTitle', { name: user }),
+      message: t('userMenu.nicknameMessage'),
+      label: t('userMenu.nickname'),
       initial: current,
       maxLength: MAX_NICKNAME_LENGTH,
-      confirmLabel: 'Save',
+      confirmLabel: t('userMenu.save'),
       required: false
     });
     // `null` is a cancelled dialog; an empty string is a deliberate clear.
@@ -133,14 +134,14 @@
     if (!target) return [];
     const user = target;
     const items: ContextMenuItem[] = [];
-    items.push({ label: 'View Profile', action: () => onOpenProfile(user) });
-    items.push({ label: 'Send Message', action: () => onOpenDm(user) });
-    if ($onlineUsers.includes(user)) items.push({ label: 'Poke', action: () => poke(user) });
-    items.push({ label: 'View Stats', action: () => (statsUser = user) });
+    items.push({ label: t('userMenu.viewProfile'), action: () => onOpenProfile(user) });
+    items.push({ label: t('userMenu.sendMessage'), action: () => onOpenDm(user) });
+    if ($onlineUsers.includes(user)) items.push({ label: t('userMenu.poke'), action: () => poke(user) });
+    items.push({ label: t('userMenu.viewStats'), action: () => (statsUser = user) });
     items.push(
       $blockedUsers.includes(user)
-        ? { label: 'Unblock', action: () => blockedUsers.setBlocked(user, false) }
-        : { label: 'Block', danger: true, action: () => confirmBlock(user, $displayNames(user)) }
+        ? { label: t('userMenu.unblock'), action: () => blockedUsers.setBlocked(user, false) }
+        : { label: t('userMenu.block'), danger: true, action: () => confirmBlock(user, $displayNames(user)) }
     );
     // Role assignment: a checklist of grantable roles, shown only to managers
     // who outrank the target.
@@ -150,29 +151,29 @@
         label: assigned.has(def.id) ? `${def.name} (assigned)` : def.name,
         action: () => toggleUserRole(user, def.id)
       }));
-      items.push({ label: 'Roles', children: roleItems });
+      items.push({ label: t('userMenu.roles'), children: roleItems });
     }
     if (outranks(user)) {
       if ($can(PERMISSIONS.MUTE_MEMBERS)) {
         items.push({
-          label: 'Mute',
+          label: t('userMenu.mute'),
           children: [
-            { label: '10 minutes', action: () => muteUser(user, 600) },
-            { label: '1 hour', action: () => muteUser(user, 3600) },
-            { label: 'Until lifted', action: () => muteUser(user) },
-            { label: 'Unmute', action: () => unmuteUser(user) }
+            { label: t('userMenu.mute10m'), action: () => muteUser(user, 600) },
+            { label: t('userMenu.mute1h'), action: () => muteUser(user, 3600) },
+            { label: t('userMenu.muteUntilLifted'), action: () => muteUser(user) },
+            { label: t('userMenu.unmute'), action: () => unmuteUser(user) }
           ]
         });
       }
       if ($can(PERMISSIONS.MANAGE_NICKNAMES)) {
-        items.push({ label: 'Change Nickname', action: () => changeNicknamePrompt(user) });
+        items.push({ label: t('userMenu.changeNickname'), action: () => changeNicknamePrompt(user) });
       }
       if ($can(PERMISSIONS.KICK_MEMBERS) && $onlineUsers.includes(user)) {
-        items.push({ label: 'Kick User', danger: true, action: () => kickUser(user) });
+        items.push({ label: t('userMenu.kick'), danger: true, action: () => kickUser(user) });
       }
       if ($can(PERMISSIONS.BAN_MEMBERS)) {
-        items.push({ label: 'Ban User', danger: true, action: () => banUser(user) });
-        items.push({ label: 'Unban User', action: () => unbanUser(user) });
+        items.push({ label: t('userMenu.ban'), danger: true, action: () => banUser(user) });
+        items.push({ label: t('userMenu.unban'), action: () => unbanUser(user) });
       }
     }
     return items;

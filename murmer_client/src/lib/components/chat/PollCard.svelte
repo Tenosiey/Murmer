@@ -10,6 +10,7 @@
   import { chat } from '$lib/stores/chat';
   import { session } from '$lib/stores/session';
   import { displayNames } from '$lib/stores/profiles';
+  import { t } from '$lib/i18n';
 
   interface Props {
     messageId: number;
@@ -26,7 +27,7 @@
   }
 </script>
 
-<div class="poll" role="group" aria-label="Poll">
+<div class="poll" role="group" aria-label={t('pollCard.poll')}>
   {#each poll.options as option, i (i)}
     {@const voters = poll.votes[i] ?? []}
     <button
@@ -34,7 +35,7 @@
       class="poll-option"
       class:chosen={mine === i}
       aria-pressed={mine === i}
-      title={voters.length ? voters.map((v) => $displayNames(v)).join(', ') : 'No votes yet'}
+      title={voters.length ? voters.map((v) => $displayNames(v)).join(', ') : t('pollCard.noVotes')}
       onclick={() => chat.votePoll(messageId, mine === i ? null : i)}
     >
       <span class="poll-bar" style={`width: ${percent(voters.length)}%`} aria-hidden="true"></span>
@@ -43,7 +44,7 @@
     </button>
   {/each}
   <span class="poll-total">
-    {total} {total === 1 ? 'vote' : 'votes'}{mine >= 0 ? ' · select your choice again to take it back' : ''}
+    {t('pollCard.votes', { count: total })}{mine >= 0 ? t('pollCard.retractHint') : ''}
   </span>
 </div>
 
