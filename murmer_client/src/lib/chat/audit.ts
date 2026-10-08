@@ -12,24 +12,26 @@
  * when an action gains no label here.
  */
 
+import { t } from '../i18n';
+
 /** Wire names, in the order they are grouped in the dashboard's filter. */
 export const AUDIT_ACTIONS = {
-  kick: 'Kicked a member',
-  ban: 'Banned a member',
-  unban: 'Lifted a ban',
-  mute: 'Muted a member',
-  unmute: 'Lifted a mute',
-  move: 'Moved a member to a voice channel',
-  'role-create': 'Created a role',
-  'role-update': 'Edited a role',
-  'role-delete': 'Deleted a role',
-  'role-reorder': 'Reordered the roles',
-  'user-roles': "Changed a member's roles",
-  'admin-role-grant': 'Granted a role via /role',
-  'override-set': 'Set a channel permission',
-  'override-remove': 'Removed a channel permission',
-  'purge-messages': 'Purged all messages',
-  'server-reset': 'Reset the server'
+  kick: t('auditAction.kick'),
+  ban: t('auditAction.ban'),
+  unban: t('auditAction.unban'),
+  mute: t('auditAction.mute'),
+  unmute: t('auditAction.unmute'),
+  move: t('auditAction.move'),
+  'role-create': t('auditAction.role-create'),
+  'role-update': t('auditAction.role-update'),
+  'role-delete': t('auditAction.role-delete'),
+  'role-reorder': t('auditAction.role-reorder'),
+  'user-roles': t('auditAction.user-roles'),
+  'admin-role-grant': t('auditAction.admin-role-grant'),
+  'override-set': t('auditAction.override-set'),
+  'override-remove': t('auditAction.override-remove'),
+  'purge-messages': t('auditAction.purge-messages'),
+  'server-reset': t('auditAction.server-reset')
 } as const;
 
 export type AuditAction = keyof typeof AUDIT_ACTIONS;
