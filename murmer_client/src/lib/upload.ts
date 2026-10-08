@@ -15,6 +15,8 @@
  * text exists so callers can show something better than "failed".
  */
 
+import { t } from './i18n';
+
 /**
  * The open connection's upload session: the challenge the server greeted it
  * with, which the server accepts on `/upload` once `presence` has signed it.
@@ -58,19 +60,22 @@ export function uploadForm(file: Blob, filename?: string): FormData {
  * response is not one of them. `subject` names what was being uploaded, e.g.
  * "image" or "sound".
  */
-export function uploadErrorMessage(status: number, subject = 'file'): string | null {
+export function uploadErrorMessage(
+  status: number,
+  subject: 'file' | 'image' | 'sound' = 'file'
+): string | null {
   switch (status) {
     case 401:
     case 403:
-      return 'The server rejected the upload. Reconnect and try again.';
+      return t('upload.rejected');
     case 429:
-      return 'You are uploading too quickly. Please wait a moment and try again.';
+      return t('upload.tooQuickly');
     case 413:
-      return `That ${subject} is too large to upload.`;
+      return t(`upload.tooLarge.${subject}`);
     case 415:
-      return `This ${subject} type is not allowed on the server.`;
+      return t(`upload.typeNotAllowed.${subject}`);
     case 507:
-      return 'The server is out of upload space for you. Delete older uploads or ask an admin.';
+      return t('upload.outOfSpace');
     default:
       return null;
   }
@@ -87,9 +92,9 @@ export async function uploadImage(
   file: File,
   maxBytes: number
 ): Promise<UploadResult> {
-  if (!httpBase) return { ok: false, message: 'Connect to a server first.' };
+  if (!httpBase) return { ok: false, message: t('upload.connectFirst') };
   if (file.size > maxBytes) {
-    return { ok: false, message: `Images must be ${formatLimit(maxBytes)} or smaller.` };
+    return { ok: false, message: t('upload.imageTooLarge', { limit: formatLimit(maxBytes) }) };
   }
   try {
     const res = await fetch(httpBase + '/upload', {
@@ -104,7 +109,7 @@ export async function uploadImage(
     return { ok: true, url: data.url };
   } catch (e) {
     console.error('image upload failed', e);
-    return { ok: false, message: 'Upload failed. Please try again.' };
+    return { ok: false, message: t('upload.imageFailed') };
   }
 }
 
@@ -135,7 +140,7 @@ export async function uploadAttachment(
     if (res.status === 413) {
       return {
         ok: false,
-        message: `File is too large to upload (limit: ${formatUploadSize(maxBytes)}).`
+        message: t('upload.fileTooLarge', { limit: formatUploadSize(maxBytes) })
       };
     }
     const message = uploadErrorMessage(res.status);
@@ -159,6 +164,6 @@ export async function uploadAttachment(
     };
   } catch (e) {
     console.error('upload failed', e);
-    return { ok: false, message: 'File upload failed.' };
+    return { ok: false, message: t('upload.fileFailed') };
   }
 }

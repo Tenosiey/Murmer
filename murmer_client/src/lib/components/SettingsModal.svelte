@@ -19,6 +19,7 @@
   import StatsTab from './settings/StatsTab.svelte';
   import AboutTab from './settings/AboutTab.svelte';
   import { modalFocus } from '$lib/focus';
+  import { t } from '$lib/i18n';
 
   interface Props {
     open: boolean;
@@ -31,14 +32,14 @@
   // split by direction: "Audio" covers everything you hear, "Voice" everything
   // your microphone sends.
   const TABS = [
-    { id: 'appearance', label: 'Appearance' },
-    { id: 'audio', label: 'Audio' },
-    { id: 'voice', label: 'Microphone & Voice' },
-    { id: 'hotkeys', label: 'Hotkeys' },
-    { id: 'identity', label: 'Identity' },
-    { id: 'stats', label: 'Stats & Privacy' },
-    { id: 'about', label: 'About' },
-    { id: 'server', label: 'Server', ownerOnly: true }
+    { id: 'appearance' },
+    { id: 'audio' },
+    { id: 'voice' },
+    { id: 'hotkeys' },
+    { id: 'identity' },
+    { id: 'stats' },
+    { id: 'about' },
+    { id: 'server', ownerOnly: true }
   ] as const;
   let activeTab: (typeof TABS)[number]['id'] = $state('appearance');
 
@@ -75,8 +76,8 @@
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div use:modalFocus class="modal-content" onclick={(event) => event.stopPropagation()} onkeydown={handleKeydown} role="document" tabindex="0">
       <div class="modal-header">
-        <h2 id="settings-title">Settings</h2>
-        <button class="icon-btn close-btn" onclick={close} aria-label="Close settings">
+        <h2 id="settings-title">{t('settings.title')}</h2>
+        <button class="icon-btn close-btn" onclick={close} aria-label={t('settings.close')}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -85,14 +86,14 @@
       </div>
 
       <div class="settings-layout">
-        <nav class="settings-tabs" aria-label="Settings sections">
+        <nav class="settings-tabs" aria-label={t('settings.sections')}>
           {#each visibleTabs as tab}
             <button
               class="tab-btn"
               class:selected={activeTab === tab.id}
               aria-pressed={activeTab === tab.id}
               onclick={() => (activeTab = tab.id)}
-            >{tab.label}</button>
+            >{t(`settings.tab.${tab.id}`)}</button>
           {/each}
         </nav>
 
@@ -107,15 +108,13 @@
 
         {#if activeTab === 'server' && $serverInfo}
           <div class="settings-section">
-            <h3 class="section-title">Server</h3>
+            <h3 class="section-title">{t('settings.tab.server')}</h3>
             <div class="setting-group">
               <div class="setting-label">
-                Server version
+                {t('settings.serverVersion')}
                 <span class="setting-value">{$serverInfo.version}</span>
               </div>
-              <div class="setting-description">
-                Only visible to users with the Owner or Admin role.
-              </div>
+              <div class="setting-description">{t('settings.serverVersionHint')}</div>
             </div>
           </div>
         {/if}
@@ -123,7 +122,7 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-primary" onclick={close}>Done</button>
+        <button class="btn btn-primary" onclick={close}>{t('settings.done')}</button>
       </div>
     </div>
   </div>

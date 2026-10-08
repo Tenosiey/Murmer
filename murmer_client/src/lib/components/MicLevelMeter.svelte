@@ -10,6 +10,7 @@
 -->
 <script lang="ts">
   import { onDestroy } from 'svelte';
+  import { t } from '$lib/i18n';
   import { MicLevelMonitor } from '$lib/voice/micLevel';
   import { captureStream } from '$lib/stores/voiceCapture';
   import {
@@ -105,13 +106,13 @@
   </div>
   <span class="meter-status" class:failed>
     {#if failed}
-      Microphone unavailable — check the input device and permissions
+      {t('micMeter.unavailable')}
     {:else if marker === undefined}
-      {speaking ? 'Picking up sound' : 'Silent'}
+      {speaking ? t('micMeter.pickingUp') : t('micMeter.silent')}
     {:else if speaking}
-      Transmitting
+      {t('micMeter.transmitting')}
     {:else}
-      Silent
+      {t('micMeter.silent')}
     {/if}
   </span>
 </div>

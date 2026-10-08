@@ -169,8 +169,8 @@ the idea comes from and what users will expect it to behave like.
       reminder scheduler (`ws/handlers/scheduled.rs`) already runs
 - [ ] Translatable UI, the rest of the extraction. The lookup and English
       catalog exist (`src/lib/i18n/`) and the login, invite and server hub
-      pages plus the server error texts go through them; the chat page, its
-      components, Settings and the Server Dashboard are still hardcoded
+      pages, Settings and the server error texts go through them; the chat
+      page, its components and the Server Dashboard are still hardcoded
       English. Then a second catalog and a language picker
 - [ ] Update prompt at startup. Updates only happen when someone presses
       Settings → Updates (`AboutTab.svelte`), so members drift behind the

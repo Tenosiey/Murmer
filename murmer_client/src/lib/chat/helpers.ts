@@ -2,6 +2,7 @@ import type { Message, UserStatus, VoiceChannelInfo } from '../types';
 import { extractLinks } from '../link-preview';
 import { hideSpoilers } from '../spoilers';
 import { MAX_VOICE_USER_LIMIT, VOICE_QUALITY_PRESETS } from './constants';
+import { t } from '../i18n';
 
 export type MessageBlock =
   | { kind: 'separator'; label: string; key: string }
@@ -140,22 +141,28 @@ export function buildMessageBlocks(
 
 export function describeDuration(seconds: number): string {
   if (seconds < 60) {
-    return `${seconds} ${seconds === 1 ? 'second' : 'seconds'}`;
+    return t('duration.seconds', { count: seconds });
   }
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   if (minutes < 60) {
     if (remainingSeconds === 0) {
-      return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+      return t('duration.minutes', { count: minutes });
     }
-    return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ${remainingSeconds} ${remainingSeconds === 1 ? 'second' : 'seconds'}`;
+    return t('duration.pair', {
+      first: t('duration.minutes', { count: minutes }),
+      second: t('duration.seconds', { count: remainingSeconds })
+    });
   }
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
   if (remainingMinutes === 0) {
-    return `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+    return t('duration.hours', { count: hours });
   }
-  return `${hours} ${hours === 1 ? 'hour' : 'hours'} ${remainingMinutes} ${remainingMinutes === 1 ? 'minute' : 'minutes'}`;
+  return t('duration.pair', {
+    first: t('duration.hours', { count: hours }),
+    second: t('duration.minutes', { count: remainingMinutes })
+  });
 }
 
 export function formatExpiry(expiresAt: string | undefined, now: number): string | null {
