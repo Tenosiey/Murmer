@@ -6,6 +6,7 @@
  * give it an inline player.
  */
 import { openMicrophone } from './voice/capture';
+import { t } from './i18n';
 
 /** The longest clip one recording keeps before it stops on its own. */
 export const VOICE_MESSAGE_MAX_MS = 5 * 60_000;
@@ -64,7 +65,7 @@ export async function startVoiceRecording(): Promise<VoiceRecording> {
     typeof MediaRecorder === 'undefined'
       ? null
       : pickRecordingFormat((type) => MediaRecorder.isTypeSupported(type));
-  if (!format) throw new Error('This app cannot record audio here.');
+  if (!format) throw new Error(t('voiceMessage.unsupported'));
 
   const stream = await openMicrophone();
   const recorder = new MediaRecorder(stream, { mimeType: format.mimeType });

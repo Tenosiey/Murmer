@@ -14,6 +14,7 @@
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import RoleIcon from '$lib/components/RoleIcon.svelte';
   import type { UserStatus } from '$lib/types';
+  import { t } from '$lib/i18n';
 
   interface Props {
     statusMap: Record<string, UserStatus>;
@@ -27,7 +28,7 @@
 </script>
 
 <div class="sidebar" style="width: {$rightSidebarWidth}px">
-  <h3>Online — {$onlineUsers.length}</h3>
+  <h3>{t('userList.online', { count: $onlineUsers.length })}</h3>
   <ul>
     {#each $onlineUsers as user}
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -56,7 +57,7 @@
           <RoleIcon icon={$roles[user].icon} role={$roles[user].iconRole} />
         {/if}
         {#if $dmUnread[user]}
-          <span class="dm-badge" title="Unread direct messages">{$dmUnread[user]}</span>
+          <span class="dm-badge" title={t('userList.unreadDirectMessages')}>{$dmUnread[user]}</span>
         {/if}
         {#if $roles[user]}
           <span
@@ -68,7 +69,7 @@
       </li>
     {/each}
   </ul>
-  <h3>Offline — {$offlineUsers.length}</h3>
+  <h3>{t('userList.offline', { count: $offlineUsers.length })}</h3>
   <ul>
     {#each $offlineUsers as user}
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -97,7 +98,7 @@
           <RoleIcon icon={$roles[user].icon} role={$roles[user].iconRole} />
         {/if}
         {#if $dmUnread[user]}
-          <span class="dm-badge" title="Unread direct messages">{$dmUnread[user]}</span>
+          <span class="dm-badge" title={t('userList.unreadDirectMessages')}>{$dmUnread[user]}</span>
         {/if}
         {#if $roles[user]}
           <span

@@ -2,6 +2,7 @@
   import { onDestroy, untrack } from 'svelte';
   import { browser } from '$app/environment';
   import { fetchLinkPreview, giphyGifUrl, type LinkPreviewData } from '$lib/link-preview';
+  import { t } from '$lib/i18n';
 
   interface Props {
     url: string;
@@ -171,21 +172,23 @@
       href={currentUrl}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={`Open GIF on ${displayHost}`}
+      aria-label={t('linkPreview.openGif', { host: displayHost })}
     >
-      <img src={giphyGif} alt="GIF" loading="lazy" onerror={handleGiphyError} />
-      <span class="giphy-badge" aria-hidden="true">GIF</span>
+      <img src={giphyGif} alt={t('linkPreview.gif')} loading="lazy" onerror={handleGiphyError} />
+      <span class="giphy-badge" aria-hidden="true">{t('linkPreview.gif')}</span>
     </a>
   {:else if youtubeId}
     <div class="link-preview youtube">
-      <a href={currentUrl} target="_blank" rel="noopener noreferrer" class="youtube-thumb" aria-label={`Open video on ${displayHost}`}>
+      <a href={currentUrl} target="_blank" rel="noopener noreferrer" class="youtube-thumb" aria-label={t('linkPreview.openVideo', { host: displayHost })}>
         {#if youtubeThumbnail}
-          <img src={youtubeThumbnail} alt={youtubeTitle ? `${youtubeTitle} thumbnail` : 'YouTube thumbnail'} loading="lazy" />
+          <img src={youtubeThumbnail} alt={youtubeTitle
+            ? t('linkPreview.thumbnailOf', { title: youtubeTitle })
+            : t('linkPreview.youtubeThumbnail')} loading="lazy" />
         {/if}
         <span class="youtube-icon" aria-hidden="true">▶</span>
       </a>
       <div class="youtube-meta">
-        <span class="youtube-label">YouTube</span>
+        <span class="youtube-label">{t('linkPreview.youtube')}</span>
         {#if youtubeTitle}
           <p class="youtube-title">{youtubeTitle}</p>
         {/if}
@@ -193,7 +196,7 @@
           <p class="youtube-author">{youtubeAuthor}</p>
         {/if}
         {#if youtubeError}
-          <p class="youtube-error">Preview limited – open the link to view details.</p>
+          <p class="youtube-error">{t('linkPreview.previewLimitedOpenThe')}</p>
         {/if}
       </div>
     </div>

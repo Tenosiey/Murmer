@@ -12,6 +12,7 @@
   import { formatLocalDateTime } from '$lib/chat/helpers';
   import { modalFocus } from '$lib/focus';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
+  import { t } from '$lib/i18n';
 
   interface Props {
     open: boolean;
@@ -31,7 +32,7 @@
   let entries = $derived($mentionInbox.entries);
 
   function channelName(id: number): string {
-    return $channels.find((channel) => channel.id === id)?.name ?? 'a channel you cannot see';
+    return $channels.find((channel) => channel.id === id)?.name ?? t('mentionsInbox.hiddenChannel');
   }
 
   function sealed(channelId: number): boolean {
@@ -77,8 +78,8 @@
       tabindex="0"
     >
       <div class="modal-header">
-        <h2 id="mentions-inbox-title">Mentions</h2>
-        <button class="icon-btn close-btn" onclick={close} aria-label="Close mentions">
+        <h2 id="mentions-inbox-title">{t('mentionsInbox.mentions')}</h2>
+        <button class="icon-btn close-btn" onclick={close} aria-label={t('mentionsInbox.closeMentions')}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -89,7 +90,7 @@
       <div class="modal-body">
         {#if entries.length === 0}
           <p class="empty">
-            {$mentionInbox.loading ? 'Looking for mentions…' : 'Nobody has mentioned you recently.'}
+            {t($mentionInbox.loading ? 'mentionsInbox.loading' : 'mentionsInbox.empty')}
           </p>
         {:else}
           <ul>
@@ -109,9 +110,9 @@
                       {#if entry.text !== null}
                         {entry.text}
                       {:else if sealed(entry.channelId)}
-                        <em>Encrypted — waiting for this channel’s key.</em>
+                        <em>{t('mentionsInbox.encryptedWaitingForThis')}</em>
                       {:else}
-                        <em>A file or image.</em>
+                        <em>{t('mentionsInbox.aFileOrImage')}</em>
                       {/if}
                     </span>
                   </span>

@@ -12,6 +12,7 @@
   import UserStatsPanel from '$lib/components/UserStatsPanel.svelte';
   import type { Message } from '$lib/types';
   import { modalFocus } from '$lib/focus';
+  import { t } from '$lib/i18n';
 
   interface Props {
     open: boolean;
@@ -72,8 +73,8 @@
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div use:modalFocus class="modal-content" onclick={(event) => event.stopPropagation()} onkeydown={handleKeydown} role="document" tabindex="0">
       <div class="modal-header">
-        <h2 id="user-stats-title">Stats — {user}</h2>
-        <button class="icon-btn close-btn" onclick={close} aria-label="Close stats">
+        <h2 id="user-stats-title">{t('userStatsModal.title', { name: user })}</h2>
+        <button class="icon-btn close-btn" onclick={close} aria-label={t('userStatsModal.closeStats')}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -84,13 +85,12 @@
       <div class="modal-body">
         {#if unavailable}
           <p class="unavailable">
-            {user}'s stats are not available. They may have opted out of stat tracking, or
-            tracking is disabled on this server.
+            {t('userStatsModal.unavailable', { name: user })}
           </p>
         {:else if snapshot}
           <UserStatsPanel {snapshot} />
         {:else}
-          <p class="unavailable">Loading stats…</p>
+          <p class="unavailable">{t('userStatsModal.loadingStats')}</p>
         {/if}
       </div>
     </div>

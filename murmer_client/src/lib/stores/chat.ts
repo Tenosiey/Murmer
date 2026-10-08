@@ -38,6 +38,7 @@ import {
 } from '../channel-crypto';
 import { loadKeyPair } from '../keypair';
 import { setUploadSession } from '../upload';
+import { t } from '../i18n';
 
 /** Maximum number of search results to request from server */
 const MAX_SEARCH_RESULTS = 200;
@@ -60,7 +61,7 @@ const TYPING_SEND_INTERVAL_MS = 2000;
 const MAX_LIVE_MESSAGES = 300;
 
 /** Refusal shown when sending into an encrypted channel without its key. */
-const KEY_PENDING_MESSAGE = 'This channel is encrypted and your copy of its key has not arrived yet.';
+const KEY_PENDING_MESSAGE = t('chatError.keyPending');
 
 /** Pending search request tracking */
 type PendingSearch = {
@@ -358,10 +359,13 @@ function createChatStore() {
     if (isBlocked(sender)) return;
     const preference = get(channelNotifications)[channelId] ?? 'all';
     if (preference === 'mentions' ? !mention : preference !== 'all') return;
-    const from = sender ?? 'Unknown user';
+    const from = sender ?? t('notification.unknownUser');
     const body = text.trim();
-    if (mention) notify(`Mention from ${from}`, body || `${from} mentioned you`);
-    else notify('New message', `${from}: ${body || 'sent a message'}`);
+    if (mention) {
+      notify(t('notification.mention', { name: from }), body || t('notification.mentionedYou', { name: from }));
+    } else {
+      notify(t('notification.message'), t('notification.messageBody', { name: from, text: body || t('notification.sentMessage') }));
+    }
   }
 
   /** Handle incoming messages from WebSocket */
@@ -574,7 +578,7 @@ function createChatStore() {
         // refreshed by the snapshot that follows it, and anybody who was
         // offline finds the reminder already marked due at their next
         // `presence`.
-        if (typeof msg.text === 'string' && msg.text) void notify('Reminder', msg.text);
+        if (typeof msg.text === 'string' && msg.text) void notify(t('notification.reminder'), msg.text);
         break;
       }
 
@@ -623,7 +627,7 @@ function createChatStore() {
           if (dm.getActive() === peer) markDmRead(peer);
           if (from !== current && dm.getActive() !== from) {
             const text = (prepared.text ?? '').trim();
-            notify(`Direct message from ${from}`, text || 'sent you a message');
+            notify(t('notification.dm', { name: from }), text || t('notification.sentYouMessage'));
           }
         });
         break;
@@ -727,7 +731,7 @@ function createChatStore() {
             pendingSearches.delete(requestId);
             clearTimeout(pending.timeout);
             const errorMessage =
-              typeof msg.message === 'string' ? msg.message : 'Search failed';
+              typeof msg.message === 'string' ? msg.message : t('chatError.searchFailed');
             pending.reject(new Error(errorMessage));
           }
         }
@@ -785,7 +789,7 @@ function createChatStore() {
         connection.set('connected');
       },
       (info) => {
-        clearPendingSearches('Connection closed');
+        clearPendingSearches(t('chatError.connectionClosed'));
         clearPeerKeyRequests();
         // Intentional closes (leaving the server, reconnecting) update the
         // state themselves; everything else is a failure to surface.
@@ -793,7 +797,7 @@ function createChatStore() {
           connection.set(info.opened ? 'disconnected' : 'failed');
         }
       },
-      () => clearPendingSearches('WebSocket error')
+      () => clearPendingSearches(t('chatError.connectionError'))
     );
     // connect() is a no-op when already connected to the same URL; reflect that.
     if (wsManager.isConnected()) {
@@ -808,7 +812,7 @@ function createChatStore() {
   function connectionLost(): void {
     if (!wsManager.isConnected()) return;
     wsManager.disconnect();
-    clearPendingSearches('Connection lost');
+    clearPendingSearches(t('chatError.connectionLost'));
     clearPeerKeyRequests();
     connection.set('disconnected');
   }
@@ -827,7 +831,7 @@ function createChatStore() {
     content: ChannelMessagePayload,
     extra: Record<string, unknown> = {}
   ): string | null {
-    if (!wsManager.isConnected()) return 'Not connected to the server.';
+    if (!wsManager.isConnected()) return t('chatError.notConnected');
 
     // No timestamp: the server stamps every message with its own time.
     const payload: Record<string, unknown> = {
@@ -913,7 +917,7 @@ function createChatStore() {
    * @returns null on success, or an error message for the caller to surface
    */
   function forward(messageId: number, channelId: number): string | null {
-    if (!wsManager.isConnected()) return 'Not connected to the server.';
+    if (!wsManager.isConnected()) return t('chatError.notConnected');
     wsManager.send({ type: 'forward-message', messageId, channelId });
     return null;
   }
@@ -945,16 +949,16 @@ function createChatStore() {
    * @returns null on success, or an error message for the caller to surface
    */
   async function sendDm(to: string, text: string): Promise<string | null> {
-    if (!wsManager.isConnected()) return 'Not connected to the server.';
+    if (!wsManager.isConnected()) return t('chatError.notConnected');
     const key = await fetchPeerKey(to);
     if (!key) {
-      return `${to} has no encryption key on this server and cannot receive direct messages.`;
+      return t('chatError.noPeerKey', { name: to });
     }
     if (peerKeys.hasConflict(to)) {
-      return `${to}'s security key has changed. Review the warning in the conversation before sending.`;
+      return t('chatError.peerKeyChanged', { name: to });
     }
     const payload = encryptDm(text, key, loadKeyPair().secretKey);
-    if (!payload) return 'The message could not be encrypted.';
+    if (!payload) return t('chatError.encryptFailed');
     wsManager.send({
       type: 'dm',
       to,
@@ -1013,7 +1017,7 @@ function createChatStore() {
     text: string,
     scheduledFor: string
   ): string | null {
-    if (!wsManager.isConnected()) return 'Not connected to the server.';
+    if (!wsManager.isConnected()) return t('chatError.notConnected');
     const payload: Record<string, unknown> = {
       type: 'schedule-message',
       channelId,
@@ -1116,7 +1120,7 @@ function createChatStore() {
     filters: SearchFilters = {}
   ): Promise<SearchResults> {
     if (!wsManager.isConnected()) {
-      return Promise.reject(new Error('Not connected to server'));
+      return Promise.reject(new Error(t('chatError.notConnected')));
     }
 
     const trimmedQuery = query.trim();
@@ -1130,7 +1134,7 @@ function createChatStore() {
     return new Promise<SearchResults>((resolve, reject) => {
       const timeout = setTimeout(() => {
         if (pendingSearches.delete(requestId)) {
-          reject(new Error('Search timed out'));
+          reject(new Error(t('chatError.searchTimedOut')));
         }
       }, SEARCH_TIMEOUT_MS);
 
@@ -1150,7 +1154,7 @@ function createChatStore() {
 
   /** Edit a previously sent message. */
   function edit(messageId: number, text: string): string | null {
-    if (!wsManager.isConnected()) return 'Not connected to the server.';
+    if (!wsManager.isConnected()) return t('chatError.notConnected');
     if (typeof messageId !== 'number' || Number.isNaN(messageId)) return null;
 
     const trimmed = text.trim();
@@ -1178,7 +1182,7 @@ function createChatStore() {
   function disconnect(): void {
     wsManager.disconnect();
     resetSession();
-    clearPendingSearches('Disconnected');
+    clearPendingSearches(t('chatError.disconnected'));
     connection.set('idle');
   }
 

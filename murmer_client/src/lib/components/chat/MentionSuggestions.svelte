@@ -27,6 +27,7 @@
     type MentionCandidate
   } from '$lib/chat/mentions';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
+  import { t } from '$lib/i18n';
 
   interface Props {
     field: HTMLInputElement | HTMLTextAreaElement | undefined;
@@ -147,7 +148,7 @@
 </script>
 
 {#if open}
-  <ul class="mentions menu-panel" id={listId} role="listbox" aria-label="Mention someone">
+  <ul class="mentions menu-panel" id={listId} role="listbox" aria-label={t('mentionSuggestions.mentionSomeone')}>
     {#each candidates as candidate, index (`${candidate.kind}:${candidate.insert}`)}
       <!-- mousedown, not click: a click would blur the field first and close
            the list before the pick lands. Keyboard picks go via handleKey. -->
@@ -177,7 +178,7 @@
             {/if}
           </span>
           <span class="label">@{candidate.label}</span>
-          <span class="hint">{candidate.kind === 'here' ? 'Everyone online' : 'Role'}</span>
+          <span class="hint">{t(candidate.kind === 'here' ? 'mentionSuggestions.everyoneOnline' : 'mentionSuggestions.role')}</span>
         {/if}
       </li>
     {/each}

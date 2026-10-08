@@ -201,7 +201,7 @@ export function isTextInputTarget(target: EventTarget | null): boolean {
 
 /** Human-friendly rendering of a combo for the settings UI. */
 export function formatCombo(combo: string | null): string {
-  if (!combo) return 'Not set';
+  if (!combo) return t('hotkey.notSet');
   const pretty: Record<string, string> = {
     ArrowUp: '↑',
     ArrowDown: '↓',

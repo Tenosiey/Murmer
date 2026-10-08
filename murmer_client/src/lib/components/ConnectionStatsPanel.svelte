@@ -9,6 +9,7 @@
   import { ping } from '$lib/stores/ping';
   import { voiceStats } from '$lib/stores/voice';
   import { viaServer } from '$lib/stores/voiceTransport';
+  import { t } from '$lib/i18n';
   import {
     allConnectionStats,
     canViewAllConnectionStats
@@ -27,7 +28,7 @@
   });
 
   function fmtMs(value: number | null): string {
-    return value === null ? '—' : `${Math.round(value)} ms`;
+    return value === null ? '—' : t('connectionStatsPanel.ms', { value: Math.round(value) });
   }
 
   function fmtPct(value: number | null): string {
@@ -35,67 +36,71 @@
   }
 
   function fmtAge(seconds: number): string {
-    return seconds < 15 ? 'just now' : `${Math.round(seconds)}s ago`;
+    return seconds < 15
+      ? t('connectionStatsPanel.justNow')
+      : t('connectionStatsPanel.secondsAgo', { seconds: Math.round(seconds) });
   }
 
   let voicePeers = $derived(Object.entries($voiceStats));
   let userList = $derived(Object.entries($allConnectionStats).sort(([a], [b]) => a.localeCompare(b)));
 </script>
 
-<div class="panel" role="dialog" aria-label="Connection stats">
+<div class="panel" role="dialog" aria-label={t('connectionStatsPanel.connectionStats')}>
   <div class="section">
-    <div class="section-title">Your connection</div>
+    <div class="section-title">{t('connectionStatsPanel.yourConnection')}</div>
     <div class="row">
-      <span class="label">Server ping</span>
+      <span class="label">{t('connectionStatsPanel.serverPing')}</span>
       <span class="value">{$ping > 0 ? `${$ping} ms` : '—'}</span>
     </div>
     {#if $viaServer}
       <div class="row">
-        <span class="label">Voice server</span>
+        <span class="label">{t('connectionStatsPanel.voiceServer')}</span>
         <span class="value">{$viaServer.rtt > 0 ? fmtMs($viaServer.rtt) : '—'}</span>
       </div>
     {/if}
     {#if voicePeers.length > 0}
-      <div class="subsection-title">Voice (per peer)</div>
+      <div class="subsection-title">{t('connectionStatsPanel.voicePerPeer')}</div>
       {#each voicePeers as [peer, stats] (peer)}
         <div class="row">
           <span class="label peer">{$displayNames(peer)}</span>
           <span class="value">
             {#if !$viaServer}{fmtMs(stats.rtt)} ·{/if}
-            {fmtMs(stats.jitter)} jitter · {fmtPct(stats.packetLoss)} loss
+            {t('connectionStatsPanel.peerQuality', {
+              jitter: fmtMs(stats.jitter),
+              loss: fmtPct(stats.packetLoss)
+            })}
           </span>
         </div>
       {/each}
     {:else}
       <div class="row muted-row">
-        <span class="label">Voice</span>
-        <span class="value">not in a voice channel</span>
+        <span class="label">{t('connectionStatsPanel.voice')}</span>
+        <span class="value">{t('connectionStatsPanel.notInAVoice')}</span>
       </div>
     {/if}
     <p class="privacy-note">
-      Only these quality numbers (ping, voice RTT, jitter, packet loss) are shared with the
-      server so admins can help troubleshoot. No IP addresses or device details.
+      {t('connectionStatsPanel.onlyTheseQualityNumbers')}
     </p>
   </div>
 
   {#if $canViewAllConnectionStats}
     <div class="section">
-      <div class="section-title">All users</div>
+      <div class="section-title">{t('connectionStatsPanel.allUsers')}</div>
       {#if userList.length === 0}
         <div class="row muted-row">
-          <span class="value">No reports yet</span>
+          <span class="value">{t('connectionStatsPanel.noReportsYet')}</span>
         </div>
       {:else}
         <div class="table-scroll">
           <table>
             <thead>
               <tr>
-                <th>User</th>
-                <th>Ping</th>
-                <th>Voice RTT</th>
-                <th>Jitter</th>
-                <th>Loss</th>
-                <th>Updated</th>
+                <th>{t('connectionStatsPanel.user')}</th>
+                <th>{t('connectionStatsPanel.ping')}</th>
+                <th>{t('connectionStatsPanel.voiceRtt')}</th>
+                <th>{t('connectionStatsPanel.jitter')}</th>
+                <th>{t('connectionStatsPanel.loss')}</th>
+                <th>{t('connectionStatsPanel.updated')}</th>
               </tr>
             </thead>
             <tbody>

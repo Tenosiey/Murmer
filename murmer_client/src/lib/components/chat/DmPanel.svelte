@@ -13,6 +13,7 @@
   import { dmDraft } from '$lib/stores/drafts';
   import { peerKeys } from '$lib/stores/peerKeys';
   import { dialogs } from '$lib/stores/dialogs';
+  import { t } from '$lib/i18n';
   import { dmFingerprint } from '$lib/dm-crypto';
   import { loadKeyPair } from '$lib/keypair';
   import ConversationPanel from './ConversationPanel.svelte';
@@ -27,7 +28,7 @@
     const peer = $activePeer;
     if (!peer) return;
     void chat.sendDm(peer, text).then((error) => {
-      if (error) void dialogs.alert({ title: 'Message not sent', message: error });
+      if (error) void dialogs.alert({ title: t('dmPanel.notSent'), message: error });
     });
   }
 
@@ -46,17 +47,17 @@
     const peerKey = $conflicts[peer] ?? peerKeys.pinned(peer);
     if (!peerKey) {
       void dialogs.alert({
-        title: 'No key yet',
-        message: `No encryption key is known for ${peer} on this server.`
+        title: t('dmPanel.noKeyTitle'),
+        message: t('dmPanel.noKeyMessage', { name: peer })
       });
       return;
     }
     void dialogs.alert({
-      title: `Verify keys with ${peer}`,
-      message:
-        `Fingerprint: ${dmFingerprint(loadKeyPair().publicKey, peerKey)} — ` +
-        `compare it with ${peer} over another channel (in person, a call, …). ` +
-        `It must match exactly on both ends.`
+      title: t('dmPanel.verifyTitle', { name: peer }),
+      message: t('dmPanel.verifyMessage', {
+        fingerprint: dmFingerprint(loadKeyPair().publicKey, peerKey),
+        name: peer
+      })
     });
   }
 </script>
@@ -66,8 +67,8 @@
     kind="dm"
     title={$displayNames($activePeer)}
     {messages}
-    emptyText="No messages yet. Say hi!"
-    placeholder={`Message ${$displayNames($activePeer)}…`}
+    emptyText={t('dmPanel.empty')}
+    placeholder={t('dmPanel.placeholder', { name: $displayNames($activePeer) })}
     onSend={send}
     onClose={() => dm.close()}
     draftKey={dmDraft($activePeer)}

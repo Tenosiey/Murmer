@@ -3,6 +3,7 @@
   Uses Material 3 semantic colors for clear status communication.
 -->
 <script lang="ts">
+  import { t } from '$lib/i18n';
   interface Props {
     online?: boolean | null;
     size?: 'sm' | 'md' | 'lg';
@@ -11,7 +12,9 @@
 
   let { online = null, size = 'md', pulse = true }: Props = $props();
   
-  let label = $derived(online === null ? 'Checking status' : online ? 'Online' : 'Offline');
+  let label = $derived(
+    t(online === null ? 'indicator.checkingStatus' : online ? 'indicator.online' : 'indicator.offline')
+  );
   let statusClass = $derived(online === null ? 'checking' : online ? 'online' : 'offline');
   
   const sizeMap = {

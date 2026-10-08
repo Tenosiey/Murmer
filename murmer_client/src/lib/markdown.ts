@@ -3,6 +3,7 @@ import type { Tokens } from 'marked';
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import { parseWikiTarget } from './wiki/slug';
+import { t } from './i18n';
 
 const renderer = new marked.Renderer();
 const defaultCodeRenderer = renderer.code.bind(renderer);
@@ -110,7 +111,7 @@ const spoilerExtension = {
     this: { parser: { parseInline(tokens: Tokens.Generic[]): string } },
     token: { tokens: Tokens.Generic[] }
   ) {
-    return `<span class="spoiler" role="button" tabindex="0" aria-label="Spoiler, select to reveal">${this.parser.parseInline(token.tokens)}</span>`;
+    return `<span class="spoiler" role="button" tabindex="0" aria-label="${t('markdown.spoiler')}">${this.parser.parseInline(token.tokens)}</span>`;
   }
 };
 

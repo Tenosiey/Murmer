@@ -34,6 +34,7 @@
   import AudioAttachment from './AudioAttachment.svelte';
   import PollCard from './PollCard.svelte';
   import { isPlayableAudio } from '$lib/voice-message';
+  import { t } from '$lib/i18n';
 
 
   interface Props {
@@ -125,9 +126,9 @@
 <div class="message blocked-message" data-message-id={messageId ?? undefined} class:highlighted>
   <span class="gutter" aria-hidden="true"></span>
   <span class="blocked-note">
-    Message from a blocked member
+    {t('messageItem.messageFromABlocked')}
     <button type="button" class="btn btn-ghost blocked-show" onclick={() => (revealBlocked = true)}>
-      Show
+      {t('messageItem.show')}
     </button>
   </span>
 </div>
@@ -144,7 +145,9 @@
         type="button"
         class="avatar-btn"
         onclick={() => message.user && onOpenProfile(message.user)}
-        aria-label={`View ${message.user ?? 'user'}'s profile`}
+        aria-label={t('messageItem.viewProfile', {
+          name: message.user ? $displayNames(message.user) : t('messageItem.unknownUser')
+        })}
       >
         <UserAvatar name={message.user ?? '?'} />
       </button>
@@ -165,14 +168,17 @@
         class="forward-note"
         disabled={!reachable}
         onclick={() => onFocusForwarded(origin)}
-        title={reachable
-          ? `Jump to the original message`
-          : 'The channel this was forwarded from is not visible to you'}
+        title={t(reachable ? 'messageItem.jumpToOriginal' : 'messageItem.originHidden')}
       >
         <span class="forward-note-arrow" aria-hidden="true">↪</span>
         <span class="forward-note-text">
-          Forwarded from <span class="forward-note-user">{$displayNames(origin.user)}</span>
-          {#if origin.channel}in <span class="forward-note-channel">#{origin.channel}</span>{/if}
+          {#each t(origin.channel ? 'messageItem.forwardedFromIn' : 'messageItem.forwardedFrom').split(/(\{user\}|\{channel\})/) as part}
+            {#if part === '{user}'}
+              <span class="forward-note-user">{$displayNames(origin.user)}</span>
+            {:else if part === '{channel}'}
+              <span class="forward-note-channel">#{origin.channel}</span>
+            {:else}{part}{/if}
+          {/each}
         </span>
       </button>
     {/if}
@@ -183,11 +189,11 @@
         type="button"
         class="reply-quote"
         onclick={() => onFocusMessage(reply.id)}
-        title={`Jump to ${$displayNames(reply.user)}'s message`}
+        title={t('messageItem.jumpToReply', { name: $displayNames(reply.user) })}
       >
         <span class="reply-quote-arrow" aria-hidden="true">↪</span>
         <span class="reply-quote-user">{$displayNames(reply.user)}</span>
-        <span class="reply-quote-text">{reply.text ? hideSpoilers(reply.text) : 'Original message'}</span>
+        <span class="reply-quote-text">{reply.text ? hideSpoilers(reply.text) : t('messageItem.originalMessage')}</span>
       </button>
     {/if}
 
@@ -202,7 +208,7 @@
           <RoleIcon icon={roleInfo.icon} role={roleInfo.iconRole} />
         {/if}
         {#if message.bot}
-          <span class="bot-badge">BOT</span>
+          <span class="bot-badge">{t('messageItem.bot')}</span>
         {/if}
         {#if roleInfo}
           <span class="role" style={roleInfo.color ? `color: ${roleInfo.color}` : ''}>
@@ -217,8 +223,8 @@
       {#if message.decryptPending || message.decryptFailed}
         <span class="undecryptable">
           {message.decryptPending
-            ? 'Encrypted — waiting for this channel\u2019s key.'
-            : 'This message could not be decrypted.'}
+            ? t('messageItem.decryptPending')
+            : t('messageItem.decryptFailed')}
         </span>
       {/if}
       {#if message.text && !textIsOnlyGif}
@@ -232,9 +238,11 @@
       {#if message.edited}
         <span
           class="edited-badge"
-          title={message.editedAt ? `Edited ${new Date(message.editedAt).toLocaleString()}` : 'Edited'}
+          title={message.editedAt
+            ? t('messageItem.editedAt', { date: new Date(message.editedAt).toLocaleString() })
+            : t('messageItem.editedTooltip')}
         >
-          (edited)
+          {t('messageItem.edited')}
         </span>
       {/if}
       {#if links.length > 0}
@@ -245,7 +253,7 @@
         </div>
       {/if}
       {#if imageUrl && message.spoiler}
-        <span class="spoiler spoiler-media" role="button" tabindex="0" aria-label="Spoiler image, select to reveal">
+        <span class="spoiler spoiler-media" role="button" tabindex="0" aria-label={t('messageItem.spoilerImageSelectTo')}>
           <img src={imageUrl} alt="" loading="lazy" />
         </span>
       {:else if imageUrl}
@@ -299,7 +307,7 @@
         <button
           class="reaction-chip add"
           onclick={(e) => onOpenEmojiPicker(messageId, e)}
-          title="Add reaction"
+          title={t('messageItem.addReaction')}
         >
           +
         </button>
@@ -311,7 +319,7 @@
         type="button"
         class="thread-indicator"
         onclick={() => onOpenThread(messageId)}
-        title="Open thread"
+        title={t('messageItem.openThread')}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
@@ -325,36 +333,36 @@
         type="button"
         class="message-action"
         onclick={(e) => onOpenEmojiPicker(messageId, e)}
-        title="Add reaction"
+        title={t('messageItem.addReaction')}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
-        <span class="sr-only">Add reaction</span>
+        <span class="sr-only">{t('messageItem.addReaction')}</span>
       </button>
-      <button type="button" class="message-action" onclick={() => onReply(message)} title="Reply">
+      <button type="button" class="message-action" onclick={() => onReply(message)} title={t('messageItem.reply')}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
-        <span class="sr-only">Reply</span>
+        <span class="sr-only">{t('messageItem.reply')}</span>
       </button>
-      <button type="button" class="message-action" onclick={() => onForward(message)} title="Forward">
+      <button type="button" class="message-action" onclick={() => onForward(message)} title={t('messageItem.forward')}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
-        <span class="sr-only">Forward</span>
+        <span class="sr-only">{t('messageItem.forward')}</span>
       </button>
       <button
         type="button"
         class="message-action"
         onclick={() => onRemind(message)}
-        title="Remind me about this"
+        title={t('messageItem.remindMeAboutThis')}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2"/><path d="M5 3 2.5 5.5"/><path d="m19 3 2.5 2.5"/></svg>
-        <span class="sr-only">Remind me about this</span>
+        <span class="sr-only">{t('messageItem.remindMeAboutThis')}</span>
       </button>
-      <button type="button" class="message-action" onclick={() => onCopyLink(message)} title="Copy link">
+      <button type="button" class="message-action" onclick={() => onCopyLink(message)} title={t('messageItem.copyLink')}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-        <span class="sr-only">Copy link</span>
+        <span class="sr-only">{t('messageItem.copyLink')}</span>
       </button>
       {#if canEdit}
-        <button type="button" class="message-action" onclick={() => onEdit(message)} title="Edit message">
+        <button type="button" class="message-action" onclick={() => onEdit(message)} title={t('messageItem.editMessage')}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
-          <span class="sr-only">Edit message</span>
+          <span class="sr-only">{t('messageItem.editMessage')}</span>
         </button>
       {/if}
       <button
@@ -362,20 +370,20 @@
         class="message-action"
         class:active={pinned}
         onclick={() => onTogglePin(message)}
-        title={pinned ? 'Unpin message' : 'Pin message'}
+        title={t(pinned ? 'messageItem.unpin' : 'messageItem.pin')}
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
-        <span class="sr-only">{pinned ? 'Unpin message' : 'Pin message'}</span>
+        <span class="sr-only">{t(pinned ? 'messageItem.unpin' : 'messageItem.pin')}</span>
       </button>
       {#if canDelete}
         <button
           type="button"
           class="message-action danger"
           onclick={() => onDelete(message)}
-          title="Delete message"
+          title={t('messageItem.deleteMessage')}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-          <span class="sr-only">Delete message</span>
+          <span class="sr-only">{t('messageItem.deleteMessage')}</span>
         </button>
       {/if}
     </div>

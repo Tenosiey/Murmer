@@ -18,6 +18,7 @@ import { connection } from './connection';
 import { session } from './session';
 import { screenShareMuted, screenShareVolume } from './settings';
 import type { Message } from '../types';
+import { t } from '../i18n';
 
 /**
  * Global screen share manager instance
@@ -313,7 +314,7 @@ export const screenShareTiles = derived(
       onClose: () => closeScreenShare(userId)
     }));
     if ($local && $preview) {
-      const self = $session.user ?? 'You';
+      const self = $session.user ?? t('screenShareWindow.yourScreen');
       tiles.push({
         key: 'self',
         userId: self,
