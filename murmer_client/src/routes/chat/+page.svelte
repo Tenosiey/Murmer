@@ -44,6 +44,8 @@
   import UserMenu from '$lib/components/chat/UserMenu.svelte';
   import ChannelMenu from '$lib/components/chat/ChannelMenu.svelte';
   import MentionsInbox from '$lib/components/chat/MentionsInbox.svelte';
+  import SavedMessages from '$lib/components/chat/SavedMessages.svelte';
+  import { savedEntry, savedMessages, toggleSavedMessage } from '$lib/stores/savedMessages';
   import { mentionInbox } from '$lib/stores/mentionInbox';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
@@ -175,6 +177,7 @@
 
   let remindersOpen = $state(false);
   let mentionsOpen = $state(false);
+  let savedOpen = $state(false);
 
   let now = $state(Date.now());
   let expiryTicker: number | null = null;
@@ -233,6 +236,15 @@
 
   function closeMentions() {
     mentionsOpen = false;
+  }
+
+  function openSaved() {
+    clearCommandFeedback();
+    savedOpen = true;
+  }
+
+  function closeSaved() {
+    savedOpen = false;
   }
 
   /**
@@ -385,7 +397,8 @@
           signature: sign(`presence:${challenge}`, kp.secretKey),
           password: entry?.password,
           invite: entry?.invite,
-          appVersion: APP_VERSION
+          appVersion: APP_VERSION,
+          status: statuses.chosen()
         });
       }
       // Presence response already loads history for the default channel,
@@ -699,7 +712,7 @@
         );
         return;
       case 'status':
-        statuses.setSelf(command.status);
+        statuses.setSelf(command.status, true);
         setCommandFeedback(t('chatPage.statusSet', { status: STATUS_LABELS[command.status] }));
         return;
       case 'ephemeral': {
@@ -732,6 +745,9 @@
         if (pollError) setCommandFeedback(pollError, 'error');
         return;
       }
+      case 'purge':
+        void confirmPurge(command.count);
+        return;
       case 'search':
         openSearch(command.query);
         if (command.query) {
@@ -758,6 +774,17 @@
         return;
       }
     }
+  }
+
+  async function confirmPurge(count: number) {
+    const confirmed = await dialogs.confirm({
+      title: t('chatPage.purgeTitle', { count }),
+      message: t('chatPage.purgeMessage', { count }),
+      confirmLabel: t('chatPage.purgeConfirm'),
+      danger: true
+    });
+    // The server checks the permission; without it the answer is an error.
+    if (confirmed) chat.sendRaw({ type: 'purge-channel-messages', count });
   }
 
   function openSearch(initialQuery = '') {
@@ -1214,6 +1241,13 @@
     }
   }
 
+  let savedIds = $derived(new Set($savedMessages.map((entry) => entry.id)));
+
+  function toggleSaveMessage(msg: Message) {
+    const entry = savedEntry(msg, currentChatChannelId, currentChannelEncrypted);
+    if (entry) toggleSavedMessage(entry);
+  }
+
   async function deleteChatMessage(msg: Message) {
     if (typeof msg.id !== 'number') return;
     const confirmed = await dialogs.confirm({
@@ -1535,6 +1569,7 @@
         onOpenSearch={() => openSearch()}
         onOpenReminders={openReminders}
         onOpenMentions={openMentions}
+        onOpenSaved={openSaved}
         mentionsUnseen={$mentionInbox.unseen}
         reminderAttention={$scheduledAttention}
         onOpenSettings={openSettings}
@@ -1558,6 +1593,7 @@
         onOpenMessage={openMessageIn}
       />
       <MentionsInbox open={mentionsOpen} close={closeMentions} onOpenMessage={openMessageIn} />
+      <SavedMessages open={savedOpen} close={closeSaved} onOpenMessage={openMessageIn} />
       <UserProfileModal
         open={profileUser !== null}
         user={profileUser}
@@ -1624,6 +1660,7 @@
                 {now}
                 highlighted={highlightedMessageId === block.message.id}
                 pinned={isMessagePinned(block.message)}
+                saved={typeof block.message.id === 'number' && savedIds.has(block.message.id)}
                 replyCount={typeof block.message.id === 'number'
                   ? (threadReplyCounts.get(block.message.id) ?? 0)
                   : 0}
@@ -1641,6 +1678,7 @@
                 onCopyLink={copyMessageLink}
                 onEdit={editChatMessage}
                 onTogglePin={togglePinMessage}
+                onToggleSave={toggleSaveMessage}
                 onDelete={deleteChatMessage}
                 onOpenEmojiPicker={openEmojiPicker}
                 onToggleReaction={toggleReaction}

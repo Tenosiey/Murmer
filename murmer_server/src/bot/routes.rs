@@ -1192,7 +1192,7 @@ async fn server_info(
         return json_error(StatusCode::UNAUTHORIZED, "invalid-bot-token");
     };
 
-    let online_count = state.users.lock().await.len();
+    let online_count = ws::helpers::get_user_lists(&state).await.0.len();
     let data: Vec<Value> = visible_channels(&state, &bot.name)
         .await
         .iter()

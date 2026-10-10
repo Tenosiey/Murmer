@@ -20,6 +20,7 @@ import { describeServerError } from '../errors';
 import { WebSocketManager } from '../websocket-manager';
 import { connection } from './connection';
 import { typing } from './typing';
+import { sendTypingIndicators } from './settings';
 import { parseReadMarkers, unread } from './unread';
 import { threadData } from './thread';
 import { dm } from './dm';
@@ -937,7 +938,7 @@ function createChatStore() {
    * keystrokes don't turn into a message flood.
    */
   function sendTyping(): void {
-    if (!wsManager.isConnected()) return;
+    if (!wsManager.isConnected() || !get(sendTypingIndicators)) return;
     const now = Date.now();
     if (now - lastTypingSentAt < TYPING_SEND_INTERVAL_MS) return;
     lastTypingSentAt = now;

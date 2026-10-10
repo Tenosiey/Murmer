@@ -206,6 +206,11 @@ pub const MAX_POLL_OPTIONS: usize = 10;
 /// message's text and answers to the message length limit instead.
 pub const MAX_POLL_OPTION_LENGTH: usize = 55;
 
+/// Most messages one `purge-channel-messages` removes (Discord's purge
+/// limit). Each one costs a `message-deleted` frame to everyone in the
+/// channel, so the cap bounds what one command costs them.
+pub const MAX_PURGE_COUNT: usize = 100;
+
 /// Maximum number of messages returned for a single thread.
 pub const MAX_THREAD_MESSAGES: i64 = 200;
 

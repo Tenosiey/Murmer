@@ -292,6 +292,9 @@ pub const MESSAGE_WRONG_CHANNEL: &str = r#"{"type":"error","message":"message-wr
 pub const MESSAGE_PERMISSION_DENIED: &str =
     r#"{"type":"error","message":"message-permission-denied"}"#;
 
+/// A purge count is missing, not a number, or outside 1..=`MAX_PURGE_COUNT`.
+pub const INVALID_PURGE_COUNT: &str = r#"{"type":"error","message":"invalid-purge-count"}"#;
+
 pub const MESSAGE_DELETE_FAILED: &str = r#"{"type":"error","message":"message-delete-failed"}"#;
 
 pub const MESSAGE_EDIT_FAILED: &str = r#"{"type":"error","message":"message-edit-failed"}"#;
