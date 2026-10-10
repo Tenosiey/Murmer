@@ -63,10 +63,6 @@ the idea comes from and what users will expect it to behave like.
       would delete every attachment of every encrypted channel. The options
       that remain are the author's client naming the files when it deletes
       its own message, or an operator-chosen age limit for attachments
-- [ ] Version check on connect. The README asks for the app and server to
-      match, but nothing compares them, so a member who never pressed
-      Update gets undefined behaviour. Refuse or warn with "update your
-      app" on a mismatch
 
 ---
 

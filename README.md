@@ -123,7 +123,8 @@ docker pull ghcr.io/tenosiey/murmer-server:latest
 
 In `docker-compose.yml`, swap `build:` for the commented `image:` line to use
 it. Pin a version tag rather than `latest` to upgrade on your own schedule;
-the server's version should match the desktop app's.
+the server's version should match the desktop app's. A member whose app differs
+is told on connecting which side needs the update.
 
 **The first Owner** has to be assigned from the server, because nobody can
 grant roles yet. Copy your public key from the client settings, then:
