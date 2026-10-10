@@ -12,6 +12,7 @@
   import { selectedServer } from '$lib/stores/servers';
   import { serverIdentity } from '$lib/stores/serverIdentity';
   import { httpBaseFromWs } from '$lib/server-url';
+  import { isUnencryptedRemote } from '$lib/utils';
   import { theme } from '$lib/stores/theme';
   import { statuses } from '$lib/stores/status';
   import { STATUS_LABELS, USER_STATUS_VALUES } from '$lib/chat/constants';
@@ -138,6 +139,12 @@
           <span class="server-name">{$serverIdentity.name}</span>
         {/if}
       </div>
+    {/if}
+    {#if $selectedServer && isUnencryptedRemote($selectedServer)}
+      <span class="unencrypted-badge" title={t('chatHeader.notEncryptedHint')}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+        {t('chatHeader.notEncrypted')}
+      </span>
     {/if}
     <h1>
       {channelName}
@@ -602,6 +609,17 @@
     margin-right: var(--space-1);
     color: var(--color-muted);
     font-weight: 500;
+  }
+
+  .unencrypted-badge {
+    display: inline-flex;
+    align-items: center;
+    align-self: center;
+    gap: var(--space-1);
+    white-space: nowrap;
+    font-size: var(--text-sm);
+    color: var(--color-warning);
+    cursor: help;
   }
 
   .encrypted-badge {

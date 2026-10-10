@@ -109,6 +109,10 @@ export const en = {
   'about.checkUpdates': 'Check for Updates',
   'about.webClientUpdates': 'You are running the web client, which is served by the site you opened — reload the page to pick up a new version.',
   'about.links': 'Links',
+  'version.mismatchTitle': 'Version mismatch',
+  'version.clientBehind': 'This server runs a newer version of Murmer. Install the update (Settings → About → Check for Updates) so everything works as expected.',
+  'version.clientBehindWeb': 'This server runs a newer version of Murmer. Reload the page to pick it up.',
+  'version.serverBehind': 'This server runs an older version than your app ({version}). Some features may not work until its operator updates it.',
   'about.builtWith': 'Built with Tauri, SvelteKit and Rust (Axum). Released under the MIT License.',
 
   // Settings: Appearance
@@ -1110,6 +1114,8 @@ export const en = {
 
   // Chat Header
   'chatHeader.endToEndEncrypted': 'End-to-end encrypted',
+  'chatHeader.notEncrypted': 'Not encrypted',
+  'chatHeader.notEncryptedHint': 'Connected over ws:// — messages, the server password and invite codes cross the network in clear. Ask the operator for a wss:// address.',
   'chatHeader.noTopicSet': 'No topic set',
   'chatHeader.switchToLightTheme': 'Switch to light theme',
   'chatHeader.switchToDarkTheme': 'Switch to dark theme',

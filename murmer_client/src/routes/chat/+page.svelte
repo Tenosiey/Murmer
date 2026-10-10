@@ -67,6 +67,7 @@
     type MessageLink
   } from '$lib/message-link';
   import { isWebClient } from '$lib/platform';
+  import { APP_VERSION } from '$lib/version';
   import { parseSlashCommand } from '$lib/chat/commands';
   import { parseSearchQuery } from '$lib/chat/search';
   // Side effect only: starts reading `/tts` messages aloud.
@@ -383,7 +384,8 @@
           publicKey: kp.publicKey,
           signature: sign(`presence:${challenge}`, kp.secretKey),
           password: entry?.password,
-          invite: entry?.invite
+          invite: entry?.invite,
+          appVersion: APP_VERSION
         });
       }
       // Presence response already loads history for the default channel,
@@ -472,6 +474,23 @@
   };
   chat.on('force-disconnect', handleForceDisconnect);
 
+  /* The server answers a presence from a different version with the side that
+     is behind. Said once per visit to this server: every reconnect repeats
+     the presence, and so the answer. */
+  let versionWarned = false;
+  function handleVersionMismatch(msg: Message) {
+    if (versionWarned || (msg.behind !== 'client' && msg.behind !== 'server')) return;
+    versionWarned = true;
+    const message =
+      msg.behind === 'server'
+        ? t('version.serverBehind', { version: APP_VERSION })
+        : isWebClient
+          ? t('version.clientBehindWeb')
+          : t('version.clientBehind');
+    void dialogs.alert({ title: t('version.mismatchTitle'), message });
+  }
+  chat.on('version-mismatch', handleVersionMismatch);
+
   // Moderation and maintenance announcements, which only need saying.
   const noticeHandlers = Object.entries(NOTICES).map(([type, describe]) => {
     const handler = (msg: Message) => {
@@ -535,6 +554,7 @@
     chat.off('message-deleted', handleMessageDeleted);
     chat.off('error', handleServerError);
     chat.off('force-disconnect', handleForceDisconnect);
+    chat.off('version-mismatch', handleVersionMismatch);
     for (const [type, handler] of noticeHandlers) chat.off(type, handler);
     chat.off('breakout-move', handleBreakoutMove);
     chat.disconnect();

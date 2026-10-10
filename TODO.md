@@ -22,11 +22,6 @@ the idea comes from and what users will expect it to behave like.
 
 ## 🔧 Tech debt / hardening
 
-- [ ] Default to `wss://`. `normalizeServerUrl` in `src/lib/utils.ts` turns
-      a bare hostname into `ws://`, so messages, the server password and
-      invite codes cross the internet in clear without a word. Use `wss://`
-      for anything that is not localhost or a LAN address, and show a
-      visible "not encrypted" warning while connected over `ws://`
 - [ ] Drop the Google STUN default (`DEFAULT_STUN_SERVER` in
       `config.rs`). Every call by every user tells Google their IP and when
       they are in a call unless the operator changes it, which undoes the
@@ -68,10 +63,6 @@ the idea comes from and what users will expect it to behave like.
       would delete every attachment of every encrypted channel. The options
       that remain are the author's client naming the files when it deletes
       its own message, or an operator-chosen age limit for attachments
-- [ ] Version check on connect. The README asks for the app and server to
-      match, but nothing compares them, so a member who never pressed
-      Update gets undefined behaviour. Refuse or warn with "update your
-      app" on a mismatch
 
 ---
 
@@ -171,9 +162,6 @@ the idea comes from and what users will expect it to behave like.
       catalog (`src/lib/i18n/`); what is missing is a second catalog and a
       language picker. The locale is picked once at startup, so the picker
       would reload the page
-- [ ] Update prompt at startup. Updates only happen when someone presses
-      Settings → Updates (`AboutTab.svelte`), so members drift behind the
-      server
 
 ---
 

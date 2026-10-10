@@ -123,7 +123,8 @@ docker pull ghcr.io/tenosiey/murmer-server:latest
 
 In `docker-compose.yml`, swap `build:` for the commented `image:` line to use
 it. Pin a version tag rather than `latest` to upgrade on your own schedule;
-the server's version should match the desktop app's.
+the server's version should match the desktop app's. A member whose app differs
+is told on connecting which side needs the update.
 
 **The first Owner** has to be assigned from the server, because nobody can
 grant roles yet. Copy your public key from the client settings, then:
@@ -194,8 +195,8 @@ bun run build && bun run tauri build    # bundles land in src-tauri/target/relea
 
 The build signs the updater artifacts, so it needs `TAURI_SIGNING_PRIVATE_KEY`
 and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` in the environment. Installed apps
-update from GitHub releases when asked to (Settings → Updates); how a release is
-cut is [`agents/skills/releasing.md`](agents/skills/releasing.md).
+check GitHub releases at startup and offer to install a newer one (or on demand
+under Settings → Updates); how a release is cut is [`agents/skills/releasing.md`](agents/skills/releasing.md).
 
 ## Security
 
