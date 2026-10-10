@@ -44,6 +44,8 @@
   import UserMenu from '$lib/components/chat/UserMenu.svelte';
   import ChannelMenu from '$lib/components/chat/ChannelMenu.svelte';
   import MentionsInbox from '$lib/components/chat/MentionsInbox.svelte';
+  import SavedMessages from '$lib/components/chat/SavedMessages.svelte';
+  import { savedEntry, savedMessages, toggleSavedMessage } from '$lib/stores/savedMessages';
   import { mentionInbox } from '$lib/stores/mentionInbox';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
@@ -175,6 +177,7 @@
 
   let remindersOpen = $state(false);
   let mentionsOpen = $state(false);
+  let savedOpen = $state(false);
 
   let now = $state(Date.now());
   let expiryTicker: number | null = null;
@@ -233,6 +236,15 @@
 
   function closeMentions() {
     mentionsOpen = false;
+  }
+
+  function openSaved() {
+    clearCommandFeedback();
+    savedOpen = true;
+  }
+
+  function closeSaved() {
+    savedOpen = false;
   }
 
   /**
@@ -1229,6 +1241,13 @@
     }
   }
 
+  let savedIds = $derived(new Set($savedMessages.map((entry) => entry.id)));
+
+  function toggleSaveMessage(msg: Message) {
+    const entry = savedEntry(msg, currentChatChannelId, currentChannelEncrypted);
+    if (entry) toggleSavedMessage(entry);
+  }
+
   async function deleteChatMessage(msg: Message) {
     if (typeof msg.id !== 'number') return;
     const confirmed = await dialogs.confirm({
@@ -1550,6 +1569,7 @@
         onOpenSearch={() => openSearch()}
         onOpenReminders={openReminders}
         onOpenMentions={openMentions}
+        onOpenSaved={openSaved}
         mentionsUnseen={$mentionInbox.unseen}
         reminderAttention={$scheduledAttention}
         onOpenSettings={openSettings}
@@ -1573,6 +1593,7 @@
         onOpenMessage={openMessageIn}
       />
       <MentionsInbox open={mentionsOpen} close={closeMentions} onOpenMessage={openMessageIn} />
+      <SavedMessages open={savedOpen} close={closeSaved} onOpenMessage={openMessageIn} />
       <UserProfileModal
         open={profileUser !== null}
         user={profileUser}
@@ -1639,6 +1660,7 @@
                 {now}
                 highlighted={highlightedMessageId === block.message.id}
                 pinned={isMessagePinned(block.message)}
+                saved={typeof block.message.id === 'number' && savedIds.has(block.message.id)}
                 replyCount={typeof block.message.id === 'number'
                   ? (threadReplyCounts.get(block.message.id) ?? 0)
                   : 0}
@@ -1656,6 +1678,7 @@
                 onCopyLink={copyMessageLink}
                 onEdit={editChatMessage}
                 onTogglePin={togglePinMessage}
+                onToggleSave={toggleSaveMessage}
                 onDelete={deleteChatMessage}
                 onOpenEmojiPicker={openEmojiPicker}
                 onToggleReaction={toggleReaction}

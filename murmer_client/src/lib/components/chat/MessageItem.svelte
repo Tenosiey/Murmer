@@ -2,7 +2,7 @@
   A single chat message row. Group heads render an avatar, username, role and
   timestamp; continuation messages (same author within the grouping window)
   render compactly and reveal their timestamp in the gutter on hover.
-  A floating action toolbar (react/reply/forward/remind/edit/pin/delete) appears on
+  A floating action toolbar (react/reply/forward/remind/edit/pin/save/delete) appears on
   hover or keyboard focus. A forwarded message keeps the forwarder as its
   author and carries the original's attribution above it. A blocked author's
   message collapses to a one-line placeholder until "Show" is pressed.
@@ -44,6 +44,7 @@
     now: number;
     highlighted?: boolean;
     pinned?: boolean;
+    saved?: boolean;
     replyCount?: number;
     canEdit?: boolean;
     canDelete?: boolean;
@@ -55,6 +56,7 @@
     onCopyLink: (msg: Message) => void;
     onEdit: (msg: Message) => void;
     onTogglePin: (msg: Message) => void;
+    onToggleSave: (msg: Message) => void;
     onDelete: (msg: Message) => void;
     onOpenEmojiPicker: (id: number, event: MouseEvent) => void;
     onToggleReaction: (id: number, emoji: string, users: string[]) => void;
@@ -69,6 +71,7 @@
     now,
     highlighted = false,
     pinned = false,
+    saved = false,
     replyCount = 0,
     canEdit = false,
     canDelete = false,
@@ -80,6 +83,7 @@
     onCopyLink,
     onEdit,
     onTogglePin,
+    onToggleSave,
     onDelete,
     onOpenEmojiPicker,
     onToggleReaction,
@@ -374,6 +378,16 @@
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
         <span class="sr-only">{t(pinned ? 'messageItem.unpin' : 'messageItem.pin')}</span>
+      </button>
+      <button
+        type="button"
+        class="message-action"
+        class:active={saved}
+        onclick={() => onToggleSave(message)}
+        title={t(saved ? 'messageItem.unsave' : 'messageItem.save')}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+        <span class="sr-only">{t(saved ? 'messageItem.unsave' : 'messageItem.save')}</span>
       </button>
       {#if canDelete}
         <button

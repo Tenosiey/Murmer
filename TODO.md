@@ -98,8 +98,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Outbound webhooks. The bot REST API covers "something else drives
       Murmer"; there is no way round for Murmer to notify something else when
       a message arrives
-- [ ] Saved messages — a personal bookmark list, separate from the
-      server-wide pins
 
 ### 🎤 Voice Features
 

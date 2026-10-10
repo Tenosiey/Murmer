@@ -1134,6 +1134,7 @@ export const en = {
   'chatHeader.yourProfile': 'Your profile',
   'chatHeader.connectionStats': 'Connection stats',
   'chatHeader.mentions': 'Mentions',
+  'chatHeader.savedMessages': 'Saved messages',
   'chatHeader.remindersAndScheduledMessages': 'Reminders and scheduled messages',
   'chatHeader.serverDashboard': 'Server dashboard',
   'chatHeader.settings': 'Settings',
@@ -1183,6 +1184,11 @@ export const en = {
   'mentionSuggestions.role': 'Role',
 
   // Mentions Inbox
+  'savedMessages.title': 'Saved messages',
+  'savedMessages.close': 'Close saved messages',
+  'savedMessages.empty': 'Nothing saved yet. Use the bookmark on a message to keep it here; only you see this list.',
+  'savedMessages.encrypted': 'Encrypted — open the message to read it.',
+  'savedMessages.remove': 'Remove from saved',
   'mentionsInbox.mentions': 'Mentions',
   'mentionsInbox.encryptedWaitingForThis': 'Encrypted — waiting for this channel’s key.',
   'mentionsInbox.aFileOrImage': 'A file or image.',
@@ -1236,6 +1242,8 @@ export const en = {
   'messageItem.editedTooltip': 'Edited',
   'messageItem.unpin': 'Unpin message',
   'messageItem.pin': 'Pin message',
+  'messageItem.save': 'Save message',
+  'messageItem.unsave': 'Remove from saved',
   'messageItem.viewProfile': "View {name}'s profile",
   'messageItem.unknownUser': 'user',
 

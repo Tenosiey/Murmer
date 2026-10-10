@@ -34,6 +34,7 @@
     onOpenSearch: () => void;
     onOpenReminders: () => void;
     onOpenMentions: () => void;
+    onOpenSaved: () => void;
     /** Mentions from other channels since the inbox was last opened. */
     mentionsUnseen?: number;
     /** Reminders that have fired plus scheduled messages the server refused. */
@@ -60,6 +61,7 @@
     onOpenSearch,
     onOpenReminders,
     onOpenMentions,
+    onOpenSaved,
     mentionsUnseen = 0,
     reminderAttention = 0,
     onOpenSettings,
@@ -400,6 +402,22 @@
           ? t('chatHeader.mentionsNew', { count: mentionsUnseen })
           : t('chatHeader.mentionsLabel')}
       </span>
+    </button>
+    <button class="icon-btn" onclick={onOpenSaved} title={t('chatHeader.savedMessages')}>
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
+      </svg>
+      <span class="sr-only">{t('chatHeader.savedMessages')}</span>
     </button>
     <button
       class="icon-btn attention-btn"
