@@ -174,6 +174,24 @@ found", so the frame cannot probe for hidden ids.
 options they choose between. A poll is refused there rather than sealed, and
 a poll posted before the channel switched to encryption stops taking votes.
 
+## Purge
+
+Server: `ws/handlers/messages.rs::handle_purge_channel_messages`,
+`db/messages.rs::delete_latest_messages`. Client: `/purge` in
+`src/lib/chat/commands.ts`.
+
+**It is `MANAGE_MESSAGES`, applied in bulk.** A purge removes nothing a
+moderator could not already delete one message at a time, so it needs no
+permission of its own; the difference is reach, which is why it is capped at
+`MAX_PURGE_COUNT` and written to the audit log, where a single deletion is
+not. It acts on the channel the connection has joined, like `delete-message`,
+so a frame cannot name a channel its sender is not looking at.
+
+**Clients learn about it one `message-deleted` at a time.** That frame
+already drops a message from the view, its pin and its thread; a bulk frame
+would be a second path to keep in step with it for a saving the cap makes
+small.
+
 ## Message links
 
 Client: `src/lib/message-link.ts`, with the jump itself in

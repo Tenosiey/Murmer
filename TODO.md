@@ -87,10 +87,9 @@ the idea comes from and what users will expect it to behave like.
 
 ### 🗨️ Chat Features
 
-- [ ] Bulk delete for moderators — remove the last N messages of a channel,
-      or everything one member posted in the last hour, with the ban
-      (Discord's purge and "delete message history"). The Danger Zone only
-      knows everything at once
+- [ ] Delete a member's recent messages with the ban — everything they
+      posted in the last hour (Discord's "delete message history"). `/purge`
+      covers the newest messages of one channel, whoever wrote them
 - [ ] Delete and edit DMs. There is no frame for either, and
       `MESSAGE_RETENTION_DAYS` keeps DMs, so a DM is permanent. Delete
       removes the stored ciphertext for both sides

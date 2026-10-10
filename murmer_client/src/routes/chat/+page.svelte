@@ -732,6 +732,9 @@
         if (pollError) setCommandFeedback(pollError, 'error');
         return;
       }
+      case 'purge':
+        void confirmPurge(command.count);
+        return;
       case 'search':
         openSearch(command.query);
         if (command.query) {
@@ -758,6 +761,17 @@
         return;
       }
     }
+  }
+
+  async function confirmPurge(count: number) {
+    const confirmed = await dialogs.confirm({
+      title: t('chatPage.purgeTitle', { count }),
+      message: t('chatPage.purgeMessage', { count }),
+      confirmLabel: t('chatPage.purgeConfirm'),
+      danger: true
+    });
+    // The server checks the permission; without it the answer is an error.
+    if (confirmed) chat.sendRaw({ type: 'purge-channel-messages', count });
   }
 
   function openSearch(initialQuery = '') {

@@ -344,6 +344,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                             "delete-message" => {
                                 messages::handle_delete_message(&state, &mut sender, &v, channel_id, &user_name).await;
                             }
+                            "purge-channel-messages" => {
+                                messages::handle_purge_channel_messages(&state, &mut sender, &v, channel_id, &user_name).await;
+                            }
                             "edit-message" => {
                                 messages::handle_edit_message(&state, &mut sender, &v, channel_id, &user_name).await;
                             }

@@ -10,6 +10,7 @@ import {
   MAX_EPHEMERAL_SECONDS,
   MAX_POLL_OPTION_LENGTH,
   MAX_POLL_OPTIONS,
+  MAX_PURGE_COUNT,
   MAX_TOPIC_LENGTH,
   MIN_EPHEMERAL_SECONDS,
   USER_STATUS_VALUES
@@ -30,6 +31,7 @@ export type SlashCommand =
   | { kind: 'ephemeral'; text: string; seconds: number; clampNote: string | null }
   | { kind: 'search'; query: string }
   | { kind: 'poll'; question: string; options: string[] }
+  | { kind: 'purge'; count: number }
   | { kind: 'remind'; text: string; at: Date }
   | { kind: 'schedule'; text: string; at: Date };
 
@@ -119,6 +121,13 @@ export function parseSlashCommand(raw: string, now: Date = new Date()): SlashCom
       return { kind: 'search', query: rest };
     case 'poll':
       return parsePoll(rest);
+    case 'purge': {
+      if (!/^\d+$/.test(rest)) return error(t('command.usage.purge'));
+      const count = Number(rest);
+      return count >= 1 && count <= MAX_PURGE_COUNT
+        ? { kind: 'purge', count }
+        : error(t('command.purgeOutOfRange', { max: MAX_PURGE_COUNT }));
+    }
     case 'remind':
     case 'remindme': {
       const timed = parseTimed(rest, t('command.usage.remind'), now);

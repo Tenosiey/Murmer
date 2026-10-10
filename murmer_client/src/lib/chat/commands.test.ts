@@ -4,6 +4,7 @@ import {
   MAX_EPHEMERAL_SECONDS,
   MAX_POLL_OPTION_LENGTH,
   MAX_POLL_OPTIONS,
+  MAX_PURGE_COUNT,
   MAX_TOPIC_LENGTH,
   MIN_EPHEMERAL_SECONDS
 } from './constants';
@@ -66,6 +67,19 @@ describe('parseSlashCommand', () => {
         `/poll Lunch? | Pizza | ${'x'.repeat(MAX_POLL_OPTION_LENGTH + 1)}`,
         `/poll Lunch? | ${tooMany}`
       ]) {
+        expect(parse(line), line).toMatchObject({ kind: 'error' });
+      }
+    });
+  });
+
+  describe('/purge', () => {
+    it('takes a whole count up to the server limit', () => {
+      expect(parse('/purge 20')).toEqual({ kind: 'purge', count: 20 });
+      expect(parse(`/purge ${MAX_PURGE_COUNT}`)).toEqual({ kind: 'purge', count: MAX_PURGE_COUNT });
+    });
+
+    it('refuses what the server would refuse', () => {
+      for (const line of ['/purge', '/purge 0', `/purge ${MAX_PURGE_COUNT + 1}`, '/purge 2.5', '/purge -3', '/purge ten']) {
         expect(parse(line), line).toMatchObject({ kind: 'error' });
       }
     });

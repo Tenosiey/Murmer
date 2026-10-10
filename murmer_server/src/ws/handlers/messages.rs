@@ -16,6 +16,11 @@
 //! scheduled message, a forward) drops it, because none of them re-checks the
 //! permission at the moment the message is posted.
 //!
+//! A moderator can purge the newest messages of the channel they are in
+//! (`purge-channel-messages`, the client's `/purge`): the same permission
+//! as deleting someone else's message, applied up to [`MAX_PURGE_COUNT`]
+//! at a time, and audited because it is a moderation action in bulk.
+//!
 //! Forwarding is the odd one out: the copy is made *here*, from the row the
 //! server stored, so that the original author's name on it is not something
 //! the sender could write. The rules it has to clear live in
@@ -905,6 +910,76 @@ pub(super) async fn handle_delete_message(
             send_error(sender, errors::MESSAGE_DELETE_FAILED).await;
         }
     }
+}
+
+/// Handle `purge-channel-messages`: delete the newest `count` messages of the
+/// connection's current channel. Needs `MANAGE_MESSAGES` there, exactly as
+/// deleting one other member's message does.
+pub(super) async fn handle_purge_channel_messages(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    channel_id: i32,
+    user_name: &Option<String>,
+) {
+    let Some(requester) = user_name.as_deref() else {
+        send_error(sender, errors::NOT_AUTHENTICATED).await;
+        return;
+    };
+    let Some(count) = v
+        .get("count")
+        .and_then(|c| c.as_u64())
+        .and_then(|c| usize::try_from(c).ok())
+        .filter(|c| (1..=MAX_PURGE_COUNT).contains(c))
+    else {
+        send_error(sender, errors::INVALID_PURGE_COUNT).await;
+        return;
+    };
+    if !has_channel_permission(
+        state,
+        requester,
+        ChannelKind::Text,
+        channel_id,
+        crate::permissions::MANAGE_MESSAGES,
+    )
+    .await
+    {
+        send_error(sender, errors::MESSAGE_PERMISSION_DENIED).await;
+        return;
+    }
+
+    let ids = match db::delete_latest_messages(&state.db, channel_id, count).await {
+        Ok(ids) => ids,
+        Err(error) => {
+            error!("failed to purge channel {channel_id}: {error}");
+            send_error(sender, errors::MESSAGE_DELETE_FAILED).await;
+            return;
+        }
+    };
+    if ids.is_empty() {
+        return;
+    }
+    // One `message-deleted` per id: the client already handles that frame,
+    // and its cost is bounded by `MAX_PURGE_COUNT`.
+    for id in &ids {
+        let payload = serde_json::json!({
+            "type": "message-deleted",
+            "id": id,
+            "channelId": channel_id,
+        });
+        send_to_channel(state, channel_id, &payload).await;
+    }
+    let channel = db::get_channel_by_id(&state.db, channel_id)
+        .await
+        .map_or_else(|| format!("channel {channel_id}"), |record| record.name);
+    record_audit(
+        state,
+        crate::db::actions::PURGE_CHANNEL,
+        requester,
+        &channel,
+        &format!("{} messages", ids.len()),
+    )
+    .await;
 }
 
 /// Handle edit message request. Only the original author may edit a message.
