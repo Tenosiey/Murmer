@@ -2,7 +2,7 @@
   import { APP_VERSION } from '$lib/version';
   import MurmerLogo from '$lib/components/MurmerLogo.svelte';
   import { isTauri } from '$lib/platform';
-  import { dialogs } from '$lib/stores/dialogs';
+  import { findUpdate, offerUpdate } from '$lib/updater';
   import { t } from '$lib/i18n';
 
   interface Props {
@@ -55,13 +55,7 @@
     updateMessage = t('about.checking');
     updateTone = null;
     try {
-      // Dynamic so the updater plugin stays out of the web bundle, which has
-      // no shell to install anything into.
-      const [{ check }, { relaunch }] = await Promise.all([
-        import('@tauri-apps/plugin-updater'),
-        import('@tauri-apps/plugin-process')
-      ]);
-      const update = await check();
+      const update = await findUpdate();
       if (!update) {
         updateMessage = t('about.upToDate');
         updateTone = 'success';
@@ -69,32 +63,10 @@
       }
       updateMessage = t('about.updateAvailable', { version: update.version });
       updateTone = 'warning';
-      const install = await dialogs.confirm({
-        title: t('about.installTitle'),
-        message: t('about.installMessage', { version: update.version, current: APP_VERSION }),
-        confirmLabel: t('about.install')
+      await offerUpdate(update, (message) => {
+        updateMessage = message;
+        updateTone = null;
       });
-      if (!install) return;
-      let contentLength = 0;
-      let downloaded = 0;
-      await update.downloadAndInstall((event) => {
-        if (event.event === 'Started') {
-          contentLength = event.data.contentLength ?? 0;
-          updateMessage = t('about.downloading');
-          updateTone = null;
-        } else if (event.event === 'Progress') {
-          downloaded += event.data.chunkLength;
-          if (contentLength > 0) {
-            updateMessage = t('about.downloadingPercent', {
-              percent: Math.round((downloaded / contentLength) * 100)
-            });
-          }
-        } else if (event.event === 'Finished') {
-          updateMessage = t('about.installing');
-        }
-      });
-      // On Windows the installer exits the app itself; relaunch covers other platforms.
-      await relaunch();
     } catch (e) {
       console.error('Update failed', e);
       updateMessage = t('about.updateFailed');

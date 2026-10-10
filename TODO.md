@@ -166,9 +166,6 @@ the idea comes from and what users will expect it to behave like.
       catalog (`src/lib/i18n/`); what is missing is a second catalog and a
       language picker. The locale is picked once at startup, so the picker
       would reload the page
-- [ ] Update prompt at startup. Updates only happen when someone presses
-      Settings → Updates (`AboutTab.svelte`), so members drift behind the
-      server
 
 ---
 
