@@ -108,7 +108,7 @@
   }
 
   function selectStatus(value: UserStatus) {
-    statuses.setSelf(value);
+    statuses.setSelf(value, true);
     openMenu = null;
   }
 

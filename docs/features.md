@@ -383,6 +383,20 @@ ticking every thirty seconds). A timer to clear it would be another
 background task for a line that is purely cosmetic. Expiries are capped at
 a week ahead and must lie in the future; an empty line has none.
 
+### Appearing offline
+
+Choosing the `offline` status while connected is Discord's invisible. The
+server leaves such a member out of the online list it sends clients and bots
+(`ws::helpers::get_user_lists`), which is the only list anyone sees, so they
+look exactly like someone who disconnected. The client remembers a status
+the user picked and sends it in `presence`; otherwise every reconnect would
+announce them as online for a moment, and that moment is the giveaway.
+
+**It hides presence, not activity.** Messages, voice and reactions still
+carry the account name. Typing would too, which is why the typing indicator
+has its own off switch on the client; the server does not suppress it,
+since the member chose to be hidden and may want to be seen typing anyway.
+
 ## Pokes
 
 Server: `handle_poke` in `ws/handlers/mod.rs`. Client: `stores/pokes.ts`,

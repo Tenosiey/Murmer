@@ -681,6 +681,9 @@ Authorization: Bearer <bot_token>
 
 **Permission required:** `read_users`
 
+A member whose status is `offline` while connected is appearing offline and
+is left out of `online`, as for every client.
+
 ```json
 {
   "data": {

@@ -375,3 +375,13 @@ export const ttsEnabled = writable<boolean>(loadBool(TTS_ENABLED_KEY, false));
 ttsEnabled.subscribe((value) => {
   if (browser) localStorage.setItem(TTS_ENABLED_KEY, String(value));
 });
+
+// Tell the channel while you type. Off is for members who appear offline:
+// a typing indicator would give them away (Discord's invisible has the same
+// hole), and some people simply prefer not to be watched composing.
+const SEND_TYPING_KEY = 'murmer_send_typing';
+export const sendTypingIndicators = writable<boolean>(loadBool(SEND_TYPING_KEY, true));
+
+sendTypingIndicators.subscribe((value) => {
+  if (browser) localStorage.setItem(SEND_TYPING_KEY, String(value));
+});

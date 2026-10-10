@@ -852,12 +852,17 @@ async fn handle_status_update(
         return;
     }
 
-    state
+    let previous = state
         .statuses
         .lock()
         .await
         .insert(user.clone(), status.to_string());
     broadcast_status(state, &user, status);
+    // Appearing offline, or coming back, moves the member between the
+    // online and offline lists, which only `online-users` carries.
+    if (previous.as_deref() == Some("offline")) != (status == "offline") {
+        broadcast_users(state).await;
+    }
 }
 
 /// Handle `poke`: deliver a short nudge to one online member, which their

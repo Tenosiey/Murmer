@@ -136,8 +136,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Accessibility pass — keyboard navigation and screen-reader labels.
       Context menus only open on right-click and take no arrow keys, so
       most of the app is currently hard to reach without a mouse
-- [ ] Appear offline, and a setting to stop sending typing indicators
-      (Discord's invisible status)
 - [ ] Backup and export. For operators: a consistent snapshot of the database
       (`VACUUM INTO`) plus `uploads/` without stopping the server. For users:
       an export of their own DMs, which only their client can decrypt

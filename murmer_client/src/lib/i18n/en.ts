@@ -194,6 +194,8 @@ export const en = {
   'identity.publicKey': 'Public Key',
   'identity.publicKeyHint': 'Your Ed25519 public key identifies you on the server. Share it with the server admin to receive a role.',
   'identity.away': 'Away when idle',
+  'identity.sendTyping': 'Show when I am typing',
+  'identity.sendTypingHint': 'Lets others see that you are writing a message. Turn it off to stay hidden while your status is offline.',
   'identity.awayHint': 'Sets your status to away when Murmer gets no mouse or keyboard input for that long, and back to online when you return. A status you picked yourself is left alone.',
 
   // Settings: Stats & Privacy
@@ -1553,7 +1555,7 @@ export const en = {
   'slashCommand.tts': 'Send a message that listeners who enabled it in Settings → Audio hear read aloud.',
   'slashCommand.shrug': 'Append the classic shrug emoticon to your message.',
   'slashCommand.topic': 'Update the channel topic for everyone on the server or clear it when run without text.',
-  'slashCommand.status': 'Change your presence indicator across all connected clients.',
+  'slashCommand.status': 'Change your presence indicator across all connected clients. Offline hides you from the online list while you stay connected, and is kept until you pick another.',
   'slashCommand.ephemeral': 'Send a message that automatically deletes itself after the requested duration.',
   'slashCommand.poll': 'Post a poll with up to {max} options; everyone gets one vote and can change it. Not available in encrypted channels.',
   'slashCommand.purge': 'Moderators: delete the newest messages of this channel, up to {max} at a time.',

@@ -385,7 +385,8 @@
           signature: sign(`presence:${challenge}`, kp.secretKey),
           password: entry?.password,
           invite: entry?.invite,
-          appVersion: APP_VERSION
+          appVersion: APP_VERSION,
+          status: statuses.chosen()
         });
       }
       // Presence response already loads history for the default channel,
@@ -699,7 +700,7 @@
         );
         return;
       case 'status':
-        statuses.setSelf(command.status);
+        statuses.setSelf(command.status, true);
         setCommandFeedback(t('chatPage.statusSet', { status: STATUS_LABELS[command.status] }));
         return;
       case 'ephemeral': {

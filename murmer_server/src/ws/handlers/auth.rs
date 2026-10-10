@@ -8,11 +8,14 @@
 //! invite still existing — which is what lets an invite be revoked without
 //! evicting the people who joined through it. See `db::invites`.
 //!
+//! A presence may carry the `status` the client last chose; a member who
+//! appears offline then connects without ever being listed as online.
+//!
 //! An admitted presence that carries an `appVersion` different from this
 //! server's is answered with `version-mismatch`, naming which side is behind.
 
 use crate::channel_overrides::ChannelKind;
-use crate::ws::{constants::*, errors, helpers::*};
+use crate::ws::{constants::*, errors, helpers::*, validation::normalize_status};
 use crate::{AppState, bot, db, security};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::Utc;
@@ -320,15 +323,22 @@ pub(super) async fn handle_presence(
                 return Err(());
             }
 
+            // A client may arrive with the status it last chose, so a member
+            // appearing offline is never announced as online in between.
+            let status = v
+                .get("status")
+                .and_then(|s| s.as_str())
+                .and_then(normalize_status)
+                .unwrap_or("online");
             state.users.lock().await.insert(u.to_string());
             state.known_users.lock().await.insert(u.to_string());
             state
                 .statuses
                 .lock()
                 .await
-                .insert(u.to_string(), "online".to_string());
+                .insert(u.to_string(), status.to_string());
 
-            broadcast_status(state, u, "online");
+            broadcast_status(state, u, status);
             broadcast_users(state).await;
             *user_name = Some(u.to_string());
 
