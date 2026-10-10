@@ -22,11 +22,6 @@ the idea comes from and what users will expect it to behave like.
 
 ## 🔧 Tech debt / hardening
 
-- [ ] Default to `wss://`. `normalizeServerUrl` in `src/lib/utils.ts` turns
-      a bare hostname into `ws://`, so messages, the server password and
-      invite codes cross the internet in clear without a word. Use `wss://`
-      for anything that is not localhost or a LAN address, and show a
-      visible "not encrypted" warning while connected over `ws://`
 - [ ] Drop the Google STUN default (`DEFAULT_STUN_SERVER` in
       `config.rs`). Every call by every user tells Google their IP and when
       they are in a call unless the operator changes it, which undoes the

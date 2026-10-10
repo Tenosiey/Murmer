@@ -1110,6 +1110,8 @@ export const en = {
 
   // Chat Header
   'chatHeader.endToEndEncrypted': 'End-to-end encrypted',
+  'chatHeader.notEncrypted': 'Not encrypted',
+  'chatHeader.notEncryptedHint': 'Connected over ws:// — messages, the server password and invite codes cross the network in clear. Ask the operator for a wss:// address.',
   'chatHeader.noTopicSet': 'No topic set',
   'chatHeader.switchToLightTheme': 'Switch to light theme',
   'chatHeader.switchToDarkTheme': 'Switch to dark theme',
