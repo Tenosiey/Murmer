@@ -87,8 +87,6 @@ the idea comes from and what users will expect it to behave like.
 
 ### 🗨️ Chat Features
 
-- [ ] Message reports — a member flags a message to the moderators, with a
-      queue in the Server Dashboard (Discord's report to mods)
 - [ ] Outbound webhooks. The bot REST API covers "something else drives
       Murmer"; there is no way round for Murmer to notify something else when
       a message arrives

@@ -295,6 +295,15 @@ pub const MESSAGE_PERMISSION_DENIED: &str =
 /// A purge count is missing, not a number, or outside 1..=`MAX_PURGE_COUNT`.
 pub const INVALID_PURGE_COUNT: &str = r#"{"type":"error","message":"invalid-purge-count"}"#;
 
+/// A report reason longer than `MAX_REPORT_REASON_LENGTH`.
+pub const REPORT_REASON_TOO_LONG: &str = r#"{"type":"error","message":"report-reason-too-long"}"#;
+
+/// The report to resolve no longer exists, or is in a channel the requester
+/// does not moderate.
+pub const REPORT_NOT_FOUND: &str = r#"{"type":"error","message":"report-not-found"}"#;
+
+pub const REPORT_FAILED: &str = r#"{"type":"error","message":"report-failed"}"#;
+
 pub const MESSAGE_DELETE_FAILED: &str = r#"{"type":"error","message":"message-delete-failed"}"#;
 
 pub const MESSAGE_EDIT_FAILED: &str = r#"{"type":"error","message":"message-edit-failed"}"#;

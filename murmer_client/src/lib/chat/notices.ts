@@ -48,6 +48,8 @@ export const NOTICES: Record<string, Describe> = {
     const text = name ? t('notice.flaggedByRule', { rule: name }) : t('notice.flagged');
     return { text, type: 'error' };
   },
+  // The server filed (or already had) our report.
+  'message-reported': () => ({ text: t('notice.messageReported'), type: 'info' }),
   'user-unbanned': (msg) => {
     if (typeof msg.user !== 'string') return null;
     return { text: t('notice.userUnbanned', { name: msg.user }), type: 'info' };

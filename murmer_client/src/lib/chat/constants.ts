@@ -135,6 +135,8 @@ export const MAX_POLL_OPTIONS = 10;
 export const MAX_POLL_OPTION_LENGTH = 55;
 /** Most messages one /purge removes; mirrors `MAX_PURGE_COUNT` in ws/constants.rs. */
 export const MAX_PURGE_COUNT = 100;
+/** Longest report reason; mirrors `MAX_REPORT_REASON_LENGTH` in ws/constants.rs. */
+export const MAX_REPORT_REASON_LENGTH = 500;
 export const MIN_EPHEMERAL_SECONDS = 5;
 export const MAX_EPHEMERAL_SECONDS = 86_400;
 

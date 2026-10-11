@@ -26,6 +26,7 @@ mod moderation;
 mod pins;
 mod profile;
 mod read_markers;
+mod reports;
 mod roles;
 mod scheduled;
 mod screenshare;
@@ -534,6 +535,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                             }
                             "unban-user" => {
                                 moderation::handle_unban_user(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "report-message" => {
+                                reports::handle_report_message(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "list-reports" => {
+                                reports::handle_list_reports(&state, &mut sender, &user_name).await;
+                            }
+                            "resolve-report" => {
+                                reports::handle_resolve_report(&state, &mut sender, &v, &user_name).await;
                             }
                             "get-ban-list" => {
                                 moderation::handle_get_ban_list(&state, &mut sender, &user_name).await;
