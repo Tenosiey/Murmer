@@ -260,3 +260,23 @@ fn a_short_admin_token_stops_the_server_from_starting() {
         assert!(murmer_server::config::Config::from_env().is_ok());
     });
 }
+
+/// `.env.example` ships `change-me` secrets; a server started from an
+/// unedited copy would accept a password everyone has read.
+#[test]
+#[serial]
+fn a_placeholder_secret_stops_the_server_from_starting() {
+    with_var("SERVER_PASSWORD", Some("change-me"), || {
+        assert!(murmer_server::config::Config::from_env().is_err());
+    });
+    with_var(
+        "ADMIN_TOKEN",
+        Some(&format!("Change-Me{}", "x".repeat(32))),
+        || {
+            assert!(murmer_server::config::Config::from_env().is_err());
+        },
+    );
+    with_var("SERVER_PASSWORD", Some("hunter2"), || {
+        assert!(murmer_server::config::Config::from_env().is_ok());
+    });
+}

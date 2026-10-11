@@ -82,6 +82,21 @@ const DEFAULT_SFU_RETURN_GAP: usize = 3;
 /// Shortest `ADMIN_TOKEN` the server starts with.
 const MIN_ADMIN_TOKEN_CHARS: usize = 32;
 
+/// What `.env.example` puts in its secrets. A copied `.env` runs as-is
+/// otherwise, publishing a password and token everyone has read on GitHub.
+const PLACEHOLDER_PREFIX: &str = "change-me";
+
+/// Refuse a secret still set to the `.env.example` placeholder.
+fn reject_placeholder(var: &str, value: Option<&String>) -> Result<()> {
+    if value.is_some_and(|v| v.to_ascii_lowercase().starts_with(PLACEHOLDER_PREFIX)) {
+        anyhow::bail!(
+            "{var} is still the placeholder from .env.example; \
+             replace it, e.g. with `openssl rand -hex 32`"
+        );
+    }
+    Ok(())
+}
+
 impl Config {
     /// Load configuration from environment variables.
     ///
@@ -122,6 +137,8 @@ impl Config {
 
         let password = env::var("SERVER_PASSWORD").ok().filter(|s| !s.is_empty());
         let admin_token = env::var("ADMIN_TOKEN").ok().filter(|s| !s.is_empty());
+        reject_placeholder("SERVER_PASSWORD", password.as_ref())?;
+        reject_placeholder("ADMIN_TOKEN", admin_token.as_ref())?;
         // The token grants Owner, so a short one is refused rather than
         // guessed: the failure limit in `security` slows guessing, it does
         // not make a weak token strong.

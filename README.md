@@ -57,7 +57,7 @@ You need Docker, [Rust](https://www.rust-lang.org/tools/install) (the
 toolchain is pinned by `rust-toolchain.toml`) and [Bun](https://bun.sh) 1.x.
 
 ```bash
-cp .env.example .env        # set SERVER_PASSWORD, adjust as needed
+cp .env.example .env        # replace the change-me SERVER_PASSWORD
 docker compose up --build   # server on http://localhost:3001, WebSocket at /ws
 ```
 
@@ -87,7 +87,7 @@ it on a public server.
 |----------|----------|-------------|
 | `DATABASE_PATH` | No | Path to the SQLite database file (defaults to `murmer.db`) |
 | `UPLOAD_DIR` | No | Directory for stored uploads (defaults to `uploads/`) |
-| `SERVER_PASSWORD` | No | Shared secret required during presence/auth |
+| `SERVER_PASSWORD` | No | Shared secret required during presence/auth. The server refuses to start while it begins with `change-me`, the `.env.example` placeholder; the same goes for `ADMIN_TOKEN` |
 | `ADMIN_TOKEN` | No | Enables the administrative `/role` endpoint, which can grant any role including Owner, and the bot management API. At least 32 characters or the server refuses to start; generate one with `openssl rand -hex 32`. After 10 wrong tokens in a minute every admin request is refused until the minute passes |
 | `BIND_ADDRESS` | No | Override the socket address (defaults to `0.0.0.0:3001`) |
 | `CORS_ALLOW_ORIGINS` | No | Comma-separated allowed origins (omit in production) |
