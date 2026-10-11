@@ -55,7 +55,8 @@ import {
   MAX_REMINDERS_PER_USER,
   MAX_REMINDER_TEXT_LENGTH,
   MAX_POLL_OPTIONS,
-  MAX_POLL_OPTION_LENGTH
+  MAX_POLL_OPTION_LENGTH,
+  MAX_PURGE_COUNT
 } from '../src/lib/chat/constants';
 
 function readServerSource(relative: string): string {
@@ -329,6 +330,14 @@ describe('scheduling mirror', () => {
     const tick = serverNumberConstant(wsConstantsRs, 'SCHEDULER_TICK_SECONDS', 'u64');
     expect(tick).toBeGreaterThan(0);
     expect(MIN_SCHEDULE_LEAD_SECONDS).toBeGreaterThanOrEqual(tick);
+  });
+});
+
+describe('purge mirror', () => {
+  // The server refuses a larger purge, so a client that allowed one would
+  // only find out after the confirmation dialog.
+  it('agrees on the most messages one purge removes', () => {
+    expect(serverNumberConstant(wsConstantsRs, 'MAX_PURGE_COUNT', 'usize')).toBe(MAX_PURGE_COUNT);
   });
 });
 

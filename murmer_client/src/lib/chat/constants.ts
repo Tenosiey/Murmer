@@ -133,6 +133,8 @@ export const PIN_PREVIEW_LIMIT = 120;
 /** Poll bounds; mirror `MAX_POLL_OPTIONS` / `MAX_POLL_OPTION_LENGTH` in ws/constants.rs. */
 export const MAX_POLL_OPTIONS = 10;
 export const MAX_POLL_OPTION_LENGTH = 55;
+/** Most messages one /purge removes; mirrors `MAX_PURGE_COUNT` in ws/constants.rs. */
+export const MAX_PURGE_COUNT = 100;
 export const MIN_EPHEMERAL_SECONDS = 5;
 export const MAX_EPHEMERAL_SECONDS = 86_400;
 
@@ -223,6 +225,10 @@ export const HELP_COMMANDS: Array<{
   {
     usage: '/poll <question> | <option> | <option> …',
     description: t('slashCommand.poll', { max: MAX_POLL_OPTIONS })
+  },
+  {
+    usage: '/purge <count>',
+    description: t('slashCommand.purge', { max: MAX_PURGE_COUNT })
   },
   {
     usage: '/search [query]',

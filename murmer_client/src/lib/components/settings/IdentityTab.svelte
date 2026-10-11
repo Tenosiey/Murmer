@@ -11,6 +11,7 @@
   import { uploadImage } from '$lib/upload';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import { AUTO_AWAY_OPTIONS, autoAwayMinutes } from '$lib/stores/autoAway';
+  import { sendTypingIndicators } from '$lib/stores/settings';
   import { t } from '$lib/i18n';
 
   interface Props {
@@ -155,6 +156,15 @@
       <div class="setting-description">
         {t('identity.awayHint')}
       </div>
+    </div>
+    <div class="setting-group">
+      <label class="toggle-row">
+        <input type="checkbox" bind:checked={$sendTypingIndicators} />
+        <span class="toggle-text">
+          <span class="toggle-label">{t('identity.sendTyping')}</span>
+          <span class="toggle-description">{t('identity.sendTypingHint')}</span>
+        </span>
+      </label>
     </div>
     <IdentityBackup />
   </div>

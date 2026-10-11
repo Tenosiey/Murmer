@@ -378,6 +378,36 @@ pub async fn update_message_content(
     .await
 }
 
+/// Delete the newest `count` messages of a channel, with their pins and
+/// reactions, in one transaction. Returns the ids removed, so each client can
+/// drop exactly those.
+pub async fn delete_latest_messages(
+    db: &Db,
+    channel_id: i32,
+    count: usize,
+) -> Result<Vec<i64>, DbError> {
+    db.call_db(move |conn| {
+        let tx = conn.transaction()?;
+        let ids = tx
+            .prepare_cached(
+                "SELECT id FROM messages WHERE channel_id = ?1 ORDER BY id DESC LIMIT ?2",
+            )?
+            .query_map(params![channel_id, count as i64], |row| row.get(0))?
+            .collect::<Result<Vec<i64>, _>>()?;
+        for id in &ids {
+            tx.prepare_cached("DELETE FROM reactions WHERE message_id = ?1")?
+                .execute(params![id])?;
+            tx.prepare_cached("DELETE FROM pins WHERE message_id = ?1")?
+                .execute(params![id])?;
+            tx.prepare_cached("DELETE FROM messages WHERE id = ?1")?
+                .execute(params![id])?;
+        }
+        tx.commit()?;
+        Ok(ids)
+    })
+    .await
+}
+
 /// Delete a message by ID, along with any pin referencing it.
 /// Returns `true` if a message row was removed.
 pub async fn delete_message(db: &Db, message_id: i64) -> Result<bool, DbError> {

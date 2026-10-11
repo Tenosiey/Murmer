@@ -87,10 +87,9 @@ the idea comes from and what users will expect it to behave like.
 
 ### 🗨️ Chat Features
 
-- [ ] Bulk delete for moderators — remove the last N messages of a channel,
-      or everything one member posted in the last hour, with the ban
-      (Discord's purge and "delete message history"). The Danger Zone only
-      knows everything at once
+- [ ] Delete a member's recent messages with the ban — everything they
+      posted in the last hour (Discord's "delete message history"). `/purge`
+      covers the newest messages of one channel, whoever wrote them
 - [ ] Delete and edit DMs. There is no frame for either, and
       `MESSAGE_RETENTION_DAYS` keeps DMs, so a DM is permanent. Delete
       removes the stored ciphertext for both sides
@@ -99,8 +98,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Outbound webhooks. The bot REST API covers "something else drives
       Murmer"; there is no way round for Murmer to notify something else when
       a message arrives
-- [ ] Saved messages — a personal bookmark list, separate from the
-      server-wide pins
 
 ### 🎤 Voice Features
 
@@ -137,8 +134,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Accessibility pass — keyboard navigation and screen-reader labels.
       Context menus only open on right-click and take no arrow keys, so
       most of the app is currently hard to reach without a mouse
-- [ ] Appear offline, and a setting to stop sending typing indicators
-      (Discord's invisible status)
 - [ ] Backup and export. For operators: a consistent snapshot of the database
       (`VACUUM INTO`) plus `uploads/` without stopping the server. For users:
       an export of their own DMs, which only their client can decrypt

@@ -65,6 +65,9 @@ pub mod actions {
     pub const OVERRIDE_REMOVE: &str = "override-remove";
     /// Every message on the server was deleted (`purge-all-messages`).
     pub const PURGE_MESSAGES: &str = "purge-messages";
+    /// The latest messages of one channel were deleted
+    /// (`purge-channel-messages`).
+    pub const PURGE_CHANNEL: &str = "purge-channel";
     /// The server's structure was reset (`reset-server`).
     pub const SERVER_RESET: &str = "server-reset";
 }

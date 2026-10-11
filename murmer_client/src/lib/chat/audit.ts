@@ -31,6 +31,7 @@ export const AUDIT_ACTIONS = {
   'override-set': t('auditAction.override-set'),
   'override-remove': t('auditAction.override-remove'),
   'purge-messages': t('auditAction.purge-messages'),
+  'purge-channel': t('auditAction.purge-channel'),
   'server-reset': t('auditAction.server-reset')
 } as const;
 
