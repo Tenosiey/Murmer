@@ -408,6 +408,41 @@ pub async fn delete_latest_messages(
     .await
 }
 
+/// Delete every channel message `author` sent in the last `seconds`, with
+/// their pins and reactions, in one transaction. Returns `(id, channel_id)`
+/// for each, so every channel can be told which of its messages went.
+pub async fn delete_recent_messages_by(
+    db: &Db,
+    author: &str,
+    seconds: i64,
+) -> Result<Vec<(i64, i32)>, DbError> {
+    let author = author.to_owned();
+    db.call_db(move |conn| {
+        let tx = conn.transaction()?;
+        // `sent_at` is a Julian day number, so the window is in days.
+        let rows = tx
+            .prepare_cached(
+                "SELECT id, channel_id FROM messages \
+                 WHERE author = ?1 AND sent_at >= julianday('now') - ?2 / 86400.0",
+            )?
+            .query_map(params![author, seconds], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })?
+            .collect::<Result<Vec<(i64, i32)>, _>>()?;
+        for (id, _) in &rows {
+            tx.prepare_cached("DELETE FROM reactions WHERE message_id = ?1")?
+                .execute(params![id])?;
+            tx.prepare_cached("DELETE FROM pins WHERE message_id = ?1")?
+                .execute(params![id])?;
+            tx.prepare_cached("DELETE FROM messages WHERE id = ?1")?
+                .execute(params![id])?;
+        }
+        tx.commit()?;
+        Ok(rows)
+    })
+    .await
+}
+
 /// Delete a message by ID, along with any pin referencing it.
 /// Returns `true` if a message row was removed.
 pub async fn delete_message(db: &Db, message_id: i64) -> Result<bool, DbError> {

@@ -6,6 +6,10 @@
 //! target in the role hierarchy. Unlike channel management there is no "no
 //! admin token" fallback: moderation is never open to unprivileged users.
 //!
+//! A ban may also delete what the member posted in the last hour
+//! (`deleteMessages`), across every channel, the way Discord's "delete
+//! message history" does; `/purge` is the per-channel tool for the rest.
+//!
 //! Every action that goes through also writes an audit entry
 //! ([`crate::db::audit`]), after it succeeded and never on a refusal, so the
 //! Server Dashboard can answer "who banned them?" without the operator's
@@ -190,9 +194,39 @@ pub(super) async fn handle_ban_user(
         error!("Failed to clear scheduled messages for banned {target}: {e}");
     }
 
+    let detail = if v.get("deleteMessages").and_then(Value::as_bool) == Some(true) {
+        delete_recent_messages(state, &target).await
+    } else {
+        String::new()
+    };
+
     broadcast_force_disconnect(state, &target, "banned", &requester);
-    record_audit(state, actions::BAN, &requester, &target, "").await;
+    record_audit(state, actions::BAN, &requester, &target, &detail).await;
     info!(requester, target, "User banned");
+}
+
+/// Delete what `target` posted in the last [`BAN_DELETE_WINDOW_SECS`] and
+/// tell each channel which messages went. Returns the audit detail. A
+/// failure leaves the ban in place and is only logged: the ban is what
+/// matters, and the messages can still be removed by hand.
+async fn delete_recent_messages(state: &Arc<AppState>, target: &str) -> String {
+    let rows = match db::delete_recent_messages_by(&state.db, target, BAN_DELETE_WINDOW_SECS).await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            error!("Failed to delete recent messages of banned {target}: {e}");
+            return String::new();
+        }
+    };
+    for (id, channel_id) in &rows {
+        let payload = serde_json::json!({
+            "type": "message-deleted",
+            "id": id,
+            "channelId": channel_id,
+        });
+        send_to_channel(state, *channel_id, &payload).await;
+    }
+    format!("deleted {} messages", rows.len())
 }
 
 /// Handle unban-user request: lift bans recorded for the target name.

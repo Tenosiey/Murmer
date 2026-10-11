@@ -1501,6 +1501,8 @@ export const en = {
   'userMenu.banTitle': 'Ban {name}?',
   'userMenu.banMessage': 'They will be disconnected and unable to rejoin until unbanned.',
   'userMenu.banConfirm': 'Ban user',
+  'userMenu.banKeepMessages': 'Keep their messages',
+  'userMenu.banDeleteMessages': 'Delete their messages from the last hour',
   'userMenu.nicknameTitle': 'Nickname for {name}',
   'userMenu.nicknameMessage': 'Shown instead of their display name on this server. Leave empty to clear it.',
   'userMenu.nickname': 'Nickname',

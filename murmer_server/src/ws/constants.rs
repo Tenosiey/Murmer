@@ -211,6 +211,11 @@ pub const MAX_POLL_OPTION_LENGTH: usize = 55;
 /// channel, so the cap bounds what one command costs them.
 pub const MAX_PURGE_COUNT: usize = 100;
 
+/// How far back a ban's `deleteMessages` reaches (Discord's "delete message
+/// history" default). Long enough to sweep a spam run, short enough that a
+/// ban never quietly erases someone's months of ordinary conversation.
+pub const BAN_DELETE_WINDOW_SECS: i64 = 3600;
+
 /// Maximum number of messages returned for a single thread.
 pub const MAX_THREAD_MESSAGES: i64 = 200;
 

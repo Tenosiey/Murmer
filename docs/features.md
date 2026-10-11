@@ -192,6 +192,14 @@ already drops a message from the view, its pin and its thread; a bulk frame
 would be a second path to keep in step with it for a saving the cap makes
 small.
 
+**A ban can purge too, across channels.** `ban-user` with `deleteMessages`
+removes what the member posted in the last `BAN_DELETE_WINDOW_SECS`, in
+every channel, keyed on the generated `author` column — the account name,
+never a display name. It rides on `BAN_MEMBERS` rather than needing
+`MANAGE_MESSAGES` as well: a spam run is the usual reason to ban, and a ban
+that leaves the spam behind is half a ban. The window is fixed at an hour
+so a ban cannot quietly erase someone's whole history.
+
 ## Message links
 
 Client: `src/lib/message-link.ts`, with the jump itself in

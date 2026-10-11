@@ -78,14 +78,19 @@
   }
 
   async function banUser(user: string) {
-    const confirmed = await dialogs.confirm({
+    // The select doubles as the confirmation: cancelling it bans nobody.
+    const choice = await dialogs.select({
       title: t('userMenu.banTitle', { name: user }),
       message: t('userMenu.banMessage'),
-      confirmLabel: t('userMenu.banConfirm'),
-      danger: true
+      options: [
+        { value: 'keep', label: t('userMenu.banKeepMessages') },
+        { value: 'delete', label: t('userMenu.banDeleteMessages') }
+      ],
+      initial: 'keep',
+      confirmLabel: t('userMenu.banConfirm')
     });
-    if (!confirmed) return;
-    chat.sendRaw({ type: 'ban-user', user });
+    if (choice === null) return;
+    chat.sendRaw({ type: 'ban-user', user, deleteMessages: choice === 'delete' });
   }
 
   function unbanUser(user: string) {
