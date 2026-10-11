@@ -267,6 +267,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                             "dm" => {
                                 dms::handle_dm(&state, &mut sender, &v, &user_name).await;
                             }
+                            "edit-dm" => {
+                                dms::handle_edit_dm(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "delete-dm" => {
+                                dms::handle_delete_dm(&state, &mut sender, &v, &user_name).await;
+                            }
                             "load-dm-history" => {
                                 dms::handle_load_dm_history(&state, &mut sender, &v, &user_name).await;
                             }

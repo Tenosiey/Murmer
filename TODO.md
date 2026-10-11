@@ -71,8 +71,8 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Privacy at a glance in `README.md`, linked from every "encrypted" in
       the feature list: what the operator sees, that mesh voice shows each
       participant's IP to the others, that DM and encrypted-channel files
-      are not encrypted, that DMs cannot be deleted, and that in the web
-      client the operator serves the code holding your key
+      are not encrypted, and that in the web client the operator serves the
+      code holding your key
 - [ ] A production deployment guide: a Caddy or nginx TLS front with
       `TRUSTED_PROXIES`, a password or invites, backing up the database and
       `uploads/`, and how long to keep logs (they pair names with IPs)
@@ -87,9 +87,6 @@ the idea comes from and what users will expect it to behave like.
 
 ### 🗨️ Chat Features
 
-- [ ] Delete and edit DMs. There is no frame for either, and
-      `MESSAGE_RETENTION_DAYS` keeps DMs, so a DM is permanent. Delete
-      removes the stored ciphertext for both sides
 - [ ] Message reports — a member flags a message to the moderators, with a
       queue in the Server Dashboard (Discord's report to mods)
 - [ ] Outbound webhooks. The bot REST API covers "something else drives

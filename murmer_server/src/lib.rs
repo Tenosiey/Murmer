@@ -83,7 +83,7 @@ impl Route {
             None => Route::All,
         };
         match v.get("type").and_then(|t| t.as_str()) {
-            Some("dm") => Route::Dm {
+            Some("dm" | "dm-edited" | "dm-deleted") => Route::Dm {
                 from: field("from"),
                 to: field("to"),
             },

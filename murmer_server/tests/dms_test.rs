@@ -140,3 +140,13 @@ fn hides_a_dm_missing_a_party_from_everyone() {
     assert!(!dm_involves(&frame, Some("bob")));
     assert!(!dm_involves(&frame, Some("")));
 }
+
+#[test]
+fn edits_and_deletions_reach_only_the_two_participants() {
+    for kind in ["dm-edited", "dm-deleted"] {
+        let frame = json!({"type": kind, "id": 1, "from": "alice", "to": "bob"});
+        assert!(dm_involves(&frame, Some("alice")));
+        assert!(dm_involves(&frame, Some("bob")));
+        assert!(!dm_involves(&frame, Some("mallory")));
+    }
+}

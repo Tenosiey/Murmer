@@ -1173,6 +1173,9 @@ export const en = {
   'conversationPanel.closePanel': 'Close panel',
   'conversationPanel.spoilerImageSelectTo': 'Spoiler image, select to reveal',
   'conversationPanel.empty': 'No messages yet.',
+  'conversationPanel.edited': '(edited)',
+  'conversationPanel.editMessage': 'Edit message',
+  'conversationPanel.deleteMessage': 'Delete message',
   'conversationPanel.reply': 'Reply…',
   'conversationPanel.directMessages': 'Direct messages',
   'conversationPanel.thread': 'Thread',
@@ -1490,6 +1493,12 @@ export const en = {
 
   // Direct messages
   'dmPanel.notSent': 'Message not sent',
+  'dmPanel.editTitle': 'Edit message',
+  'dmPanel.editLabel': 'Message',
+  'dmPanel.editConfirm': 'Save',
+  'dmPanel.deleteTitle': 'Delete message?',
+  'dmPanel.deleteMessage': 'It is removed for both of you and cannot be restored.',
+  'dmPanel.deleteConfirm': 'Delete',
   'dmPanel.noKeyTitle': 'No key yet',
   'dmPanel.noKeyMessage': 'No encryption key is known for {name} on this server.',
   'dmPanel.verifyTitle': 'Verify keys with {name}',
