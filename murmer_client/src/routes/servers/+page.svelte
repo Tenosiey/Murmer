@@ -57,6 +57,8 @@
   let newServer = $state('');
   let newName = $state('');
   let newPassword = $state('');
+  /** URL of the saved entry the form is editing, or null when adding. */
+  let editing: string | null = $state(null);
   let settingsOpen = $state(false);
   let error: string | null = $state(null);
   let copiedServer: string | null = $state(null);
@@ -155,11 +157,39 @@
       }
     }
 
+    if (editing) {
+      const oldUrl = editing;
+      if (entry.url !== oldUrl && servers.get(entry.url)) {
+        error = t('servers.duplicateAddress', { url: entry.url });
+        return;
+      }
+      // An invite code belongs to the server that issued it, so it survives
+      // an edit only while the address stays the same.
+      const code = servers.get(oldUrl)?.invite;
+      if (!entry.invite && code && entry.url === oldUrl) entry.invite = code;
+      servers.replace(oldUrl, entry);
+      if (get(selectedServer) === oldUrl) selectedServer.set(entry.url);
+    } else {
+      servers.add(entry);
+    }
     error = mixedContentWarning(entry.url);
-    servers.add(entry);
+    resetForm();
+  }
+
+  function resetForm() {
+    editing = null;
     newServer = '';
     newName = '';
     newPassword = '';
+  }
+
+  function startEdit(server: ServerEntry) {
+    error = null;
+    editing = server.url;
+    newServer = server.url;
+    newName = server.name;
+    newPassword = server.password ?? '';
+    document.getElementById('create-title')?.scrollIntoView({ behavior: 'smooth' });
   }
 
   /** HTTP base for a stored server URL, for identity icon images. */
@@ -177,6 +207,7 @@
   }
 
   function removeServer(url: string) {
+    if (editing === url) resetForm();
     servers.remove(url);
   }
 
@@ -303,8 +334,13 @@
 
   <section class="create-card surface-card" aria-labelledby="create-title">
     <div class="card-copy">
-      <h2 id="create-title">{t('servers.addTitle')}</h2>
-      <p>{t('servers.addIntro')}</p>
+      {#if editing}
+        <h2 id="create-title">{t('servers.editTitle', { name: $servers.find((s) => s.url === editing)?.name ?? editing })}</h2>
+        <p>{t('servers.editIntro')}</p>
+      {:else}
+        <h2 id="create-title">{t('servers.addTitle')}</h2>
+        <p>{t('servers.addIntro')}</p>
+      {/if}
     </div>
     <form class="add" onsubmit={(event) => { event.preventDefault(); add(); }}>
       <label class="field address-field">
@@ -319,7 +355,14 @@
         <span>{t('servers.password')}</span>
         <input type="password" bind:value={newPassword} placeholder={t('servers.passwordPlaceholder')} />
       </label>
-      <button type="submit" class="btn btn-primary primary-action">{t('servers.save')}</button>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">
+          {editing ? t('servers.saveChanges') : t('servers.save')}
+        </button>
+        {#if editing}
+          <button type="button" class="btn btn-ghost" onclick={resetForm}>{t('servers.cancelEdit')}</button>
+        {/if}
+      </div>
     </form>
   </section>
 
@@ -375,6 +418,15 @@
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                 {/if}
                 <span class="sr-only">{copiedServer === server.url ? t('servers.copied') : t('servers.copyInvite')}</span>
+              </button>
+              <button
+                type="button"
+                class="icon-btn"
+                onclick={() => startEdit(server)}
+                title={t('servers.edit', { name: server.name })}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                <span class="sr-only">{t('servers.edit', { name: server.name })}</span>
               </button>
               <button type="button" class="icon-btn danger" onclick={() => removeServer(server.url)}>
                 <svg
@@ -503,7 +555,9 @@
     grid-column: 1 / -1;
   }
 
-  .primary-action {
+  .form-actions {
+    display: flex;
+    gap: var(--space-2);
     justify-self: start;
   }
 
