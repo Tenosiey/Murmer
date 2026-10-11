@@ -1,0 +1,10 @@
+# Development settings; `docker compose` merges this file over
+# docker-compose.yml automatically. Delete it on a public server.
+services:
+  server:
+    environment:
+      # Lets `bun run tauri dev` (port 1420) reach the server.
+      CORS_ALLOW_ORIGINS: http://localhost:1420
+    # Reachable from other machines on the network, without TLS.
+    ports: !override
+      - "3001:3001"

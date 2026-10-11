@@ -11,6 +11,7 @@
   import { httpBaseFromWs } from '$lib/server-url';
   import { describeDuration } from '$lib/chat/helpers';
   import { formatBytes } from '$lib/stores/storageUsage';
+  import { t } from '$lib/i18n';
 
   interface Props {
     snapshot: UserStatsSnapshot;
@@ -29,7 +30,7 @@
   }
 
   function formatDuration(seconds: number): string {
-    if (seconds <= 0) return '0 minutes';
+    if (seconds <= 0) return t('duration.minutes', { count: 0 });
     return describeDuration(seconds);
   }
 
@@ -48,27 +49,27 @@
   }
 
   let statRows = $derived([
-    { label: 'Messages sent', value: formatNumber(snapshot.stats.messagesSent) },
-    { label: 'Characters typed', value: formatNumber(snapshot.stats.messageChars) },
-    { label: 'Message data written', value: formatBytes(snapshot.stats.messageBytes) },
-    { label: 'Longest message', value: `${formatNumber(snapshot.stats.longestMessageChars)} chars` },
-    { label: 'Pictures shared', value: formatNumber(snapshot.stats.imagesSent) },
-    { label: 'GIFs sent', value: formatNumber(snapshot.stats.gifsSent) },
-    { label: 'Files sent', value: formatNumber(snapshot.stats.filesSent) },
-    { label: 'Data uploaded', value: formatBytes(snapshot.stats.uploadBytes) },
-    { label: 'Links shared', value: formatNumber(snapshot.stats.linksShared) },
-    { label: 'Replies sent', value: formatNumber(snapshot.stats.repliesSent) },
-    { label: 'People mentioned', value: formatNumber(snapshot.stats.mentionsSent) },
-    { label: 'Direct messages sent', value: formatNumber(snapshot.stats.dmsSent) },
-    { label: 'Reactions given', value: formatNumber(snapshot.stats.reactionsGiven) },
-    { label: 'Reactions received', value: formatNumber(snapshot.stats.reactionsReceived) },
-    { label: 'Messages edited', value: formatNumber(snapshot.stats.messagesEdited) },
-    { label: 'Messages deleted', value: formatNumber(snapshot.stats.messagesDeleted) },
-    { label: 'Messages pinned', value: formatNumber(snapshot.stats.pinsAdded) },
-    { label: 'Time in voice', value: formatDuration(snapshot.stats.voiceSeconds) },
-    { label: 'Voice sessions', value: formatNumber(snapshot.stats.voiceSessions) },
-    { label: 'Time screen sharing', value: formatDuration(snapshot.stats.screenshareSeconds) },
-    { label: 'Sounds played', value: formatNumber(snapshot.stats.soundsPlayed) }
+    { label: t('statsPanel.messagesSent'), value: formatNumber(snapshot.stats.messagesSent) },
+    { label: t('statsPanel.charactersTyped'), value: formatNumber(snapshot.stats.messageChars) },
+    { label: t('statsPanel.messageDataWritten'), value: formatBytes(snapshot.stats.messageBytes) },
+    { label: t('statsPanel.longestMessage'), value: t('statsPanel.chars', { count: snapshot.stats.longestMessageChars, value: formatNumber(snapshot.stats.longestMessageChars) }) },
+    { label: t('statsPanel.picturesShared'), value: formatNumber(snapshot.stats.imagesSent) },
+    { label: t('statsPanel.gifsSent'), value: formatNumber(snapshot.stats.gifsSent) },
+    { label: t('statsPanel.filesSent'), value: formatNumber(snapshot.stats.filesSent) },
+    { label: t('statsPanel.dataUploaded'), value: formatBytes(snapshot.stats.uploadBytes) },
+    { label: t('statsPanel.linksShared'), value: formatNumber(snapshot.stats.linksShared) },
+    { label: t('statsPanel.repliesSent'), value: formatNumber(snapshot.stats.repliesSent) },
+    { label: t('statsPanel.peopleMentioned'), value: formatNumber(snapshot.stats.mentionsSent) },
+    { label: t('statsPanel.directMessagesSent'), value: formatNumber(snapshot.stats.dmsSent) },
+    { label: t('statsPanel.reactionsGiven'), value: formatNumber(snapshot.stats.reactionsGiven) },
+    { label: t('statsPanel.reactionsReceived'), value: formatNumber(snapshot.stats.reactionsReceived) },
+    { label: t('statsPanel.messagesEdited'), value: formatNumber(snapshot.stats.messagesEdited) },
+    { label: t('statsPanel.messagesDeleted'), value: formatNumber(snapshot.stats.messagesDeleted) },
+    { label: t('statsPanel.messagesPinned'), value: formatNumber(snapshot.stats.pinsAdded) },
+    { label: t('statsPanel.timeInVoice'), value: formatDuration(snapshot.stats.voiceSeconds) },
+    { label: t('statsPanel.voiceSessions'), value: formatNumber(snapshot.stats.voiceSessions) },
+    { label: t('statsPanel.timeScreenSharing'), value: formatDuration(snapshot.stats.screenshareSeconds) },
+    { label: t('statsPanel.soundsPlayed'), value: formatNumber(snapshot.stats.soundsPlayed) }
   ]);
 
   // Small stroke-SVG icon set (1.8 stroke width, matching the app style).
@@ -98,19 +99,19 @@
 <div class="stats-panel">
   <div class="stats-meta">
     {#if formatDate(snapshot.trackedSince)}
-      <span>Tracking since {formatDate(snapshot.trackedSince)}</span>
+      <span>{t('statsPanel.trackingSince', { date: formatDate(snapshot.trackedSince) ?? '' })}</span>
     {:else}
-      <span>Nothing recorded yet — stats appear as you use the server.</span>
+      <span>{t('statsPanel.nothingYet')}</span>
     {/if}
-    <span class="badge">{unlockedCount}/{achievements.length} achievements</span>
+    <span class="badge">{t('statsPanel.achievementCount', { unlocked: unlockedCount, total: achievements.length })}</span>
   </div>
 
   {#if snapshot.favoriteReactions.length > 0}
     <div class="favorite-reactions">
-      <span class="favorites-label">Favorite reactions</span>
+      <span class="favorites-label">{t('statsPanel.favoriteReactions')}</span>
       <div class="favorites-row">
         {#each snapshot.favoriteReactions as favorite (favorite.emoji)}
-          <span class="favorite" title={`Used ${formatNumber(favorite.count)} times`}>
+          <span class="favorite" title={t('statsPanel.used', { count: favorite.count, value: formatNumber(favorite.count) })}>
             {#if customEmojiUrl(favorite.emoji)}
               <img src={customEmojiUrl(favorite.emoji)} alt={favorite.emoji} width="18" height="18" />
             {:else}
@@ -125,10 +126,10 @@
 
   {#if snapshot.favoriteSounds.length > 0}
     <div class="favorite-reactions">
-      <span class="favorites-label">Favorite sounds</span>
+      <span class="favorites-label">{t('statsPanel.favoriteSounds')}</span>
       <div class="favorites-row">
         {#each snapshot.favoriteSounds as favorite (favorite.name)}
-          <span class="favorite" title={`Played ${formatNumber(favorite.count)} times`}>
+          <span class="favorite" title={t('statsPanel.played', { count: favorite.count, value: formatNumber(favorite.count) })}>
             <span class="favorite-sound">{favorite.name}</span>
             <span class="favorite-count">{formatNumber(favorite.count)}</span>
           </span>
@@ -147,7 +148,7 @@
   </div>
 
   <div class="achievements">
-    <span class="favorites-label">Achievements</span>
+    <span class="favorites-label">{t('statsPanel.achievements')}</span>
     <ul class="achievement-list">
       {#each achievements as entry (entry.def.id)}
         <li class="achievement" class:unlocked={entry.tierIndex >= 0}>
@@ -158,7 +159,7 @@
           </span>
           <span class="achievement-text">
             <span class="achievement-name">
-              {entry.tierIndex >= 0 ? entry.def.tiers[entry.tierIndex].name : 'Locked'}
+              {entry.tierIndex >= 0 ? entry.def.tiers[entry.tierIndex].name : t('statsPanel.locked')}
               {#if entry.def.tiers.length > 1}
                 <span class="achievement-tier">
                   {Math.max(entry.tierIndex + 1, 0)}/{entry.def.tiers.length}
@@ -168,7 +169,7 @@
             <span class="achievement-desc">
               {entry.def.description}
               {#if entry.nextTier}
-                — next at {formatNumber(entry.nextTier.threshold)}
+                {t('statsPanel.nextAt', { value: formatNumber(entry.nextTier.threshold) })}
               {/if}
             </span>
           </span>

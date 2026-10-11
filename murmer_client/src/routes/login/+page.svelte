@@ -10,6 +10,7 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import MurmerLogo from '$lib/components/MurmerLogo.svelte';
+  import { t } from '$lib/i18n';
   let username = $state('');
 
   onMount(() => {
@@ -32,39 +33,36 @@
     </div>
 
     <header class="login-intro">
-      <div class="eyebrow">Welcome back</div>
-      <h1>Sign in to Murmer</h1>
-      <p class="body-muted">
-        Secure voice and text for your communities. Choose a display name to get started —
-        your identity key stays on this device.
-      </p>
+      <div class="eyebrow">{t('login.eyebrow')}</div>
+      <h1>{t('login.title')}</h1>
+      <p class="body-muted">{t('login.intro')}</p>
     </header>
 
     <form class="login-card surface-card" onsubmit={(event) => { event.preventDefault(); login(); }} aria-labelledby="login-heading">
-      <h2 id="login-heading" class="sr-only">Your details</h2>
+      <h2 id="login-heading" class="sr-only">{t('login.detailsHeading')}</h2>
       <label class="field">
-        <span>Display name</span>
+        <span>{t('login.displayName')}</span>
         <input
           bind:value={username}
-          placeholder="e.g. Phoenix"
+          placeholder={t('login.displayNamePlaceholder')}
           autocomplete="username"
           autocapitalize="none"
           spellcheck={false}
           required
         />
       </label>
-      <button type="submit" class="btn btn-primary">Continue</button>
-      <p class="hint">Only used inside your active server. You can change it later in Settings.</p>
+      <button type="submit" class="btn btn-primary">{t('login.continue')}</button>
+      <p class="hint">{t('login.hint')}</p>
     </form>
 
-    <ul class="feature-list" aria-label="Highlights">
+    <ul class="feature-list" aria-label={t('login.highlights')}>
       <li>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        <span>Keyed sessions live locally — you keep control of your identity.</span>
+        <span>{t('login.featureKeys')}</span>
       </li>
       <li>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
-        <span>Jump into voice channels instantly with adaptive activation modes.</span>
+        <span>{t('login.featureVoice')}</span>
       </li>
     </ul>
   </div>

@@ -1,6 +1,7 @@
 import { browser } from '$app/environment';
 import { get, writable } from 'svelte/store';
 import { dialogs } from './dialogs';
+import { t } from '../i18n';
 
 /**
  * Blocked members: personal and local, like the per-user soundboard mute.
@@ -72,10 +73,9 @@ export const blockedUsers = createBlocksStore();
 /** Ask, then block `user`; `name` is what the dialog calls them. */
 export async function confirmBlock(user: string, name: string): Promise<void> {
   const confirmed = await dialogs.confirm({
-    title: `Block ${name}?`,
-    message:
-      'Their messages are hidden, their voice and sounds are silenced and their DMs are dropped. Only for you, and they are not told.',
-    confirmLabel: 'Block',
+    title: t('block.title', { name }),
+    message: t('block.message'),
+    confirmLabel: t('block.confirm'),
     danger: true
   });
   if (confirmed) blockedUsers.setBlocked(user, true);

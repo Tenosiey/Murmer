@@ -14,6 +14,7 @@
   import { pendingInvite } from '$lib/stores/pendingInvite';
   import { session } from '$lib/stores/session';
   import MurmerLogo from '$lib/components/MurmerLogo.svelte';
+  import { t } from '$lib/i18n';
 
   let invalid = $state(false);
 
@@ -36,15 +37,12 @@
 
     {#if invalid}
       <div class="surface-card invite-card" role="alert">
-        <h1>This invite link is not valid</h1>
-        <p class="body-muted">
-          The link is incomplete or was not created by Murmer. Ask whoever sent it for a fresh
-          one, or add the server by its address instead.
-        </p>
-        <a class="btn btn-primary" href="/servers">Go to your servers</a>
+        <h1>{t('invite.invalidTitle')}</h1>
+        <p class="body-muted">{t('invite.invalidBody')}</p>
+        <a class="btn btn-primary" href="/servers">{t('invite.goToServers')}</a>
       </div>
     {:else}
-      <p class="body-muted" aria-live="polite">Opening invite…</p>
+      <p class="body-muted" aria-live="polite">{t('invite.opening')}</p>
     {/if}
   </div>
 </main>

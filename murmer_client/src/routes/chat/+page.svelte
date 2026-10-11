@@ -44,6 +44,8 @@
   import UserMenu from '$lib/components/chat/UserMenu.svelte';
   import ChannelMenu from '$lib/components/chat/ChannelMenu.svelte';
   import MentionsInbox from '$lib/components/chat/MentionsInbox.svelte';
+  import SavedMessages from '$lib/components/chat/SavedMessages.svelte';
+  import { savedEntry, savedMessages, toggleSavedMessage } from '$lib/stores/savedMessages';
   import { mentionInbox } from '$lib/stores/mentionInbox';
   import { ping } from '$lib/stores/ping';
   import { channels } from '$lib/stores/channels';
@@ -67,6 +69,7 @@
     type MessageLink
   } from '$lib/message-link';
   import { isWebClient } from '$lib/platform';
+  import { APP_VERSION } from '$lib/version';
   import { parseSlashCommand } from '$lib/chat/commands';
   import { parseSearchQuery } from '$lib/chat/search';
   // Side effect only: starts reading `/tts` messages aloud.
@@ -135,7 +138,8 @@
     MAX_TOPIC_LENGTH,
     STATUS_LABELS,
     DEFAULT_CHANNEL_NAME,
-    MAX_REMINDER_TEXT_LENGTH
+    MAX_REMINDER_TEXT_LENGTH,
+    MAX_REPORT_REASON_LENGTH
   } from '$lib/chat/constants';
   import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
   import SchedulePanel from '$lib/components/SchedulePanel.svelte';
@@ -144,6 +148,7 @@
   import { wikilinks } from '$lib/wiki/links';
   import { fileDrop } from '$lib/chat/fileDrop';
   import { groupMentionsIn } from '$lib/chat/mentions';
+  import { t } from '$lib/i18n';
 
   let message = $state('');
   let composer: MessageComposer | undefined = $state();
@@ -173,6 +178,7 @@
 
   let remindersOpen = $state(false);
   let mentionsOpen = $state(false);
+  let savedOpen = $state(false);
 
   let now = $state(Date.now());
   let expiryTicker: number | null = null;
@@ -233,6 +239,15 @@
     mentionsOpen = false;
   }
 
+  function openSaved() {
+    clearCommandFeedback();
+    savedOpen = true;
+  }
+
+  function closeSaved() {
+    savedOpen = false;
+  }
+
   /**
    * Ask for a "when" and a note, then set a reminder anchored to a message.
    *
@@ -244,35 +259,35 @@
   async function remindAboutMessage(msg: Message) {
     const messageId = typeof msg.id === 'number' ? msg.id : undefined;
     const when = await dialogs.prompt({
-      title: 'Remind me about this',
-      label: 'When',
-      placeholder: '15m, 2h, 3d, or 17:30',
+      title: t('chatPage.remindTitle'),
+      label: t('chatPage.when'),
+      placeholder: t('chatPage.whenPlaceholder'),
       initial: '1h'
     });
     if (when === null) return;
     const preview = parseWhen(when);
     if (!preview) {
       void dialogs.alert({
-        title: 'Remind me about this',
-        message: `“${when}” is not a time. Try 15m, 2h, 3d or 17:30.`
+        title: t('chatPage.remindTitle'),
+        message: t('chatPage.notATime', { input: when })
       });
       return;
     }
     const previewBounds = scheduleBoundsError(preview);
     if (previewBounds) {
-      void dialogs.alert({ title: 'Remind me about this', message: previewBounds });
+      void dialogs.alert({ title: t('chatPage.remindTitle'), message: previewBounds });
       return;
     }
     const note = await dialogs.prompt({
-      title: `Reminder ${describeWhen(preview.toISOString())}`,
-      label: 'Note',
+      title: t('chatPage.reminderAt', { when: describeWhen(preview.toISOString()) }),
+      label: t('chatPage.note'),
       maxLength: MAX_REMINDER_TEXT_LENGTH,
-      placeholder: 'What is this about?'
+      placeholder: t('chatPage.notePlaceholder')
     });
     if (note === null) return;
     const invalid = reminderTextError(note);
     if (invalid) {
-      void dialogs.alert({ title: 'Remind me about this', message: invalid });
+      void dialogs.alert({ title: t('chatPage.remindTitle'), message: invalid });
       return;
     }
     // Re-read the "when" now rather than reusing what it meant two dialogs
@@ -282,13 +297,13 @@
     // readings are what was meant: a duration counts from finishing, an
     // absolute time is the same instant either way.
     const at = parseWhen(when);
-    const bounds = at ? scheduleBoundsError(at) : 'That is not a time.';
+    const bounds = at ? scheduleBoundsError(at) : t('chatPage.notATimeShort');
     if (!at || bounds) {
-      void dialogs.alert({ title: 'Remind me about this', message: bounds ?? '' });
+      void dialogs.alert({ title: t('chatPage.remindTitle'), message: bounds ?? '' });
       return;
     }
     chat.setReminder(note.trim(), at.toISOString(), messageId);
-    setCommandFeedback(`Reminder set for ${describeWhen(at.toISOString())}.`);
+    setCommandFeedback(t('chatPage.reminderSet', { when: describeWhen(at.toISOString()) }));
   }
 
   /** Jump to a message in any channel — a reminder's or a mention's. */
@@ -382,7 +397,9 @@
           publicKey: kp.publicKey,
           signature: sign(`presence:${challenge}`, kp.secretKey),
           password: entry?.password,
-          invite: entry?.invite
+          invite: entry?.invite,
+          appVersion: APP_VERSION,
+          status: statuses.chosen()
         });
       }
       // Presence response already loads history for the default channel,
@@ -471,6 +488,23 @@
   };
   chat.on('force-disconnect', handleForceDisconnect);
 
+  /* The server answers a presence from a different version with the side that
+     is behind. Said once per visit to this server: every reconnect repeats
+     the presence, and so the answer. */
+  let versionWarned = false;
+  function handleVersionMismatch(msg: Message) {
+    if (versionWarned || (msg.behind !== 'client' && msg.behind !== 'server')) return;
+    versionWarned = true;
+    const message =
+      msg.behind === 'server'
+        ? t('version.serverBehind', { version: APP_VERSION })
+        : isWebClient
+          ? t('version.clientBehindWeb')
+          : t('version.clientBehind');
+    void dialogs.alert({ title: t('version.mismatchTitle'), message });
+  }
+  chat.on('version-mismatch', handleVersionMismatch);
+
   // Moderation and maintenance announcements, which only need saying.
   const noticeHandlers = Object.entries(NOTICES).map(([type, describe]) => {
     const handler = (msg: Message) => {
@@ -534,6 +568,7 @@
     chat.off('message-deleted', handleMessageDeleted);
     chat.off('error', handleServerError);
     chat.off('force-disconnect', handleForceDisconnect);
+    chat.off('version-mismatch', handleVersionMismatch);
     for (const [type, handler] of noticeHandlers) chat.off(type, handler);
     chat.off('breakout-move', handleBreakoutMove);
     chat.disconnect();
@@ -637,7 +672,7 @@
     if (!get(can)(PERMISSIONS.MANAGE_MESSAGES)) {
       const wait = slowModeWait();
       if (wait > 0) {
-        setCommandFeedback(`Slow mode is on — ${wait}s before your next message.`, 'error');
+        setCommandFeedback(t('chatPage.slowMode', { seconds: wait }), 'error');
         return;
       }
     }
@@ -674,16 +709,16 @@
       case 'topic':
         channelTopics.setTopic(currentChatChannelId, command.topic);
         setCommandFeedback(
-          command.topic ? 'Updated the channel topic.' : 'Cleared the channel topic.'
+          t(command.topic ? 'chatPage.topicUpdated' : 'chatPage.topicCleared')
         );
         return;
       case 'status':
-        statuses.setSelf(command.status);
-        setCommandFeedback(`Status set to ${STATUS_LABELS[command.status]}.`);
+        statuses.setSelf(command.status, true);
+        setCommandFeedback(t('chatPage.statusSet', { status: STATUS_LABELS[command.status] }));
         return;
       case 'ephemeral': {
         if (!currentUser) {
-          setCommandFeedback('You must be signed in to send messages.', 'error');
+          setCommandFeedback(t('chatPage.signedOut'), 'error');
           return;
         }
         const expires = new Date(Date.now() + command.seconds * 1000);
@@ -692,9 +727,11 @@
           setCommandFeedback(ephemeralError, 'error');
           return;
         }
-        const note = command.clampNote ? ` ${command.clampNote}` : '';
+        const duration = describeDuration(command.seconds);
         setCommandFeedback(
-          `Ephemeral message will expire in ${describeDuration(command.seconds)}.${note}`
+          command.clampNote
+            ? t('chatPage.ephemeralWithNote', { duration, note: command.clampNote })
+            : t('chatPage.ephemeral', { duration })
         );
         return;
       }
@@ -709,6 +746,9 @@
         if (pollError) setCommandFeedback(pollError, 'error');
         return;
       }
+      case 'purge':
+        void confirmPurge(command.count);
+        return;
       case 'search':
         openSearch(command.query);
         if (command.query) {
@@ -717,7 +757,7 @@
         return;
       case 'remind':
         chat.setReminder(command.text, command.at.toISOString());
-        setCommandFeedback(`Reminder set for ${describeWhen(command.at.toISOString())}.`);
+        setCommandFeedback(t('chatPage.reminderSet', { when: describeWhen(command.at.toISOString()) }));
         return;
       case 'schedule': {
         // Sealed here for an encrypted channel, which is why this goes
@@ -731,10 +771,21 @@
           setCommandFeedback(scheduleError, 'error');
           return;
         }
-        setCommandFeedback(`Message queued for ${describeWhen(command.at.toISOString())}.`);
+        setCommandFeedback(t('chatPage.scheduled', { when: describeWhen(command.at.toISOString()) }));
         return;
       }
     }
+  }
+
+  async function confirmPurge(count: number) {
+    const confirmed = await dialogs.confirm({
+      title: t('chatPage.purgeTitle', { count }),
+      message: t('chatPage.purgeMessage', { count }),
+      confirmLabel: t('chatPage.purgeConfirm'),
+      danger: true
+    });
+    // The server checks the permission; without it the answer is an error.
+    if (confirmed) chat.sendRaw({ type: 'purge-channel-messages', count });
   }
 
   function openSearch(initialQuery = '') {
@@ -812,8 +863,8 @@
       const target = $channels.find((c) => c.name === channelName);
       if (!target) {
         void dialogs.alert({
-          title: 'Wiki',
-          message: `Channel "${channelName}" was not found on this server.`
+          title: t('wiki.title'),
+          message: t('chatPage.wikiChannelMissing', { channel: channelName })
         });
         return;
       }
@@ -849,18 +900,18 @@
     });
     if (options.length === 0) {
       void dialogs.alert({
-        title: 'Forward message',
-        message: 'There is nowhere else on this server to forward this to.'
+        title: t('chatPage.forwardTitle'),
+        message: t('chatPage.forwardNowhere')
       });
       return;
     }
 
     const target = parseForwardTarget(
       await dialogs.select({
-        title: 'Forward message',
-        message: 'The copy keeps the original author and says where it came from.',
+        title: t('chatPage.forwardTitle'),
+        message: t('chatPage.forwardMessage'),
         options,
-        confirmLabel: 'Forward'
+        confirmLabel: t('chatPage.forward')
       })
     );
     if (!target) return;
@@ -872,7 +923,7 @@
         return;
       }
       const name = $channels.find((channel) => channel.id === target.channelId)?.name ?? '';
-      setCommandFeedback(`Forwarded to #${name}.`);
+      setCommandFeedback(t('chatPage.forwardedToChannel', { channel: name }));
       return;
     }
 
@@ -881,10 +932,26 @@
       forwardedDmText(msg, currentChatChannelName, $displayNames)
     );
     if (error) {
-      void dialogs.alert({ title: 'Message not sent', message: error });
+      void dialogs.alert({ title: t('chatPage.notSent'), message: error });
       return;
     }
-    setCommandFeedback(`Forwarded to ${$displayNames(target.user)}.`);
+    setCommandFeedback(t('chatPage.forwardedToUser', { name: $displayNames(target.user) }));
+  }
+
+  /** Flag a message to the moderators, with an optional reason. */
+  async function reportMessage(msg: Message) {
+    if (typeof msg.id !== 'number') return;
+    const reason = await dialogs.prompt({
+      title: t('chatPage.reportTitle'),
+      message: t('chatPage.reportMessage'),
+      label: t('chatPage.reportReason'),
+      multiline: true,
+      maxLength: MAX_REPORT_REASON_LENGTH,
+      confirmLabel: t('chatPage.reportConfirm'),
+      required: false
+    });
+    if (reason === null) return;
+    chat.sendRaw({ type: 'report-message', messageId: msg.id, reason: reason.trim() });
   }
 
   /** Jump to the original of a forwarded message, switching channels first. */
@@ -897,10 +964,10 @@
     );
     try {
       await navigator.clipboard.writeText(link);
-      setCommandFeedback('Link copied.');
+      setCommandFeedback(t('chatPage.linkCopied'));
     } catch (e) {
       console.error('Failed to copy message link', e);
-      setCommandFeedback('Could not copy the link.', 'error');
+      setCommandFeedback(t('chatPage.linkCopyFailed'), 'error');
     }
   }
 
@@ -912,7 +979,7 @@
   function openMessageLink(link: MessageLink) {
     if (link.server === get(selectedServer)) {
       if (!$channels.some((channel) => channel.id === link.channel)) {
-        setCommandFeedback('That message is in a channel you cannot see.', 'error');
+        setCommandFeedback(t('chatPage.linkHiddenChannel'), 'error');
         return;
       }
       joinChannel(link.channel);
@@ -920,7 +987,7 @@
       return;
     }
     if (!servers.get(link.server)) {
-      setCommandFeedback('That message is on a server you have not added.', 'error');
+      setCommandFeedback(t('chatPage.linkUnknownServer'), 'error');
       return;
     }
     pendingMessageLink.set(link);
@@ -1022,8 +1089,8 @@
     try {
       if (!$session.user || currentVoiceChannelId === null) {
         await dialogs.alert({
-          title: 'Join a voice channel first',
-          message: 'You must be in a voice channel to view screen shares.'
+          title: t('chatPage.joinVoiceTitle'),
+          message: t('chatPage.joinVoiceMessage')
         });
         return;
       }
@@ -1044,8 +1111,8 @@
       closeScreenShare(userId);
       console.error('Failed to view screen share:', error);
       dialogs.alert({
-        title: 'Screen share unavailable',
-        message: 'Could not open this screen share. The stream may have ended.'
+        title: t('chatPage.shareUnavailableTitle'),
+        message: t('chatPage.shareUnavailableMessage')
       });
     }
   }
@@ -1076,7 +1143,7 @@
     } catch (error) {
       console.error('Failed to join voice channel', error);
       inVoice = false;
-      setCommandFeedback('Could not access your microphone. Check the permission and input device.', 'error');
+      setCommandFeedback(t('chatPage.micFailed'), 'error');
       return;
     }
     currentVoiceChannelId = id;
@@ -1144,12 +1211,12 @@
   async function editTopic() {
     const existing = $channelTopics[currentChatChannelId] ?? '';
     const input = await dialogs.prompt({
-      title: 'Channel topic',
-      message: 'Shown next to the channel name. Leave empty to clear the topic.',
+      title: t('chatPage.topicTitle'),
+      message: t('chatPage.topicMessage'),
       initial: existing,
-      placeholder: 'What is this channel about?',
+      placeholder: t('chatPage.topicPlaceholder'),
       maxLength: MAX_TOPIC_LENGTH,
-      confirmLabel: 'Save',
+      confirmLabel: t('chatPage.save'),
       required: false
     });
     if (input === null) return;
@@ -1159,10 +1226,10 @@
   async function editChatMessage(msg: Message) {
     if (typeof msg.id !== 'number' || typeof msg.text !== 'string') return;
     const input = await dialogs.prompt({
-      title: 'Edit message',
+      title: t('chatPage.editTitle'),
       initial: msg.text,
       multiline: true,
-      confirmLabel: 'Save'
+      confirmLabel: t('chatPage.save')
     });
     if (input === null) return;
     const trimmed = input.trim();
@@ -1191,12 +1258,19 @@
     }
   }
 
+  let savedIds = $derived(new Set($savedMessages.map((entry) => entry.id)));
+
+  function toggleSaveMessage(msg: Message) {
+    const entry = savedEntry(msg, currentChatChannelId, currentChannelEncrypted);
+    if (entry) toggleSavedMessage(entry);
+  }
+
   async function deleteChatMessage(msg: Message) {
     if (typeof msg.id !== 'number') return;
     const confirmed = await dialogs.confirm({
-      title: 'Delete message?',
-      message: 'This removes the message for everyone. This cannot be undone.',
-      confirmLabel: 'Delete',
+      title: t('chatPage.deleteTitle'),
+      message: t('chatPage.deleteMessage'),
+      confirmLabel: t('chatPage.delete'),
       danger: true
     });
     if (!confirmed) return;
@@ -1491,14 +1565,14 @@
       onToggleMicrophone={toggleMicrophone}
       onToggleOutput={toggleOutput}
     />
-    <SidebarResizer width={leftSidebarWidth} side="left" label="Resize channel list" />
+    <SidebarResizer width={leftSidebarWidth} side="left" label={t('chatPage.resizeChannels')} />
     <div
       class="chat"
       use:fileDrop={{ onFile: setPendingFile, onActiveChange: (active) => (dragActive = active) }}
     >
       {#if dragActive}
         <div class="drop-overlay" aria-hidden="true">
-          <span>Drop file to upload</span>
+          <span>{t('chatPage.dropFileToUpload')}</span>
         </div>
       {/if}
       <ChatHeader
@@ -1512,6 +1586,7 @@
         onOpenSearch={() => openSearch()}
         onOpenReminders={openReminders}
         onOpenMentions={openMentions}
+        onOpenSaved={openSaved}
         mentionsUnseen={$mentionInbox.unseen}
         reminderAttention={$scheduledAttention}
         onOpenSettings={openSettings}
@@ -1535,6 +1610,7 @@
         onOpenMessage={openMessageIn}
       />
       <MentionsInbox open={mentionsOpen} close={closeMentions} onOpenMessage={openMessageIn} />
+      <SavedMessages open={savedOpen} close={closeSaved} onOpenMessage={openMessageIn} />
       <UserProfileModal
         open={profileUser !== null}
         user={profileUser}
@@ -1586,12 +1662,12 @@
         >
           {#each messageBlocks as block (block.key)}
             {#if block.kind === 'separator'}
-              <div class="day-separator" role="separator" aria-label={`Messages from ${block.label}`}>
+              <div class="day-separator" role="separator" aria-label={t('chatPage.messagesFrom', { day: block.label })}>
                 <span>{block.label}</span>
               </div>
             {:else if block.kind === 'unread'}
-              <div class="unread-divider" role="separator" aria-label="New messages">
-                <span>New</span>
+              <div class="unread-divider" role="separator" aria-label={t('chatPage.newMessages')}>
+                <span>{t('chatPage.new')}</span>
               </div>
             {:else if block.kind === 'message'}
               <MessageItem
@@ -1601,6 +1677,7 @@
                 {now}
                 highlighted={highlightedMessageId === block.message.id}
                 pinned={isMessagePinned(block.message)}
+                saved={typeof block.message.id === 'number' && savedIds.has(block.message.id)}
                 replyCount={typeof block.message.id === 'number'
                   ? (threadReplyCounts.get(block.message.id) ?? 0)
                   : 0}
@@ -1618,7 +1695,10 @@
                 onCopyLink={copyMessageLink}
                 onEdit={editChatMessage}
                 onTogglePin={togglePinMessage}
+                onToggleSave={toggleSaveMessage}
                 onDelete={deleteChatMessage}
+                canReport={!!block.message.user && block.message.user !== $session.user}
+                onReport={reportMessage}
                 onOpenEmojiPicker={openEmojiPicker}
                 onToggleReaction={toggleReaction}
                 onOpenThread={openThread}
@@ -1627,8 +1707,8 @@
             {/if}
           {:else}
             <div class="channel-empty">
-              <h3>Welcome to #{currentChatChannelName}</h3>
-              <p>This is the beginning of the channel. Say hi!</p>
+              <h3>{t('chatPage.welcome', { channel: currentChatChannelName })}</h3>
+              <p>{t('chatPage.thisIsTheBeginning')}</p>
             </div>
           {/each}
         </div>
@@ -1657,10 +1737,10 @@
       {#if threadRootId !== null}
         <ConversationPanel
           kind="thread"
-          title="Thread"
+          title={t('chatPage.thread')}
           messages={threadMessages}
-          emptyText="Loading thread…"
-          placeholder="Reply in thread…"
+          emptyText={t('chatPage.loadingThread')}
+          placeholder={t('chatPage.replyInThread')}
           onSend={sendThreadReply}
           onClose={closeThread}
           draftKey={threadDraft(threadRootId)}
@@ -1674,7 +1754,7 @@
         <audio autoplay use:remoteAudio={{ stream: peer.stream, userId: peer.id }}></audio>
       {/each}
     </div>
-    <SidebarResizer width={rightSidebarWidth} side="right" label="Resize user list" />
+    <SidebarResizer width={rightSidebarWidth} side="right" label={t('chatPage.resizeUsers')} />
     <UserList
       {statusMap}
       onUserContextMenu={(event, user) => userMenu?.open(event, user)}

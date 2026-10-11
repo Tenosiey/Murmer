@@ -22,11 +22,6 @@ the idea comes from and what users will expect it to behave like.
 
 ## 🔧 Tech debt / hardening
 
-- [ ] Default to `wss://`. `normalizeServerUrl` in `src/lib/utils.ts` turns
-      a bare hostname into `ws://`, so messages, the server password and
-      invite codes cross the internet in clear without a word. Use `wss://`
-      for anything that is not localhost or a LAN address, and show a
-      visible "not encrypted" warning while connected over `ws://`
 - [ ] Drop the Google STUN default (`DEFAULT_STUN_SERVER` in
       `config.rs`). Every call by every user tells Google their IP and when
       they are in a call unless the operator changes it, which undoes the
@@ -55,10 +50,6 @@ the idea comes from and what users will expect it to behave like.
       server address). One key on every server lets any two operators, or a
       member of both, link a person's communities. Keeps the single backup;
       it is a crypto-format change, see `agents/skills/crypto-changes.md`
-- [ ] Production-shaped `docker-compose.yml`. Today it is a development file:
-      plaintext port published, `CORS_ALLOW_ORIGINS=http://localhost:1420`,
-      `MAX_MESSAGES_PER_MINUTE: 300` (ten times the default), no password.
-      Move the dev settings into an override file
 - [ ] Raid protection. On a password-less server anyone can mint unlimited
       keys and accounts; there is no join verification, account-age gate or
       captcha (Discord verification levels)
@@ -72,10 +63,6 @@ the idea comes from and what users will expect it to behave like.
       would delete every attachment of every encrypted channel. The options
       that remain are the author's client naming the files when it deletes
       its own message, or an operator-chosen age limit for attachments
-- [ ] Version check on connect. The README asks for the app and server to
-      match, but nothing compares them, so a member who never pressed
-      Update gets undefined behaviour. Refuse or warn with "update your
-      app" on a mismatch
 
 ---
 
@@ -84,8 +71,8 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Privacy at a glance in `README.md`, linked from every "encrypted" in
       the feature list: what the operator sees, that mesh voice shows each
       participant's IP to the others, that DM and encrypted-channel files
-      are not encrypted, that DMs cannot be deleted, and that in the web
-      client the operator serves the code holding your key
+      are not encrypted, and that in the web client the operator serves the
+      code holding your key
 - [ ] A production deployment guide: a Caddy or nginx TLS front with
       `TRUSTED_PROXIES`, a password or invites, backing up the database and
       `uploads/`, and how long to keep logs (they pair names with IPs)
@@ -100,20 +87,9 @@ the idea comes from and what users will expect it to behave like.
 
 ### 🗨️ Chat Features
 
-- [ ] Bulk delete for moderators — remove the last N messages of a channel,
-      or everything one member posted in the last hour, with the ban
-      (Discord's purge and "delete message history"). The Danger Zone only
-      knows everything at once
-- [ ] Delete and edit DMs. There is no frame for either, and
-      `MESSAGE_RETENTION_DAYS` keeps DMs, so a DM is permanent. Delete
-      removes the stored ciphertext for both sides
-- [ ] Message reports — a member flags a message to the moderators, with a
-      queue in the Server Dashboard (Discord's report to mods)
 - [ ] Outbound webhooks. The bot REST API covers "something else drives
       Murmer"; there is no way round for Murmer to notify something else when
       a message arrives
-- [ ] Saved messages — a personal bookmark list, separate from the
-      server-wide pins
 
 ### 🎤 Voice Features
 
@@ -150,8 +126,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Accessibility pass — keyboard navigation and screen-reader labels.
       Context menus only open on right-click and take no arrow keys, so
       most of the app is currently hard to reach without a mouse
-- [ ] Appear offline, and a setting to stop sending typing indicators
-      (Discord's invisible status)
 - [ ] Backup and export. For operators: a consistent snapshot of the database
       (`VACUUM INTO`) plus `uploads/` without stopping the server. For users:
       an export of their own DMs, which only their client can decrypt
@@ -171,12 +145,10 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Scheduled events — a time, a description, a voice channel and an RSVP
       list, with a reminder to everyone who said yes (Discord events). The
       reminder scheduler (`ws/handlers/scheduled.rs`) already runs
-- [ ] Translatable UI. Every string is hardcoded English, so this is a
-      structural change (extraction plus a lookup) rather than a translation
-      job, and it only gets more expensive with every screen added
-- [ ] Update prompt at startup. Updates only happen when someone presses
-      Settings → Updates (`AboutTab.svelte`), so members drift behind the
-      server
+- [ ] A second UI language. Every screen reads its text from the English
+      catalog (`src/lib/i18n/`); what is missing is a second catalog and a
+      language picker. The locale is picked once at startup, so the picker
+      would reload the page
 
 ---
 

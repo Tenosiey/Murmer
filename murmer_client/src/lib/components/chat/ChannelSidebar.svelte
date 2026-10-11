@@ -38,6 +38,7 @@
   import { PERMISSIONS } from '$lib/chat/permissions';
   import { formatVoiceQuality, orderVoiceChannels } from '$lib/chat/helpers';
   import type { CategoryInfo, ChannelInfo, VoiceChannelInfo } from '$lib/types';
+  import { t } from '$lib/i18n';
 
   interface Props {
     currentChatChannelId: number;
@@ -389,7 +390,7 @@
         class="category-group"
         class:drop-target={dragOverKey === groupKey(group)}
         role="group"
-        aria-label={group.category?.name ?? 'Uncategorized channels'}
+        aria-label={group.category?.name ?? t('channelSidebar.uncategorized')}
         ondragover={(e) => handleGroupDragOver(e, group)}
         ondragleave={(e) => handleGroupDragLeave(e, group)}
         ondrop={(e) => handleGroupDrop(e, group)}
@@ -419,11 +420,11 @@
           </h3>
         {:else}
           {#if group.textChannels.length}
-            <h3 class="section">Channels</h3>
+            <h3 class="section">{t('channelSidebar.channels')}</h3>
           {/if}
         {/if}
         {#if !group.textChannels.length && !group.voiceChannels.length && !group.category}
-          <p class="drop-hint">Drop here to remove from category</p>
+          <p class="drop-hint">{t('channelSidebar.dropHereToRemove')}</p>
         {/if}
         {#if !group.category || !collapsedCategories.has(group.category.id)}
           {#each group.textChannels as ch (ch.id)}
@@ -445,15 +446,15 @@
               <span class="chan-icon">#</span>
               <span class="chan-name">{ch.name}</span>
               {#if ch.private}
-                <span class="chan-lock" title="Private channel" aria-label="Private channel">
+                <span class="chan-lock" title={t('channelSidebar.privateChannel')} aria-label={t('channelSidebar.privateChannel')}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </span>
               {/if}
               {#if ch.e2ee}
                 <span
                   class="chan-lock"
-                  title="End-to-end encrypted"
-                  aria-label="End-to-end encrypted"
+                  title={t('channelSidebar.endToEndEncrypted')}
+                  aria-label={t('channelSidebar.endToEndEncrypted')}
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                 </span>
@@ -462,7 +463,7 @@
                 <span
                   class="unread-badge"
                   class:mention={($unread[ch.id]?.mentions ?? 0) > 0}
-                  title={`${$unread[ch.id].count} unread message${$unread[ch.id].count === 1 ? '' : 's'}`}
+                  title={t('channelSidebar.unread', { count: $unread[ch.id].count })}
                 >
                   {$unread[ch.id].count > 99 ? '99+' : $unread[ch.id].count}
                 </span>
@@ -471,7 +472,7 @@
           {/each}
           {#if group.voiceChannels.length}
             {#if !group.category && !group.textChannels.length}
-              <h3 class="section">Voice Channels</h3>
+              <h3 class="section">{t('channelSidebar.voiceChannels')}</h3>
             {/if}
           {/if}
           {#each orderVoiceChannels(group.voiceChannels) as row (row.channel.id)}
@@ -504,16 +505,16 @@
                 </span>
                 <span class="voice-channel-name">{ch.name}</span>
                 {#if row.room}
-                  <span class="badge breakout-badge" title="Temporary breakout room">Breakout</span>
+                  <span class="badge breakout-badge" title={t('channelSidebar.temporaryBreakoutRoom')}>{t('channelSidebar.breakout')}</span>
                 {/if}
                 {#if ch.private}
-                  <span class="chan-lock" title="Private channel" aria-label="Private channel">
+                  <span class="chan-lock" title={t('channelSidebar.privateChannel')} aria-label={t('channelSidebar.privateChannel')}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                   </span>
                 {/if}
                 <span class="voice-channel-quality">{formatVoiceQuality(ch)}</span>
                 {#if ch.userLimit > 0}
-                  <span class="voice-channel-limit" title="User limit">
+                  <span class="voice-channel-limit" title={t('channelSidebar.userLimit')}>
                     {$voiceUsers[ch.id]?.length ?? 0}/{ch.userLimit}
                   </span>
                 {/if}
@@ -556,12 +557,12 @@
                       {#if mute.micMuted || mute.outputMuted}
                         <span class="mute-icons">
                           {#if mute.micMuted}
-                            <span class="mute-icon" title="Microphone muted" aria-label="Microphone muted">
+                            <span class="mute-icon" title={t('channelSidebar.microphoneMuted')} aria-label={t('channelSidebar.microphoneMuted')}>
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="2" y1="2" x2="22" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
                             </span>
                           {/if}
                           {#if mute.outputMuted}
-                            <span class="mute-icon" title="Speaker muted" aria-label="Speaker muted">
+                            <span class="mute-icon" title={t('channelSidebar.speakerMuted')} aria-label={t('channelSidebar.speakerMuted')}>
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>
                             </span>
                           {/if}
@@ -571,8 +572,8 @@
                         {@const place = queue.indexOf(user) + 1}
                         <span
                           class="hand-raised"
-                          title={`Hand raised — ${place} in queue`}
-                          aria-label={`Hand raised, ${place} in queue`}
+                          title={t('channelSidebar.handRaisedTooltip', { place })}
+                          aria-label={t('channelSidebar.handRaisedLabel', { place })}
                         >
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-4 0"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
                           <span>{place}</span>
@@ -582,11 +583,11 @@
                         {@const isOwnShare = user === $session.user}
                         {@const watching = $watchedScreenShares.includes(user)}
                         {@const selfLabel = $screenSharePreview
-                          ? 'Hide your screen preview'
-                          : 'Preview your own screen'}
+                          ? t('channelSidebar.hidePreview')
+                          : t('channelSidebar.showPreview')}
                         {@const peerLabel = watching
-                          ? `Stop watching ${$displayNames(user)}'s screen`
-                          : `Watch ${$displayNames(user)}'s screen`}
+                          ? t('channelSidebar.stopWatching', { name: $displayNames(user) })
+                          : t('channelSidebar.watch', { name: $displayNames(user) })}
                         <button
                           class="screenshare-indicator"
                           class:muted={isOwnShare && !$screenSharePreview}
@@ -597,14 +598,14 @@
                           aria-pressed={isOwnShare ? $screenSharePreview : watching}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                          <span>LIVE</span>
+                          <span>{t('channelSidebar.live')}</span>
                         </button>
                       {/if}
                       {#if $activeWebcams[ch.id]?.includes(user)}
                         <span
                           class="webcam-indicator"
-                          title={`${$displayNames(user)} has their camera on`}
-                          aria-label={`${$displayNames(user)} has their camera on`}
+                          title={t('channelSidebar.cameraOn', { name: $displayNames(user) })}
+                          aria-label={t('channelSidebar.cameraOn', { name: $displayNames(user) })}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
                         </span>
@@ -628,13 +629,13 @@
     <div class="voice-controls-panel">
       {#if inVoice}
         <div class="voice-controls-header">
-          Voice Controls
+          {t('channelSidebar.voiceControls')}
           {#if $viaServer}
             <span
               class="badge via-server"
-              title="This channel is large, so voice and video pass through the server instead of going directly between members. The server can see this media."
+              title={t('channelSidebar.thisChannelIsLarge')}
             >
-              Via server
+              {t('channelSidebar.viaServer')}
             </span>
           {/if}
         </div>
@@ -645,7 +646,7 @@
             <span class="btn-icon">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             </span>
-            <span class="btn-text">Leave Voice</span>
+            <span class="btn-text">{t('channelSidebar.leaveVoice')}</span>
           </button>
         {/if}
         <button
@@ -658,13 +659,15 @@
           class:disabled={!inVoice || !$canSpeak}
           onclick={onToggleMicrophone}
           disabled={!inVoice || !$canSpeak}
-          title={!inVoice
-            ? 'Join a voice channel first'
-            : !$canSpeak
-              ? 'You do not have permission to talk in this channel'
-              : $microphoneMuted
-                ? 'Unmute Microphone'
-                : 'Mute Microphone'}
+          title={t(
+            !inVoice
+              ? 'channelSidebar.joinVoiceFirst'
+              : !$canSpeak
+                ? 'channelSidebar.noTalkPermission'
+                : $microphoneMuted
+                  ? 'channelSidebar.unmuteMicrophone'
+                  : 'channelSidebar.muteMicrophone'
+          )}
         >
           <span class="btn-icon">
             {#if inVoice && $microphoneMuted}
@@ -675,19 +678,19 @@
           </span>
           <span class="btn-text">
             {#if !inVoice}
-              Microphone
+              {t('channelSidebar.mic.idle')}
             {:else if !$canSpeak}
-              Listen only
+              {t('channelSidebar.mic.listenOnly')}
             {:else if $microphoneMuted}
-              Unmute Mic
+              {t('channelSidebar.mic.unmute')}
             {:else if $voiceMode === 'continuous'}
-              Always On
+              {t('channelSidebar.mic.continuous')}
             {:else if $voiceMode === 'vad'}
-              Voice Detection
+              {t('channelSidebar.mic.vad')}
             {:else if $voiceMode === 'ptt'}
-              Push to Talk
+              {t('channelSidebar.mic.ptt')}
             {:else}
-              Mute Mic
+              {t('channelSidebar.mic.mute')}
             {/if}
           </span>
         </button>
@@ -697,7 +700,13 @@
           class:disabled={!inVoice}
           onclick={onToggleOutput}
           disabled={!inVoice}
-          title={!inVoice ? 'Join a voice channel first' : $outputMuted ? 'Unmute Output' : 'Mute Output'}
+          title={t(
+            !inVoice
+              ? 'channelSidebar.joinVoiceFirst'
+              : $outputMuted
+                ? 'channelSidebar.unmuteOutput'
+                : 'channelSidebar.muteOutput'
+          )}
         >
           <span class="btn-icon">
             {#if inVoice && $outputMuted}
@@ -706,7 +715,7 @@
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
             {/if}
           </span>
-          <span class="btn-text">{!inVoice ? 'Speaker' : $outputMuted ? 'Unmute Out' : 'Mute Out'}</span>
+          <span class="btn-text">{t(!inVoice ? 'channelSidebar.speaker' : $outputMuted ? 'channelSidebar.unmuteOut' : 'channelSidebar.muteOut')}</span>
         </button>
         {#if inVoice && currentVoiceChannelId !== null}
           {@const channelId = currentVoiceChannelId}
@@ -715,10 +724,10 @@
             class:raised={handRaised}
             onclick={() => sendHand(channelId, !handRaised)}
             aria-pressed={handRaised}
-            title={handRaised ? 'Lower your hand' : 'Raise your hand to ask to speak'}
+            title={t(handRaised ? 'channelSidebar.lowerHandTooltip' : 'channelSidebar.raiseHandTooltip')}
           >
             <span class="btn-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-4 0"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg></span>
-            <span class="btn-text">{handRaised ? 'Lower Hand' : 'Raise Hand'}</span>
+            <span class="btn-text">{t(handRaised ? 'channelSidebar.lowerHand' : 'channelSidebar.raiseHand')}</span>
           </button>
         {/if}
       </div>

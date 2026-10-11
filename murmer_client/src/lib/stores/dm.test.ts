@@ -37,3 +37,25 @@ describe('dm — read state', () => {
     expect(dm.markRead('alice', 3)).toBe(false);
   });
 });
+
+describe('dm — edits and deletions', () => {
+  it('finds a held message and drops a deleted one', async () => {
+    const dm = await loadDm();
+    dm.receive(fromAlice(1), 'me');
+    dm.receive(fromAlice(2), 'me');
+    expect(dm.find('alice', 2)?.text).toBe('hi');
+
+    dm.remove('alice', 2);
+    expect(dm.find('alice', 2)).toBeUndefined();
+    expect(get(dm.conversations).alice.map((msg) => msg.id)).toEqual([1]);
+  });
+
+  it('ignores a deletion of a message it never held', async () => {
+    const dm = await loadDm();
+    dm.receive(fromAlice(1), 'me');
+    const before = get(dm.conversations);
+    dm.remove('alice', 9);
+    dm.remove('bob', 1);
+    expect(get(dm.conversations)).toBe(before);
+  });
+});

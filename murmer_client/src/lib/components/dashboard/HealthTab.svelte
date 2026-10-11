@@ -5,6 +5,7 @@
     formatMs,
     METRICS_POLL_INTERVAL_MS
   } from '$lib/stores/serverMetrics';
+  import { t } from '$lib/i18n';
 
   interface Props {
     active: boolean;
@@ -32,32 +33,29 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">Health</h3>
+    <h3 class="section-title">{t('dashboard.tab.health')}</h3>
     <div class="setting-group">
       <div class="setting-description">
-        What this server is doing right now. The counters are kept in memory and
-        start again from zero at every restart, so they describe the current run
-        and nothing before it. Rates are measured across refreshes, which happen
-        every {METRICS_POLL_INTERVAL_MS / 1000} seconds while this tab is open.
+        {t('health.intro', { seconds: METRICS_POLL_INTERVAL_MS / 1000 })}
       </div>
       {#if $serverMetrics === null}
-        <div class="setting-description">Waiting for the server…</div>
+        <div class="setting-description">{t('health.waiting')}</div>
       {:else}
         <ul class="metric-grid">
           <li class="metric">
             <span class="metric-value">{formatCount($serverMetrics.connections)}</span>
-            <span class="metric-label">Connections open</span>
+            <span class="metric-label">{t('health.connections')}</span>
             <span class="metric-note">
-              peak {formatCount($serverMetrics.peakConnections)} this run
+              {t('health.peak', { count: formatCount($serverMetrics.peakConnections) })}
             </span>
           </li>
           <li class="metric">
             <span class="metric-value">
               {$serverMetrics.framesPerSecond.toFixed(1)}<span class="metric-unit">/s</span>
             </span>
-            <span class="metric-label">Frames received</span>
+            <span class="metric-label">{t('health.frames')}</span>
             <span class="metric-note">
-              {formatCount($serverMetrics.frames)} total
+              {t('health.framesTotal', { count: formatCount($serverMetrics.frames) })}
             </span>
           </li>
           <li class="metric">
@@ -66,41 +64,38 @@
                 ? '—'
                 : formatMs($serverMetrics.dbAverageMs)}
             </span>
-            <span class="metric-label">Database call</span>
+            <span class="metric-label">{t('health.dbCall')}</span>
             <span class="metric-note">
-              {$serverMetrics.dbAverageMs === null ? 'idle · ' : ''}worst
-              {formatMs($serverMetrics.dbMaxMs)} ·
-              {formatCount($serverMetrics.dbCalls)} calls
+              {$serverMetrics.dbAverageMs === null ? t('health.idle') : ''}{t('health.dbNote', {
+                worst: formatMs($serverMetrics.dbMaxMs),
+                calls: formatCount($serverMetrics.dbCalls)
+              })}
             </span>
           </li>
           <li class="metric">
             <span class="metric-value">{formatUptime($serverMetrics.uptimeSeconds)}</span>
-            <span class="metric-label">Uptime</span>
-            <span class="metric-note">since the last restart</span>
+            <span class="metric-label">{t('health.uptime')}</span>
+            <span class="metric-note">{t('health.sinceRestart')}</span>
           </li>
         </ul>
       {/if}
     </div>
 
     <div class="setting-group">
-      <span class="setting-label">Rate-limit rejections</span>
+      <span class="setting-label">{t('health.rateLimits')}</span>
       <div class="setting-description">
-        Requests turned away since the server started. A climbing auth count is
-        somebody guessing keys; climbing messages or uploads is either a member
-        flooding or a limit set too low for the room; climbing requests is a
-        client stuck in a loop. All five limits are set by the server's
-        environment, not from here.
+        {t('health.rateLimitsHint')}
       </div>
       {#if $serverMetrics === null}
-        <div class="setting-description">Waiting for the server…</div>
+        <div class="setting-description">{t('health.waiting')}</div>
       {:else}
         <ul class="storage-list">
           {#each [
-            { label: 'Messages', value: $serverMetrics.rejectedMessages },
-            { label: 'Authentication', value: $serverMetrics.rejectedAuth },
-            { label: 'Uploads', value: $serverMetrics.rejectedUploads },
-            { label: 'Requests', value: $serverMetrics.rejectedFrames },
-            { label: 'Link previews', value: $serverMetrics.rejectedPreviews }
+            { label: t('health.messages'), value: $serverMetrics.rejectedMessages },
+            { label: t('health.auth'), value: $serverMetrics.rejectedAuth },
+            { label: t('health.uploads'), value: $serverMetrics.rejectedUploads },
+            { label: t('health.requests'), value: $serverMetrics.rejectedFrames },
+            { label: t('health.linkPreviews'), value: $serverMetrics.rejectedPreviews }
           ] as row (row.label)}
             <li class="storage-row">
               <span class="storage-label">{row.label}</span>

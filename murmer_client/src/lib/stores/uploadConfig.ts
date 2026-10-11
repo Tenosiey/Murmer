@@ -16,6 +16,7 @@ import {
 } from '../chat/constants';
 import { formatUploadSize } from '../upload';
 import type { Message } from '../types';
+import { t } from '../i18n';
 
 export interface UploadPolicy {
   /** Largest accepted file size in bytes. */
@@ -73,15 +74,15 @@ export const uploadAccept = derived(allowedUploadExtensions, ($extensions) =>
 export function describeUploadRejection(file: File): string | null {
   const config = get(uploadConfig);
   if (file.size > config.maxBytes) {
-    return `This server accepts files up to ${formatUploadSize(config.maxBytes)}.`;
+    return t('uploadRejection.tooLarge', { size: formatUploadSize(config.maxBytes) });
   }
   const extension = file.name.includes('.')
     ? file.name.split('.').pop()!.toLowerCase()
     : '';
   const category = UPLOAD_CATEGORIES.find((entry) => entry.extensions.includes(extension));
-  if (!category) return 'This file type is not allowed on the server.';
+  if (!category) return t('uploadRejection.unknownType');
   if (!config.categories.includes(category.id)) {
-    return `${category.label} are not allowed on this server.`;
+    return t('uploadRejection.categoryDisabled', { category: category.label });
   }
   return null;
 }

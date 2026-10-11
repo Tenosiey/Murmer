@@ -1,4 +1,5 @@
 import type { WikiSearchHit } from '../types';
+import { t } from '../i18n';
 
 /** Longest snippet rendered in the result list; the server already excerpts. */
 const MAX_SNIPPET_CHARS = 160;
@@ -100,7 +101,7 @@ export function parseSearchQuery(
     }
     const key = match[1].toLowerCase();
     const value = match[2];
-    if (!value) return { error: `${key}: needs a value.` };
+    if (!value) return { error: t('search.needsValue', { filter: key }) };
     switch (key) {
       case 'from':
         filters.from = value.replace(/^@/, '');
@@ -108,18 +109,18 @@ export function parseSearchQuery(
       case 'in': {
         const name = value.replace(/^#/, '').toLowerCase();
         const channel = channels.find((c) => c.name.toLowerCase() === name);
-        if (!channel) return { error: `No channel named #${name}.` };
+        if (!channel) return { error: t('search.noChannel', { channel: name }) };
         channelId = channel.id;
         break;
       }
       case 'has':
-        if (value.toLowerCase() !== 'file') return { error: 'Only has:file is supported.' };
+        if (value.toLowerCase() !== 'file') return { error: t('search.hasFileOnly') };
         filters.hasFile = true;
         break;
       case 'before':
       case 'after': {
         const day = localDayStart(value, key === 'after' ? 1 : 0);
-        if (!day) return { error: `${key}: takes a date like 2026-01-31.` };
+        if (!day) return { error: t('search.needsDate', { filter: key }) };
         filters[key] = day.toISOString();
         break;
       }

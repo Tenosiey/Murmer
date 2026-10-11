@@ -50,10 +50,18 @@ pub async fn send_error(sender: &mut SplitSink<WebSocket, Message>, error_json: 
 }
 
 /// Collect online users and all known users without holding locks.
+///
+/// A member whose status is `offline` is connected but appearing offline
+/// (Discord's invisible), so they are left out of the online list: every
+/// client and bot sees them exactly as it sees a member who disconnected.
 pub async fn get_user_lists(state: &Arc<AppState>) -> (Vec<String>, Vec<String>) {
     let online = {
-        let users = state.users.lock().await;
-        users.iter().cloned().collect()
+        let users = state.users.lock().await.clone();
+        let statuses = state.statuses.lock().await;
+        users
+            .into_iter()
+            .filter(|user| statuses.get(user).is_none_or(|s| s != "offline"))
+            .collect()
     };
     let all = {
         let known = state.known_users.lock().await;

@@ -22,6 +22,7 @@
   } from '$lib/chat/permissions';
   import type { Message } from '$lib/types';
   import { modalFocus } from '$lib/focus';
+  import { t } from '$lib/i18n';
 
   interface Props {
     open: boolean;
@@ -57,7 +58,7 @@
 
   const WRITE_FLAG = PERMISSIONS.SEND_MESSAGES;
   const VIEW_FLAG = PERMISSIONS.VIEW_CHANNELS;
-  let writeLabel = $derived(voice ? 'Talk' : 'Write');
+  let writeLabel = $derived(voice ? t('channelPermissionsModal.talk') : t('channelPermissionsModal.write'));
 
   type Target =
     | { type: 'everyone' }
@@ -108,12 +109,9 @@
       // already stored stays encrypted and becomes unreadable for good, so
       // this is a destructive act and is confirmed as one.
       const confirmed = await dialogs.confirm({
-        title: 'Turn off encryption?',
-        message:
-          'Messages already sent in this channel stay encrypted and will no longer be readable ' +
-          'by anyone — this channel’s keys are deleted. New messages will be stored in plain ' +
-          'text on the server.',
-        confirmLabel: 'Turn off',
+        title: t('channelPermissionsModal.disableEncryptionTitle'),
+        message: t('channelPermissionsModal.disableEncryptionMessage'),
+        confirmLabel: t('channelPermissionsModal.turnOff'),
         danger: true
       });
       if (!confirmed) {
@@ -134,10 +132,10 @@
 
   async function addMember() {
     const name = await dialogs.prompt({
-      title: 'Add member override',
-      message: 'Grant or restrict a specific member in this channel.',
-      placeholder: 'Username',
-      confirmLabel: 'Add'
+      title: t('channelPermissionsModal.addMemberTitle'),
+      message: t('channelPermissionsModal.addMemberMessage'),
+      placeholder: t('channelPermissionsModal.username'),
+      confirmLabel: t('channelPermissionsModal.add')
     });
     if (name === null) return;
     const trimmed = name.trim();
@@ -208,8 +206,8 @@
       tabindex="0"
     >
       <div class="modal-header">
-        <h2 id="channel-perms-title">Permissions — {channelName}</h2>
-        <button class="icon-btn close-btn" onclick={close} aria-label="Close permissions">
+        <h2 id="channel-perms-title">{t('channelPermissionsModal.title', { channel: channelName })}</h2>
+        <button class="icon-btn close-btn" onclick={close} aria-label={t('channelPermissionsModal.closePermissions')}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -221,10 +219,9 @@
         <label class="private-toggle">
           <input type="checkbox" checked={isPrivate} onchange={togglePrivate} />
           <span>
-            <span class="private-label">Private channel</span>
+            <span class="private-label">{t('channelPermissionsModal.privateChannel')}</span>
             <span class="private-desc">
-              Hide this channel from everyone by default, then grant access to the roles and
-              members below.
+              {t('channelPermissionsModal.hideThisChannelFrom')}
             </span>
           </span>
         </label>
@@ -238,34 +235,31 @@
               onchange={toggleEncryption}
             />
             <span>
-              <span class="private-label">End-to-end encrypted</span>
+              <span class="private-label">{t('channelPermissionsModal.endToEndEncrypted')}</span>
               <span class="private-desc">
                 {#if !isPrivate}
-                  Make the channel private first — encrypting a channel everyone can read
-                  protects nothing.
+                  {t('channelPermissionsModal.privateFirst')}
                 {:else}
-                  Messages are sealed on each member's machine. The server stores ciphertext
-                  only: it keeps who posted and when, never what was said. Search, bots and
-                  server-side link previews stop working here, and uploaded files themselves
-                  stay unencrypted — only their names travel sealed.
+                  {t('channelPermissionsModal.encryptionHint')}
                 {/if}
               </span>
               {#if isEncrypted}
                 <span class="key-status">
                   {#if keyState?.locked}
-                    Waiting for a member who holds the key to share it with you.
+                    {t('channelPermissionsModal.keyLocked')}
                   {:else if keyFingerprint}
-                    Key #{keyState?.epoch} · <code>{channelKeyFingerprint(keyFingerprint)}</code>
-                    — members reading the same groups aloud hold the same key.
+                    {@const [before, after] = t('channelPermissionsModal.keyFingerprint', {
+                      epoch: keyState?.epoch ?? ''
+                    }).split('{fingerprint}')}
+                    {before}<code>{channelKeyFingerprint(keyFingerprint)}</code>{after}
                   {:else}
-                    Setting up this channel's key…
+                    {t('channelPermissionsModal.keySettingUp')}
                   {/if}
                 </span>
               {/if}
               {#if isEncrypted && keyState?.untrusted.length}
                 <span class="key-warning">
-                  Not sharing the key with {keyState.untrusted.join(', ')}: their security key
-                  changed. Verify it on their profile before trusting it.
+                  {t('channelPermissionsModal.keyUntrusted', { names: keyState.untrusted.join(', ') })}
                 </span>
               {/if}
             </span>
@@ -278,8 +272,8 @@
 
         <div class="perm-table" role="table">
           <div class="perm-head" role="row">
-            <span class="perm-target">Role / member</span>
-            <span class="perm-col">View</span>
+            <span class="perm-target">{t('channelPermissionsModal.roleMember')}</span>
+            <span class="perm-col">{t('channelPermissionsModal.view')}</span>
             <span class="perm-col">{writeLabel}</span>
           </div>
 
@@ -297,7 +291,7 @@
           {/each}
         </div>
 
-        <button class="btn add-member" onclick={addMember}>+ Add member</button>
+        <button class="btn add-member" onclick={addMember}>{t('channelPermissionsModal.addMember')}</button>
       </div>
     </div>
   </div>
@@ -327,7 +321,7 @@
       {#if color}<span class="role-dot" style={`background:${color}`} aria-hidden="true"></span>{/if}
       <span class="perm-target-name">{label}</span>
       {#if removable}
-        <button class="icon-btn remove-member" onclick={() => removeMember(label)} aria-label={`Remove ${label}`}>
+        <button class="icon-btn remove-member" onclick={() => removeMember(label)} aria-label={t('channelPermissionsModal.removeMember', { name: label })}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>

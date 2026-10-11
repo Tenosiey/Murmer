@@ -1,4 +1,7 @@
-# Settings live in .env (start from .env.example); README.md lists them all.
+# Production-shaped; settings live in .env (start from .env.example) and
+# README.md lists them all. `docker compose up` also reads
+# docker-compose.override.yml, which holds the development settings; delete
+# it (or pass `-f docker-compose.yml`) on a public server.
 services:
   server:
     build: ./murmer_server
@@ -14,11 +17,15 @@ services:
     environment:
       DATABASE_PATH: /app/data/murmer.db
       UPLOAD_DIR: /app/uploads
+      # Required, so a server is never open to anyone who finds the port.
+      SERVER_PASSWORD: ${SERVER_PASSWORD:?set SERVER_PASSWORD in .env}
       # Uncomment with the web client mount below to serve it at /. Build it
       # first with `bun run build` in murmer_client/.
       # WEB_CLIENT_DIR: /app/web
+    # Loopback only: put a TLS reverse proxy (see README.md) in front. The
+    # server speaks plain HTTP/WS, which must not face the internet.
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
       # Uncomment when SFU_PUBLIC_IP is set; match SFU_UDP_PORT if changed.
       # - "3479:3479/udp"
     volumes:

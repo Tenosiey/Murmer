@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { onServerError } from '$lib/stores/chat';
+  import { t } from '$lib/i18n';
   import {
     screenShareServerMaxBitrate,
     setServerScreenShareMaxBitrate
@@ -29,7 +30,7 @@
   $effect(() => {
     if (screenShareSavePending && !screenShareCapDirty) {
       screenShareSavePending = false;
-      screenShareFeedback = { text: 'Changes saved.', kind: 'info' };
+      screenShareFeedback = { text: t('screenshareTab.saved'), kind: 'info' };
     }
   });
 
@@ -37,7 +38,7 @@
     const mbps = Number.isFinite(screenShareCapMbps) ? screenShareCapMbps : NaN;
     if (Number.isNaN(mbps) || mbps < 0 || mbps > 100 || (mbps > 0 && mbps < 0.1)) {
       screenShareFeedback = {
-        text: 'Enter a value between 0.1 and 100 Mbps, or 0 for no limit.',
+        text: t('screenshareTab.range'),
         kind: 'error'
       };
       return;
@@ -65,9 +66,9 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">Screen Share</h3>
+    <h3 class="section-title">{t('screenshareTab.screenShare')}</h3>
     <div class="setting-group">
-      <span class="setting-label">Screen share max bitrate</span>
+      <span class="setting-label">{t('screenshareTab.screenShareMaxBitrate')}</span>
       <input
         type="number"
         bind:value={screenShareCapMbps}
@@ -76,16 +77,14 @@
         step="0.5"
       />
       <div class="setting-description">
-        Cap in Mbps applied to every member's outgoing screen share; 0 means no limit.
-        Screen shares travel peer-to-peer between members, so this limits member
-        bandwidth use, not server load.
+        {t('screenshareTab.capInMbpsApplied')}
       </div>
       <div>
         <button
           class="btn btn-primary"
           onclick={saveScreenShareCap}
           disabled={!screenShareCapDirty}
-        >Save changes</button>
+        >{t('screenshareTab.saveChanges')}</button>
       </div>
       {#if screenShareFeedback}
         <div class="identity-feedback" class:error={screenShareFeedback.kind === 'error'}>

@@ -8,6 +8,7 @@
   } from '$lib/chat/constants';
   import { storageUsage, formatBytes } from '$lib/stores/storageUsage';
   import { uploadConfig, setUploadConfig } from '$lib/stores/uploadConfig';
+  import { t } from '$lib/i18n';
 
   interface Props {
     active: boolean;
@@ -38,7 +39,7 @@
   $effect(() => {
     if (uploadSavePending && !uploadDirty) {
       uploadSavePending = false;
-      uploadFeedback = { text: 'Changes saved.', kind: 'info' };
+      uploadFeedback = { text: t('uploads.saved'), kind: 'info' };
     }
   });
 
@@ -54,9 +55,10 @@
       uploadMaxBytesDraft > MAX_UPLOAD_MAX_BYTES
     ) {
       uploadFeedback = {
-        text: `Enter a size between ${MIN_UPLOAD_MAX_BYTES / 1024} KB and ${
-          MAX_UPLOAD_MAX_BYTES / BYTES_PER_MB
-        } MB.`,
+        text: t('uploads.sizeRange', {
+          minKb: MIN_UPLOAD_MAX_BYTES / 1024,
+          maxMb: MAX_UPLOAD_MAX_BYTES / BYTES_PER_MB
+        }),
         kind: 'error'
       };
       return;
@@ -79,8 +81,10 @@
   const CATEGORY_LABELS: Record<string, string> = {
     ...Object.fromEntries(UPLOAD_CATEGORIES.map((category) => [category.id, category.label])),
     // Files whose extension left the safe-list still occupy disk.
-    other: 'Other'
+    other: t('uploads.other')
   };
+
+  const categoriesHint = t('uploads.categoriesHint').split('{images}');
 
   const UPLOAD_ERROR_CODES = new Set([
     'upload-permission-denied',
@@ -98,9 +102,9 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">Files &amp; Uploads</h3>
+    <h3 class="section-title">{t('uploads.filesUploads')}</h3>
     <div class="setting-group">
-      <label class="setting-label" for="upload-max-size">Max upload size</label>
+      <label class="setting-label" for="upload-max-size">{t('uploads.maxUploadSize')}</label>
       <input
         id="upload-max-size"
         type="number"
@@ -110,18 +114,13 @@
         step="1"
       />
       <div class="setting-description">
-        Maximum size in MB for a single file, between 0.0625 MB (64 KB) and
-        {MAX_UPLOAD_MAX_BYTES / (1024 * 1024)} MB. Uploads are stored on the server's
-        disk, so raising this raises the space members can consume.
+        {t('uploads.maxSizeHint', { maxMb: MAX_UPLOAD_MAX_BYTES / (1024 * 1024) })}
       </div>
     </div>
     <div class="setting-group">
-      <span class="setting-label">Allowed file types</span>
+      <span class="setting-label">{t('uploads.allowedFileTypes')}</span>
       <div class="setting-description">
-        Which upload categories members may attach. Active content (HTML, SVG, scripts)
-        is always rejected and cannot be enabled. Custom emojis, server icons and
-        avatars are uploaded as images too — turning <strong>Images</strong> off blocks
-        those as well.
+        {categoriesHint[0]}<strong>{t('uploadCategory.images')}</strong>{categoriesHint[1]}
       </div>
       {#each UPLOAD_CATEGORIES as category (category.id)}
         <label class="toggle-row">
@@ -140,7 +139,7 @@
       {/each}
       {#if uploadCategories.length === 0}
         <div class="setting-description">
-          With no category enabled, members cannot attach files at all.
+          {t('uploads.withNoCategoryEnabled')}
         </div>
       {/if}
     </div>
@@ -150,7 +149,7 @@
           class="btn btn-primary"
           onclick={saveUploadConfig}
           disabled={!uploadDirty}
-        >Save changes</button>
+        >{t('uploads.saveChanges')}</button>
       </div>
       {#if uploadFeedback}
         <div class="identity-feedback" class:error={uploadFeedback.kind === 'error'}>
@@ -160,20 +159,17 @@
     </div>
 
     <div class="setting-group">
-      <span class="setting-label">Storage used</span>
+      <span class="setting-label">{t('uploads.storageUsed')}</span>
       <div class="setting-description">
-        What the server's upload directory holds right now. Measured when asked rather
-        than counted as files arrive, so it also covers emojis, avatars and soundboard
-        clips. Deleting a message or an emoji does not delete its file.
+        {t('uploads.whatTheServerS')}
       </div>
       {#if $storageUsage === null}
-        <div class="setting-description">Measuring…</div>
+        <div class="setting-description">{t('uploads.measuring')}</div>
       {:else}
         <div class="storage-total">
           {formatBytes($storageUsage.totalBytes)}
           <span class="storage-files">
-            across {$storageUsage.fileCount}
-            {$storageUsage.fileCount === 1 ? 'file' : 'files'}
+            {t('uploads.acrossFiles', { count: $storageUsage.fileCount })}
           </span>
         </div>
         {#if $storageUsage.categories.length > 0}
@@ -203,7 +199,7 @@
         {/if}
       {/if}
       <div>
-        <button class="btn" onclick={() => storageUsage.refresh()}>Refresh</button>
+        <button class="btn" onclick={() => storageUsage.refresh()}>{t('uploads.refresh')}</button>
       </div>
     </div>
   </div>

@@ -6,6 +6,7 @@
   again" reads as "now" rather than as the only way back.
 -->
 <script lang="ts">
+  import { t } from '$lib/i18n';
   interface Props {
     state: 'connecting' | 'disconnected' | 'failed';
     server?: string | null;
@@ -28,21 +29,31 @@
   <div class="connection-card">
     {#if state === 'connecting'}
       <div class="spinner" aria-hidden="true"></div>
-      <h2>Connecting…</h2>
-      <p class="detail">{server ?? 'Unknown server'}</p>
+      <h2>{t('connectionOverlay.connecting')}</h2>
+      <p class="detail">{server ?? t('connectionOverlay.unknownServer')}</p>
     {:else}
-      <h2>{reconnecting ? 'Reconnecting…' : state === 'failed' ? 'Could not connect' : 'Connection lost'}</h2>
+      <h2>
+        {t(
+          reconnecting
+            ? 'connectionOverlay.reconnecting'
+            : state === 'failed'
+              ? 'connectionOverlay.failed'
+              : 'connectionOverlay.lost'
+        )}
+      </h2>
       <p>
-        {reconnecting
-          ? 'The connection to the server was lost. Murmer keeps trying in the background.'
-          : state === 'failed'
-            ? 'The server is offline or unreachable. Check the address or try again later.'
-            : 'The connection to the server was lost. It may have gone offline.'}
+        {t(
+          reconnecting
+            ? 'connectionOverlay.reconnectingDetail'
+            : state === 'failed'
+              ? 'connectionOverlay.failedDetail'
+              : 'connectionOverlay.lostDetail'
+        )}
       </p>
-      <p class="detail">{server ?? 'Unknown server'}</p>
+      <p class="detail">{server ?? t('connectionOverlay.unknownServer')}</p>
       <div class="actions">
-        <button type="button" class="btn btn-primary" onclick={onRetry}>Try again</button>
-        <button type="button" class="btn" onclick={onBack}>Back to servers</button>
+        <button type="button" class="btn btn-primary" onclick={onRetry}>{t('connectionOverlay.tryAgain')}</button>
+        <button type="button" class="btn" onclick={onBack}>{t('connectionOverlay.backToServers')}</button>
       </div>
     {/if}
   </div>

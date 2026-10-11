@@ -11,6 +11,7 @@
   import { microphoneMuted } from '$lib/stores/settings';
   import { mirrorSelfView } from '$lib/stores/webcam';
   import type { WebcamTile } from '$lib/types';
+  import { t } from '$lib/i18n';
 
   interface Props {
     /** The cameras to show, our own preview first. */
@@ -55,13 +56,13 @@
   }
 </script>
 
-<section class="stage" aria-label="Cameras">
+<section class="stage" aria-label={t('webcamStage.cameras')}>
   <div class="stage-bar">
     <button
       class="collapse"
       onclick={() => (collapsed = !collapsed)}
       aria-expanded={!collapsed}
-      title={collapsed ? 'Show cameras' : 'Hide cameras'}
+      title={t(collapsed ? 'webcamStage.show' : 'webcamStage.hide')}
     >
       <svg
         width="14"
@@ -94,21 +95,21 @@
           {:else}
             <div class="pending" role="status">
               <span class="spinner" aria-hidden="true"></span>
-              <span>Connecting…</span>
+              <span>{t('webcamStage.connecting')}</span>
             </div>
           {/if}
 
-          <button class="expand" onclick={toggleFullscreen} title="Fullscreen" aria-label="Fullscreen">
+          <button class="expand" onclick={toggleFullscreen} title={t('webcamStage.fullscreen')} aria-label={t('webcamStage.fullscreen')}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
           </button>
 
           <div class="label">
             {#if micMuted(tile)}
-              <span class="mute-icon" title="Microphone muted" aria-label="Microphone muted">
+              <span class="mute-icon" title={t('webcamStage.microphoneMuted')} aria-label={t('webcamStage.microphoneMuted')}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="2" y1="2" x2="22" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
               </span>
             {/if}
-            <span class="name">{tile.isSelf ? 'You' : $displayNames(tile.userId)}</span>
+            <span class="name">{tile.isSelf ? t('webcamStage.you') : $displayNames(tile.userId)}</span>
           </div>
         </div>
       {/each}

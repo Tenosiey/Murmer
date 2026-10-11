@@ -10,6 +10,7 @@
   import { dialogs } from '$lib/stores/dialogs';
   import { formatBytes } from '$lib/stores/storageUsage';
   import { formatLocalDateTime } from '$lib/chat/helpers';
+  import { t } from '$lib/i18n';
 
   interface Props {
     channelId: number;
@@ -87,9 +88,9 @@
 
   async function restore(revision: number) {
     const confirmed = await dialogs.confirm({
-      title: 'Restore this version?',
-      message: `Revision ${revision} becomes the newest version of "${page.title}". Nothing is lost — the current version stays in the history.`,
-      confirmLabel: 'Restore'
+      title: t('wikiHistory.restoreTitle'),
+      message: t('wikiHistory.restoreMessage', { revision, title: page.title }),
+      confirmLabel: t('wikiHistory.restore')
     });
     if (!confirmed) return;
     restoring = true;
@@ -101,15 +102,18 @@
         // Someone saved while the history was open; restoring on the stale
         // base would have overwritten them without either side noticing.
         await dialogs.alert({
-          title: 'Wiki',
-          message: `${result.current.updatedBy || 'Someone'} saved revision ${result.current.revision} in the meantime. Check the diff against it and try again.`
+          title: t('wiki.title'),
+          message: t('wikiHistory.restoreConflict', {
+            name: result.current.updatedBy || t('wikiHistory.someone'),
+            revision: result.current.revision
+          })
         });
         await loadHistory();
       }
     } catch {
       await dialogs.alert({
-        title: 'Wiki',
-        message: 'The version could not be restored. Please try again.'
+        title: t('wiki.title'),
+        message: t('wikiHistory.restoreFailed')
       });
     } finally {
       restoring = false;
@@ -188,15 +192,15 @@
 <div class="history">
   <aside class="revisions">
     <div class="revisions-header">
-      <h3>History</h3>
-      <button class="btn btn-ghost" onclick={onClose}>Back to page</button>
+      <h3>{t('wikiHistory.history')}</h3>
+      <button class="btn btn-ghost" onclick={onClose}>{t('wikiHistory.backToPage')}</button>
     </div>
     {#if loading}
-      <p class="note">Loading history…</p>
+      <p class="note">{t('wikiHistory.loadingHistory')}</p>
     {:else if failed}
-      <p class="note">The history could not be loaded.</p>
+      <p class="note">{t('wikiHistory.theHistoryCouldNot')}</p>
     {:else if revisions.length === 0}
-      <p class="note">No stored revisions.</p>
+      <p class="note">{t('wikiHistory.noStoredRevisions')}</p>
     {:else}
       <ul>
         {#each revisions as revision (revision.revision)}
@@ -208,15 +212,18 @@
               onclick={() => selectRevision(revision.revision)}
             >
               <span class="revision-line">
-                <span class="revision-number">rev {revision.revision}</span>
+                <span class="revision-number">{t('wikiHistory.rev', { revision: revision.revision })}</span>
                 {#if revision.revision === revisions[0].revision}
-                  <span class="tag">current</span>
+                  <span class="tag">{t('wikiHistory.current')}</span>
                 {:else if revision.revision === baseRevision}
-                  <span class="tag tag-base">compared</span>
+                  <span class="tag tag-base">{t('wikiHistory.compared')}</span>
                 {/if}
               </span>
               <span class="revision-meta">
-                {revision.author || 'unknown'} · {formatLocalDateTime(revision.createdAt) ?? revision.createdAt}
+                {t('wikiHistory.revisionMeta', {
+                  author: revision.author || t('wikiHistory.unknownAuthor'),
+                  date: formatLocalDateTime(revision.createdAt) ?? revision.createdAt
+                })}
               </span>
               <span class="revision-meta">{revision.title} · {formatBytes(revision.bytes)}</span>
             </button>
@@ -231,14 +238,17 @@
       {@const meta = selectedMeta}
       <div class="diff-header">
         <div class="diff-title">
-          <h4>Revision {meta.revision}</h4>
+          <h4>{t('wikiHistory.revisionTitle', { revision: meta.revision })}</h4>
           <span class="diff-sub">
-            by {meta.author || 'unknown'} · {formatLocalDateTime(meta.createdAt) ?? meta.createdAt}
+            {t('wikiHistory.revisionBy', {
+              author: meta.author || t('wikiHistory.unknownAuthor'),
+              date: formatLocalDateTime(meta.createdAt) ?? meta.createdAt
+            })}
           </span>
         </div>
         <div class="diff-actions">
           <label class="compare">
-            <span>Compare with</span>
+            <span>{t('wikiHistory.compareWith')}</span>
             <select
               value={baseChoice === null ? '' : String(baseChoice)}
               onchange={(e) => {
@@ -248,10 +258,10 @@
               }}
             >
               <option value="">
-                {previousRevision === null ? 'nothing (first kept version)' : 'previous revision'}
+                {t(previousRevision === null ? 'wikiHistory.againstNothing' : 'wikiHistory.againstPrevious')}
               </option>
               {#each revisions.filter((r) => r.revision !== meta.revision) as option (option.revision)}
-                <option value={String(option.revision)}>rev {option.revision}</option>
+                <option value={String(option.revision)}>{t('wikiHistory.rev', { revision: option.revision })}</option>
               {/each}
             </select>
           </label>
@@ -261,7 +271,7 @@
               disabled={restoring}
               onclick={() => restore(meta.revision)}
             >
-              {restoring ? 'Restoring…' : 'Restore this version'}
+              {t(restoring ? 'wikiHistory.restoring' : 'wikiHistory.restoreVersion')}
             </button>
           {/if}
         </div>
@@ -273,31 +283,33 @@
           <span class="removed">−{diff.removed}</span>
           <span class="against">
             {baseRevision === null
-              ? 'against an empty page'
-              : `rev ${baseRevision} → rev ${meta.revision}`}
+              ? t('wikiHistory.againstEmpty')
+              : t('wikiHistory.revRange', { from: baseRevision, to: meta.revision })}
           </span>
           {#if titleChanged}
-            <span class="against">title: “{baseBody?.title}” → “{targetBody?.title}”</span>
+            <span class="against">
+              {t('wikiHistory.titleChange', { from: baseBody?.title ?? '', to: targetBody?.title ?? '' })}
+            </span>
           {/if}
           {#if !diff.exact}
             <span class="against warn">
-              too different to align line by line — shown as a full replacement
+              {t('wikiHistory.tooDifferentToAlign')}
             </span>
           {/if}
           {#if showAll}
-            <button class="link-btn" onclick={() => (showAll = false)}>Collapse unchanged</button>
+            <button class="link-btn" onclick={() => (showAll = false)}>{t('wikiHistory.collapseUnchanged')}</button>
           {:else if hasFoldedLines}
-            <button class="link-btn" onclick={() => (showAll = true)}>Show whole page</button>
+            <button class="link-btn" onclick={() => (showAll = true)}>{t('wikiHistory.showWholePage')}</button>
           {/if}
         </div>
         {#if diff.added === 0 && diff.removed === 0}
-          <p class="note">These two versions are identical.</p>
+          <p class="note">{t('wikiHistory.theseTwoVersionsAre')}</p>
         {:else}
           <div class="diff-body">
             {#each rows as row, index (index)}
               {#if row.op === 'gap'}
                 <button class="gap" onclick={() => (showAll = true)}>
-                  … {row.count} unchanged {row.count === 1 ? 'line' : 'lines'}
+                  {t('wikiHistory.unchangedLines', { count: row.count })}
                 </button>
               {:else}
                 <div class="line {row.op}">
@@ -311,14 +323,14 @@
           </div>
         {/if}
       {:else if loadingDiff}
-        <p class="note">Loading diff…</p>
+        <p class="note">{t('wikiHistory.loadingDiff')}</p>
       {:else if diffFailed}
-        <p class="note">The diff could not be loaded.</p>
+        <p class="note">{t('wikiHistory.theDiffCouldNot')}</p>
       {:else}
-        <p class="note">This revision is no longer stored.</p>
+        <p class="note">{t('wikiHistory.thisRevisionIsNo')}</p>
       {/if}
     {:else if !loading}
-      <p class="note">Select a revision to see what changed.</p>
+      <p class="note">{t('wikiHistory.selectARevisionTo')}</p>
     {/if}
   </section>
 </div>

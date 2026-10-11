@@ -24,6 +24,7 @@
   import { keyPairFromSeed, loadKeyPair, replaceKeyPair, seedOf } from '$lib/keypair';
   import { session } from '$lib/stores/session';
   import { dialogs } from '$lib/stores/dialogs';
+  import { t } from '$lib/i18n';
 
   /** Shortest passphrase worth calling one. The file is the account. */
   const MIN_PASSPHRASE = 8;
@@ -67,16 +68,16 @@
   function describe(err: unknown): string {
     if (err instanceof IdentityError) return err.message;
     console.error('Identity backup failed', err);
-    return 'Something went wrong. Please try again.';
+    return t('backup.genericError');
   }
 
   async function saveFile() {
     if (passphrase.length < MIN_PASSPHRASE) {
-      error = `Use at least ${MIN_PASSPHRASE} characters — this file is your account.`;
+      error = t('backup.tooShort', { min: MIN_PASSPHRASE });
       return;
     }
     if (passphrase !== passphraseAgain) {
-      error = 'The two passphrases do not match.';
+      error = t('backup.mismatch');
       return;
     }
 
@@ -96,7 +97,7 @@
       passphrase = '';
       passphraseAgain = '';
       panel = 'none';
-      notice = 'Recovery file saved. Keep it somewhere you would keep a password.';
+      notice = t('backup.saved');
     } catch (err) {
       error = describe(err);
     } finally {
@@ -144,7 +145,7 @@
       let user = '';
 
       if (restoreSource === 'file') {
-        if (!restoreFileText) throw new IdentityError('Choose a recovery file first.');
+        if (!restoreFileText) throw new IdentityError(t('backup.chooseFirst'));
         const identity = await importIdentityFile(restoreFileText, restorePassphrase);
         seed = identity.seed;
         user = identity.user;
@@ -157,17 +158,14 @@
       if (keyPairFromSeed(seed).publicKey === loadKeyPair().publicKey) {
         busy = false;
         error = '';
-        notice = 'That backup holds the identity this device is already using.';
+        notice = t('backup.sameIdentity');
         return;
       }
 
       const confirmed = await dialogs.confirm({
-        title: 'Replace this device’s identity?',
-        message:
-          'The key on this device will be replaced. Any account it currently owns becomes ' +
-          'unreachable from here without its own backup, and direct messages addressed to ' +
-          'it can no longer be read. Murmer will reload.',
-        confirmLabel: 'Replace identity',
+        title: t('backup.replaceTitle'),
+        message: t('backup.replaceMessage'),
+        confirmLabel: t('backup.replaceConfirm'),
         danger: true
       });
       if (!confirmed) {
@@ -188,22 +186,20 @@
 </script>
 
 <div class="setting-group">
-  <span class="setting-label">Backup &amp; recovery</span>
+  <span class="setting-label">{t('backup.title')}</span>
   <div class="setting-description">
-    Your key is your account on every server you use, and the only thing that can read the
-    direct messages sent to you. It lives on this device only — back it up, or a reinstall or a
-    new machine means starting over under a new name.
+    {t('backup.intro')}
   </div>
 
   <div class="backup-actions">
     <button class="btn" onclick={() => openPanel('file')} disabled={busy}>
-      Save recovery file
+      {t('backup.saveRecoveryFile')}
     </button>
     <button class="btn" onclick={() => openPanel('phrase')} disabled={busy}>
-      Show recovery phrase
+      {t('backup.showRecoveryPhrase')}
     </button>
     <button class="btn" onclick={() => openPanel('restore')} disabled={busy}>
-      Restore from backup
+      {t('backup.restore')}
     </button>
   </div>
 
@@ -217,15 +213,14 @@
   {#if panel === 'file'}
     <div class="backup-panel">
       <div class="setting-description">
-        The file is encrypted with this passphrase and holds your key and account name. If you
-        forget the passphrase the file is worthless — there is no way to recover it.
+        {t('backup.fileHint')}
       </div>
       <label class="backup-field">
-        <span>Passphrase</span>
+        <span>{t('backup.passphrase')}</span>
         <input class="field" type="password" bind:value={passphrase} autocomplete="new-password" />
       </label>
       <label class="backup-field">
-        <span>Passphrase again</span>
+        <span>{t('backup.passphraseAgain')}</span>
         <input
           class="field"
           type="password"
@@ -235,10 +230,10 @@
       </label>
       <div class="backup-actions">
         <button class="btn btn-primary" onclick={saveFile} disabled={busy}>
-          {busy ? 'Encrypting…' : 'Save file'}
+          {busy ? t('backup.encrypting') : t('backup.saveFile')}
         </button>
         <button class="btn btn-ghost" onclick={() => openPanel('none')} disabled={busy}>
-          Cancel
+          {t('backup.cancel')}
         </button>
       </div>
     </div>
@@ -248,8 +243,7 @@
     <div class="backup-panel">
       {#if phrase}
         <div class="setting-description">
-          Write these 24 words down in order and keep them somewhere private. Anyone who has
-          them owns your account.
+          {t('backup.writeDown')}
         </div>
         <ol class="phrase-grid">
           {#each phrase.split(' ') as word, index (index)}
@@ -258,18 +252,17 @@
         </ol>
         <div class="backup-actions">
           <button class="btn" onclick={copyPhrase}>
-            {phraseCopied ? 'Copied' : 'Copy phrase'}
+            {phraseCopied ? t('backup.copied') : t('backup.copyPhrase')}
           </button>
-          <button class="btn btn-ghost" onclick={() => openPanel('none')}>Done</button>
+          <button class="btn btn-ghost" onclick={() => openPanel('none')}>{t('backup.done')}</button>
         </div>
       {:else}
         <div class="setting-description">
-          The phrase is shown on screen. Make sure nobody is watching and that you are not
-          sharing your screen.
+          {t('backup.revealWarning')}
         </div>
         <div class="backup-actions">
-          <button class="btn btn-primary" onclick={revealPhrase}>Show the phrase</button>
-          <button class="btn btn-ghost" onclick={() => openPanel('none')}>Cancel</button>
+          <button class="btn btn-primary" onclick={revealPhrase}>{t('backup.showPhrase')}</button>
+          <button class="btn btn-ghost" onclick={() => openPanel('none')}>{t('backup.cancel')}</button>
         </div>
       {/if}
     </div>
@@ -277,7 +270,7 @@
 
   {#if panel === 'restore'}
     <div class="backup-panel">
-      <div class="restore-tabs" role="tablist" aria-label="Restore from">
+      <div class="restore-tabs" role="tablist" aria-label={t('backup.restoreFrom')}>
         <button
           class="btn btn-ghost"
           class:selected={restoreSource === 'file'}
@@ -285,7 +278,7 @@
           aria-selected={restoreSource === 'file'}
           onclick={() => ((restoreSource = 'file'), (error = ''))}
         >
-          Recovery file
+          {t('backup.recoveryFile')}
         </button>
         <button
           class="btn btn-ghost"
@@ -294,14 +287,14 @@
           aria-selected={restoreSource === 'phrase'}
           onclick={() => ((restoreSource = 'phrase'), (error = ''))}
         >
-          Recovery phrase
+          {t('backup.recoveryPhrase')}
         </button>
       </div>
 
       {#if restoreSource === 'file'}
         <div class="backup-actions">
           <button class="btn" onclick={() => fileInput?.click()} disabled={busy}>
-            {restoreFileName || 'Choose file…'}
+            {restoreFileName || t('backup.chooseFile')}
           </button>
           <input
             bind:this={fileInput}
@@ -312,7 +305,7 @@
           />
         </div>
         <label class="backup-field">
-          <span>Passphrase</span>
+          <span>{t('backup.passphrase')}</span>
           <input
             class="field"
             type="password"
@@ -322,11 +315,11 @@
         </label>
       {:else}
         <label class="backup-field">
-          <span>Recovery phrase</span>
+          <span>{t('backup.recoveryPhrase')}</span>
           <textarea
             class="field phrase-input"
             rows="3"
-            placeholder="The 24 words, in order, separated by spaces"
+            placeholder={t('backup.phrasePlaceholder')}
             bind:value={restorePhrase}
           ></textarea>
         </label>
@@ -334,10 +327,10 @@
 
       <div class="backup-actions">
         <button class="btn btn-danger" onclick={restore} disabled={busy}>
-          {busy ? 'Restoring…' : 'Restore identity'}
+          {busy ? t('backup.restoring') : t('backup.restoreIdentity')}
         </button>
         <button class="btn btn-ghost" onclick={() => openPanel('none')} disabled={busy}>
-          Cancel
+          {t('backup.cancel')}
         </button>
       </div>
     </div>

@@ -7,9 +7,15 @@
 //! reconnect neither spends one of the invite's uses nor depends on the
 //! invite still existing — which is what lets an invite be revoked without
 //! evicting the people who joined through it. See `db::invites`.
+//!
+//! A presence may carry the `status` the client last chose; a member who
+//! appears offline then connects without ever being listed as online.
+//!
+//! An admitted presence that carries an `appVersion` different from this
+//! server's is answered with `version-mismatch`, naming which side is behind.
 
 use crate::channel_overrides::ChannelKind;
-use crate::ws::{constants::*, errors, helpers::*};
+use crate::ws::{constants::*, errors, helpers::*, validation::normalize_status};
 use crate::{AppState, bot, db, security};
 use axum::extract::ws::{Message, WebSocket};
 use chrono::Utc;
@@ -317,15 +323,22 @@ pub(super) async fn handle_presence(
                 return Err(());
             }
 
+            // A client may arrive with the status it last chose, so a member
+            // appearing offline is never announced as online in between.
+            let status = v
+                .get("status")
+                .and_then(|s| s.as_str())
+                .and_then(normalize_status)
+                .unwrap_or("online");
             state.users.lock().await.insert(u.to_string());
             state.known_users.lock().await.insert(u.to_string());
             state
                 .statuses
                 .lock()
                 .await
-                .insert(u.to_string(), "online".to_string());
+                .insert(u.to_string(), status.to_string());
 
-            broadcast_status(state, u, "online");
+            broadcast_status(state, u, status);
             broadcast_users(state).await;
             *user_name = Some(u.to_string());
 
@@ -366,6 +379,7 @@ pub(super) async fn handle_presence(
             super::scheduled::send_reminders(state, sender, u).await;
             super::send_ice_config(state, sender).await;
             send_default_channel(state, sender, u, default_channel_id).await;
+            send_version_mismatch(sender, v).await;
         }
     } else {
         send_error(sender, errors::INVALID_SIGNATURE).await;
@@ -373,6 +387,43 @@ pub(super) async fn handle_presence(
     }
 
     Ok(())
+}
+
+/// Tell a client whose `appVersion` differs from this server's which side is
+/// behind, so it can say "update your app" instead of failing in undefined
+/// ways. A warning rather than a refusal: when the server updates first, a
+/// refusal would lock every member out until each had updated.
+///
+/// Only the direction travels, never the server's version itself, which
+/// stays behind `VIEW_SERVER_INFO`.
+async fn send_version_mismatch(sender: &mut SplitSink<WebSocket, Message>, v: &Value) {
+    let Some(client) = v.get("appVersion").and_then(|a| a.as_str()) else {
+        return;
+    };
+    if let Some(behind) = version_behind(client, env!("CARGO_PKG_VERSION")) {
+        send_json(
+            sender,
+            &serde_json::json!({ "type": "version-mismatch", "behind": behind }),
+        )
+        .await;
+    }
+}
+
+/// Which side is older — `"client"` or `"server"` — or `None` on a match.
+/// Versions compare numerically per dot-separated part; a client version
+/// that does not parse counts as the one behind.
+fn version_behind(client: &str, server: &str) -> Option<&'static str> {
+    fn parts(v: &str) -> Option<Vec<u64>> {
+        v.split('.').map(|p| p.parse().ok()).collect()
+    }
+    if client == server {
+        return None;
+    }
+    match (parts(client), parts(server)) {
+        (Some(c), Some(s)) if c == s => None,
+        (Some(c), Some(s)) if c > s => Some("server"),
+        _ => Some("client"),
+    }
 }
 
 /// Handle bot authentication via token.
@@ -474,4 +525,22 @@ async fn send_default_channel(
     )
     .await;
     super::wiki::send_wiki_index(state, sender, default_channel_id).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::version_behind;
+
+    #[test]
+    fn version_behind_names_the_older_side() {
+        assert_eq!(version_behind("2026.1007.1", "2026.1007.1"), None);
+        assert_eq!(version_behind("2026.1007.1", "2026.1010.1"), Some("client"));
+        assert_eq!(version_behind("2026.1010.1", "2026.1007.1"), Some("server"));
+        // Numeric, not lexicographic: 10 is newer than 9.
+        assert_eq!(
+            version_behind("2026.1007.9", "2026.1007.10"),
+            Some("client")
+        );
+        assert_eq!(version_behind("garbage", "2026.1007.1"), Some("client"));
+    }
 }

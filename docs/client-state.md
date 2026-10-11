@@ -123,6 +123,15 @@ encrypted channel leaves nothing on disk; writing its draft to
 ciphertext never goes. Namespacing per server is still what makes a
 reconnect restore drafts instead of dropping them.
 
+## Saved messages
+
+`stores/savedMessages.ts` is the reader's own bookmark list, namespaced per
+server URL and, unlike the drafts, **persisted** — a bookmark that vanished
+on restart would be no bookmark. That is why it is the drafts' rule turned
+round: an entry from an encrypted channel keeps where the message is but
+never its text, so `savedEntry` drops it there. The server is not told what
+anyone saved; pins are the channel's, these are one person's.
+
 ## Encrypted-channel keys
 
 `stores/channelKeys.ts` holds channel keys **in memory only** — the server

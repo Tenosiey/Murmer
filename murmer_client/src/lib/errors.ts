@@ -1,226 +1,10 @@
 /**
  * Translation of server error codes (the `message` field of
- * `{"type":"error"}` frames) into user-facing text.
+ * `{"type":"error"}` frames) into user-facing text. The text itself lives in
+ * the i18n catalog under `error.<code>`.
  */
 import { MAX_POLL_OPTION_LENGTH, MAX_POLL_OPTIONS } from './chat/constants';
-
-const SERVER_ERROR_MESSAGES: Record<string, string> = {
-  unauthenticated: 'You are not authenticated with this server.',
-  'invalid-password': 'The server password is incorrect.',
-  'invalid-invite':
-    'That invite is no longer valid — it expired, ran out of uses or was withdrawn. Ask for a fresh one.',
-  'auth-rate-limit': 'Too many connection attempts. Please wait a moment and try again.',
-  'invalid-signature': 'Authentication failed: invalid signature.',
-  'invalid-signature-format': 'Authentication failed: invalid signature.',
-  'invalid-public-key': 'Authentication failed: invalid key.',
-  'invalid-key-length': 'Authentication failed: invalid key.',
-  'invalid-encoding': 'Authentication failed: invalid key encoding.',
-  'invalid-username': 'That username is not allowed on this server.',
-  'username-taken': 'That username is already in use by someone else on this server.',
-  banned: 'You are banned from this server.',
-  'login-failed': 'The server could not sign you in right now. Please try again shortly.',
-  'invalid-channel-name': 'That channel name is not allowed.',
-  'channel-permission-denied': 'You do not have permission to manage channels on this server.',
-  'channel-creation-failed': 'The server could not create the channel. Please try again.',
-  'channel-deletion-failed': 'The server could not delete the channel. Please try again.',
-  'cannot-delete-general': 'The general channel cannot be deleted.',
-  'cannot-rename-general': 'The general channel cannot be renamed.',
-  'channel-name-taken': 'A channel with that name already exists.',
-  'channel-rename-failed': 'The server could not rename the channel. Please try again.',
-  'unknown-channel': 'That channel no longer exists.',
-  'message-rate-limit': 'You are sending messages too quickly. Please slow down.',
-  'frame-rate-limit': 'Too many requests at once; some were dropped. Please slow down.',
-  'message-too-long': 'That message is too long to send.',
-  'invalid-voice-quality': 'Invalid voice quality setting.',
-  'invalid-voice-bitrate': 'Invalid voice bitrate setting.',
-  'invalid-voice-user-limit': 'A user limit must be a whole number from 0 to 99.',
-  'unknown-voice-channel': 'That voice channel no longer exists.',
-  'voice-channel-full': 'That voice channel is full. Try again once somebody leaves.',
-  'sfu-offer-rejected': 'The server could not take this call through its relay. Rejoin the voice channel to try again.',
-  'voice-channel-update-failed': 'The server could not update the voice channel.',
-  'invalid-breakout-rooms': 'That is not a valid number of breakout rooms.',
-  'breakout-already-open': 'That channel already has breakout rooms open.',
-  'breakout-create-failed':
-    'The server could not open the breakout rooms. A channel of that name may already exist.',
-  'role-permission-denied': 'You do not have permission to manage roles on this server.',
-  'role-target-not-found': 'That user is not connected to the server.',
-  'role-update-failed': 'The server could not update the role. Please try again.',
-  'role-not-found': 'That role no longer exists.',
-  'role-name-taken': 'A role with that name already exists.',
-  'role-protected': 'That role is protected and cannot be changed.',
-  'role-limit-reached': 'This server has reached its role limit.',
-  'invalid-role-name': 'That role name is not allowed.',
-  'invalid-role-color': 'That role color is not a valid hex color.',
-  'invalid-role-icon': 'That role icon is not a valid uploaded image.',
-  'invalid-role-permissions': 'Those permissions are not valid.',
-  'invalid-display-name': 'That display name is not allowed.',
-  'invalid-about': 'That about text is not allowed.',
-  'invalid-status-text': 'That status is too long, or its expiry is not allowed.',
-  'poke-unavailable': 'That member is not online to be poked.',
-  'poke-cooldown': 'Slow down — you can only poke someone every few seconds.',
-  'profile-update-failed': 'The server could not update your profile. Please try again.',
-  'invalid-avatar': 'That image cannot be used as an avatar.',
-  'avatar-update-failed': 'The server could not update your avatar. Please try again.',
-  'invalid-nickname': 'That nickname is not allowed.',
-  'nickname-permission-denied': 'You are not allowed to change that member’s nickname.',
-  'nickname-update-failed': 'The server could not update the nickname. Please try again.',
-  'send-permission-denied': 'You do not have permission to send messages in this channel.',
-  'channel-override-permission-denied':
-    'You do not have permission to edit this channel’s permissions.',
-  'invalid-channel-override': 'That channel permission change was invalid.',
-  'override-target-not-found': 'That role or user could not be found.',
-  'channel-override-failed': 'The server could not update the channel permissions. Please try again.',
-  'channel-key-permission-denied':
-    'You are not a member of that encrypted channel, so you cannot read or share its key.',
-  'invalid-channel-key': 'That channel key was malformed and was not stored.',
-  'channel-key-target-not-member':
-    'That key was addressed to somebody who is not a member of the channel.',
-  'channel-key-epoch-conflict':
-    'Another member rotated this channel’s key first. Reloading the current one.',
-  'channel-key-failed': 'The server could not store this channel’s key material. Please try again.',
-  'channel-not-private': 'Only private channels can be end-to-end encrypted.',
-  'channel-not-encrypted': 'That channel is not end-to-end encrypted.',
-  'channel-requires-encryption':
-    'This channel is end-to-end encrypted and only accepts encrypted messages.',
-  'invalid-encrypted-message': 'That encrypted message was malformed and was not sent.',
-  'invalid-category-name': 'That category name is not allowed.',
-  'category-creation-failed': 'The server could not create the category. Please try again.',
-  'category-rename-failed': 'The server could not rename the category. Please try again.',
-  'category-deletion-failed': 'The server could not delete the category. Please try again.',
-  'unknown-category': 'That category no longer exists.',
-  'channel-move-failed': 'The server could not move the channel. Please try again.',
-  'reorder-failed': 'The server could not save the new order. Please try again.',
-  'invalid-channel-topic': 'That channel topic is not allowed.',
-  'topic-update-failed': 'The server could not update the channel topic.',
-  'moderation-permission-denied': 'You do not have permission for that moderation action.',
-  'moderation-target-not-found': 'That user is not connected to the server.',
-  'moderation-target-protected': 'That user cannot be moderated by you.',
-  'cannot-moderate-self': 'You cannot moderate yourself.',
-  'moderation-failed': 'The server could not complete the moderation action.',
-  muted: 'You are muted and cannot send messages right now.',
-  'not-authenticated': 'You are not authenticated with this server.',
-  'invalid-status': 'That status is not recognised.',
-  'invalid-message-id': 'That message could not be found.',
-  'message-not-found': 'That message no longer exists.',
-  'message-wrong-channel': 'That message belongs to a different channel.',
-  'message-permission-denied': 'You do not have permission to modify that message.',
-  'message-delete-failed': 'The server could not delete the message. Please try again.',
-  'message-edit-failed': 'The server could not edit the message. Please try again.',
-  'invalid-message-text': 'That message text is not allowed.',
-  'invalid-reaction-action': 'That reaction could not be applied.',
-  'invalid-emoji': 'That emoji is not allowed.',
-  'reaction-failed': 'The server could not update the reaction. Please try again.',
-  'reaction-limit': 'This message has as many different reactions as it can hold. Join one of them instead.',
-  'dm-target-not-found': 'That user is not known on this server.',
-  'invalid-dm-payload': 'That direct message could not be sent (malformed encrypted payload).',
-  'cannot-dm-self': 'You cannot send a direct message to yourself.',
-  'dm-send-failed': 'The server could not deliver your direct message.',
-  'dm-history-failed': 'The server could not load that conversation.',
-  'pin-target-not-found': 'The message you tried to pin no longer exists.',
-  'pin-limit-reached': 'This channel already has the maximum number of pinned messages.',
-  'pin-failed': 'The server could not update the pinned messages.',
-  'reply-target-not-found': 'The message you are replying to no longer exists.',
-  'forward-source-not-found': 'That message no longer exists, or you cannot see it.',
-  'cannot-forward-encrypted':
-    'Messages cannot be forwarded into or out of an end-to-end encrypted channel.',
-  'cannot-forward-ephemeral': 'A disappearing message cannot be forwarded.',
-  'invalid-poll':
-    `A poll needs a question and 2 to ${MAX_POLL_OPTIONS} options of at most ${MAX_POLL_OPTION_LENGTH} characters.`,
-  'cannot-poll-encrypted':
-    'Polls are not available in end-to-end encrypted channels — counting the votes would mean the server sees them.',
-  'cannot-forward-poll': 'A poll cannot be forwarded.',
-  'poll-vote-failed': 'Your vote could not be recorded. Please try again.',
-  'nothing-to-forward': 'That message has nothing that can be forwarded.',
-  'cannot-edit-forward': 'A forwarded message cannot be edited — its words are someone else’s.',
-  'thread-load-failed': 'The server could not load that thread. Please try again.',
-  'emoji-permission-denied': 'You do not have permission to manage emojis on this server.',
-  'invalid-emoji-name':
-    'That emoji name is not allowed. Use 2-32 lowercase letters, digits or underscores.',
-  'invalid-emoji-url': 'The uploaded emoji image could not be used. Please try again.',
-  'emoji-name-taken': 'An emoji with that name already exists on this server.',
-  'emoji-limit-reached': 'This server has reached its custom emoji limit.',
-  'emoji-update-failed': 'The server could not update the emoji list. Please try again.',
-  'emoji-not-found': 'That emoji no longer exists.',
-  'sound-permission-denied': 'You do not have permission to manage sounds on this server.',
-  'soundboard-permission-denied': 'You do not have permission to play sounds on this server.',
-  'invalid-sound-name': 'That sound name is not allowed. Use 2-32 characters.',
-  'invalid-sound-file': 'The uploaded sound could not be used. Please try again.',
-  'sound-name-taken': 'A sound with that name already exists on this server.',
-  'sound-limit-reached': 'This server has reached its soundboard limit.',
-  'sound-update-failed': 'The server could not update the soundboard. Please try again.',
-  'sound-not-found': 'That sound no longer exists.',
-  'soundboard-cooldown': 'Slow down — you can only play a sound every few seconds.',
-  'identity-permission-denied': 'You do not have permission to edit the server identity.',
-  'invalid-server-name': 'That server name is not allowed.',
-  'invalid-server-description': 'That server description is not allowed.',
-  'invalid-welcome-message': 'That welcome message is not allowed.',
-  'invalid-server-icon': 'The uploaded server icon could not be used. Please try again.',
-  'identity-update-failed': 'The server could not update the server identity. Please try again.',
-  'screenshare-permission-denied':
-    'You do not have permission to change screen share settings on this server.',
-  'invalid-screenshare-bitrate': 'Invalid screen share bitrate setting.',
-  'screenshare-update-failed':
-    'The server could not update the screen share settings. Please try again.',
-  'upload-permission-denied':
-    'You do not have permission to change the upload settings on this server.',
-  'invalid-upload-config': 'Those upload settings are not valid.',
-  'upload-config-update-failed':
-    'The server could not update the upload settings. Please try again.',
-  'slow-mode': 'Slow mode is on — wait a moment before sending another message.',
-  'chat-settings-permission-denied':
-    'You do not have permission to change the chat settings on this server.',
-  'invalid-chat-settings': 'Those chat settings are not valid.',
-  'automod-blocked': 'An auto-moderation rule on this server blocked that message.',
-  'automod-permission-denied':
-    'You do not have permission to change the auto-moderation rules on this server.',
-  'invalid-automod-rules': 'Those auto-moderation rules are not valid.',
-  'invalid-automod-pattern':
-    'One of those patterns is not valid. A regular expression must compile, and a whole-word pattern cannot contain spaces.',
-  'automod-update-failed':
-    'The server could not update the auto-moderation rules. Please try again.',
-  'chat-settings-update-failed':
-    'The server could not update the chat settings. Please try again.',
-  'voice-defaults-permission-denied':
-    'You do not have permission to change the voice defaults on this server.',
-  'voice-defaults-update-failed':
-    'The server could not update the voice defaults. Please try again.',
-  'audit-log-permission-denied': 'You do not have permission to view this server’s audit log.',
-  'audit-log-failed': 'The server could not load the audit log.',
-  'maintenance-permission-denied': 'Only an Owner can purge or reset this server.',
-  'maintenance-not-confirmed': 'That action was not confirmed. Nothing was changed.',
-  'maintenance-failed': 'The server could not complete that action. Nothing was changed.',
-  'stats-permission-denied': 'You do not have permission to change stat tracking on this server.',
-  'stats-not-available': "That user's stats are not available.",
-  'stats-update-failed': 'The server could not update stat tracking. Please try again.',
-  'invalid-wiki-slug':
-    'That page name is not allowed. Use lowercase letters, digits and single dashes.',
-  'invalid-wiki-title': 'That page title is not allowed.',
-  'wiki-body-too-large': 'That wiki page is too large to save.',
-  'wiki-slug-taken': 'A wiki page with that name already exists in this channel.',
-  'wiki-page-not-found': 'That wiki page no longer exists.',
-  'wiki-revision-not-found': 'That revision is no longer stored.',
-  'wiki-page-limit-reached': 'This channel has reached its wiki page limit.',
-  'wiki-save-failed': 'The server could not update the wiki. Please try again.',
-  'invite-permission-denied': 'You do not have permission to manage invites on this server.',
-  'invalid-invite-options': 'That invite expiry or use limit is out of range.',
-  'invite-limit-reached': 'This server has reached its invite limit. Revoke one first.',
-  'invite-not-found': 'That invite no longer exists.',
-  'invite-update-failed': 'The server could not update the invite. Please try again.',
-  'invalid-schedule-time':
-    'Pick a time between 30 seconds and a year from now.',
-  'schedule-limit-reached':
-    'You already have the maximum number of scheduled messages. Cancel one first.',
-  'scheduled-message-not-found': 'That scheduled message no longer exists.',
-  'schedule-failed': 'The server could not schedule that message. Please try again.',
-  'invalid-reminder': 'A reminder needs a note of up to 500 characters.',
-  'reminder-limit-reached':
-    'You already have the maximum number of reminders. Dismiss one first.',
-  'reminder-not-found': 'That reminder no longer exists.',
-  'reminder-failed': 'The server could not save that reminder. Please try again.',
-  'group-mention-denied':
-    'You do not have permission to mention @here or roles. The message was not sent.',
-  'invalid-mentions': 'That message mentions a role that no longer exists.'
-};
+import { hasMessage, t } from './i18n';
 
 /**
  * Error codes after which the server closes the connection; the client
@@ -245,11 +29,13 @@ const FATAL_CONNECTION_ERRORS = new Set([
 /** Convert a server error code into a message suitable for display. */
 export function describeServerError(code: string): string {
   // The code arrives off the wire, so it may name an inherited property
-  // (`toString`, `constructor`, ...). Own-property lookup keeps those on the
-  // fallback path instead of handing the UI a function to render.
-  return Object.hasOwn(SERVER_ERROR_MESSAGES, code)
-    ? SERVER_ERROR_MESSAGES[code]
-    : `The server reported an error: ${code}`;
+  // (`toString`, `constructor`, ...). `hasMessage` is an own-property lookup,
+  // which keeps those on the fallback path instead of handing the UI a
+  // function to render.
+  const key = `error.${code}`;
+  return hasMessage(key)
+    ? t(key, { maxPollOptions: MAX_POLL_OPTIONS, maxPollOptionLength: MAX_POLL_OPTION_LENGTH })
+    : t('error.unknown', { code });
 }
 
 /** Whether the error ends the connection (auth rejection, ban, ...). */

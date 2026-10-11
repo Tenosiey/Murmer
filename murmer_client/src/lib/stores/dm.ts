@@ -117,6 +117,20 @@ function createDmStore() {
       }));
     },
 
+    /** A held message of a conversation, by id. */
+    find(peer: string, id: number): Message | undefined {
+      return get(conversations)[peer]?.find((msg) => msg.id === id);
+    },
+
+    /** Drop a message the sender deleted. */
+    remove(peer: string, id: number) {
+      conversations.update((current) => {
+        const list = current[peer];
+        if (!list?.some((msg) => msg.id === id)) return current;
+        return { ...current, [peer]: list.filter((msg) => msg.id !== id) };
+      });
+    },
+
     /** Drop all conversations, e.g. when leaving a server. */
     reset() {
       conversations.set({});

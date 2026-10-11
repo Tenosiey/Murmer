@@ -19,6 +19,7 @@
   } from '$lib/stores/screenShareWindows';
   import { displayNames } from '$lib/stores/profiles';
   import { outputMuted, outputDeviceId } from '$lib/stores/settings';
+  import { t } from '$lib/i18n';
 
   interface Props {
     /** Identifies this window in the geometry store. */
@@ -55,7 +56,7 @@
   let showAudioControls = $derived(peer?.hasAudio === true && !isSelf);
   /** A picture-in-picture window has room for the essentials only. */
   let compact = $derived(geometry.mode === 'pip');
-  let title = $derived(isSelf ? 'Your screen' : $displayNames(userId));
+  let title = $derived(isSelf ? t('screenShareWindow.yourScreen') : $displayNames(userId));
 
   $effect(() => {
     // The stream object is stable for the lifetime of the share, so this only
@@ -252,7 +253,9 @@
   class="window"
   class:compact
   style="left: {geometry.x}px; top: {geometry.y}px; width: {geometry.width}px; height: {geometry.height}px; z-index: {geometry.z};"
-  aria-label={isSelf ? 'Your screen share preview' : `${$displayNames(userId)}'s screen share`}
+  aria-label={isSelf
+    ? t('screenShareWindow.selfPreview')
+    : t('screenShareWindow.shareOf', { name: $displayNames(userId) })}
   onpointerdown={raise}
   onkeydown={handleKeydown}
 >
@@ -264,8 +267,8 @@
       onpointerdown={startDrag}
       onkeydown={moveByKey}
       ondblclick={toggleMaximized}
-      title="Drag to move · double-click to maximize"
-      aria-label={`Move ${title}'s window`}
+      title={t('screenShareWindow.dragToMoveDouble')}
+      aria-label={t('screenShareWindow.move', { name: title })}
     >
       {#if isSelf}
         <span class="live-dot" aria-hidden="true"></span>
@@ -275,7 +278,7 @@
         <!-- Sharing audio is a checkbox in the OS picker that is easy to
              miss, so the sharer is told which way it went. -->
         <span class="window-note">
-          {peer?.hasAudio ? 'Sharing system audio' : 'No system audio'}
+          {t(peer?.hasAudio ? 'screenShareWindow.systemAudio' : 'screenShareWindow.noSystemAudio')}
         </span>
       {/if}
     </button>
@@ -284,8 +287,8 @@
         <button
           class="icon-btn"
           onclick={toggleMute}
-          title={audio.muted ? 'Unmute this share' : 'Mute this share'}
-          aria-label={audio.muted ? 'Unmute this share' : 'Mute this share'}
+          title={t(audio.muted ? 'screenShareWindow.unmute' : 'screenShareWindow.mute')}
+          aria-label={t(audio.muted ? 'screenShareWindow.unmute' : 'screenShareWindow.mute')}
           aria-pressed={audio.muted}
         >
           {#if audio.muted || audio.volume === 0}
@@ -304,16 +307,16 @@
             value={audio.volume}
             oninput={(e) => setVolume(e.currentTarget.valueAsNumber)}
             disabled={audio.muted}
-            title="Volume of this share"
-            aria-label="Volume of this share"
+            title={t('screenShareWindow.volumeOfThisShare')}
+            aria-label={t('screenShareWindow.volumeOfThisShare')}
           />
         {/if}
       {/if}
       <button
         class="icon-btn"
         onclick={togglePip}
-        title={compact ? 'Back to a normal window' : 'Shrink into the corner'}
-        aria-label={compact ? 'Back to a normal window' : 'Shrink into the corner'}
+        title={t(compact ? 'screenShareWindow.normal' : 'screenShareWindow.compact')}
+        aria-label={t(compact ? 'screenShareWindow.normal' : 'screenShareWindow.compact')}
         aria-pressed={compact}
       >
         {#if compact}
@@ -326,8 +329,8 @@
         <button
           class="icon-btn"
           onclick={toggleMaximized}
-          title={geometry.mode === 'maximized' ? 'Restore this window' : 'Fill the app window'}
-          aria-label={geometry.mode === 'maximized' ? 'Restore this window' : 'Fill the app window'}
+          title={t(geometry.mode === 'maximized' ? 'screenShareWindow.restore' : 'screenShareWindow.maximize')}
+          aria-label={t(geometry.mode === 'maximized' ? 'screenShareWindow.restore' : 'screenShareWindow.maximize')}
           aria-pressed={geometry.mode === 'maximized'}
         >
           {#if geometry.mode === 'maximized'}
@@ -339,8 +342,8 @@
         <button
           class="icon-btn"
           onclick={toggleFullscreen}
-          title="Toggle fullscreen"
-          aria-label="Toggle fullscreen"
+          title={t('screenShareWindow.toggleFullscreen')}
+          aria-label={t('screenShareWindow.toggleFullscreen')}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
         </button>
@@ -348,8 +351,8 @@
       <button
         class="icon-btn"
         onclick={onClose}
-        title={isSelf ? 'Hide your preview' : 'Stop watching this share'}
-        aria-label={isSelf ? 'Hide your preview' : 'Stop watching this share'}
+        title={t(isSelf ? 'screenShareWindow.hidePreview' : 'screenShareWindow.stopWatching')}
+        aria-label={t(isSelf ? 'screenShareWindow.hidePreview' : 'screenShareWindow.stopWatching')}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
@@ -375,26 +378,26 @@
              window even is. -->
         <div class="window-reconnecting" role="status">
           <span class="spinner" aria-hidden="true"></span>
-          <span>Reconnecting…</span>
+          <span>{t('screenShareWindow.reconnecting')}</span>
         </div>
       {/if}
     {:else}
       <div class="window-placeholder">
         <span class="spinner" aria-hidden="true"></span>
-        <span>Connecting to {$displayNames(userId)}'s screen…</span>
+        <span>{t('screenShareWindow.connecting', { name: $displayNames(userId) })}</span>
       </div>
     {/if}
   </div>
 
   {#if geometry.mode !== 'maximized'}
-    {#each [['nw', 'Top left'], ['ne', 'Top right'], ['sw', 'Bottom left'], ['se', 'Bottom right']] as [corner, label] (corner)}
+    {#each ['nw', 'ne', 'sw', 'se'] as const as corner (corner)}
       <button
         class="resize-handle {corner}"
-        onpointerdown={(event) => startResize(event, corner as 'nw' | 'ne' | 'sw' | 'se')}
+        onpointerdown={(event) => startResize(event, corner)}
         onkeydown={resizeByKey}
         ondblclick={() => screenShareWindows.fitAspect(windowKey, aspect, viewport)}
-        title="Drag to resize · double-click to fit the stream"
-        aria-label={`Resize ${title}'s window from the ${label.toLowerCase()} corner`}
+        title={t('screenShareWindow.dragToResizeDouble')}
+        aria-label={t(`screenShareWindow.resize.${corner}`, { name: title })}
       ></button>
     {/each}
   {/if}

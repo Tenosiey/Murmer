@@ -12,6 +12,7 @@
   import { categories } from '$lib/stores/categories';
   import { voiceDefaults } from '$lib/stores/voiceDefaults';
   import { dialogs } from '$lib/stores/dialogs';
+  import { t } from '$lib/i18n';
   import { PERMISSIONS } from '$lib/chat/permissions';
   import {
     VOICE_QUALITY_PRESETS,
@@ -79,29 +80,29 @@
 
   async function createChannelPrompt(categoryId: number | null = null, isPrivate = false) {
     const name = await dialogs.prompt({
-      title: isPrivate ? 'Create private text channel' : 'Create text channel',
-      label: 'Channel name',
-      placeholder: 'e.g. general',
-      confirmLabel: 'Create'
+      title: isPrivate ? t('channelMenu.createPrivateText') : t('channelMenu.createText'),
+      label: t('channelMenu.channelName'),
+      placeholder: t('channelMenu.textPlaceholder'),
+      confirmLabel: t('channelMenu.create')
     });
     if (name) channels.create(name.trim(), categoryId, isPrivate);
   }
 
   async function selectVoicePreset(): Promise<{ quality: string; bitrate: number | null } | null> {
     const quality = await dialogs.select({
-      title: 'Voice quality',
+      title: t('channelMenu.voiceQuality'),
       options: VOICE_QUALITY_PRESETS.map((preset) => ({
         value: preset.quality,
         label: preset.label,
         description:
           preset.bitrate && preset.bitrate > 0
-            ? `${Math.round(preset.bitrate / 1000)} kbps`
-            : 'Uncompressed audio'
+            ? t('channelMenu.kbps', { kbps: Math.round(preset.bitrate / 1000) })
+            : t('channelMenu.uncompressed')
       })),
       // The server's configured default, so a channel created without a
       // thought still lands on what the operator wanted.
       initial: $voiceDefaults.quality,
-      confirmLabel: 'Apply'
+      confirmLabel: t('channelMenu.apply')
     });
     if (quality === null) return null;
     const preset = VOICE_QUALITY_PRESETS.find((p) => p.quality === quality) ?? DEFAULT_VOICE_PRESET;
@@ -110,10 +111,10 @@
 
   async function createVoiceChannelPrompt(categoryId: number | null = null, isPrivate = false) {
     const name = await dialogs.prompt({
-      title: isPrivate ? 'Create private voice channel' : 'Create voice channel',
-      label: 'Channel name',
-      placeholder: 'e.g. Lounge',
-      confirmLabel: 'Next'
+      title: isPrivate ? t('channelMenu.createPrivateVoice') : t('channelMenu.createVoice'),
+      label: t('channelMenu.channelName'),
+      placeholder: t('channelMenu.voicePlaceholder'),
+      confirmLabel: t('channelMenu.next')
     });
     if (!name) return;
     const preset = await selectVoicePreset();
@@ -123,10 +124,10 @@
 
   async function createCategoryPrompt() {
     const name = await dialogs.prompt({
-      title: 'Create category',
-      label: 'Category name',
-      placeholder: 'e.g. Projects',
-      confirmLabel: 'Create'
+      title: t('channelMenu.createCategory'),
+      label: t('channelMenu.categoryName'),
+      placeholder: t('channelMenu.categoryPlaceholder'),
+      confirmLabel: t('channelMenu.create')
     });
     if (name) categories.create(name.trim());
   }
@@ -134,10 +135,10 @@
   async function renameCategoryPrompt(id: number) {
     const cat = $categories.find((c) => c.id === id);
     const name = await dialogs.prompt({
-      title: 'Rename category',
-      label: 'Category name',
+      title: t('channelMenu.renameCategory'),
+      label: t('channelMenu.categoryName'),
       initial: cat?.name ?? '',
-      confirmLabel: 'Rename'
+      confirmLabel: t('channelMenu.rename')
     });
     if (name) categories.rename(id, name.trim());
   }
@@ -145,10 +146,10 @@
   async function renameChannelPrompt(id: number) {
     const ch = $channels.find((c) => c.id === id);
     const name = await dialogs.prompt({
-      title: 'Rename channel',
-      label: 'Channel name',
+      title: t('channelMenu.renameChannel'),
+      label: t('channelMenu.channelName'),
       initial: ch?.name ?? '',
-      confirmLabel: 'Rename'
+      confirmLabel: t('channelMenu.rename')
     });
     if (name) channels.rename(id, name.trim());
   }
@@ -156,10 +157,10 @@
   async function renameVoiceChannelPrompt(id: number) {
     const ch = $voiceChannels.find((c) => c.id === id);
     const name = await dialogs.prompt({
-      title: 'Rename voice channel',
-      label: 'Channel name',
+      title: t('channelMenu.renameVoiceChannel'),
+      label: t('channelMenu.channelName'),
       initial: ch?.name ?? '',
-      confirmLabel: 'Rename'
+      confirmLabel: t('channelMenu.rename')
     });
     if (name) voiceChannels.rename(id, name.trim());
   }
@@ -167,20 +168,20 @@
   async function setUserLimitPrompt(id: number) {
     const ch = $voiceChannels.find((c) => c.id === id);
     const text = await dialogs.prompt({
-      title: 'Set user limit',
-      message: `How many members may be in the channel at once, up to ${MAX_VOICE_USER_LIMIT}. 0 or empty removes the limit. Nobody already inside is moved out.`,
-      label: 'User limit',
+      title: t('channelMenu.setUserLimit'),
+      message: t('channelMenu.userLimitHint', { max: MAX_VOICE_USER_LIMIT }),
+      label: t('channelMenu.userLimit'),
       initial: ch?.userLimit ? String(ch.userLimit) : '',
       maxLength: 2,
-      confirmLabel: 'Save',
+      confirmLabel: t('channelMenu.save'),
       required: false
     });
     if (text === null) return;
     const limit = parseUserLimit(text);
     if (limit === null) {
       await dialogs.alert({
-        title: 'Invalid user limit',
-        message: `Enter a whole number from 0 to ${MAX_VOICE_USER_LIMIT}.`
+        title: t('channelMenu.invalidUserLimit'),
+        message: t('channelMenu.userLimitRange', { max: MAX_VOICE_USER_LIMIT })
       });
       return;
     }
@@ -197,7 +198,7 @@
 
     if (currentCatId !== null) {
       targets.push({
-        label: '(no category)',
+        label: t('channelMenu.noCategory'),
         action: () => channels.move(channelId, null, voice)
       });
     }
@@ -211,7 +212,7 @@
       }
     }
 
-    return targets.length ? [{ label: 'Move to', children: targets }] : [];
+    return targets.length ? [{ label: t('channelMenu.moveTo'), children: targets }] : [];
   }
 
   /* Room counts offered when splitting a call. Not a mirror of the server's
@@ -232,16 +233,16 @@
     if (splitIsOpen) {
       return [
         {
-          label: 'Close Breakout Rooms',
+          label: t('channelMenu.closeBreakouts'),
           action: () => voiceChannels.closeBreakouts(openOn)
         }
       ];
     }
     return [
       {
-        label: 'Split into Breakout Rooms',
+        label: t('channelMenu.splitBreakouts'),
         children: BREAKOUT_ROOM_CHOICES.map((rooms) => ({
-          label: `${rooms} rooms`,
+          label: t('channelMenu.rooms', { count: rooms }),
           action: () => voiceChannels.openBreakouts(channelId, rooms)
         }))
       }
@@ -250,19 +251,19 @@
 
   let items = $derived(!$can(PERMISSIONS.MANAGE_CHANNELS) ? [] : [
     {
-      label: 'Create',
+      label: t('channelMenu.create'),
       children: [
-        { label: 'Text Channel', action: () => createChannelPrompt() },
-        { label: 'Voice Channel', action: () => createVoiceChannelPrompt() },
-        { label: 'Private Text Channel', action: () => createChannelPrompt(null, true) },
-        { label: 'Private Voice Channel', action: () => createVoiceChannelPrompt(null, true) },
-        { label: 'Category', action: createCategoryPrompt }
+        { label: t('channelMenu.textChannel'), action: () => createChannelPrompt() },
+        { label: t('channelMenu.voiceChannel'), action: () => createVoiceChannelPrompt() },
+        { label: t('channelMenu.privateTextChannel'), action: () => createChannelPrompt(null, true) },
+        { label: t('channelMenu.privateVoiceChannel'), action: () => createVoiceChannelPrompt(null, true) },
+        { label: t('channelMenu.category'), action: createCategoryPrompt }
       ]
     },
     ...(menuChannelId != null
       ? [
           {
-            label: 'Edit Permissions',
+            label: t('channelMenu.editPermissions'),
             action: () =>
               openChannelPermissions(
                 menuChannelId!,
@@ -270,15 +271,15 @@
                 $channels.find((c) => c.id === menuChannelId)?.name ?? ''
               )
           },
-          { label: 'Rename Channel', action: () => renameChannelPrompt(menuChannelId!) },
+          { label: t('channelMenu.renameChannelItem'), action: () => renameChannelPrompt(menuChannelId!) },
           ...buildMoveToItems(menuChannelId, false),
-          { label: 'Delete Channel', action: () => channels.remove(menuChannelId!), danger: true }
+          { label: t('channelMenu.deleteChannel'), action: () => channels.remove(menuChannelId!), danger: true }
         ]
       : []),
     ...(menuVoiceChannelId != null
       ? [
           {
-            label: 'Edit Permissions',
+            label: t('channelMenu.editPermissions'),
             action: () =>
               openChannelPermissions(
                 menuVoiceChannelId!,
@@ -287,11 +288,11 @@
               )
           },
           {
-            label: 'Set Voice Quality',
+            label: t('channelMenu.setVoiceQuality'),
             children: VOICE_QUALITY_PRESETS.map((preset) => ({
               label:
                 preset.bitrate && preset.bitrate > 0
-                  ? `${preset.label} (${Math.round(preset.bitrate / 1000)} kbps)`
+                  ? t('channelMenu.presetWithKbps', { label: preset.label, kbps: Math.round(preset.bitrate / 1000) })
                   : preset.label,
               action: () =>
                 voiceChannels.configure(menuVoiceChannelId!, {
@@ -300,19 +301,19 @@
                 })
             }))
           },
-          { label: 'Set User Limit', action: () => setUserLimitPrompt(menuVoiceChannelId!) },
+          { label: t('channelMenu.setUserLimitItem'), action: () => setUserLimitPrompt(menuVoiceChannelId!) },
           ...buildBreakoutItems(menuVoiceChannelId),
-          { label: 'Rename Voice Channel', action: () => renameVoiceChannelPrompt(menuVoiceChannelId!) },
+          { label: t('channelMenu.renameVoiceChannelItem'), action: () => renameVoiceChannelPrompt(menuVoiceChannelId!) },
           ...buildMoveToItems(menuVoiceChannelId, true),
-          { label: 'Delete Voice Channel', action: () => voiceChannels.remove(menuVoiceChannelId!), danger: true }
+          { label: t('channelMenu.deleteVoiceChannel'), action: () => voiceChannels.remove(menuVoiceChannelId!), danger: true }
         ]
       : []),
     ...(menuCategoryId != null
       ? [
-          { label: 'Create Text Channel Here', action: () => createChannelPrompt(menuCategoryId) },
-          { label: 'Create Voice Channel Here', action: () => createVoiceChannelPrompt(menuCategoryId) },
-          { label: 'Rename Category', action: () => renameCategoryPrompt(menuCategoryId!) },
-          { label: 'Delete Category', action: () => categories.remove(menuCategoryId!), danger: true }
+          { label: t('channelMenu.createTextHere'), action: () => createChannelPrompt(menuCategoryId) },
+          { label: t('channelMenu.createVoiceHere'), action: () => createVoiceChannelPrompt(menuCategoryId) },
+          { label: t('channelMenu.renameCategoryItem'), action: () => renameCategoryPrompt(menuCategoryId!) },
+          { label: t('channelMenu.deleteCategory'), action: () => categories.remove(menuCategoryId!), danger: true }
         ]
       : [])
   ]);

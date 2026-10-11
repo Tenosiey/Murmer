@@ -13,6 +13,7 @@
     MAX_SERVER_ICON_BYTES
   } from '$lib/chat/constants';
   import { serverIdentity } from '$lib/stores/serverIdentity';
+  import { t } from '$lib/i18n';
 
   interface Props {
     active: boolean;
@@ -48,7 +49,7 @@
   $effect(() => {
     if (identitySavePending && !identityDirty) {
       identitySavePending = false;
-      identityFeedback = { text: 'Changes saved.', kind: 'info' };
+      identityFeedback = { text: t('overview.saved'), kind: 'info' };
     }
   });
 
@@ -110,40 +111,40 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">Server Identity</h3>
+    <h3 class="section-title">{t('overview.serverIdentity')}</h3>
     <div class="setting-group">
-      <span class="setting-label">Server name</span>
+      <span class="setting-label">{t('overview.serverName')}</span>
       <input
         type="text"
         bind:value={identityName}
-        placeholder="My Murmer Server"
+        placeholder={t('overview.myMurmerServer')}
         maxlength={MAX_SERVER_NAME_LENGTH}
         disabled={$serverIdentity === null}
       />
-      <div class="setting-description">The name shown to members of this server.</div>
+      <div class="setting-description">{t('overview.theNameShownTo')}</div>
     </div>
     <div class="setting-group">
-      <span class="setting-label">Description</span>
+      <span class="setting-label">{t('overview.description')}</span>
       <textarea
         rows="2"
         bind:value={identityDescription}
-        placeholder="What this server is about…"
+        placeholder={t('overview.whatThisServerIs')}
         maxlength={MAX_SERVER_DESCRIPTION_LENGTH}
         disabled={$serverIdentity === null}
       ></textarea>
-      <div class="setting-description">A short description shown in the server list.</div>
+      <div class="setting-description">{t('overview.aShortDescriptionShown')}</div>
     </div>
     <div class="setting-group">
-      <span class="setting-label">Welcome message</span>
+      <span class="setting-label">{t('overview.welcomeMessage')}</span>
       <input
         type="text"
         bind:value={identityWelcome}
-        placeholder="Welcome to the server!"
+        placeholder={t('overview.welcomeToTheServer')}
         maxlength={MAX_WELCOME_MESSAGE_LENGTH}
         disabled={$serverIdentity === null}
       />
       <div class="setting-description">
-        Shown to new members the first time they connect. Leave empty to disable.
+        {t('overview.shownToNewMembers')}
       </div>
     </div>
     <div class="setting-group">
@@ -152,10 +153,10 @@
           class="btn btn-primary"
           onclick={saveIdentity}
           disabled={!identityDirty || $serverIdentity === null}
-        >Save changes</button>
+        >{t('overview.saveChanges')}</button>
       </div>
       {#if $serverIdentity === null}
-        <div class="setting-description">Waiting for the server…</div>
+        <div class="setting-description">{t('overview.waitingForTheServer')}</div>
       {/if}
       {#if identityFeedback}
         <div class="identity-feedback" class:error={identityFeedback.kind === 'error'}>
@@ -164,13 +165,13 @@
       {/if}
     </div>
     <div class="setting-group">
-      <span class="setting-label">Server icon</span>
+      <span class="setting-label">{t('overview.serverIcon')}</span>
       <div class="icon-row">
         {#if $serverIdentity?.icon}
           <img
             class="icon-preview"
             src={httpBase + $serverIdentity.icon}
-            alt="Server icon"
+            alt={t('overview.serverIcon')}
             width="48"
             height="48"
           />
@@ -188,32 +189,31 @@
           disabled={iconUploading || $serverIdentity === null}
         >
           {iconUploading
-            ? 'Uploading…'
+            ? t('overview.uploading')
             : $serverIdentity?.icon
-              ? 'Replace icon…'
-              : 'Upload icon…'}
+              ? t('overview.replaceIcon')
+              : t('overview.uploadIcon')}
         </button>
         {#if $serverIdentity?.icon}
           <button class="btn btn-danger" onclick={removeIcon} disabled={iconUploading}>
-            Remove
+            {t('overview.remove')}
           </button>
         {/if}
       </div>
       <div class="setting-description">
-        Shown in the server list of every member. Images up to 1 MB (PNG, JPEG, GIF or WebP).
+        {t('overview.shownInTheServer')}
       </div>
     </div>
   </div>
 
   <div class="settings-section">
-    <h3 class="section-title">Online now ({$onlineUsers.length})</h3>
+    <h3 class="section-title">{t('overview.onlineNow', { count: $onlineUsers.length })}</h3>
     <div class="setting-group">
       <div class="setting-description">
-        Members connected to this server right now. Right-click a member in the sidebar
-        to moderate them or change their roles.
+        {t('overview.membersConnectedToThis')}
       </div>
       {#if $onlineUsers.length === 0}
-        <div class="setting-description">Nobody is connected.</div>
+        <div class="setting-description">{t('overview.nobodyIsConnected')}</div>
       {:else}
         <ul class="online-list">
           {#each [...$onlineUsers].sort((a, b) => a.localeCompare(b)) as user (user)}

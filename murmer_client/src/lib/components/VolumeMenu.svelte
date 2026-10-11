@@ -3,6 +3,7 @@
 
   import { userVolumes, setUserVolume, MAX_USER_VOLUME } from '$lib/stores/settings';
   import { soundboardPrefs } from '$lib/stores/soundboardSettings';
+  import { t } from '$lib/i18n';
 
   interface Props {
     open: boolean;
@@ -40,7 +41,7 @@
     <div class="volume-menu" style="left: {x}px; top: {y}px;" onclick={(event) => event.stopPropagation()}>
       <div class="volume-menu-header">
         <span class="volume-menu-user">{user ? $displayNames(user) : ''}</span>
-        <span class="volume-menu-title">Volume Control</span>
+        <span class="volume-menu-title">{t('volumeMenu.volumeControl')}</span>
       </div>
       <div class="volume-menu-content">
         <div class="volume-control-row">
@@ -54,7 +55,7 @@
             min="0"
             max={MAX_USER_VOLUME}
             step="0.01"
-            aria-label="Volume for {user}"
+            aria-label={t('volumeMenu.volumeFor', { name: user })}
             value={userVolume}
             oninput={(e) => {
               if (!user) return;
@@ -64,7 +65,7 @@
           <span class="volume-percentage" class:boosted>{Math.round(userVolume * 100)}%</span>
         </div>
         <div class="volume-presets">
-          <button class="preset-btn" onclick={() => user && setUserVolume(user, 0)}>Mute</button>
+          <button class="preset-btn" onclick={() => user && setUserVolume(user, 0)}>{t('volumeMenu.mute')}</button>
           <button class="preset-btn" onclick={() => user && setUserVolume(user, 0.5)}>50%</button>
           <button class="preset-btn" onclick={() => user && setUserVolume(user, 1.0)}>100%</button>
           <button class="preset-btn" onclick={() => user && setUserVolume(user, MAX_USER_VOLUME)}>
@@ -72,14 +73,14 @@
           </button>
         </div>
         {#if boosted}
-          <p class="volume-hint">Boosted above 100% — amplifies their background noise too.</p>
+          <p class="volume-hint">{t('volumeMenu.boostedAbove100Amplifies')}</p>
         {/if}
         <button
           class="preset-btn sound-mute-btn"
           class:muted={soundsMuted}
           onclick={() => user && soundboardPrefs.setUserMuted(user, !soundsMuted)}
         >
-          {soundsMuted ? 'Unmute their sounds' : 'Mute their sounds'}
+          {t(soundsMuted ? 'volumeMenu.unmuteSounds' : 'volumeMenu.muteSounds')}
         </button>
       </div>
     </div>

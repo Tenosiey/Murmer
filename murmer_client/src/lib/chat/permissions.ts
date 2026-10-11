@@ -6,6 +6,7 @@
  * The server re-checks every action, so a tampered client gains nothing.
  */
 import type { RoleDef } from '../types';
+import { t } from '../i18n';
 
 export const PERMISSIONS = {
   VIEW_CHANNELS: 1 << 0,
@@ -120,148 +121,148 @@ export interface PermissionGroup {
 /** Grouping used by the dashboard's role editor checkboxes. */
 export const PERMISSION_GROUPS: PermissionGroup[] = [
   {
-    title: 'General',
+    title: t('permissionGroup.general'),
     permissions: [
       {
         key: 'VIEW_CHANNELS',
         flag: PERMISSIONS.VIEW_CHANNELS,
-        label: 'View channels',
-        description: 'See channels and read message history.'
+        label: t('permission.viewChannels'),
+        description: t('permission.viewChannels.description')
       },
       {
         key: 'SEND_MESSAGES',
         flag: PERMISSIONS.SEND_MESSAGES,
-        label: 'Send messages',
-        description: 'Post messages and add reactions.'
+        label: t('permission.sendMessages'),
+        description: t('permission.sendMessages.description')
       },
       {
         key: 'USE_SOUNDBOARD',
         flag: PERMISSIONS.USE_SOUNDBOARD,
-        label: 'Use soundboard',
-        description: 'Play soundboard sounds to everyone in your voice channel.'
+        label: t('permission.useSoundboard'),
+        description: t('permission.useSoundboard.description')
       }
     ]
   },
   {
-    title: 'Messages',
+    title: t('permissionGroup.messages'),
     permissions: [
       {
         key: 'MANAGE_MESSAGES',
         flag: PERMISSIONS.MANAGE_MESSAGES,
-        label: 'Manage messages',
-        description: "Delete and pin other members' messages."
+        label: t('permission.manageMessages'),
+        description: t('permission.manageMessages.description')
       },
       {
         key: 'MENTION_GROUPS',
         flag: PERMISSIONS.MENTION_GROUPS,
-        label: 'Mention @here and roles',
-        description: 'Ping everyone online in a channel, or every member of a role, at once.'
+        label: t('permission.mentionGroups'),
+        description: t('permission.mentionGroups.description')
       }
     ]
   },
   {
-    title: 'Members',
+    title: t('permissionGroup.members'),
     permissions: [
       {
         key: 'KICK_MEMBERS',
         flag: PERMISSIONS.KICK_MEMBERS,
-        label: 'Kick members',
-        description: 'Disconnect members from the server.'
+        label: t('permission.kickMembers'),
+        description: t('permission.kickMembers.description')
       },
       {
         key: 'BAN_MEMBERS',
         flag: PERMISSIONS.BAN_MEMBERS,
-        label: 'Ban members',
-        description: 'Ban and unban members.'
+        label: t('permission.banMembers'),
+        description: t('permission.banMembers.description')
       },
       {
         key: 'MUTE_MEMBERS',
         flag: PERMISSIONS.MUTE_MEMBERS,
-        label: 'Mute members',
-        description: 'Mute and unmute members.'
+        label: t('permission.muteMembers'),
+        description: t('permission.muteMembers.description')
       },
       {
         key: 'MANAGE_NICKNAMES',
         flag: PERMISSIONS.MANAGE_NICKNAMES,
-        label: 'Manage nicknames',
-        description: "Set or clear other members' nicknames on this server."
+        label: t('permission.manageNicknames'),
+        description: t('permission.manageNicknames.description')
       },
       {
         key: 'MOVE_MEMBERS',
         flag: PERMISSIONS.MOVE_MEMBERS,
-        label: 'Move members',
-        description: 'Drag members in voice from one voice channel into another.'
+        label: t('permission.moveMembers'),
+        description: t('permission.moveMembers.description')
       },
       {
         key: 'CREATE_INVITES',
         flag: PERMISSIONS.CREATE_INVITES,
-        label: 'Create invites',
-        description: 'Mint and revoke invite links, which let someone join without the server password.'
+        label: t('permission.createInvites'),
+        description: t('permission.createInvites.description')
       }
     ]
   },
   {
-    title: 'Management',
+    title: t('permissionGroup.management'),
     permissions: [
       {
         key: 'MANAGE_CHANNELS',
         flag: PERMISSIONS.MANAGE_CHANNELS,
-        label: 'Manage channels',
-        description: 'Create, edit, reorder and delete channels and categories.'
+        label: t('permission.manageChannels'),
+        description: t('permission.manageChannels.description')
       },
       {
         key: 'MANAGE_WIKI',
         flag: PERMISSIONS.MANAGE_WIKI,
-        label: 'Manage wiki',
-        description: 'Create, edit and delete wiki pages.'
+        label: t('permission.manageWiki'),
+        description: t('permission.manageWiki.description')
       },
       {
         key: 'MANAGE_EMOJIS',
         flag: PERMISSIONS.MANAGE_EMOJIS,
-        label: 'Manage emojis',
-        description: 'Add and remove custom server emojis.'
+        label: t('permission.manageEmojis'),
+        description: t('permission.manageEmojis.description')
       },
       {
         key: 'MANAGE_SOUNDS',
         flag: PERMISSIONS.MANAGE_SOUNDS,
-        label: 'Manage sounds',
-        description: 'Upload, rename and delete soundboard sounds.'
+        label: t('permission.manageSounds'),
+        description: t('permission.manageSounds.description')
       },
       {
         key: 'MANAGE_ROLES',
         flag: PERMISSIONS.MANAGE_ROLES,
-        label: 'Manage roles',
-        description: 'Create, edit, delete and assign roles below your own.'
+        label: t('permission.manageRoles'),
+        description: t('permission.manageRoles.description')
       },
       {
         key: 'MANAGE_SERVER',
         flag: PERMISSIONS.MANAGE_SERVER,
-        label: 'Manage server',
-        description: 'Edit server identity, stats, screen-share and other settings.'
+        label: t('permission.manageServer'),
+        description: t('permission.manageServer.description')
       },
       {
         key: 'VIEW_SERVER_INFO',
         flag: PERMISSIONS.VIEW_SERVER_INFO,
-        label: 'View server info',
-        description: 'See server details such as the running version.'
+        label: t('permission.viewServerInfo'),
+        description: t('permission.viewServerInfo.description')
       },
       {
         key: 'VIEW_CONNECTION_STATS',
         flag: PERMISSIONS.VIEW_CONNECTION_STATS,
-        label: 'View connection stats',
-        description: "View other members' connection quality."
+        label: t('permission.viewConnectionStats'),
+        description: t('permission.viewConnectionStats.description')
       },
       {
         key: 'VIEW_AUDIT_LOG',
         flag: PERMISSIONS.VIEW_AUDIT_LOG,
-        label: 'View audit log',
-        description: 'Read the record of moderation, permission and Danger Zone actions.'
+        label: t('permission.viewAuditLog'),
+        description: t('permission.viewAuditLog.description')
       },
       {
         key: 'ADMINISTRATOR',
         flag: PERMISSIONS.ADMINISTRATOR,
-        label: 'Administrator',
-        description: 'Grants every permission and bypasses the hierarchy. Use sparingly.'
+        label: t('permission.administrator'),
+        description: t('permission.administrator.description')
       }
     ]
   }

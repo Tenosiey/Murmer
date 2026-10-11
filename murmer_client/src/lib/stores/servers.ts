@@ -73,6 +73,17 @@ export const servers = {
       return newList;
     });
   },
+  /**
+   * Swap the entry saved under `oldUrl` for `entry`, keeping its place in the
+   * list. The caller refuses a new URL that another entry already uses.
+   */
+  replace(oldUrl: string, entry: ServerEntry) {
+    update((list) => {
+      const newList = list.map((s) => (s.url === oldUrl ? entry : s));
+      persist(newList);
+      return newList;
+    });
+  },
   remove(url: string) {
     update((list) => {
       const newList = list.filter((s) => s.url !== url);

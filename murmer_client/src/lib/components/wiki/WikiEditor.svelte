@@ -12,6 +12,7 @@
   import { wiki, type WikiPage } from '$lib/stores/wiki';
   import { wikilinks } from '$lib/wiki/links';
   import { dialogs } from '$lib/stores/dialogs';
+  import { t } from '$lib/i18n';
 
   
   interface Props {
@@ -82,11 +83,11 @@
   async function save() {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
-      await dialogs.alert({ title: 'Wiki', message: 'The page needs a title.' });
+      await dialogs.alert({ title: t('wiki.title'), message: t('wikiEditor.needsTitle') });
       return;
     }
     if (tooLarge) {
-      await dialogs.alert({ title: 'Wiki', message: 'This page is too large to save.' });
+      await dialogs.alert({ title: t('wiki.title'), message: t('wikiEditor.tooLarge') });
       return;
     }
     saving = true;
@@ -99,8 +100,8 @@
       }
     } catch {
       await dialogs.alert({
-        title: 'Wiki',
-        message: 'The page could not be saved. Please try again.'
+        title: t('wiki.title'),
+        message: t('wikiEditor.saveFailed')
       });
     } finally {
       saving = false;
@@ -119,8 +120,8 @@
       conflict = null;
     } catch {
       await dialogs.alert({
-        title: 'Wiki',
-        message: 'The newest version could not be loaded. Please try again.'
+        title: t('wiki.title'),
+        message: t('wikiEditor.loadFailed')
       });
     }
   }
@@ -136,20 +137,20 @@
   <input
     class="field title-field"
     bind:value={title}
-    placeholder="Page title"
+    placeholder={t('wikiEditor.pageTitle')}
     maxlength="100"
-    aria-label="Page title"
+    aria-label={t('wikiEditor.pageTitle')}
   />
 
   <div class="panes">
     <textarea
       class="field body-field"
       bind:value={body}
-      placeholder="Write Markdown… link other pages with [[page]] or [[channel/page]]"
-      aria-label="Page content"
+      placeholder={t('wikiEditor.writeMarkdownLinkOther')}
+      aria-label={t('wikiEditor.pageContent')}
       spellcheck="false"
     ></textarea>
-    <div class="preview wiki-body" use:wikilinks={{ channelName }} aria-label="Preview">
+    <div class="preview wiki-body" use:wikilinks={{ channelName }} aria-label={t('wikiEditor.preview')}>
       {@html previewHtml}
     </div>
   </div>
@@ -158,26 +159,29 @@
     <div class="conflict-banner" role="alert">
       <span>
         {#if conflictUser}
-          {conflictUser} saved a newer version of this page.
+          {t('wikiEditor.conflictBy', { name: conflictUser })}
         {:else}
-          A newer version of this page was saved.
+          {t('wikiEditor.conflict')}
         {/if}
       </span>
       <div class="conflict-actions">
-        <button class="btn btn-ghost" onclick={loadNewest}>Load newest (discard my edits)</button>
-        <button class="btn btn-ghost" onclick={keepEditing}>Keep editing</button>
+        <button class="btn btn-ghost" onclick={loadNewest}>{t('wikiEditor.loadNewestDiscardMy')}</button>
+        <button class="btn btn-ghost" onclick={keepEditing}>{t('wikiEditor.keepEditing')}</button>
       </div>
     </div>
   {/if}
 
   <div class="footer">
     <span class="byte-counter" class:over={tooLarge}>
-      {bodyBytes.toLocaleString()} / {MAX_BODY_BYTES.toLocaleString()} bytes
+      {t('wikiEditor.bytes', {
+        used: bodyBytes.toLocaleString(),
+        max: MAX_BODY_BYTES.toLocaleString()
+      })}
     </span>
     <div class="footer-actions">
-      <button class="btn btn-ghost" onclick={onCancel} disabled={saving}>Cancel</button>
+      <button class="btn btn-ghost" onclick={onCancel} disabled={saving}>{t('wikiEditor.cancel')}</button>
       <button class="btn btn-primary" onclick={save} disabled={saving || tooLarge}>
-        {saving ? 'Saving…' : hasConflict ? 'Overwrite' : 'Save'}
+        {t(saving ? 'wikiEditor.saving' : hasConflict ? 'wikiEditor.overwrite' : 'wikiEditor.save')}
       </button>
     </div>
   </div>

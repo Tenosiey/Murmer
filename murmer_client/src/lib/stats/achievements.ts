@@ -1,4 +1,5 @@
 import type { UserStats } from '$lib/stores/stats';
+import { t } from '$lib/i18n';
 
 /**
  * Achievement definitions derived from lifetime stats. Everything here is
@@ -64,190 +65,190 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     id: 'messages',
     stat: 'messagesSent',
     icon: 'message',
-    description: 'Messages sent',
+    description: t('achievement.messages.description'),
     tiers: [
-      { name: 'First Words', threshold: 1 },
-      { name: 'Conversationalist', threshold: 100 },
-      { name: 'Chatterbox', threshold: 1_000 },
-      { name: 'Town Crier', threshold: 10_000 }
+      { name: t('achievement.messages.tier0'), threshold: 1 },
+      { name: t('achievement.messages.tier1'), threshold: 100 },
+      { name: t('achievement.messages.tier2'), threshold: 1_000 },
+      { name: t('achievement.messages.tier3'), threshold: 10_000 }
     ]
   },
   {
     id: 'chars',
     stat: 'messageChars',
     icon: 'text',
-    description: 'Characters typed',
+    description: t('achievement.chars.description'),
     tiers: [
-      { name: 'Scribbler', threshold: 1_000 },
-      { name: 'Essayist', threshold: 25_000 },
-      { name: 'Novelist', threshold: 250_000 }
+      { name: t('achievement.chars.tier0'), threshold: 1_000 },
+      { name: t('achievement.chars.tier1'), threshold: 25_000 },
+      { name: t('achievement.chars.tier2'), threshold: 250_000 }
     ]
   },
   {
     id: 'longest',
     stat: 'longestMessageChars',
     icon: 'zap',
-    description: 'Longest single message',
+    description: t('achievement.longest.description'),
     tiers: [
-      { name: 'Getting Wordy', threshold: 500 },
-      { name: 'Wall of Text', threshold: 2_000 }
+      { name: t('achievement.longest.tier0'), threshold: 500 },
+      { name: t('achievement.longest.tier1'), threshold: 2_000 }
     ]
   },
   {
     id: 'images',
     stat: 'imagesSent',
     icon: 'image',
-    description: 'Pictures shared',
+    description: t('achievement.images.description'),
     tiers: [
-      { name: 'Snapshot', threshold: 1 },
-      { name: 'Shutterbug', threshold: 50 },
-      { name: 'Gallery Curator', threshold: 500 }
+      { name: t('achievement.images.tier0'), threshold: 1 },
+      { name: t('achievement.images.tier1'), threshold: 50 },
+      { name: t('achievement.images.tier2'), threshold: 500 }
     ]
   },
   {
     id: 'gifs',
     stat: 'gifsSent',
     icon: 'sparkle',
-    description: 'GIFs sent',
+    description: t('achievement.gifs.description'),
     tiers: [
-      { name: 'Animated', threshold: 1 },
-      { name: 'GIF Enthusiast', threshold: 25 },
-      { name: 'GIF Wizard', threshold: 250 }
+      { name: t('achievement.gifs.tier0'), threshold: 1 },
+      { name: t('achievement.gifs.tier1'), threshold: 25 },
+      { name: t('achievement.gifs.tier2'), threshold: 250 }
     ]
   },
   {
     id: 'uploads',
     stat: 'uploadBytes',
     icon: 'upload',
-    description: 'Bytes uploaded',
+    description: t('achievement.uploads.description'),
     tiers: [
-      { name: 'Courier', threshold: 10 * MB },
-      { name: 'Heavy Lifter', threshold: 100 * MB },
-      { name: 'Data Hauler', threshold: 1024 * MB }
+      { name: t('achievement.uploads.tier0'), threshold: 10 * MB },
+      { name: t('achievement.uploads.tier1'), threshold: 100 * MB },
+      { name: t('achievement.uploads.tier2'), threshold: 1024 * MB }
     ]
   },
   {
     id: 'links',
     stat: 'linksShared',
     icon: 'link',
-    description: 'Links shared',
+    description: t('achievement.links.description'),
     tiers: [
-      { name: 'Referrer', threshold: 10 },
-      { name: 'Link Curator', threshold: 100 }
+      { name: t('achievement.links.tier0'), threshold: 10 },
+      { name: t('achievement.links.tier1'), threshold: 100 }
     ]
   },
   {
     id: 'replies',
     stat: 'repliesSent',
     icon: 'reply',
-    description: 'Replies sent',
+    description: t('achievement.replies.description'),
     tiers: [
-      { name: 'In Context', threshold: 10 },
-      { name: 'Threadweaver', threshold: 250 }
+      { name: t('achievement.replies.tier0'), threshold: 10 },
+      { name: t('achievement.replies.tier1'), threshold: 250 }
     ]
   },
   {
     id: 'mentions',
     stat: 'mentionsSent',
     icon: 'at',
-    description: 'People mentioned',
+    description: t('achievement.mentions.description'),
     tiers: [
-      { name: 'Name Dropper', threshold: 10 },
-      { name: 'Ping Machine', threshold: 250 }
+      { name: t('achievement.mentions.tier0'), threshold: 10 },
+      { name: t('achievement.mentions.tier1'), threshold: 250 }
     ]
   },
   {
     id: 'dms',
     stat: 'dmsSent',
     icon: 'mail',
-    description: 'Direct messages sent',
+    description: t('achievement.dms.description'),
     tiers: [
-      { name: 'Pen Pal', threshold: 10 },
-      { name: 'Social Butterfly', threshold: 250 }
+      { name: t('achievement.dms.tier0'), threshold: 10 },
+      { name: t('achievement.dms.tier1'), threshold: 250 }
     ]
   },
   {
     id: 'reactions-given',
     stat: 'reactionsGiven',
     icon: 'heart',
-    description: 'Reactions given',
+    description: t('achievement.reactionsGiven.description'),
     tiers: [
-      { name: 'Appreciator', threshold: 10 },
-      { name: 'Cheerleader', threshold: 250 },
-      { name: 'Hype Engine', threshold: 2_500 }
+      { name: t('achievement.reactionsGiven.tier0'), threshold: 10 },
+      { name: t('achievement.reactionsGiven.tier1'), threshold: 250 },
+      { name: t('achievement.reactionsGiven.tier2'), threshold: 2_500 }
     ]
   },
   {
     id: 'reactions-received',
     stat: 'reactionsReceived',
     icon: 'star',
-    description: 'Reactions received',
+    description: t('achievement.reactionsReceived.description'),
     tiers: [
-      { name: 'Noticed', threshold: 10 },
-      { name: 'Crowd Favorite', threshold: 250 },
-      { name: 'Server Legend', threshold: 2_500 }
+      { name: t('achievement.reactionsReceived.tier0'), threshold: 10 },
+      { name: t('achievement.reactionsReceived.tier1'), threshold: 250 },
+      { name: t('achievement.reactionsReceived.tier2'), threshold: 2_500 }
     ]
   },
   {
     id: 'edits',
     stat: 'messagesEdited',
     icon: 'edit',
-    description: 'Messages edited',
+    description: t('achievement.edits.description'),
     tiers: [
-      { name: 'Second Thoughts', threshold: 10 },
-      { name: 'Perfectionist', threshold: 100 }
+      { name: t('achievement.edits.tier0'), threshold: 10 },
+      { name: t('achievement.edits.tier1'), threshold: 100 }
     ]
   },
   {
     id: 'deletes',
     stat: 'messagesDeleted',
     icon: 'trash',
-    description: 'Own messages deleted',
+    description: t('achievement.deletes.description'),
     tiers: [
-      { name: 'Ctrl+Z', threshold: 10 },
-      { name: 'Revisionist', threshold: 100 }
+      { name: t('achievement.deletes.tier0'), threshold: 10 },
+      { name: t('achievement.deletes.tier1'), threshold: 100 }
     ]
   },
   {
     id: 'pins',
     stat: 'pinsAdded',
     icon: 'pin',
-    description: 'Messages pinned',
+    description: t('achievement.pins.description'),
     tiers: [
-      { name: 'Bookmarker', threshold: 5 },
-      { name: 'Archivist', threshold: 50 }
+      { name: t('achievement.pins.tier0'), threshold: 5 },
+      { name: t('achievement.pins.tier1'), threshold: 50 }
     ]
   },
   {
     id: 'voice',
     stat: 'voiceSeconds',
     icon: 'mic',
-    description: 'Time in voice chat',
+    description: t('achievement.voice.description'),
     tiers: [
-      { name: 'Mic Check', threshold: 10 * MINUTE },
-      { name: 'On Air', threshold: 10 * HOUR },
-      { name: 'Radio Host', threshold: 100 * HOUR }
+      { name: t('achievement.voice.tier0'), threshold: 10 * MINUTE },
+      { name: t('achievement.voice.tier1'), threshold: 10 * HOUR },
+      { name: t('achievement.voice.tier2'), threshold: 100 * HOUR }
     ]
   },
   {
     id: 'screenshare',
     stat: 'screenshareSeconds',
     icon: 'monitor',
-    description: 'Time screen sharing',
+    description: t('achievement.screenshare.description'),
     tiers: [
-      { name: 'Presenter', threshold: 10 * MINUTE },
-      { name: 'Director', threshold: 10 * HOUR }
+      { name: t('achievement.screenshare.tier0'), threshold: 10 * MINUTE },
+      { name: t('achievement.screenshare.tier1'), threshold: 10 * HOUR }
     ]
   },
   {
     id: 'soundboard',
     stat: 'soundsPlayed',
     icon: 'zap',
-    description: 'Soundboard sounds played',
+    description: t('achievement.soundboard.description'),
     tiers: [
-      { name: 'Sound Check', threshold: 10 },
-      { name: 'Foley Artist', threshold: 250 },
-      { name: 'Airhorn Menace', threshold: 2500 }
+      { name: t('achievement.soundboard.tier0'), threshold: 10 },
+      { name: t('achievement.soundboard.tier1'), threshold: 250 },
+      { name: t('achievement.soundboard.tier2'), threshold: 2500 }
     ]
   }
 ];

@@ -31,6 +31,7 @@
     type AutomodRule
   } from '$lib/stores/automod';
   import { bans } from '$lib/stores/bans';
+  import { t } from '$lib/i18n';
   import {
     PERMISSIONS,
     hasPermission
@@ -125,7 +126,7 @@
   $effect(() => {
     if (chatSavePending && !chatDirty) {
       chatSavePending = false;
-      chatFeedback = { text: 'Changes saved.', kind: 'info' };
+      chatFeedback = { text: t('moderation.saved'), kind: 'info' };
     }
   });
 
@@ -145,7 +146,7 @@
     const seconds = Number.isFinite(slowModeSeconds) ? Math.round(slowModeSeconds) : NaN;
     if (Number.isNaN(seconds) || seconds < 0 || seconds > MAX_SLOW_MODE_SECONDS) {
       chatFeedback = {
-        text: `Slow mode must be between 0 and ${MAX_SLOW_MODE_SECONDS} seconds.`,
+        text: t('moderation.slowModeRange', { max: MAX_SLOW_MODE_SECONDS }),
         kind: 'error'
       };
       return;
@@ -157,7 +158,10 @@
       length > MAX_MESSAGE_LENGTH
     ) {
       chatFeedback = {
-        text: `The message limit must be between ${MIN_CONFIGURABLE_MESSAGE_LENGTH} and ${MAX_MESSAGE_LENGTH} characters.`,
+        text: t('moderation.lengthRange', {
+          min: MIN_CONFIGURABLE_MESSAGE_LENGTH,
+          max: MAX_MESSAGE_LENGTH
+        }),
         kind: 'error'
       };
       return;
@@ -174,27 +178,24 @@
 
   /** Render a slow mode interval the way people talk about it. */
   function describeInterval(seconds: number): string {
-    if (seconds <= 0) return 'off';
-    if (seconds < 60) return `${seconds}s`;
-    if (seconds < 3600) {
-      const minutes = Math.round(seconds / 60);
-      return `${minutes} minute${minutes === 1 ? '' : 's'}`;
-    }
+    if (seconds <= 0) return t('moderation.slowModeOff');
+    if (seconds < 60) return t('duration.secondsShort', { count: seconds });
+    if (seconds < 3600) return t('duration.minutes', { count: Math.round(seconds / 60) });
     const hours = seconds / 3600;
-    return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hour${hours === 1 ? '' : 's'}`;
+    return t('duration.hours', { count: Number.isInteger(hours) ? hours : hours.toFixed(1) });
   }
 
   function formatBanDate(value: string | null): string {
-    if (!value) return 'unknown date';
+    if (!value) return t('moderation.unknownDate');
     const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? 'unknown date' : parsed.toLocaleDateString();
+    return Number.isNaN(parsed.getTime()) ? t('moderation.unknownDate') : parsed.toLocaleDateString();
   }
 
   async function liftBan(user: string) {
     const ok = await dialogs.confirm({
-      title: `Unban ${user}?`,
-      message: 'They will be able to join this server again.',
-      confirmLabel: 'Unban'
+      title: t('moderation.unbanTitle', { name: user }),
+      message: t('moderation.unbanMessage'),
+      confirmLabel: t('moderation.unban')
     });
     if (!ok) return;
     bans.unban(user);
@@ -244,7 +245,7 @@
   $effect(() => {
     if (automodSavePending && !automodDirty) {
       automodSavePending = false;
-      automodFeedback = { text: 'Rules saved.', kind: 'info' };
+      automodFeedback = { text: t('moderation.rulesSaved'), kind: 'info' };
     }
   });
 
@@ -278,17 +279,17 @@
     for (const [index, rule] of rules.entries()) {
       const position = index + 1;
       const pattern = rule.pattern.trim();
-      if (!pattern) return `Rule ${position} has no pattern.`;
+      if (!pattern) return t('moderation.rule.noPattern', { position });
       if (pattern.length > MAX_AUTOMOD_PATTERN_LEN) {
-        return `Rule ${position} has a pattern longer than ${MAX_AUTOMOD_PATTERN_LEN} characters.`;
+        return t('moderation.rule.patternTooLong', { position, max: MAX_AUTOMOD_PATTERN_LEN });
       }
       if (rule.name.trim().length > MAX_AUTOMOD_NAME_LEN) {
-        return `Rule ${position} has a name longer than ${MAX_AUTOMOD_NAME_LEN} characters.`;
+        return t('moderation.rule.nameTooLong', { position, max: MAX_AUTOMOD_NAME_LEN });
       }
       // A whole-word pattern is compared against single words, so one with a
       // space in it would be saved and then never match anything.
       if (rule.kind === 'word' && /\s/.test(pattern)) {
-        return `Rule ${position} matches a whole word, so its pattern cannot contain spaces.`;
+        return t('moderation.rule.wordWithSpace', { position });
       }
     }
     return null;
@@ -316,14 +317,14 @@
   /** Render a mute duration the way people talk about it. */
   function describeMute(seconds: number): string {
     const clamped = clampMuteSeconds(seconds);
-    if (clamped < 60) return `${clamped}s`;
-    if (clamped < 3600) return `${Math.round(clamped / 60)} minutes`;
+    if (clamped < 60) return t('duration.secondsShort', { count: clamped });
+    if (clamped < 3600) return t('duration.minutes', { count: Math.round(clamped / 60) });
     if (clamped < 86_400) {
       const hours = clamped / 3600;
-      return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hours`;
+      return t('duration.hours', { count: Number.isInteger(hours) ? hours : hours.toFixed(1) });
     }
     const days = clamped / 86_400;
-    return `${Number.isInteger(days) ? days : days.toFixed(1)} days`;
+    return t('duration.days', { count: Number.isInteger(days) ? days : days.toFixed(1) });
   }
 
   // `automod-blocked` is deliberately absent: that one answers a chat message,
@@ -368,10 +369,10 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">Moderation</h3>
+    <h3 class="section-title">{t('moderation.moderation')}</h3>
     {#if canManageServer}
       <div class="setting-group">
-        <label class="setting-label" for="slow-mode">Slow mode</label>
+        <label class="setting-label" for="slow-mode">{t('moderation.slowMode')}</label>
         <input
           id="slow-mode"
           type="number"
@@ -381,13 +382,11 @@
           step="1"
         />
         <div class="setting-description">
-          Seconds each member must wait between messages ({describeInterval(
-            slowModeSeconds
-          )}). 0 turns slow mode off. Members who can manage messages are exempt.
+          {t('moderation.slowModeHint', { interval: describeInterval(slowModeSeconds) })}
         </div>
       </div>
       <div class="setting-group">
-        <label class="setting-label" for="max-message-length">Max message length</label>
+        <label class="setting-label" for="max-message-length">{t('moderation.maxMessageLength')}</label>
         <input
           id="max-message-length"
           type="number"
@@ -397,46 +396,42 @@
           step="1"
         />
         <div class="setting-description">
-          Characters per message, between {MIN_CONFIGURABLE_MESSAGE_LENGTH} and
-          {MAX_MESSAGE_LENGTH}. The server rejects anything longer, so this can only
-          tighten the built-in limit.
+          {t('moderation.lengthHint', {
+            min: MIN_CONFIGURABLE_MESSAGE_LENGTH,
+            max: MAX_MESSAGE_LENGTH
+          })}
         </div>
       </div>
       <div class="setting-group">
         <label class="toggle-row">
           <input type="checkbox" bind:checked={profanityFilter} />
           <span class="toggle-text">
-            <span class="toggle-label">Profanity filter</span>
+            <span class="toggle-label">{t('moderation.profanityFilter')}</span>
             <span class="toggle-description">
-              Replace filtered words with asterisks in new messages. Masking happens on
-              the server before a message is stored, so the original never reaches
-              anyone — including whoever edits it afterwards.
+              {t('moderation.replaceFilteredWordsWith')}
             </span>
           </span>
         </label>
       </div>
       <div class="setting-group">
-        <label class="setting-label" for="profanity-words">Filtered words</label>
+        <label class="setting-label" for="profanity-words">{t('moderation.filteredWords')}</label>
         <textarea
           id="profanity-words"
           rows="4"
           spellcheck="false"
           autocomplete="off"
           bind:value={profanityWords}
-          placeholder="One word per line"
+          placeholder={t('moderation.oneWordPerLine')}
         ></textarea>
         <div class="setting-description">
-          One word per line, up to {MAX_PROFANITY_WORDS} words of
-          {MAX_PROFANITY_WORD_LEN} characters. Matching is per whole word and ignores
-          case, so filtering “ass” leaves “class” alone.
-          {chatWordsDraft.length}
-          {chatWordsDraft.length === 1 ? 'word' : 'words'} will be saved.
+          {t('moderation.wordsHint', { max: MAX_PROFANITY_WORDS, length: MAX_PROFANITY_WORD_LEN })}
+          {t('moderation.wordsSaved', { count: chatWordsDraft.length })}
         </div>
       </div>
       <div class="setting-group">
         <div>
           <button class="btn btn-primary" onclick={saveChatSettings} disabled={!chatDirty}>
-            Save changes
+            {t('moderation.saveChanges')}
           </button>
         </div>
         {#if chatFeedback}
@@ -447,18 +442,15 @@
       </div>
 
       <div class="setting-group">
-        <span class="setting-label">Auto-moderation rules</span>
+        <span class="setting-label">{t('moderation.autoModerationRules')}</span>
         <div class="setting-description">
-          Patterns the server checks every message and every edit against, before it is
-          stored or sent on. When more than one rule matches, the most severe action wins.
-          Members who can manage messages are exempt, and rules never apply in an
-          end-to-end encrypted channel — the server has no text to read there.
+          {t('moderation.patternsTheServerChecks')}
         </div>
         {#if $automodRules === null}
-          <div class="setting-description">Loading…</div>
+          <div class="setting-description">{t('moderation.loading')}</div>
         {:else}
           {#if automodDraft.length === 0}
-            <div class="setting-description">No rules yet.</div>
+            <div class="setting-description">{t('moderation.noRulesYet')}</div>
           {/if}
           <ul class="rule-list">
             <!-- Keyed by position: a rule has no id of its own, the
@@ -469,26 +461,26 @@
                 <div class="rule-head">
                   <label class="rule-enabled">
                     <input type="checkbox" bind:checked={rule.enabled} />
-                    <span>Enabled</span>
+                    <span>{t('moderation.enabled')}</span>
                   </label>
                   <input
                     class="rule-name"
                     type="text"
                     bind:value={rule.name}
                     maxlength={MAX_AUTOMOD_NAME_LEN}
-                    placeholder="Name (shown to whoever trips it)"
-                    aria-label={`Name of rule ${index + 1}`}
+                    placeholder={t('moderation.nameShownToWhoever')}
+                    aria-label={t('moderation.rule.nameLabel', { position: index + 1 })}
                   />
                   <button
                     class="btn btn-danger"
                     onclick={() => removeAutomodRule(index)}
-                    aria-label={`Remove rule ${index + 1}`}
+                    aria-label={t('moderation.rule.removeLabel', { position: index + 1 })}
                   >
-                    Remove
+                    {t('moderation.remove')}
                   </button>
                 </div>
                 <div class="rule-fields">
-                  <select bind:value={rule.kind} aria-label={`Match kind of rule ${index + 1}`}>
+                  <select bind:value={rule.kind} aria-label={t('moderation.rule.kindLabel', { position: index + 1 })}>
                     {#each AUTOMOD_KINDS as kind}
                       <option value={kind.id}>{kind.label}</option>
                     {/each}
@@ -500,10 +492,10 @@
                     autocomplete="off"
                     bind:value={rule.pattern}
                     maxlength={MAX_AUTOMOD_PATTERN_LEN}
-                    placeholder="Pattern"
-                    aria-label={`Pattern of rule ${index + 1}`}
+                    placeholder={t('moderation.pattern')}
+                    aria-label={t('moderation.rule.patternLabel', { position: index + 1 })}
                   />
-                  <select bind:value={rule.action} aria-label={`Action of rule ${index + 1}`}>
+                  <select bind:value={rule.action} aria-label={t('moderation.rule.actionLabel', { position: index + 1 })}>
                     {#each AUTOMOD_ACTIONS as action}
                       <option value={action.id}>{action.label}</option>
                     {/each}
@@ -516,7 +508,7 @@
                       min={MIN_MUTE_SECONDS}
                       max={MAX_MUTE_SECONDS}
                       step="1"
-                      aria-label={`Mute duration of rule ${index + 1} in seconds`}
+                      aria-label={t('moderation.rule.muteLabel', { position: index + 1 })}
                     />
                   {/if}
                 </div>
@@ -524,7 +516,7 @@
                   {AUTOMOD_KINDS.find((kind) => kind.id === rule.kind)?.description}
                   {AUTOMOD_ACTIONS.find((action) => action.id === rule.action)?.description}
                   {#if rule.action === 'mute'}
-                    Muted for {describeMute(rule.muteSeconds)}.
+                    {t('moderation.mutedFor', { duration: describeMute(rule.muteSeconds) })}
                   {/if}
                 </div>
               </li>
@@ -536,17 +528,17 @@
               onclick={addAutomodRule}
               disabled={automodDraft.length >= MAX_AUTOMOD_RULES}
             >
-              Add rule
+              {t('moderation.addRule')}
             </button>
             <button
               class="btn btn-primary"
               onclick={saveAutomodRules}
               disabled={!automodDirty}
             >
-              Save rules
+              {t('moderation.saveRules')}
             </button>
             <span class="setting-description">
-              {automodDraft.length} of {MAX_AUTOMOD_RULES}
+              {t('moderation.ruleCount', { count: automodDraft.length, max: MAX_AUTOMOD_RULES })}
             </span>
           </div>
           {#if automodFeedback}
@@ -559,15 +551,14 @@
     {/if}
 
     <div class="setting-group">
-      <span class="setting-label">Ban list</span>
+      <span class="setting-label">{t('moderation.banList')}</span>
       <div class="setting-description">
-        Everyone banned from this server. A ban follows the member's key, so it holds
-        even if they come back under a different name.
+        {t('moderation.everyoneBannedFromThis')}
       </div>
       {#if $bans === null}
-        <div class="setting-description">Loading…</div>
+        <div class="setting-description">{t('moderation.loading')}</div>
       {:else if $bans.length === 0}
-        <div class="setting-description">Nobody is banned.</div>
+        <div class="setting-description">{t('moderation.nobodyIsBanned')}</div>
       {:else}
         <ul class="ban-list">
           <!-- Keyed by both fields: a ban is stored per key, but a
@@ -581,7 +572,7 @@
                   ban.bannedAt
                 )}
               </span>
-              <button class="btn" onclick={() => liftBan(ban.user)}>Unban</button>
+              <button class="btn" onclick={() => liftBan(ban.user)}>{t('moderation.unban')}</button>
             </li>
           {/each}
         </ul>

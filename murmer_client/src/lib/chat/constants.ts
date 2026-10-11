@@ -1,5 +1,6 @@
 import type { ChannelNotificationPreference } from '../stores/channelNotifications';
 import type { UserStatus } from '../types';
+import { t } from '../i18n';
 
 /* Custom server emoji naming rules; must match the server's validation. */
 export const EMOJI_NAME_RE = /^[a-z0-9_]{2,32}$/;
@@ -48,18 +49,18 @@ export const UPLOAD_CATEGORIES: Array<{
   label: string;
   extensions: string[];
 }> = [
-  { id: 'images', label: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] },
+  { id: 'images', label: t('uploadCategory.images'), extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] },
   {
     id: 'documents',
-    label: 'Documents',
+    label: t('uploadCategory.documents'),
     extensions: [
       'pdf', 'txt', 'md', 'log', 'csv', 'json', 'toml', 'yaml', 'yml', 'rtf', 'doc', 'docx',
       'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp'
     ]
   },
-  { id: 'archives', label: 'Archives', extensions: ['zip', 'gz', 'tar', 'bz2', 'xz', '7z', 'rar'] },
-  { id: 'audio', label: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'opus'] },
-  { id: 'video', label: 'Video', extensions: ['mp4', 'webm', 'mkv', 'mov', 'avi'] }
+  { id: 'archives', label: t('uploadCategory.archives'), extensions: ['zip', 'gz', 'tar', 'bz2', 'xz', '7z', 'rar'] },
+  { id: 'audio', label: t('uploadCategory.audio'), extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'opus'] },
+  { id: 'video', label: t('uploadCategory.video'), extensions: ['mp4', 'webm', 'mkv', 'mov', 'avi'] }
 ];
 
 /* The channel every server is seeded with. The server places new connections
@@ -98,32 +99,32 @@ export const DEFAULT_AUTOMOD_MUTE_SECONDS = 300;
 export const AUTOMOD_KINDS: Array<{ id: AutomodKind; label: string; description: string }> = [
   {
     id: 'word',
-    label: 'Whole word',
-    description: 'The word on its own, ignoring case — “ass” leaves “class” alone.'
+    label: t('automodKind.word'),
+    description: t('automodKind.word.description')
   },
-  { id: 'substring', label: 'Contains', description: 'Anywhere in the message, ignoring case.' },
+  { id: 'substring', label: t('automodKind.substring'), description: t('automodKind.substring.description') },
   {
     id: 'regex',
-    label: 'Regular expression',
-    description: 'Rust regex syntax, ignoring case. No lookaround or backreferences.'
+    label: t('automodKind.regex'),
+    description: t('automodKind.regex.description')
   }
 ];
 
 /* Ordered from least to most severe, the same order the server resolves two
    matching rules by. */
 export const AUTOMOD_ACTIONS: Array<{ id: AutomodAction; label: string; description: string }> = [
-  { id: 'warn', label: 'Warn', description: 'Deliver it and tell the sender it matched.' },
-  { id: 'delete', label: 'Delete', description: 'Refuse it; nobody else ever sees it.' },
-  { id: 'mute', label: 'Mute', description: 'Refuse it and mute the sender.' }
+  { id: 'warn', label: t('automodAction.warn'), description: t('automodAction.warn.description') },
+  { id: 'delete', label: t('automodAction.delete'), description: t('automodAction.delete.description') },
+  { id: 'mute', label: t('automodAction.mute'), description: t('automodAction.mute.description') }
 ];
 
 export const USER_STATUS_VALUES = ['online', 'away', 'busy', 'offline'] as const;
 
 export const STATUS_LABELS: Record<UserStatus, string> = {
-  online: 'Online',
-  away: 'Away',
-  busy: 'Busy',
-  offline: 'Offline'
+  online: t('status.online'),
+  away: t('status.away'),
+  busy: t('status.busy'),
+  offline: t('status.offline')
 };
 
 export const MESSAGE_INPUT_MAX_HEIGHT = 360;
@@ -132,6 +133,10 @@ export const PIN_PREVIEW_LIMIT = 120;
 /** Poll bounds; mirror `MAX_POLL_OPTIONS` / `MAX_POLL_OPTION_LENGTH` in ws/constants.rs. */
 export const MAX_POLL_OPTIONS = 10;
 export const MAX_POLL_OPTION_LENGTH = 55;
+/** Most messages one /purge removes; mirrors `MAX_PURGE_COUNT` in ws/constants.rs. */
+export const MAX_PURGE_COUNT = 100;
+/** Longest report reason; mirrors `MAX_REPORT_REASON_LENGTH` in ws/constants.rs. */
+export const MAX_REPORT_REASON_LENGTH = 500;
 export const MIN_EPHEMERAL_SECONDS = 5;
 export const MAX_EPHEMERAL_SECONDS = 86_400;
 
@@ -150,11 +155,11 @@ export const VOICE_QUALITY_PRESETS: Array<{
   bitrate: number | null;
   label: string;
 }> = [
-  { quality: 'low', bitrate: 32_000, label: 'Low' },
-  { quality: 'standard', bitrate: 64_000, label: 'Standard' },
-  { quality: 'high', bitrate: 96_000, label: 'High' },
-  { quality: 'ultra', bitrate: 128_000, label: 'Ultra' },
-  { quality: 'lossless', bitrate: null, label: 'Lossless' }
+  { quality: 'low', bitrate: 32_000, label: t('voiceQuality.low') },
+  { quality: 'standard', bitrate: 64_000, label: t('voiceQuality.standard') },
+  { quality: 'high', bitrate: 96_000, label: t('voiceQuality.high') },
+  { quality: 'ultra', bitrate: 128_000, label: t('voiceQuality.ultra') },
+  { quality: 'lossless', bitrate: null, label: t('voiceQuality.lossless') }
 ];
 
 export const DEFAULT_VOICE_PRESET = VOICE_QUALITY_PRESETS[1];
@@ -171,17 +176,22 @@ export const NOTIFICATION_OPTIONS: Array<{
   description: string;
   icon: string;
 }> = [
-  { value: 'all', label: 'All messages', description: 'Send alerts for every new message', icon: '🔔' },
+  {
+    value: 'all',
+    label: t('notificationPreference.all'),
+    description: t('notificationPreference.all.description'),
+    icon: '🔔'
+  },
   {
     value: 'mentions',
-    label: 'Mentions only',
-    description: 'Only alert when you are mentioned',
+    label: t('notificationPreference.mentions'),
+    description: t('notificationPreference.mentions.description'),
     icon: '@'
   },
   {
     value: 'mute',
-    label: 'Muted',
-    description: 'Do not show notifications for this channel',
+    label: t('notificationPreference.mute'),
+    description: t('notificationPreference.mute.description'),
     icon: '🔕'
   }
 ];
@@ -191,57 +201,53 @@ export const HELP_COMMANDS: Array<{
   description: string;
   aliases?: string[];
 }> = [
-  { usage: '/help', description: 'Show this list of available slash commands.' },
-  { usage: '/me <action>', description: 'Send an italicised third-person emote.' },
+  { usage: '/help', description: t('slashCommand.help') },
+  { usage: '/me <action>', description: t('slashCommand.me') },
   {
     usage: '/tts <message>',
-    description: 'Send a message that listeners who enabled it in Settings → Audio hear read aloud.'
+    description: t('slashCommand.tts')
   },
   {
     usage: '/shrug [message]',
-    description: 'Append the classic shrug emoticon to your message.'
+    description: t('slashCommand.shrug')
   },
   {
     usage: '/topic <text>',
-    description:
-      'Update the channel topic for everyone on the server or clear it when run without text.'
+    description: t('slashCommand.topic')
   },
   {
     usage: '/status <online|away|busy|offline>',
-    description: 'Change your presence indicator across all connected clients.'
+    description: t('slashCommand.status')
   },
   {
     usage: '/ephemeral <seconds> <message>',
-    description:
-      'Send a message that automatically deletes itself after the requested duration.',
+    description: t('slashCommand.ephemeral'),
     aliases: ['/temp <seconds> <message>']
   },
   {
     usage: '/poll <question> | <option> | <option> …',
-    description:
-      `Post a poll with up to ${MAX_POLL_OPTIONS} options; everyone gets one vote and can ` +
-      'change it. Not available in encrypted channels.'
+    description: t('slashCommand.poll', { max: MAX_POLL_OPTIONS })
+  },
+  {
+    usage: '/purge <count>',
+    description: t('slashCommand.purge', { max: MAX_PURGE_COUNT })
   },
   {
     usage: '/search [query]',
-    description: 'Open the search overlay and optionally pre-fill it with a query.'
+    description: t('slashCommand.search')
   },
   {
     usage: '/remind <when> <note>',
-    description:
-      'Set a private reminder. “When” is a duration such as 90s, 15m, 2h or 3d, ' +
-      'or a clock time like 17:30.',
+    description: t('slashCommand.remind'),
     aliases: ['/remindme <when> <note>']
   },
   {
     usage: '/schedule <when> <message>',
-    description:
-      'Post a message to this channel later. Same “when” as /remind; the queue ' +
-      'is in the Reminders panel.'
+    description: t('slashCommand.schedule')
   },
   {
     usage: '/reminders',
-    description: 'Open the panel listing your reminders and scheduled messages.'
+    description: t('slashCommand.reminders')
   }
 ];
 

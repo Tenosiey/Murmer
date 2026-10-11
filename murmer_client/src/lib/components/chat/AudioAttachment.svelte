@@ -5,6 +5,7 @@
   the history just to render it would download all of them up front.
 -->
 <script lang="ts">
+  import { t } from '$lib/i18n';
   interface Props {
     url: string;
     name: string;
@@ -45,7 +46,7 @@
 {:else}
   <button type="button" class="btn audio-load" onclick={load} disabled={loading}>
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
-    {loading ? 'Loading…' : failed ? 'Could not load — retry' : 'Play'}
+    {t(loading ? 'audioAttachment.loading' : failed ? 'audioAttachment.failed' : 'audioAttachment.play')}
   </button>
 {/if}
 

@@ -18,6 +18,7 @@ import {
   MAX_SCHEDULE_AHEAD_SECONDS,
   MAX_REMINDER_TEXT_LENGTH
 } from './constants';
+import { t } from '../i18n';
 
 /**
  * How long a row may sit past its time before the label calls it overdue.
@@ -92,12 +93,12 @@ export function parseWhen(raw: string, now: Date = new Date()): Date | null {
  */
 export function scheduleBoundsError(at: Date, now: Date = new Date()): string | null {
   const seconds = (at.getTime() - now.getTime()) / 1000;
-  if (!Number.isFinite(seconds)) return 'That is not a time.';
+  if (!Number.isFinite(seconds)) return t('schedule.notATime');
   if (seconds < MIN_SCHEDULE_LEAD_SECONDS) {
-    return `Pick a time at least ${MIN_SCHEDULE_LEAD_SECONDS} seconds from now.`;
+    return t('schedule.tooSoon', { seconds: MIN_SCHEDULE_LEAD_SECONDS });
   }
   if (seconds > MAX_SCHEDULE_AHEAD_SECONDS) {
-    return 'Pick a time within the next year.';
+    return t('schedule.tooLate');
   }
   return null;
 }
@@ -113,11 +114,11 @@ export function splitWhen(rest: string): { when: string; text: string } {
 /** Whether a reminder note is one the server will store. */
 export function reminderTextError(text: string): string | null {
   const trimmed = text.trim();
-  if (!trimmed) return 'A reminder needs a note.';
+  if (!trimmed) return t('schedule.noteMissing');
   // The server bounds the note in bytes, so a note of emoji hits the limit
   // sooner than its character count suggests.
   if (new TextEncoder().encode(trimmed).length > MAX_REMINDER_TEXT_LENGTH) {
-    return `Keep the note under ${MAX_REMINDER_TEXT_LENGTH} bytes.`;
+    return t('schedule.noteTooLong', { max: MAX_REMINDER_TEXT_LENGTH });
   }
   return null;
 }
@@ -137,36 +138,36 @@ export function describeWhen(iso: string, now: Date = new Date()): string {
   // The scheduler polls, so a row is briefly past its time before anything
   // has gone wrong. Calling that "overdue" reads as a failure for what is
   // really the next tick arriving.
-  if (seconds < -DUE_NOW_GRACE_SECONDS) return `overdue — ${clock}`;
-  if (seconds < 0) return 'due now';
-  if (seconds < 60) return `in ${seconds}s`;
-  if (seconds < 60 * 60) return `in ${Math.round(seconds / 60)} min`;
+  if (seconds < -DUE_NOW_GRACE_SECONDS) return t('when.overdue', { clock });
+  if (seconds < 0) return t('when.dueNow');
+  if (seconds < 60) return t('when.inSeconds', { seconds });
+  if (seconds < 60 * 60) return t('when.inMinutes', { minutes: Math.round(seconds / 60) });
 
   const sameDay = at.toDateString() === now.toDateString();
-  if (sameDay) return `today at ${clock}`;
+  if (sameDay) return t('when.today', { clock });
 
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  if (at.toDateString() === tomorrow.toDateString()) return `tomorrow at ${clock}`;
+  if (at.toDateString() === tomorrow.toDateString()) return t('when.tomorrow', { clock });
 
   const date = at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  return `${date} at ${clock}`;
+  return t('when.date', { date, clock });
 }
 
 /** Human text for the reason a scheduled message was not posted. */
 export function describeScheduleFailure(reason: string): string {
   switch (reason) {
     case 'send-permission-denied':
-      return 'You can no longer post in that channel.';
+      return t('scheduleFailure.sendPermissionDenied');
     case 'muted':
-      return 'You were muted before it went out.';
+      return t('scheduleFailure.muted');
     case 'channel-requires-encryption':
-      return 'That channel switched to end-to-end encryption after this was written.';
+      return t('scheduleFailure.channelRequiresEncryption');
     case 'channel-not-encrypted':
-      return 'That channel is no longer encrypted.';
+      return t('scheduleFailure.channelNotEncrypted');
     case 'interrupted':
-      return 'The server restarted while it was being sent, so it was not posted.';
+      return t('scheduleFailure.interrupted');
     default:
-      return `The server refused it: ${reason}`;
+      return t('scheduleFailure.other', { reason });
   }
 }

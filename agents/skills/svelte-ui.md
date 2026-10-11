@@ -21,6 +21,10 @@ This is the procedure.
   `.surface-card` are defined in `src/routes/+layout.svelte`. Restyling a
   button locally is how a design system dies.
 - **Icons are inline stroke SVGs at 1.8 stroke width.** No emoji as icons.
+- **User-facing text through `t()`** from `$lib/i18n`, with the English in
+  `src/lib/i18n/en.ts`. Fill values with `{name}` placeholders rather than
+  concatenating, and make anything that varies with a number a plural
+  object, since word order and plural rules differ between languages.
 - **`MurmerLogo.svelte` for the logo**, never inlined artwork.
 - **Never `{@html …}`** on anything not explicitly sanitised.
 - **Never `window.prompt`, `confirm` or `alert`.** WebView2 does not support

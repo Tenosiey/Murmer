@@ -5,6 +5,7 @@ import { isBlocked } from './blocks';
 import { displayNames } from './profiles';
 import { notify } from '../notify';
 import type { Message } from '../types';
+import { t } from '../i18n';
 
 /**
  * Pokes: a short nudge from one member to another (TeamSpeak). It pops up as
@@ -17,8 +18,8 @@ chat.on('poke', (msg: Message) => {
   const from = typeof msg.from === 'string' ? msg.from : '';
   if (!from || isBlocked(from)) return;
   const name = get(displayNames)(from);
-  void dialogs.alert({ title: 'Poke', message: `${name} poked you.` });
-  void notify('Poke', `${name} poked you.`);
+  void dialogs.alert({ title: t('poke.title'), message: t('poke.message', { name }) });
+  void notify(t('poke.title'), t('poke.message', { name }));
 });
 
 /** Poke `user`. The server answers with an error frame when it refuses. */

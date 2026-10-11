@@ -2,7 +2,8 @@
   The open direct message, in the conversation side panel. Everything here is
   end-to-end encrypted, so beyond sending it carries the two things only a DM
   needs: accepting a peer's changed identity key, and showing the fingerprint
-  to compare out of band before doing so. Opening a conversation is the chat
+  to compare out of band before doing so. The viewer's own messages can be
+  edited (re-encrypted and sent again) or deleted for both sides. Opening a conversation is the chat
   page's job, since it also closes an open thread.
 -->
 <script lang="ts">
@@ -13,8 +14,10 @@
   import { dmDraft } from '$lib/stores/drafts';
   import { peerKeys } from '$lib/stores/peerKeys';
   import { dialogs } from '$lib/stores/dialogs';
+  import { t } from '$lib/i18n';
   import { dmFingerprint } from '$lib/dm-crypto';
   import { loadKeyPair } from '$lib/keypair';
+  import type { Message } from '$lib/types';
   import ConversationPanel from './ConversationPanel.svelte';
 
   const conversations = dm.conversations;
@@ -27,8 +30,35 @@
     const peer = $activePeer;
     if (!peer) return;
     void chat.sendDm(peer, text).then((error) => {
-      if (error) void dialogs.alert({ title: 'Message not sent', message: error });
+      if (error) void dialogs.alert({ title: t('dmPanel.notSent'), message: error });
     });
+  }
+
+  async function edit(msg: Message) {
+    const peer = $activePeer;
+    if (!peer || typeof msg.id !== 'number') return;
+    const text = await dialogs.prompt({
+      title: t('dmPanel.editTitle'),
+      label: t('dmPanel.editLabel'),
+      initial: msg.text ?? '',
+      multiline: true,
+      confirmLabel: t('dmPanel.editConfirm')
+    });
+    const trimmed = text?.trim();
+    if (!trimmed || trimmed === msg.text) return;
+    const error = await chat.editDm(peer, msg.id, trimmed);
+    if (error) void dialogs.alert({ title: t('dmPanel.notSent'), message: error });
+  }
+
+  async function remove(msg: Message) {
+    if (typeof msg.id !== 'number') return;
+    const confirmed = await dialogs.confirm({
+      title: t('dmPanel.deleteTitle'),
+      message: t('dmPanel.deleteMessage'),
+      confirmLabel: t('dmPanel.deleteConfirm'),
+      danger: true
+    });
+    if (confirmed) chat.deleteDm(msg.id);
   }
 
   /** Accept the peer's changed identity key after the user confirmed it. */
@@ -46,17 +76,17 @@
     const peerKey = $conflicts[peer] ?? peerKeys.pinned(peer);
     if (!peerKey) {
       void dialogs.alert({
-        title: 'No key yet',
-        message: `No encryption key is known for ${peer} on this server.`
+        title: t('dmPanel.noKeyTitle'),
+        message: t('dmPanel.noKeyMessage', { name: peer })
       });
       return;
     }
     void dialogs.alert({
-      title: `Verify keys with ${peer}`,
-      message:
-        `Fingerprint: ${dmFingerprint(loadKeyPair().publicKey, peerKey)} — ` +
-        `compare it with ${peer} over another channel (in person, a call, …). ` +
-        `It must match exactly on both ends.`
+      title: t('dmPanel.verifyTitle', { name: peer }),
+      message: t('dmPanel.verifyMessage', {
+        fingerprint: dmFingerprint(loadKeyPair().publicKey, peerKey),
+        name: peer
+      })
     });
   }
 </script>
@@ -66,8 +96,8 @@
     kind="dm"
     title={$displayNames($activePeer)}
     {messages}
-    emptyText="No messages yet. Say hi!"
-    placeholder={`Message ${$displayNames($activePeer)}…`}
+    emptyText={t('dmPanel.empty')}
+    placeholder={t('dmPanel.placeholder', { name: $displayNames($activePeer) })}
     onSend={send}
     onClose={() => dm.close()}
     draftKey={dmDraft($activePeer)}
@@ -75,5 +105,8 @@
     keyWarning={$activePeer in $conflicts}
     onTrustKey={trustKey}
     onVerify={verify}
+    canModify={(msg) => msg.from === $session.user && typeof msg.id === 'number'}
+    onEdit={edit}
+    onDelete={remove}
   />
 {/if}

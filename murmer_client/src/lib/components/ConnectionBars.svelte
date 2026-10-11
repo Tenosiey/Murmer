@@ -4,6 +4,7 @@
   Uses Material 3 color tokens for consistent theming.
 -->
 <script lang="ts">
+  import { t } from '$lib/i18n';
   interface Props {
     strength?: number;
     /** The connection dropped and is being repaired; see `voice/recovery.ts`. */
@@ -22,10 +23,12 @@
 
   // While a repair is running the bars carry no information — the connection
   // is down, not weak — so they pulse instead of reading as "terrible signal".
-  let label = $derived(reconnecting ? 'Reconnecting' : `Connection strength ${strength}/5`);
+  let label = $derived(
+    reconnecting ? t('indicator.reconnecting') : t('indicator.strength', { strength })
+  );
 </script>
 
-<div class="bars" class:reconnecting aria-label={label} title={reconnecting ? 'Reconnecting…' : `${strength}/5 bars`}>
+<div class="bars" class:reconnecting aria-label={label} title={reconnecting ? t('indicator.reconnectingTitle') : t('indicator.bars', { strength })}>
   {#each bars as n}
     <div
       class="bar bar-{getBarColor(n, strength)}"

@@ -8,6 +8,7 @@
   import { fade, scale } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { activeDialog, settleDialog, type ActiveDialog } from '$lib/stores/dialogs';
+  import { t } from '$lib/i18n';
 
   let value = $state('');
   let selected = $state('');
@@ -153,7 +154,7 @@
       <div class="actions">
         {#if dialog.kind !== 'alert'}
           <button type="button" class="btn" onclick={cancel}>
-            {(dialog.kind === 'confirm' && dialog.options.cancelLabel) || 'Cancel'}
+            {(dialog.kind === 'confirm' && dialog.options.cancelLabel) || t('dialog.cancel')}
           </button>
         {/if}
         <button

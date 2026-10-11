@@ -9,6 +9,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { MicTest, MIC_TEST_SECONDS } from '$lib/voice/micTest';
+  import { t } from '$lib/i18n';
 
   type Phase = 'idle' | 'recording' | 'playing';
 
@@ -37,7 +38,7 @@
       playRecording();
     } catch (e) {
       console.warn('Microphone test failed:', e);
-      error = 'Could not record — check the input device and microphone permissions.';
+      error = t('micTest.recordFailed');
       phase = 'idle';
     }
   }
@@ -70,20 +71,20 @@
   <div class="controls">
     {#if phase === 'idle'}
       <button class="btn" onclick={startRecording}>
-        {recording ? 'Record again' : `Record ${MIC_TEST_SECONDS} seconds`}
+        {recording ? t('micTest.recordAgain') : t('micTest.record', { count: MIC_TEST_SECONDS })}
       </button>
       {#if recording}
-        <button class="btn" onclick={playRecording}>Play back</button>
+        <button class="btn" onclick={playRecording}>{t('micTest.playBack')}</button>
       {/if}
     {:else}
       <button class="btn" onclick={stop}>
-        {phase === 'recording' ? 'Stop and play back' : 'Stop playback'}
+        {phase === 'recording' ? t('micTest.stopAndPlay') : t('micTest.stopPlayback')}
       </button>
     {/if}
   </div>
 
   {#if phase === 'recording'}
-    <div class="progress" role="progressbar" aria-label="Recording progress" aria-valuenow={Math.round(progress)} aria-valuemin="0" aria-valuemax="100">
+    <div class="progress" role="progressbar" aria-label={t('micTest.progress')} aria-valuenow={Math.round(progress)} aria-valuemin="0" aria-valuemax="100">
       <div class="progress-fill" style="width: {progress}%"></div>
     </div>
   {/if}
@@ -92,14 +93,13 @@
     {#if error}
       {error}
     {:else if phase === 'recording'}
-      Recording — speak normally ({Math.ceil(remaining)}s left)
+      {t('micTest.recording', { count: Math.ceil(remaining) })}
     {:else if phase === 'playing'}
-      Playing back — only you hear this
+      {t('micTest.playing')}
     {:else if recording}
-      Adjust the settings above and record again to compare.
+      {t('micTest.compare')}
     {:else}
-      Records what the others would hear, including the input volume, and plays it
-      straight back to you.
+      {t('micTest.idle')}
     {/if}
   </span>
 </div>

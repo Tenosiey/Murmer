@@ -10,11 +10,13 @@ import {
   MAX_EPHEMERAL_SECONDS,
   MAX_POLL_OPTION_LENGTH,
   MAX_POLL_OPTIONS,
+  MAX_PURGE_COUNT,
   MAX_TOPIC_LENGTH,
   MIN_EPHEMERAL_SECONDS,
   USER_STATUS_VALUES
 } from './constants';
 import { describeDuration } from './helpers';
+import { t } from '../i18n';
 import { parseWhen, reminderTextError, scheduleBoundsError, splitWhen } from './schedule';
 
 export type SlashCommand =
@@ -29,6 +31,7 @@ export type SlashCommand =
   | { kind: 'ephemeral'; text: string; seconds: number; clampNote: string | null }
   | { kind: 'search'; query: string }
   | { kind: 'poll'; question: string; options: string[] }
+  | { kind: 'purge'; count: number }
   | { kind: 'remind'; text: string; at: Date }
   | { kind: 'schedule'; text: string; at: Date };
 
@@ -42,25 +45,25 @@ function parseTimed(rest: string, usage: string, now: Date): { at: Date; text: s
   const { when, text } = splitWhen(rest);
   if (!when || !text) return usage;
   const at = parseWhen(when, now);
-  if (!at) return `“${when}” is not a time. Try 15m, 2h, 3d or 17:30.`;
+  if (!at) return t('command.notATime', { input: when });
   return scheduleBoundsError(at, now) ?? { at, text };
 }
 
 function parseEphemeral(rest: string): SlashCommand {
-  const usage = 'Usage: /ephemeral <seconds> <message>';
+  const usage = t('command.usage.ephemeral');
   const [durationPart, ...words] = rest.split(/\s+/);
   const text = words.join(' ').trim();
   if (!durationPart || !text) return error(usage);
   const parsed = Number(durationPart);
-  if (!Number.isFinite(parsed)) return error('Ephemeral duration must be a number of seconds.');
+  if (!Number.isFinite(parsed)) return error(t('command.ephemeralNotANumber'));
   const requested = Math.round(parsed);
-  if (requested <= 0) return error('Ephemeral duration must be positive.');
+  if (requested <= 0) return error(t('command.ephemeralNotPositive'));
   const seconds = Math.min(Math.max(requested, MIN_EPHEMERAL_SECONDS), MAX_EPHEMERAL_SECONDS);
   let clampNote: string | null = null;
   if (requested < MIN_EPHEMERAL_SECONDS) {
-    clampNote = `Minimum duration is ${describeDuration(MIN_EPHEMERAL_SECONDS)}.`;
+    clampNote = t('command.ephemeralMinimum', { duration: describeDuration(MIN_EPHEMERAL_SECONDS) });
   } else if (requested > MAX_EPHEMERAL_SECONDS) {
-    clampNote = `Maximum duration is ${describeDuration(MAX_EPHEMERAL_SECONDS)}.`;
+    clampNote = t('command.ephemeralMaximum', { duration: describeDuration(MAX_EPHEMERAL_SECONDS) });
   }
   return { kind: 'ephemeral', text, seconds, clampNote };
 }
@@ -69,14 +72,14 @@ function parseEphemeral(rest: string): SlashCommand {
 function parsePoll(rest: string): SlashCommand {
   const [question, ...options] = rest.split('|').map((part) => part.trim());
   if (!question || options.length < 2) {
-    return error('Usage: /poll <question> | <option> | <option> …');
+    return error(t('command.usage.poll'));
   }
   if (options.length > MAX_POLL_OPTIONS) {
-    return error(`A poll can have at most ${MAX_POLL_OPTIONS} options.`);
+    return error(t('command.pollTooManyOptions', { max: MAX_POLL_OPTIONS }));
   }
-  if (options.some((option) => option === '')) return error('Poll options cannot be empty.');
+  if (options.some((option) => option === '')) return error(t('command.pollEmptyOption'));
   if (options.some((option) => [...option].length > MAX_POLL_OPTION_LENGTH)) {
-    return error(`Poll options are limited to ${MAX_POLL_OPTION_LENGTH} characters.`);
+    return error(t('command.pollOptionTooLong', { max: MAX_POLL_OPTION_LENGTH }));
   }
   return { kind: 'poll', question, options };
 }
@@ -95,21 +98,21 @@ export function parseSlashCommand(raw: string, now: Date = new Date()): SlashCom
     case 'reminders':
       return { kind: 'reminders' };
     case 'me':
-      return rest ? { kind: 'send', text: `_${rest}_` } : error('Usage: /me <action>');
+      return rest ? { kind: 'send', text: `_${rest}_` } : error(t('command.usage.me'));
     case 'tts':
-      return rest ? { kind: 'tts', text: rest } : error('Usage: /tts <message>');
+      return rest ? { kind: 'tts', text: rest } : error(t('command.usage.tts'));
     case 'shrug':
       return { kind: 'send', text: rest ? `${rest} ${SHRUG}` : SHRUG };
     case 'topic':
       return rest.length > MAX_TOPIC_LENGTH
-        ? error(`Topics are limited to ${MAX_TOPIC_LENGTH} characters.`)
+        ? error(t('command.topicTooLong', { max: MAX_TOPIC_LENGTH }))
         : { kind: 'topic', topic: rest };
     case 'status': {
-      if (!rest) return error('Usage: /status <online|away|busy|offline>');
+      if (!rest) return error(t('command.usage.status'));
       const status = USER_STATUS_VALUES.find((value) => value === rest.toLowerCase());
       return status
         ? { kind: 'status', status }
-        : error(`Unknown status "${rest}". Options: ${USER_STATUS_VALUES.join(', ')}.`);
+        : error(t('command.unknownStatus', { status: rest, options: USER_STATUS_VALUES.join(', ') }));
     }
     case 'ephemeral':
     case 'temp':
@@ -118,22 +121,25 @@ export function parseSlashCommand(raw: string, now: Date = new Date()): SlashCom
       return { kind: 'search', query: rest };
     case 'poll':
       return parsePoll(rest);
+    case 'purge': {
+      if (!/^\d+$/.test(rest)) return error(t('command.usage.purge'));
+      const count = Number(rest);
+      return count >= 1 && count <= MAX_PURGE_COUNT
+        ? { kind: 'purge', count }
+        : error(t('command.purgeOutOfRange', { max: MAX_PURGE_COUNT }));
+    }
     case 'remind':
     case 'remindme': {
-      const timed = parseTimed(rest, 'Usage: /remind <when> <note> — e.g. /remind 15m stretch', now);
+      const timed = parseTimed(rest, t('command.usage.remind'), now);
       if (typeof timed === 'string') return error(timed);
       const invalid = reminderTextError(timed.text);
       return invalid ? error(invalid) : { kind: 'remind', ...timed };
     }
     case 'schedule': {
-      const timed = parseTimed(
-        rest,
-        'Usage: /schedule <when> <message> — e.g. /schedule 2h notes are up',
-        now
-      );
+      const timed = parseTimed(rest, t('command.usage.schedule'), now);
       return typeof timed === 'string' ? error(timed) : { kind: 'schedule', ...timed };
     }
     default:
-      return error(`Unknown command: /${name}`);
+      return error(t('command.unknown', { name }));
   }
 }

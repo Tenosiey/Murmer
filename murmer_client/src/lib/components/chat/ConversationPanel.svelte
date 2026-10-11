@@ -20,6 +20,7 @@
   import { drafts } from '$lib/stores/drafts';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import MentionSuggestions from './MentionSuggestions.svelte';
+  import { t } from '$lib/i18n';
 
   interface Props {
     title: string;
@@ -39,21 +40,28 @@
     onTrustKey?: () => void;
     /** DMs: show the conversation's key fingerprint for verification. */
     onVerify?: () => void;
+    /** DMs: which messages the viewer may edit and delete (their own). */
+    canModify?: (msg: Message) => boolean;
+    onEdit?: (msg: Message) => void;
+    onDelete?: (msg: Message) => void;
   }
 
   let {
     title,
     kind = 'thread',
     messages = [],
-    emptyText = 'No messages yet.',
-    placeholder = 'Reply…',
+    emptyText = t('conversationPanel.empty'),
+    placeholder = t('conversationPanel.reply'),
     onSend,
     onClose,
     draftKey,
     emphasize = () => false,
     keyWarning = false,
     onTrustKey,
-    onVerify
+    onVerify,
+    canModify = () => false,
+    onEdit,
+    onDelete
   }: Props = $props();
 
   let draft = $state('');
@@ -92,7 +100,7 @@
 
 <aside
   class="panel"
-  aria-label={kind === 'dm' ? 'Direct messages' : 'Thread'}
+  aria-label={t(kind === 'dm' ? 'conversationPanel.directMessages' : 'conversationPanel.thread')}
   transition:fly={{ x: 48, duration: 160, easing: cubicOut }}
 >
   <header>
@@ -110,13 +118,13 @@
           type="button"
           class="icon-btn lock"
           onclick={onVerify}
-          title="End-to-end encrypted — click to verify"
-          aria-label="Verify encryption keys"
+          title={t('conversationPanel.endToEndEncrypted')}
+          aria-label={t('conversationPanel.verifyEncryptionKeys')}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         </button>
       {/if}
-      <button type="button" class="icon-btn" onclick={onClose} aria-label="Close panel">
+      <button type="button" class="icon-btn" onclick={onClose} aria-label={t('conversationPanel.closePanel')}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </span>
@@ -125,13 +133,11 @@
   {#if keyWarning}
     <div class="key-warning" role="alert">
       <p>
-        {title}'s security key has changed. This happens after a key reset — but it can also mean
-        someone else is answering under this name. Verify the new fingerprint out-of-band before
-        trusting it.
+        {t('conversationPanel.keyChanged', { name: title })}
       </p>
       <div class="key-warning-actions">
-        <button type="button" class="btn btn-ghost" onclick={onVerify}>Show fingerprint</button>
-        <button type="button" class="btn btn-danger" onclick={onTrustKey}>Trust new key</button>
+        <button type="button" class="btn btn-ghost" onclick={onVerify}>{t('conversationPanel.showFingerprint')}</button>
+        <button type="button" class="btn btn-danger" onclick={onTrustKey}>{t('conversationPanel.trustNewKey')}</button>
       </div>
     </div>
   {/if}
@@ -143,14 +149,29 @@
           <UserAvatar name={(kind === 'dm' ? msg.from : msg.user) ?? '?'} size="sm" />
           <span class="username">{$displayNames((kind === 'dm' ? msg.from : msg.user) ?? '?')}</span>
           <span class="timestamp" title={formatFullTimestamp(msg)}>{formatShortTime(msg)}</span>
+          {#if msg.edited}
+            <span class="edited">{t('conversationPanel.edited')}</span>
+          {/if}
+          {#if canModify(msg)}
+            <span class="entry-actions">
+              {#if msg.text && !msg.decryptFailed}
+                <button type="button" class="icon-btn" onclick={() => onEdit?.(msg)} aria-label={t('conversationPanel.editMessage')} title={t('conversationPanel.editMessage')}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                </button>
+              {/if}
+              <button type="button" class="icon-btn danger" onclick={() => onDelete?.(msg)} aria-label={t('conversationPanel.deleteMessage')} title={t('conversationPanel.deleteMessage')}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+              </button>
+            </span>
+          {/if}
         </div>
         <div class="entry-text">
           {#if msg.decryptFailed}
-            <span class="undecryptable">This message could not be decrypted.</span>
+            <span class="undecryptable">{t('conversationPanel.thisMessageCouldNot')}</span>
           {:else if msg.text}
             {@html emojifyHtml(renderMarkdown(msg.text), $customEmojis, httpBase)}
           {:else if serverFileUrl(msg.image, httpBase) && msg.spoiler}
-            <span class="spoiler spoiler-media" role="button" tabindex="0" aria-label="Spoiler image, select to reveal">
+            <span class="spoiler spoiler-media" role="button" tabindex="0" aria-label={t('conversationPanel.spoilerImageSelectTo')}>
               <img src={serverFileUrl(msg.image, httpBase)} alt="" loading="lazy" />
             </span>
           {:else if serverFileUrl(msg.image, httpBase)}
@@ -298,6 +319,25 @@
     font-size: var(--text-xs);
     color: var(--color-muted);
     font-family: var(--font-mono);
+  }
+
+  .entry-meta .edited {
+    font-size: var(--text-xs);
+    color: var(--color-muted);
+  }
+
+  /* Shown on hover and on keyboard focus, so they stay reachable without a
+     mouse. */
+  .entry-actions {
+    margin-left: auto;
+    display: inline-flex;
+    gap: var(--space-1);
+    opacity: 0;
+  }
+
+  .entry:hover .entry-actions,
+  .entry-actions:focus-within {
+    opacity: 1;
   }
 
   .entry-text {

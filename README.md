@@ -40,8 +40,8 @@ that runs both as a Tauri desktop app and, unchanged, in the browser.
   text channels: the server only ever stores ciphertext there
 - **Roles and permissions** with private channels, per-channel overrides,
   nicknames, moderation (kick, ban, timed mutes, slow mode, profanity filter,
-  auto-moderation rules) and an audit log, all managed from the Server
-  Dashboard
+  auto-moderation rules, message reports) and an audit log, all managed from
+  the Server Dashboard
 - **Per-channel wikis** with revision history and `[[wikilinks]]`
 - **Accounts are keys**: Ed25519 identities instead of passwords, with a
   recovery file or 24-word phrase to move them to another machine
@@ -57,7 +57,7 @@ You need Docker, [Rust](https://www.rust-lang.org/tools/install) (the
 toolchain is pinned by `rust-toolchain.toml`) and [Bun](https://bun.sh) 1.x.
 
 ```bash
-cp .env.example .env        # adjust as needed
+cp .env.example .env        # replace the change-me SERVER_PASSWORD
 docker compose up --build   # server on http://localhost:3001, WebSocket at /ws
 ```
 
@@ -77,11 +77,17 @@ The server reads these environment variables, and also a `.env` file:
 `DATABASE_PATH`, `UPLOAD_DIR` and `WEB_CLIENT_DIR` are set in
 `docker-compose.yml` instead, since they name paths inside the container.
 
+`docker-compose.yml` is production-shaped: `SERVER_PASSWORD` is required, CORS
+is off and the port is published on loopback only, for a TLS reverse proxy.
+`docker-compose.override.yml` relaxes this for development (CORS for
+`tauri dev`, port open to the network) and is merged in automatically; delete
+it on a public server.
+
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `DATABASE_PATH` | No | Path to the SQLite database file (defaults to `murmer.db`) |
 | `UPLOAD_DIR` | No | Directory for stored uploads (defaults to `uploads/`) |
-| `SERVER_PASSWORD` | No | Shared secret required during presence/auth |
+| `SERVER_PASSWORD` | No | Shared secret required during presence/auth. The server refuses to start while it begins with `change-me`, the `.env.example` placeholder; the same goes for `ADMIN_TOKEN` |
 | `ADMIN_TOKEN` | No | Enables the administrative `/role` endpoint, which can grant any role including Owner, and the bot management API. At least 32 characters or the server refuses to start; generate one with `openssl rand -hex 32`. After 10 wrong tokens in a minute every admin request is refused until the minute passes |
 | `BIND_ADDRESS` | No | Override the socket address (defaults to `0.0.0.0:3001`) |
 | `CORS_ALLOW_ORIGINS` | No | Comma-separated allowed origins (omit in production) |
@@ -117,7 +123,8 @@ docker pull ghcr.io/tenosiey/murmer-server:latest
 
 In `docker-compose.yml`, swap `build:` for the commented `image:` line to use
 it. Pin a version tag rather than `latest` to upgrade on your own schedule;
-the server's version should match the desktop app's.
+the server's version should match the desktop app's. A member whose app differs
+is told on connecting which side needs the update.
 
 **The first Owner** has to be assigned from the server, because nobody can
 grant roles yet. Copy your public key from the client settings, then:
@@ -188,8 +195,8 @@ bun run build && bun run tauri build    # bundles land in src-tauri/target/relea
 
 The build signs the updater artifacts, so it needs `TAURI_SIGNING_PRIVATE_KEY`
 and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` in the environment. Installed apps
-update from GitHub releases when asked to (Settings → Updates); how a release is
-cut is [`agents/skills/releasing.md`](agents/skills/releasing.md).
+check GitHub releases at startup and offer to install a newer one (or on demand
+under Settings → Updates); how a release is cut is [`agents/skills/releasing.md`](agents/skills/releasing.md).
 
 ## Security
 

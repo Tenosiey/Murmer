@@ -3,6 +3,7 @@
   Uses Material 3 semantic colors for status indication.
 -->
 <script lang="ts">
+  import { t } from '$lib/i18n';
   interface Props {
     ping?: number;
     size?: 'sm' | 'md' | 'lg';
@@ -11,19 +12,14 @@
 
   let { ping = 0, size = 'md', pulse = true }: Props = $props();
   
-  let status = $derived(ping === 0 ? 'unknown'
-    : ping < 50 ? 'excellent'
-    : ping < 100 ? 'good'
-    : ping < 200 ? 'fair'
-    : ping < 400 ? 'poor'
-    : 'critical');
+  let status = $derived(ping === 0 ? 'unknown' as const
+    : ping < 50 ? 'excellent' as const
+    : ping < 100 ? 'good' as const
+    : ping < 200 ? 'fair' as const
+    : ping < 400 ? 'poor' as const
+    : 'critical' as const);
   
-  let label = $derived(ping === 0 ? 'Checking connection'
-    : ping < 50 ? `Excellent (${ping}ms)`
-    : ping < 100 ? `Good (${ping}ms)`
-    : ping < 200 ? `Fair (${ping}ms)`
-    : ping < 400 ? `Poor (${ping}ms)`
-    : `Critical (${ping}ms)`);
+  let label = $derived(t(`indicator.ping.${status}`, { ping }));
   
   const sizeMap = {
     sm: '0.5rem',

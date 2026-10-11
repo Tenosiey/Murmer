@@ -5,6 +5,7 @@ import { connection } from './connection';
 import { selectedServer } from './servers';
 import { dialogs } from './dialogs';
 import type { Message } from '../types';
+import { t } from '../i18n';
 
 /**
  * Server identity (name, description, welcome message, icon) configured by
@@ -82,7 +83,7 @@ function createServerIdentityStores() {
     if (typeof msg.message !== 'string' || !msg.message.trim()) return;
     const serverName = typeof msg.serverName === 'string' ? msg.serverName.trim() : '';
     dialogs.alert({
-      title: serverName ? `Welcome to ${serverName}` : 'Welcome',
+      title: serverName ? t('welcome.titleNamed', { name: serverName }) : t('welcome.title'),
       message: msg.message
     });
   });

@@ -9,7 +9,10 @@
 //! DM frames travel over the global broadcast channel like presence updates,
 //! but the socket loop only forwards a frame to its two participants (see
 //! [`crate::Route::Dm`]), so other clients never receive the
-//! content over the wire.
+//! content over the wire. Edits and deletions (`edit-dm`, `delete-dm`) are
+//! the sender's alone and travel the same way, as `dm-edited` and
+//! `dm-deleted` carrying both names. An edit is a fresh sealed payload; a
+//! delete removes the stored ciphertext, which is both sides' copy.
 
 use crate::ws::{constants::*, errors, helpers::*, validation::history_limit};
 use crate::{AppState, db, security};
@@ -103,6 +106,146 @@ pub(super) async fn handle_dm(
         Err(e) => {
             error!("Failed to persist direct message from {from} to {to}: {e}");
             send_error(sender, errors::DM_SEND_FAILED).await;
+        }
+    }
+}
+
+/// Load the DM a frame's `id` names, for its sender only. Anyone else is
+/// told it does not exist — the recipient may know it does, but a third
+/// party must not learn even that.
+async fn own_dm(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user: &str,
+) -> Option<(i64, String, Value)> {
+    let Some(id) = v.get("id").and_then(Value::as_i64) else {
+        send_error(sender, errors::INVALID_MESSAGE_ID).await;
+        return None;
+    };
+    let (from, to, content) = match db::get_direct_message(&state.db, id).await {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            send_error(sender, errors::MESSAGE_NOT_FOUND).await;
+            return None;
+        }
+        Err(e) => {
+            error!("Failed to load direct message {id}: {e}");
+            send_error(sender, errors::MESSAGE_EDIT_FAILED).await;
+            return None;
+        }
+    };
+    if from != user {
+        let code = if to == user {
+            errors::MESSAGE_PERMISSION_DENIED
+        } else {
+            errors::MESSAGE_NOT_FOUND
+        };
+        send_error(sender, code).await;
+        return None;
+    }
+    let Ok(content) = serde_json::from_str::<Value>(&content) else {
+        send_error(sender, errors::MESSAGE_EDIT_FAILED).await;
+        return None;
+    };
+    Some((id, to, content))
+}
+
+/// Handle `edit-dm`: replace the sealed payload of one of the sender's own
+/// DMs with a new one.
+pub(super) async fn handle_edit_dm(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(from) = user_name.clone() else {
+        return;
+    };
+    if !security::check_message_rate_limit(&state.rate_limiter, &from).await {
+        send_error(sender, errors::MESSAGE_RATE_LIMIT).await;
+        return;
+    }
+    if super::moderation::is_muted(state, &from).await {
+        send_error(sender, errors::MUTED).await;
+        return;
+    }
+    // Shape-checked before anything is loaded, exactly as a new DM is.
+    let (Some(nonce), Some(ciphertext)) = (
+        v.get("nonce").and_then(|n| n.as_str()),
+        v.get("ciphertext").and_then(|c| c.as_str()),
+    ) else {
+        send_error(sender, errors::INVALID_DM_PAYLOAD).await;
+        return;
+    };
+    match validate_sealed_payload(nonce, ciphertext, MAX_MESSAGE_LENGTH) {
+        Ok(()) => {}
+        Err(SealedPayloadError::TooLong) => {
+            send_error(sender, errors::MESSAGE_TOO_LONG).await;
+            return;
+        }
+        Err(SealedPayloadError::Malformed) => {
+            send_error(sender, errors::INVALID_DM_PAYLOAD).await;
+            return;
+        }
+    }
+    let Some((id, to, mut content)) = own_dm(state, sender, v, &from).await else {
+        return;
+    };
+
+    let edited_at = chrono::Utc::now().to_rfc3339();
+    content["nonce"] = Value::from(nonce);
+    content["ciphertext"] = Value::from(ciphertext);
+    content["edited"] = Value::Bool(true);
+    content["editedAt"] = Value::from(edited_at.clone());
+    match db::update_direct_message(&state.db, id, &content.to_string()).await {
+        Ok(true) => {
+            let out = serde_json::json!({
+                "type": "dm-edited",
+                "id": id,
+                "from": from,
+                "to": to,
+                "nonce": nonce,
+                "ciphertext": ciphertext,
+                "editedAt": edited_at,
+            });
+            broadcast(state, &out);
+        }
+        Ok(false) => send_error(sender, errors::MESSAGE_NOT_FOUND).await,
+        Err(e) => {
+            error!("Failed to edit direct message {id}: {e}");
+            send_error(sender, errors::MESSAGE_EDIT_FAILED).await;
+        }
+    }
+}
+
+/// Handle `delete-dm`: remove one of the sender's own DMs for both sides.
+pub(super) async fn handle_delete_dm(
+    state: &Arc<AppState>,
+    sender: &mut SplitSink<WebSocket, Message>,
+    v: &Value,
+    user_name: &Option<String>,
+) {
+    let Some(from) = user_name.clone() else {
+        return;
+    };
+    let Some((id, to, _)) = own_dm(state, sender, v, &from).await else {
+        return;
+    };
+    match db::delete_direct_message(&state.db, id).await {
+        Ok(true) => {
+            let out = serde_json::json!({
+                "type": "dm-deleted",
+                "id": id,
+                "from": from,
+                "to": to,
+            });
+            broadcast(state, &out);
+        }
+        Ok(false) => send_error(sender, errors::MESSAGE_NOT_FOUND).await,
+        Err(e) => {
+            error!("Failed to delete direct message {id}: {e}");
+            send_error(sender, errors::MESSAGE_DELETE_FAILED).await;
         }
     }
 }

@@ -174,6 +174,54 @@ found", so the frame cannot probe for hidden ids.
 options they choose between. A poll is refused there rather than sealed, and
 a poll posted before the channel switched to encryption stops taking votes.
 
+## Purge
+
+Server: `ws/handlers/messages.rs::handle_purge_channel_messages`,
+`db/messages.rs::delete_latest_messages`. Client: `/purge` in
+`src/lib/chat/commands.ts`.
+
+**It is `MANAGE_MESSAGES`, applied in bulk.** A purge removes nothing a
+moderator could not already delete one message at a time, so it needs no
+permission of its own; the difference is reach, which is why it is capped at
+`MAX_PURGE_COUNT` and written to the audit log, where a single deletion is
+not. It acts on the channel the connection has joined, like `delete-message`,
+so a frame cannot name a channel its sender is not looking at.
+
+**Clients learn about it one `message-deleted` at a time.** That frame
+already drops a message from the view, its pin and its thread; a bulk frame
+would be a second path to keep in step with it for a saving the cap makes
+small.
+
+**A ban can purge too, across channels.** `ban-user` with `deleteMessages`
+removes what the member posted in the last `BAN_DELETE_WINDOW_SECS`, in
+every channel, keyed on the generated `author` column — the account name,
+never a display name. It rides on `BAN_MEMBERS` rather than needing
+`MANAGE_MESSAGES` as well: a spam run is the usual reason to ban, and a ban
+that leaves the spam behind is half a ban. The window is fixed at an hour
+so a ban cannot quietly erase someone's whole history.
+
+## Message reports
+
+Server: `ws/handlers/reports.rs`, `db/reports.rs`. Client: the flag in
+`MessageItem.svelte`, `stores/reports.ts`, `dashboard/ReportsTab.svelte`.
+
+**The queue is per channel, not server-wide.** Reading and dismissing a
+report needs `MANAGE_MESSAGES` in the reported channel, so a moderator of
+one private channel never learns what was reported in another. Filing one
+needs only that the reporter can see the channel; anything else answers
+"message not found", because a report on a hidden message would otherwise
+confirm the id exists.
+
+**A report stores no copy of the message.** The excerpt is read from
+`messages` when the queue is listed. A copy would survive the message's
+deletion, retention and the Danger Zone purge — the moments an operator
+expects it gone. In an encrypted channel there is nothing for the server to
+show, and the moderator reads the message in the channel.
+
+**Dismissing is the only action in the queue.** Deleting the message is
+`delete-message`, which acts on the channel the connection has joined; the
+moderator goes there and sees the message in context first.
+
 ## Message links
 
 Client: `src/lib/message-link.ts`, with the jump itself in
@@ -364,6 +412,20 @@ and a connected client drops it against its own clock (`statusTexts`,
 ticking every thirty seconds). A timer to clear it would be another
 background task for a line that is purely cosmetic. Expiries are capped at
 a week ahead and must lie in the future; an empty line has none.
+
+### Appearing offline
+
+Choosing the `offline` status while connected is Discord's invisible. The
+server leaves such a member out of the online list it sends clients and bots
+(`ws::helpers::get_user_lists`), which is the only list anyone sees, so they
+look exactly like someone who disconnected. The client remembers a status
+the user picked and sends it in `presence`; otherwise every reconnect would
+announce them as online for a moment, and that moment is the giveaway.
+
+**It hides presence, not activity.** Messages, voice and reactions still
+carry the account name. Typing would too, which is why the typing indicator
+has its own off switch on the client; the server does not suppress it,
+since the member chose to be hidden and may want to be seen typing anyway.
 
 ## Pokes
 

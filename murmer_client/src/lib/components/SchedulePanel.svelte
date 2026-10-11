@@ -12,6 +12,7 @@
   import { scheduled } from '$lib/stores/scheduled';
   import { channels } from '$lib/stores/channels';
   import { describeWhen, describeScheduleFailure } from '$lib/chat/schedule';
+  import { t } from '$lib/i18n';
 
   interface Props {
     open: boolean;
@@ -42,7 +43,7 @@
   let messages = $derived($scheduled.messages);
 
   function channelName(id: number): string {
-    return $channels.find((channel) => channel.id === id)?.name ?? 'a deleted channel';
+    return $channels.find((channel) => channel.id === id)?.name ?? t('schedulePanel.deletedChannel');
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -84,8 +85,8 @@
       tabindex="0"
     >
       <div class="modal-header">
-        <h2 id="schedule-panel-title">Reminders &amp; scheduled messages</h2>
-        <button class="icon-btn close-btn" onclick={close} aria-label="Close reminders">
+        <h2 id="schedule-panel-title">{t('schedulePanel.remindersScheduledMessages')}</h2>
+        <button class="icon-btn close-btn" onclick={close} aria-label={t('schedulePanel.closeReminders')}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -95,11 +96,11 @@
 
       <div class="modal-body">
         <section>
-          <h3>Reminders</h3>
+          <h3>{t('schedulePanel.reminders')}</h3>
           {#if reminders.length === 0}
+            {@const [before, after] = t('schedulePanel.remindersEmpty').split('{example}')}
             <p class="empty">
-              Nothing set. <code>/remind 15m take a break</code>, or use “Remind me about this”
-              on any message.
+              {before}<code>/remind 15m take a break</code>{after}
             </p>
           {:else}
             <ul>
@@ -109,7 +110,7 @@
                     <span class="row-text">{reminder.text}</span>
                     <span class="row-meta">
                       {#if reminder.firedAt !== null}
-                        <span class="badge">Due</span>
+                        <span class="badge">{t('schedulePanel.due')}</span>
                       {/if}
                       {describeWhen(reminder.remindAt, now)}
                       {#if reminder.channelId !== null && reminder.messageId !== null}
@@ -127,7 +128,7 @@
                     class="btn btn-ghost"
                     onclick={() => chat.cancelReminder(reminder.id)}
                   >
-                    {reminder.firedAt !== null ? 'Dismiss' : 'Cancel'}
+                    {reminder.firedAt !== null ? t('schedulePanel.dismiss') : t('schedulePanel.cancel')}
                   </button>
                 </li>
               {/each}
@@ -136,11 +137,11 @@
         </section>
 
         <section>
-          <h3>Scheduled messages</h3>
+          <h3>{t('schedulePanel.scheduledMessages')}</h3>
           {#if messages.length === 0}
+            {@const [before, after] = t('schedulePanel.scheduledEmpty').split('{example}')}
             <p class="empty">
-              Nothing queued. <code>/schedule 2h the standup notes are up</code> posts to the
-              channel you are in.
+              {before}<code>/schedule 2h the standup notes are up</code>{after}
             </p>
           {:else}
             <ul>
@@ -151,9 +152,9 @@
                       {#if message.text !== null}
                         {message.text}
                       {:else if message.encrypted}
-                        <em>Encrypted — waiting for this channel’s key.</em>
+                        <em>{t('schedulePanel.encryptedWaitingForThis')}</em>
                       {:else}
-                        <em>No preview.</em>
+                        <em>{t('schedulePanel.noPreview')}</em>
                       {/if}
                     </span>
                     <span class="row-meta">
@@ -169,7 +170,7 @@
                     class="btn btn-ghost"
                     onclick={() => chat.cancelScheduledMessage(message.id)}
                   >
-                    {message.failedReason !== null ? 'Clear' : 'Cancel'}
+                    {message.failedReason !== null ? t('schedulePanel.clear') : t('schedulePanel.cancel')}
                   </button>
                 </li>
               {/each}

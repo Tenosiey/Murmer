@@ -1,6 +1,7 @@
 <!--
   Root layout for the Murmer desktop client. It initialises the theme store on
-  mount and defines the design system every page builds on:
+  mount, offers a pending desktop update once per launch, and defines the
+  design system every page builds on:
 
   - Color tokens (`--color-*`), dark by default with a light override.
   - A 4px spacing scale (`--space-*`) — all padding/margins/gaps use it.
@@ -19,6 +20,7 @@
   import { theme } from '$lib/stores/theme';
   import DialogHost from '$lib/components/DialogHost.svelte';
   import { installSpoilerReveal } from '$lib/spoilers';
+  import { promptForUpdate } from '$lib/updater';
 
   // Fonts are bundled locally so startup never blocks on a network fetch
   // and the desktop client works fully offline.
@@ -34,6 +36,7 @@
 
   onMount(() => {
     theme.init();
+    void promptForUpdate();
     return installSpoilerReveal();
   });
 </script>

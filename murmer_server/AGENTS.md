@@ -18,7 +18,8 @@ cargo test                                 # integration tests in tests/
 cargo run                                  # launch locally (creates murmer.db)
 ```
 
-`docker compose up --build` from the repository root launches the server with
+`docker compose up --build` from the repository root (needs `SERVER_PASSWORD`
+in `.env`) launches the server with
 the SQLite database on a named volume.
 
 ## Module map

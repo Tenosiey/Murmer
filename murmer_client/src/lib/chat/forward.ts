@@ -20,6 +20,7 @@
  */
 import type { DialogOption } from '../stores/dialogs';
 import type { ChannelInfo, Message } from '../types';
+import { t } from '../i18n';
 
 /** Where a forward is headed. */
 export type ForwardTarget =
@@ -76,14 +77,14 @@ export function forwardOptions(input: {
     options.push({
       value: forwardTargetValue({ kind: 'channel', channelId: channel.id }),
       label: `#${channel.name}`,
-      description: channel.private ? 'Private channel' : undefined
+      description: channel.private ? t('forward.privateChannel') : undefined
     });
   }
   for (const peer of input.peers) {
     options.push({
       value: forwardTargetValue({ kind: 'dm', user: peer }),
       label: input.displayName(peer),
-      description: 'Direct message'
+      description: t('forward.directMessage')
     });
   }
   return options;

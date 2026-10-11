@@ -4,6 +4,7 @@
   import { tick } from 'svelte';
   import { hideSpoilers } from '$lib/spoilers';
   import type { Message, SearchResults, WikiSearchHit } from '$lib/types';
+  import { t } from '$lib/i18n';
   import {
     searchResultPreview,
     formatSearchTimestamp,
@@ -61,7 +62,7 @@
   async function performSearch() {
     const trimmed = query.trim();
     if (!trimmed) {
-      error = 'Enter a search query.';
+      error = t('searchOverlay.emptyQuery');
       results = [];
       pages = [];
       performed = false;
@@ -75,7 +76,7 @@
       pages = found.pages;
       performed = true;
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Search failed.';
+      error = e instanceof Error ? e.message : t('searchOverlay.failed');
       results = [];
       pages = [];
       performed = true;
@@ -126,7 +127,7 @@
     class="search-overlay"
     role="button"
     tabindex="0"
-    aria-label="Close search results"
+    aria-label={t('searchOverlay.closeSearchResults')}
     onclick={onClose}
     onkeydown={handleOverlayKeydown}
   >
@@ -141,32 +142,30 @@
       <form class="search-form" onsubmit={(event) => { event.preventDefault(); performSearch(); }}>
         <input
           type="search"
-          placeholder="Search — from: in: has:file before: after:"
-          aria-label="Search messages and wiki pages"
+          placeholder={t('searchOverlay.searchFromInHas')}
+          aria-label={t('searchOverlay.searchMessagesAndWiki')}
           bind:value={query}
           bind:this={inputEl}
         />
-        <button type="submit" class="btn btn-primary search-submit" disabled={loading}>Search</button>
-        <button type="button" class="btn search-close" onclick={onClose}>Close</button>
+        <button type="submit" class="btn btn-primary search-submit" disabled={loading}>{t('searchOverlay.search')}</button>
+        <button type="button" class="btn search-close" onclick={onClose}>{t('searchOverlay.close')}</button>
       </form>
       {#if encrypted}
         <p class="search-status">
-          This channel is end-to-end encrypted, so its messages never reach the server as text
-          and cannot be searched by their words. Its wiki pages, and the from:, before: and
-          after: filters, still can.
+          {t('searchOverlay.thisChannelIsEnd')}
         </p>
       {/if}
       {#if error}
         <p class="search-error">{error}</p>
       {/if}
       {#if loading}
-        <p class="search-status">Searching…</p>
+        <p class="search-status">{t('searchOverlay.searching')}</p>
       {:else if !empty}
         <div class="search-scroll">
           {#if pages.length > 0}
             <!-- Wiki hits come first: there are only ever a handful of them,
                  so a long message list can never bury them below the fold. -->
-            <h3 class="search-section">Wiki pages</h3>
+            <h3 class="search-section">{t('searchOverlay.wikiPages')}</h3>
             <ul class="search-results">
               {#each pages as page (page.slug)}
                 <li>
@@ -177,7 +176,7 @@
                     {/if}
                     <span class="search-result-meta">
                       <span class="search-result-user">
-                        {page.updatedBy ? $displayNames(page.updatedBy) : 'Unknown'}
+                        {page.updatedBy ? $displayNames(page.updatedBy) : t('searchOverlay.unknownUser')}
                       </span>
                       <span class="search-result-time">{formatPageTimestamp(page)}</span>
                     </span>
@@ -188,7 +187,7 @@
           {/if}
           {#if results.length > 0}
             {#if pages.length > 0}
-              <h3 class="search-section">Messages</h3>
+              <h3 class="search-section">{t('searchOverlay.messages')}</h3>
             {/if}
             <ul class="search-results">
               {#each results as result (result.id ?? `${result.timestamp ?? ''}-${result.user ?? ''}`)}
@@ -197,7 +196,7 @@
                     <span class="search-result-text">{searchResultPreview(result)}</span>
                     <span class="search-result-meta">
                       <span class="search-result-user">
-                        {result.user ? $displayNames(result.user) : 'Unknown'}
+                        {result.user ? $displayNames(result.user) : t('searchOverlay.unknownUser')}
                       </span>
                       <span class="search-result-time">{formatSearchTimestamp(result)}</span>
                     </span>
@@ -214,7 +213,7 @@
           {/if}
         </div>
       {:else if performed}
-        <p class="search-status">No matches found.</p>
+        <p class="search-status">{t('searchOverlay.noMatchesFound')}</p>
       {/if}
     </div>
   </div>

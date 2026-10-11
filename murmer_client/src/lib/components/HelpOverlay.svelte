@@ -3,6 +3,7 @@
   import { tick } from 'svelte';
   import { HELP_COMMANDS } from '$lib/chat/constants';
   import { hotkeys, HOTKEY_ACTIONS, formatCombo } from '$lib/stores/hotkeys';
+  import { t } from '$lib/i18n';
 
   let boundActions = $derived(HOTKEY_ACTIONS.filter((action) => $hotkeys[action.id]));
 
@@ -46,7 +47,7 @@
     class="help-overlay"
     role="button"
     tabindex="0"
-    aria-label="Close command reference"
+    aria-label={t('helpOverlay.closeCommandReference')}
     onclick={onClose}
     onkeydown={handleOverlayKeydown}
   >
@@ -61,8 +62,8 @@
       onkeydown={handleKeydown}
     >
       <div class="help-header">
-        <h2 id="help-title">Slash commands</h2>
-        <p class="help-description">Type a forward slash to run these quick actions.</p>
+        <h2 id="help-title">{t('helpOverlay.slashCommands')}</h2>
+        <p class="help-description">{t('helpOverlay.typeAForwardSlash')}</p>
       </div>
       <ul class="help-command-list">
         {#each HELP_COMMANDS as command (command.usage)}
@@ -70,7 +71,7 @@
             <div class="help-command-heading">
               <code class="help-command-usage">{command.usage}</code>
               {#if command.aliases?.length}
-                <span class="help-command-aliases">Also: {command.aliases.join(', ')}</span>
+                <span class="help-command-aliases">{t('helpOverlay.aliases', { aliases: command.aliases.join(', ') })}</span>
               {/if}
             </div>
             <p class="help-command-description">{command.description}</p>
@@ -79,8 +80,8 @@
       </ul>
       {#if boundActions.length > 0}
         <div class="help-header">
-          <h2>Hotkeys</h2>
-          <p class="help-description">Customizable under Settings → Hotkeys.</p>
+          <h2>{t('helpOverlay.hotkeys')}</h2>
+          <p class="help-description">{t('helpOverlay.customizableUnderSettingsHotkeys')}</p>
         </div>
         <ul class="help-command-list help-hotkey-list">
           {#each boundActions as action (action.id)}
@@ -92,7 +93,7 @@
         </ul>
       {/if}
       <button type="button" class="btn help-close" onclick={onClose} bind:this={closeButton}>
-        Close
+        {t('helpOverlay.close')}
       </button>
     </div>
   </div>

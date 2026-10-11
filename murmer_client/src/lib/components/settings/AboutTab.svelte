@@ -2,7 +2,8 @@
   import { APP_VERSION } from '$lib/version';
   import MurmerLogo from '$lib/components/MurmerLogo.svelte';
   import { isTauri } from '$lib/platform';
-  import { dialogs } from '$lib/stores/dialogs';
+  import { findUpdate, offerUpdate } from '$lib/updater';
+  import { t } from '$lib/i18n';
 
   interface Props {
     active: boolean;
@@ -11,6 +12,7 @@
   let { active }: Props = $props();
 
   let updateMessage = $state('');
+  let updateTone: 'success' | 'warning' | null = $state(null);
   let updating = $state(false);
 
   // Launch on login. Read back from the OS each time the tab opens rather
@@ -41,55 +43,34 @@
 
   const REPO_URL = 'https://github.com/Tenosiey/Murmer';
   const ABOUT_LINKS = [
-    { label: 'GitHub repository', url: REPO_URL },
-    { label: 'Report an issue', url: `${REPO_URL}/issues` },
-    { label: 'Releases & changelog', url: `${REPO_URL}/releases` },
-    { label: 'License', url: `${REPO_URL}/blob/main/LICENSE` }
+    { label: t('about.github'), url: REPO_URL },
+    { label: t('about.reportIssue'), url: `${REPO_URL}/issues` },
+    { label: t('about.releases'), url: `${REPO_URL}/releases` },
+    { label: t('about.license'), url: `${REPO_URL}/blob/main/LICENSE` }
   ];
 
   async function checkUpdates() {
     if (updating) return;
     updating = true;
-    updateMessage = 'Checking...';
+    updateMessage = t('about.checking');
+    updateTone = null;
     try {
-      // Dynamic so the updater plugin stays out of the web bundle, which has
-      // no shell to install anything into.
-      const [{ check }, { relaunch }] = await Promise.all([
-        import('@tauri-apps/plugin-updater'),
-        import('@tauri-apps/plugin-process')
-      ]);
-      const update = await check();
+      const update = await findUpdate();
       if (!update) {
-        updateMessage = 'You are running the latest version.';
+        updateMessage = t('about.upToDate');
+        updateTone = 'success';
         return;
       }
-      updateMessage = `Update available: ${update.version}`;
-      const install = await dialogs.confirm({
-        title: 'Install update?',
-        message: `Version ${update.version} is available (you have ${APP_VERSION}). The app will restart after installing.`,
-        confirmLabel: 'Install'
+      updateMessage = t('about.updateAvailable', { version: update.version });
+      updateTone = 'warning';
+      await offerUpdate(update, (message) => {
+        updateMessage = message;
+        updateTone = null;
       });
-      if (!install) return;
-      let contentLength = 0;
-      let downloaded = 0;
-      await update.downloadAndInstall((event) => {
-        if (event.event === 'Started') {
-          contentLength = event.data.contentLength ?? 0;
-          updateMessage = 'Downloading update...';
-        } else if (event.event === 'Progress') {
-          downloaded += event.data.chunkLength;
-          if (contentLength > 0) {
-            updateMessage = `Downloading update... ${Math.round((downloaded / contentLength) * 100)}%`;
-          }
-        } else if (event.event === 'Finished') {
-          updateMessage = 'Installing update...';
-        }
-      });
-      // On Windows the installer exits the app itself; relaunch covers other platforms.
-      await relaunch();
     } catch (e) {
       console.error('Update failed', e);
-      updateMessage = 'Update failed. Try again or download the latest release from GitHub.';
+      updateMessage = t('about.updateFailed');
+      updateTone = null;
     } finally {
       updating = false;
     }
@@ -98,7 +79,7 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">About</h3>
+    <h3 class="section-title">{t('settings.tab.about')}</h3>
 
     <div class="setting-group">
       <div class="about-header">
@@ -106,10 +87,7 @@
         <span class="about-name">Murmer</span>
         <span class="setting-value">v{APP_VERSION}</span>
       </div>
-      <div class="setting-description">
-        A self-hosted voice and text chat prototype. Murmer is open source —
-        the client and server live in the same repository on GitHub.
-      </div>
+      <div class="setting-description">{t('about.description')}</div>
     </div>
 
     {#if isTauri}
@@ -122,35 +100,30 @@
           onchange={toggleAutostart}
         />
         <span class="toggle-text">
-          <span class="toggle-label">Launch on login</span>
-          <span class="toggle-description">
-            Start Murmer when you sign in to your computer.
-          </span>
+          <span class="toggle-label">{t('about.launchOnLogin')}</span>
+          <span class="toggle-description">{t('about.launchOnLoginHint')}</span>
         </span>
       </label>
     </div>
 
     <div class="setting-group">
-      <span class="setting-label">Updates</span>
-      <button class="btn update-btn" onclick={checkUpdates} disabled={updating}>Check for Updates</button>
+      <span class="setting-label">{t('about.updates')}</span>
+      <button class="btn update-btn" onclick={checkUpdates} disabled={updating}>{t('about.checkUpdates')}</button>
       {#if updateMessage}
-        <div class="update-message" class:success={updateMessage.startsWith('You are running')} class:warning={updateMessage.startsWith('Update available')}>
+        <div class="update-message" class:success={updateTone === 'success'} class:warning={updateTone === 'warning'}>
           {updateMessage}
         </div>
       {/if}
     </div>
     {:else}
     <div class="setting-group">
-      <span class="setting-label">Updates</span>
-      <div class="setting-description">
-        You are running the web client, which is served by the site you opened — reload the
-        page to pick up a new version.
-      </div>
+      <span class="setting-label">{t('about.updates')}</span>
+      <div class="setting-description">{t('about.webClientUpdates')}</div>
     </div>
     {/if}
 
     <div class="setting-group">
-      <span class="setting-label">Links</span>
+      <span class="setting-label">{t('about.links')}</span>
       <div class="about-links">
         {#each ABOUT_LINKS as link}
           <a class="btn about-link" href={link.url} target="_blank" rel="noopener noreferrer">
@@ -166,9 +139,7 @@
     </div>
 
     <div class="setting-group">
-      <div class="setting-description">
-        Built with Tauri, SvelteKit and Rust (Axum). Released under the MIT License.
-      </div>
+      <div class="setting-description">{t('about.builtWith')}</div>
     </div>
   </div>
 {/if}

@@ -11,6 +11,7 @@
   import { selectedServer } from '$lib/stores/servers';
   import { httpBaseFromWs } from '$lib/server-url';
   import { unicodeFromShortcode } from '$lib/emoji';
+  import { t } from '$lib/i18n';
 
   interface Props {
     open?: boolean;
@@ -92,18 +93,18 @@
     class="picker menu-panel"
     style="top:{adjustedY}px;left:{adjustedX}px"
     role="dialog"
-    aria-label="Add reaction"
+    aria-label={t('emojiPicker.addReaction')}
     transition:fly={{ y: -6, duration: 140, easing: cubicOut }}
   >
     <div class="grid">
       {#each EMOJI as emoji (emoji)}
-        <button type="button" class="emoji" onclick={() => pick(emoji)} title={`React with ${emoji}`}>
+        <button type="button" class="emoji" onclick={() => pick(emoji)} title={t('emojiPicker.reactWith', { emoji })}>
           {emoji}
         </button>
       {/each}
     </div>
     {#if $customEmojiList.length > 0}
-      <span class="section-label">Server emojis</span>
+      <span class="section-label">{t('emojiPicker.serverEmojis')}</span>
       <div class="grid">
         {#each $customEmojiList as emoji (emoji.name)}
           <button
@@ -121,9 +122,9 @@
       <input
         bind:value={custom}
         type="text"
-        placeholder="Emoji or :shortcode:…"
+        placeholder={t('emojiPicker.emojiOrShortcode')}
         maxlength="34"
-        aria-label="Custom emoji"
+        aria-label={t('emojiPicker.customEmoji')}
       />
     </form>
   </div>

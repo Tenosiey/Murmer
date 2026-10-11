@@ -110,28 +110,28 @@ describe('parseInviteLink', () => {
   it('normalizes the server URL it was given', () => {
     // Invites are hand-edited and shared as text; a bare host has to end up on
     // the same URL the server list would have stored.
-    expect(parseInviteLink('https://a/invite#url=example.com')?.url).toBe('ws://example.com/ws');
+    expect(parseInviteLink('https://a/invite#url=example.com')?.url).toBe('wss://example.com/ws');
     expect(parseInviteLink('https://a/invite#url=https%3A%2F%2Fexample.com')?.url).toBe(
       'wss://example.com/ws'
     );
   });
 
   it('accepts a hand-written query string and a trailing slash', () => {
-    expect(parseInviteLink('http://a:3001/invite?url=example.com')?.url).toBe('ws://example.com/ws');
-    expect(parseInviteLink('http://a:3001/invite/#url=example.com')?.url).toBe('ws://example.com/ws');
+    expect(parseInviteLink('http://a:3001/invite?url=example.com')?.url).toBe('wss://example.com/ws');
+    expect(parseInviteLink('http://a:3001/invite/#url=example.com')?.url).toBe('wss://example.com/ws');
   });
 
   it('prefers the fragment over the query when both carry a url', () => {
     // Only the fragment is ours; a query pair could have been appended by a
     // link shortener or a chat client rewriting the URL.
     expect(parseInviteLink('https://a/invite?url=evil.example#url=good.example')?.url).toBe(
-      'ws://good.example/ws'
+      'wss://good.example/ws'
     );
   });
 
   it('trims surrounding whitespace and a blank name', () => {
     expect(parseInviteLink('  https://a/invite#url=example.com&name=%20%20  ')).toEqual({
-      url: 'ws://example.com/ws'
+      url: 'wss://example.com/ws'
     });
     expect(parseInviteLink('https://a/invite#url=example.com&name=%20Example%20')?.name).toBe(
       'Example'
@@ -166,7 +166,7 @@ describe('parseInviteLink', () => {
 
   it('keeps a password out of the parsed entry when the link carries none', () => {
     const parsed = parseInviteLink('https://a/invite#url=example.com&password=');
-    expect(parsed).toEqual({ url: 'ws://example.com/ws' });
+    expect(parsed).toEqual({ url: 'wss://example.com/ws' });
     expect(parsed && 'password' in parsed).toBe(false);
   });
 
@@ -177,7 +177,7 @@ describe('parseInviteLink', () => {
       'https://a/invite#url=example.com&invite=%20%20'
     ]) {
       const parsed = parseInviteLink(link);
-      expect(parsed, link).toEqual({ url: 'ws://example.com/ws' });
+      expect(parsed, link).toEqual({ url: 'wss://example.com/ws' });
       expect(parsed && 'code' in parsed, link).toBe(false);
     }
   });
@@ -186,7 +186,7 @@ describe('parseInviteLink', () => {
     // `createInviteLink` never builds one, but a hand-written or hand-edited
     // link may; dropping either half would strand whoever was sent it.
     expect(parseInviteLink('https://a/invite#url=example.com&password=pw&invite=code')).toEqual({
-      url: 'ws://example.com/ws',
+      url: 'wss://example.com/ws',
       password: 'pw',
       code: 'code'
     });

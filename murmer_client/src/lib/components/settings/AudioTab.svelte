@@ -10,6 +10,7 @@
   import { soundboardEnabled, soundboardVolume } from '$lib/stores/soundboardSettings';
   import { audioOutputs, refreshAudioDevices } from '$lib/stores/audioDevices';
   import { onMount } from 'svelte';
+  import { t } from '$lib/i18n';
 
   interface Props {
     active: boolean;
@@ -24,11 +25,11 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">Playback</h3>
+    <h3 class="section-title">{t('audio.playback')}</h3>
 
     <div class="setting-group">
       <label for="volume-slider" class="setting-label">
-        Voice volume
+        {t('audio.voiceVolume')}
         <span class="setting-value">{Math.round($volume * 100)}%</span>
       </label>
       <div class="slider-container">
@@ -44,14 +45,13 @@
         <div class="slider-track-fill" style="width: {$volume * 100}%"></div>
       </div>
       <div class="setting-description">
-        How loud other members are. Individual people can be turned up or down in the
-        voice channel's context menu.
+        {t('audio.voiceVolumeHint')}
       </div>
     </div>
 
     <div class="setting-group">
       <label for="app-sound-volume" class="setting-label">
-        App sound volume
+        {t('audio.appSoundVolume')}
         <span class="setting-value">{Math.round($appSoundVolume * 100)}%</span>
       </label>
       <div class="slider-container">
@@ -67,14 +67,13 @@
         <div class="slider-track-fill" style="width: {$appSoundVolume * 100}%"></div>
       </div>
       <div class="setting-description">
-        The blips Murmer itself plays when somebody joins or leaves your voice channel
-        and when you mute or unmute. Set it to 0% to silence them.
+        {t('audio.appSoundVolumeHint')}
       </div>
     </div>
 
     <div class="setting-group">
       <label for="screenshare-volume" class="setting-label">
-        Screen share volume
+        {t('audio.screenShareVolume')}
         <span class="setting-value">{Math.round($screenShareVolume * 100)}%</span>
       </label>
       <div class="slider-container">
@@ -93,21 +92,19 @@
       <label class="toggle-row">
         <input type="checkbox" bind:checked={$screenShareMuted} />
         <span class="toggle-text">
-          <span class="toggle-label">Mute screen share audio</span>
+          <span class="toggle-label">{t('audio.muteScreenShare')}</span>
           <span class="toggle-description">
-            Sharers can include their system audio. This silences it without touching the
-            voices. It is the starting point for every share you open; each one you are
-            watching also carries its own volume and mute in its title bar.
+            {t('audio.muteScreenShareHint')}
           </span>
         </span>
       </label>
     </div>
 
     <div class="setting-group">
-      <label for="output-select" class="setting-label">Output device (speakers)</label>
+      <label for="output-select" class="setting-label">{t('audio.outputDevice')}</label>
       <div class="select-container">
         <select id="output-select" class="device-select" bind:value={$outputDeviceId}>
-          <option value="">Default</option>
+          <option value="">{t('audio.default')}</option>
           {#each $audioOutputs as dev}
             <option value={dev.deviceId}>{dev.label || dev.deviceId}</option>
           {/each}
@@ -122,11 +119,11 @@
   </div>
 
   <div class="settings-section">
-    <h3 class="section-title">Soundboard</h3>
+    <h3 class="section-title">{t('audio.soundboard')}</h3>
 
     <div class="setting-group">
       <label for="soundboard-volume" class="setting-label">
-        Soundboard volume
+        {t('audio.soundboardVolume')}
         <span class="setting-value">{Math.round($soundboardVolume * 100)}%</span>
       </label>
       <div class="slider-container">
@@ -145,10 +142,9 @@
       <label class="toggle-row">
         <input type="checkbox" bind:checked={$soundboardEnabled} />
         <span class="toggle-text">
-          <span class="toggle-label">Hear soundboard sounds</span>
+          <span class="toggle-label">{t('audio.hearSoundboard')}</span>
           <span class="toggle-description">
-            Play sounds others trigger in your voice channel. Individual sounds and people
-            can be muted from the soundboard panel.
+            {t('audio.hearSoundboardHint')}
           </span>
         </span>
       </label>
@@ -156,16 +152,15 @@
   </div>
 
   <div class="settings-section">
-    <h3 class="section-title">Text-to-speech</h3>
+    <h3 class="section-title">{t('audio.tts')}</h3>
 
     <div class="setting-group">
       <label class="toggle-row">
         <input type="checkbox" bind:checked={$ttsEnabled} />
         <span class="toggle-text">
-          <span class="toggle-label">Read /tts messages aloud</span>
+          <span class="toggle-label">{t('audio.ttsToggle')}</span>
           <span class="toggle-description">
-            Speak messages sent with /tts in the channel you have open, using your system's
-            voice. Channels you muted stay silent.
+            {t('audio.ttsHint')}
           </span>
         </span>
       </label>

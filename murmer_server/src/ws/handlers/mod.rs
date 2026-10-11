@@ -26,6 +26,7 @@ mod moderation;
 mod pins;
 mod profile;
 mod read_markers;
+mod reports;
 mod roles;
 mod scheduled;
 mod screenshare;
@@ -267,6 +268,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                             "dm" => {
                                 dms::handle_dm(&state, &mut sender, &v, &user_name).await;
                             }
+                            "edit-dm" => {
+                                dms::handle_edit_dm(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "delete-dm" => {
+                                dms::handle_delete_dm(&state, &mut sender, &v, &user_name).await;
+                            }
                             "load-dm-history" => {
                                 dms::handle_load_dm_history(&state, &mut sender, &v, &user_name).await;
                             }
@@ -343,6 +350,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                             }
                             "delete-message" => {
                                 messages::handle_delete_message(&state, &mut sender, &v, channel_id, &user_name).await;
+                            }
+                            "purge-channel-messages" => {
+                                messages::handle_purge_channel_messages(&state, &mut sender, &v, channel_id, &user_name).await;
                             }
                             "edit-message" => {
                                 messages::handle_edit_message(&state, &mut sender, &v, channel_id, &user_name).await;
@@ -525,6 +535,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                             }
                             "unban-user" => {
                                 moderation::handle_unban_user(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "report-message" => {
+                                reports::handle_report_message(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "list-reports" => {
+                                reports::handle_list_reports(&state, &mut sender, &user_name).await;
+                            }
+                            "resolve-report" => {
+                                reports::handle_resolve_report(&state, &mut sender, &v, &user_name).await;
                             }
                             "get-ban-list" => {
                                 moderation::handle_get_ban_list(&state, &mut sender, &user_name).await;
@@ -849,12 +868,17 @@ async fn handle_status_update(
         return;
     }
 
-    state
+    let previous = state
         .statuses
         .lock()
         .await
         .insert(user.clone(), status.to_string());
     broadcast_status(state, &user, status);
+    // Appearing offline, or coming back, moves the member between the
+    // online and offline lists, which only `online-users` carries.
+    if (previous.as_deref() == Some("offline")) != (status == "offline") {
+        broadcast_users(state).await;
+    }
 }
 
 /// Handle `poke`: deliver a short nudge to one online member, which their

@@ -17,6 +17,7 @@
     hasPermission
   } from '$lib/chat/permissions';
   import type { RoleDef } from '$lib/types';
+  import { t } from '$lib/i18n';
 
   interface Props {
     active: boolean;
@@ -102,7 +103,7 @@
       icon: icon === '' ? null : icon,
       permissions: draftPermissions >>> 0
     });
-    roleFeedback = { text: 'Changes sent.', kind: 'info' };
+    roleFeedback = { text: t('roles.sent'), kind: 'info' };
   }
 
   /**
@@ -124,7 +125,7 @@
       return;
     }
     draftIcon = result.url;
-    roleFeedback = { text: 'Icon ready — save to apply it.', kind: 'info' };
+    roleFeedback = { text: t('roles.iconReady'), kind: 'info' };
   }
 
   // Picking a custom emoji just reuses its uploaded image, so no second copy
@@ -135,15 +136,15 @@
     select.value = '';
     if (!url) return;
     draftIcon = url;
-    roleFeedback = { text: 'Icon ready — save to apply it.', kind: 'info' };
+    roleFeedback = { text: t('roles.iconReady'), kind: 'info' };
   }
 
   async function createRole() {
     const name = await dialogs.prompt({
-      title: 'Create role',
-      message: 'Name the new role. You can set its permissions after creating it.',
-      placeholder: 'e.g. Dude',
-      confirmLabel: 'Create'
+      title: t('roles.createTitle'),
+      message: t('roles.createMessage'),
+      placeholder: t('roles.createPlaceholder'),
+      confirmLabel: t('roles.create')
     });
     if (name === null) return;
     const trimmed = name.trim();
@@ -159,9 +160,9 @@
   async function deleteRole() {
     if (!selectedRole || !deletable) return;
     const confirmed = await dialogs.confirm({
-      title: `Delete “${selectedRole.name}”?`,
-      message: 'Members lose this role. This cannot be undone.',
-      confirmLabel: 'Delete role',
+      title: t('roles.deleteTitle', { name: selectedRole.name }),
+      message: t('roles.deleteMessage'),
+      confirmLabel: t('roles.deleteConfirm'),
       danger: true
     });
     if (!confirmed) return;
@@ -203,12 +204,10 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">Roles</h3>
+    <h3 class="section-title">{t('roles.roles')}</h3>
     <div class="setting-description">
-      Define roles and their permissions. Assign roles to members by
-      right-clicking them in the sidebar. Everyone implicitly has
-      <strong>@everyone</strong>; grant capabilities on top of it, or lower
-      its baseline to restrict everyone.
+      {t('roles.defineRolesAndTheir')}
+      <strong>{t('roles.everyone')}</strong>{t('roles.grantCapabilitiesOnTop')}
     </div>
 
     <div class="roles-layout">
@@ -229,19 +228,19 @@
               <img class="role-row-icon" src={httpBase + role.icon} alt="" />
             {/if}
             <span class="role-row-name">{role.name}</span>
-            {#if role.isOwner}<span class="badge">Owner</span>{/if}
-            {#if role.isDefault}<span class="badge">Default</span>{/if}
+            {#if role.isOwner}<span class="badge">{t('roles.owner')}</span>{/if}
+            {#if role.isDefault}<span class="badge">{t('roles.default')}</span>{/if}
           </button>
         {/each}
         <button type="button" class="btn role-create" onclick={createRole}>
-          + Create role
+          {t('roles.createRole')}
         </button>
       </div>
 
       <div class="role-editor">
         {#if selectedRole}
           <div class="setting-group">
-            <label class="setting-label" for="role-name">Name</label>
+            <label class="setting-label" for="role-name">{t('roles.name')}</label>
             <input
               id="role-name"
               class="field"
@@ -252,7 +251,7 @@
           </div>
 
           <div class="setting-group">
-            <label class="setting-label" for="role-color">Color</label>
+            <label class="setting-label" for="role-color">{t('roles.color')}</label>
             <div class="role-color-row">
               <input
                 id="role-color"
@@ -270,28 +269,26 @@
           </div>
 
           <div class="setting-group">
-            <span class="setting-label">Icon</span>
+            <span class="setting-label">{t('roles.icon')}</span>
             <div class="setting-description">
-              Shown next to the name of every member holding this role. Pick a
-              custom emoji or upload an image (PNG, JPEG, GIF or WebP, up to
-              512 KB).
+              {t('roles.shownNextToThe')}
             </div>
             <div class="role-icon-row">
               <span class="role-icon-preview">
                 {#if draftIcon}
                   <img src={httpBase + draftIcon} alt="" />
                 {:else}
-                  <span class="role-icon-empty">None</span>
+                  <span class="role-icon-empty">{t('roles.none')}</span>
                 {/if}
               </span>
               <select
                 class="field role-icon-select"
                 disabled={!nameEditable || $customEmojiList.length === 0}
                 onchange={pickEmojiIcon}
-                aria-label="Use a custom emoji as the role icon"
+                aria-label={t('roles.useACustomEmoji')}
               >
                 <option value="">
-                  {$customEmojiList.length === 0 ? 'No custom emojis' : 'Use an emoji…'}
+                  {$customEmojiList.length === 0 ? t('roles.noCustomEmojis') : t('roles.useEmoji')}
                 </option>
                 {#each $customEmojiList as emoji (emoji.name)}
                   <option value={emoji.url}>:{emoji.name}:</option>
@@ -302,14 +299,14 @@
                 class="btn"
                 disabled={!nameEditable || roleIconUploading}
                 onclick={() => roleIconInput?.click()}
-              >{roleIconUploading ? 'Uploading…' : 'Upload image…'}</button>
+              >{roleIconUploading ? t('roles.uploading') : t('roles.uploadImage')}</button>
               {#if draftIcon}
                 <button
                   type="button"
                   class="btn btn-ghost"
                   disabled={!nameEditable}
                   onclick={() => (draftIcon = '')}
-                >Remove</button>
+                >{t('roles.remove')}</button>
               {/if}
               <input
                 bind:this={roleIconInput}
@@ -322,10 +319,10 @@
           </div>
 
           <div class="setting-group">
-            <span class="setting-label">Permissions</span>
+            <span class="setting-label">{t('roles.permissions')}</span>
             {#if selectedRole.isOwner}
               <div class="setting-description">
-                The Owner role always has every permission and cannot be changed.
+                {t('roles.theOwnerRoleAlways')}
               </div>
             {/if}
             {#each PERMISSION_GROUPS as group (group.title)}
@@ -351,20 +348,20 @@
 
           {#if !selectedRole.isDefault && !selectedRole.isOwner}
             <div class="setting-group">
-              <span class="setting-label">Position</span>
+              <span class="setting-label">{t('roles.position')}</span>
               <div class="role-reorder">
                 <button
                   type="button"
                   class="btn"
                   disabled={!canManageRole(selectedRole)}
                   onclick={() => selectedRole && moveRole(selectedRole, -1)}
-                >Move up</button>
+                >{t('roles.moveUp')}</button>
                 <button
                   type="button"
                   class="btn"
                   disabled={!canManageRole(selectedRole)}
                   onclick={() => selectedRole && moveRole(selectedRole, 1)}
-                >Move down</button>
+                >{t('roles.moveDown')}</button>
               </div>
             </div>
           {/if}
@@ -381,15 +378,15 @@
               class="btn btn-primary"
               disabled={!nameEditable && !permsEditable}
               onclick={saveRole}
-            >Save changes</button>
+            >{t('roles.saveChanges')}</button>
             {#if deletable}
               <button type="button" class="btn btn-danger" onclick={deleteRole}>
-                Delete role
+                {t('roles.deleteRole')}
               </button>
             {/if}
           </div>
         {:else}
-          <div class="setting-description">Select a role to edit it.</div>
+          <div class="setting-description">{t('roles.selectARoleTo')}</div>
         {/if}
       </div>
     </div>

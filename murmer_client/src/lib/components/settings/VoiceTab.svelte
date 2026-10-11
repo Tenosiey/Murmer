@@ -20,6 +20,7 @@
   import { suspendGlobalHotkeys, resumeGlobalHotkeys } from '$lib/stores/globalHotkeys';
   import MicLevelMeter from '$lib/components/MicLevelMeter.svelte';
   import MicTestPanel from '$lib/components/MicTestPanel.svelte';
+  import { t } from '$lib/i18n';
 
   interface Props {
     active: boolean;
@@ -60,13 +61,13 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">Microphone</h3>
+    <h3 class="section-title">{t('voice.microphone')}</h3>
 
     <div class="setting-group">
-      <label for="input-select" class="setting-label">Input device (microphone)</label>
+      <label for="input-select" class="setting-label">{t('voice.inputDevice')}</label>
       <div class="select-container">
         <select id="input-select" class="device-select" bind:value={$inputDeviceId}>
-          <option value="">Default</option>
+          <option value="">{t('audio.default')}</option>
           {#each $audioInputs as dev}
             <option value={dev.deviceId}>{dev.label || dev.deviceId}</option>
           {/each}
@@ -81,7 +82,7 @@
 
     <div class="setting-group">
       <label for="mic-gain-slider" class="setting-label">
-        Input volume
+        {t('voice.inputVolume')}
         <span class="setting-value">{Math.round($micGain * 100)}%</span>
       </label>
       <div class="slider-container">
@@ -100,26 +101,23 @@
         class="btn reset-gain"
         onclick={() => micGain.set(1)}
         disabled={$micGain === 1}
-      >Reset to 100%</button>
+      >{t('voice.resetGain')}</button>
       <div class="setting-description">
-        Amplifies your microphone before it is sent. Turn it up for a quiet headset —
-        unlike automatic gain control this is a fixed factor, so it does not chase your
-        voice, but above 100% it lifts background noise just as much and loud peaks may
-        distort. The level meter further down shows the result.
+        {t('voice.inputVolumeHint')}
       </div>
     </div>
 
     <div class="setting-group">
-      <label for="noise-suppression-select" class="setting-label">Noise suppression</label>
+      <label for="noise-suppression-select" class="setting-label">{t('voice.noiseSuppression')}</label>
       <div class="select-container">
         <select
           id="noise-suppression-select"
           class="device-select"
           bind:value={$noiseSuppressionMode}
         >
-          <option value="rnnoise">RNNoise (recommended)</option>
-          <option value="browser">Built-in</option>
-          <option value="off">Off</option>
+          <option value="rnnoise">{t('voice.rnnoise')}</option>
+          <option value="browser">{t('voice.builtIn')}</option>
+          <option value="off">{t('voice.off')}</option>
         </select>
         <div class="select-arrow">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -128,9 +126,7 @@
         </div>
       </div>
       <div class="setting-description">
-        RNNoise is a neural filter that runs on your own machine. It removes keyboards,
-        fans and background voices that the built-in suppression leaves in, at the cost of
-        about a percent of one CPU core. Use the microphone test below to compare them.
+        {t('voice.noiseHint')}
       </div>
     </div>
 
@@ -138,38 +134,38 @@
       <label class="toggle-row">
         <input type="checkbox" bind:checked={$echoCancellation} />
         <span class="toggle-text">
-          <span class="toggle-label">Echo cancellation</span>
-          <span class="toggle-description">Prevent others from hearing their own audio through your microphone</span>
+          <span class="toggle-label">{t('voice.echo')}</span>
+          <span class="toggle-description">{t('voice.echoHint')}</span>
         </span>
       </label>
       <label class="toggle-row">
         <input type="checkbox" bind:checked={$autoGainControl} />
         <span class="toggle-text">
-          <span class="toggle-label">Automatic gain control</span>
-          <span class="toggle-description">Keep your voice at a steady volume level</span>
+          <span class="toggle-label">{t('voice.agc')}</span>
+          <span class="toggle-description">{t('voice.agcHint')}</span>
         </span>
       </label>
       <div class="setting-description">
-        Changes apply immediately, including while you are in a voice channel.
+        {t('voice.appliesNow')}
       </div>
     </div>
 
     <div class="setting-group">
-      <span class="setting-label">Microphone test</span>
+      <span class="setting-label">{t('voice.micTest')}</span>
       <MicTestPanel />
     </div>
   </div>
 
   <div class="settings-section">
-    <h3 class="section-title">Transmission</h3>
+    <h3 class="section-title">{t('voice.transmission')}</h3>
 
     <div class="setting-group">
-      <label for="voice-mode-select" class="setting-label">Voice mode</label>
+      <label for="voice-mode-select" class="setting-label">{t('voice.mode')}</label>
       <div class="select-container">
         <select id="voice-mode-select" class="device-select" bind:value={$voiceMode}>
-          <option value="continuous">Always On</option>
-          <option value="vad">Voice Activity Detection</option>
-          <option value="ptt">Push to Talk</option>
+          <option value="continuous">{t('voice.modeContinuous')}</option>
+          <option value="vad">{t('voice.modeVad')}</option>
+          <option value="ptt">{t('voice.modePtt')}</option>
         </select>
         <div class="select-arrow">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -181,7 +177,7 @@
 
     {#if $voiceMode === 'ptt'}
       <div class="setting-group">
-        <label class="setting-label" for="ptt-key-button">Push-to-talk key</label>
+        <label class="setting-label" for="ptt-key-button">{t('voice.pttKey')}</label>
         <button
           id="ptt-key-button"
           class="btn ptt-key-button"
@@ -190,19 +186,17 @@
           disabled={capturingPttKey}
         >
           {#if capturingPttKey}
-            Press any key...
+            {t('voice.pressAnyKey')}
           {:else}
             {PushToTalkManager.getKeyDisplayName($pttKey)}
           {/if}
         </button>
         <div class="setting-description">
-          Click the button above and press the key you want to use for push-to-talk.
+          {t('voice.pttHint')}
           {#if PushToTalkManager.isGlobalCapable($pttKey)}
-            This combination also works while another application is focused.
+            {t('voice.pttGlobal')}
           {:else}
-            A plain key only works while Murmer is focused — it cannot be reserved
-            system-wide without swallowing it in every other program. Add Ctrl or Alt,
-            or pick a function key, to talk while gaming.
+            {t('voice.pttLocal')}
           {/if}
         </div>
       </div>
@@ -216,15 +210,15 @@
         <label class="toggle-row">
           <input type="checkbox" bind:checked={$vadAutoSensitivity} />
           <span class="toggle-text">
-            <span class="toggle-label">Automatic sensitivity</span>
+            <span class="toggle-label">{t('voice.autoSensitivity')}</span>
             <span class="toggle-description">
-              Measure the background noise and set the threshold just above it
+              {t('voice.autoSensitivityHint')}
             </span>
           </span>
         </label>
         {#if !$vadAutoSensitivity}
           <label for="vad-sensitivity-slider" class="setting-label">
-            VAD sensitivity
+            {t('voice.vadSensitivity')}
             <span class="setting-value">{Math.round((1 - $vadSensitivity) * 100)}%</span>
           </label>
           <div class="slider-container">
@@ -248,19 +242,15 @@
         />
         <div class="setting-description">
           {#if $vadAutoSensitivity}
-            The marker follows your room: stay quiet for a moment and it settles just
-            above the noise, then rises again if a fan or a fridge kicks in. Turn this
-            off if it clips the start of your words or lets noise through.
+            {t('voice.autoHint')}
           {:else}
-            Higher sensitivity detects quieter speech but may pick up background noise.
-            Speak normally and drag the slider until the bar passes the marker only
-            when you talk.
+            {t('voice.manualHint')}
           {/if}
         </div>
 
         <label for="vad-release-slider" class="setting-label">
-          Release delay
-          <span class="setting-value">{$vadReleaseDelay} ms</span>
+          {t('voice.releaseDelay')}
+          <span class="setting-value">{t('voice.milliseconds', { ms: $vadReleaseDelay })}</span>
         </label>
         <div class="slider-container">
           <input
@@ -275,16 +265,13 @@
           <div class="slider-track-fill" style="width: {vadReleaseFill * 100}%"></div>
         </div>
         <div class="setting-description">
-          How long you keep transmitting after you stop talking. Longer keeps the
-          pauses between words intact; shorter cuts the room off sooner, at the risk
-          of clipping the ends of your sentences. Takes effect immediately, including
-          mid-call.
+          {t('voice.releaseHint')}
         </div>
       {:else}
-        <span class="setting-label">Input level</span>
+        <span class="setting-label">{t('voice.inputLevel')}</span>
         <MicLevelMeter min={VAD_MIN} max={VAD_MAX} />
         <div class="setting-description">
-          Speak to check that the selected microphone is picking you up.
+          {t('voice.inputLevelHint')}
         </div>
       {/if}
     </div>

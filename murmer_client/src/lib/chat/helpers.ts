@@ -2,6 +2,7 @@ import type { Message, UserStatus, VoiceChannelInfo } from '../types';
 import { extractLinks } from '../link-preview';
 import { hideSpoilers } from '../spoilers';
 import { MAX_VOICE_USER_LIMIT, VOICE_QUALITY_PRESETS } from './constants';
+import { t } from '../i18n';
 
 export type MessageBlock =
   | { kind: 'separator'; label: string; key: string }
@@ -45,10 +46,10 @@ function formatDayHeading(date: Date): string {
   const today = new Date();
   const key = dateKey(date);
   const todayKey = dateKey(today);
-  if (key === todayKey) return 'Today';
+  if (key === todayKey) return t('day.today');
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
-  if (key === dateKey(yesterday)) return 'Yesterday';
+  if (key === dateKey(yesterday)) return t('day.yesterday');
   return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
@@ -140,22 +141,28 @@ export function buildMessageBlocks(
 
 export function describeDuration(seconds: number): string {
   if (seconds < 60) {
-    return `${seconds} ${seconds === 1 ? 'second' : 'seconds'}`;
+    return t('duration.seconds', { count: seconds });
   }
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   if (minutes < 60) {
     if (remainingSeconds === 0) {
-      return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+      return t('duration.minutes', { count: minutes });
     }
-    return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ${remainingSeconds} ${remainingSeconds === 1 ? 'second' : 'seconds'}`;
+    return t('duration.pair', {
+      first: t('duration.minutes', { count: minutes }),
+      second: t('duration.seconds', { count: remainingSeconds })
+    });
   }
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
   if (remainingMinutes === 0) {
-    return `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
+    return t('duration.hours', { count: hours });
   }
-  return `${hours} ${hours === 1 ? 'hour' : 'hours'} ${remainingMinutes} ${remainingMinutes === 1 ? 'minute' : 'minutes'}`;
+  return t('duration.pair', {
+    first: t('duration.hours', { count: hours }),
+    second: t('duration.minutes', { count: remainingMinutes })
+  });
 }
 
 export function formatExpiry(expiresAt: string | undefined, now: number): string | null {
@@ -163,26 +170,25 @@ export function formatExpiry(expiresAt: string | undefined, now: number): string
   const parsed = Date.parse(expiresAt);
   if (Number.isNaN(parsed)) return null;
   const diff = parsed - now;
-  if (diff <= 0) return 'Expired';
-  const totalSeconds = Math.round(diff / 1000);
-  if (totalSeconds < 60) return `Expires in ${totalSeconds}s`;
+  if (diff <= 0) return t('expiry.expired');
+  return t('expiry.in', { time: shortDuration(Math.round(diff / 1000)) });
+}
+
+/** `90` as `1m 30s`: the largest unit, plus the next one when it is not 0. */
+function shortDuration(totalSeconds: number): string {
+  const s = (count: number) => t('duration.secondsShort', { count });
+  const m = (count: number) => t('duration.minutesShort', { count });
+  const h = (count: number) => t('duration.hoursShort', { count });
+  const d = (count: number) => t('duration.daysShort', { count });
+  const pair = (first: string, count: number, second: string) =>
+    count === 0 ? first : t('duration.pair', { first, second });
+  if (totalSeconds < 60) return s(totalSeconds);
   const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes < 60) {
-    return seconds === 0 ? `Expires in ${minutes}m` : `Expires in ${minutes}m ${seconds}s`;
-  }
+  if (minutes < 60) return pair(m(minutes), totalSeconds % 60, s(totalSeconds % 60));
   const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-  if (hours < 24) {
-    return remainingMinutes === 0
-      ? `Expires in ${hours}h`
-      : `Expires in ${hours}h ${remainingMinutes}m`;
-  }
+  if (hours < 24) return pair(h(hours), minutes % 60, m(minutes % 60));
   const days = Math.floor(hours / 24);
-  const remainingHours = hours % 24;
-  return remainingHours === 0
-    ? `Expires in ${days}d`
-    : `Expires in ${days}d ${remainingHours}h`;
+  return pair(d(days), hours % 24, h(hours % 24));
 }
 
 export function formatLocalDateTime(timestamp: string | undefined): string | null {
@@ -208,12 +214,12 @@ export function searchResultPreview(message: Message): string {
     return normalized.length > 120 ? `${normalized.slice(0, 117)}…` : normalized;
   }
   if (typeof message.image === 'string' && message.image.trim().length > 0) {
-    return '[Image]';
+    return t('preview.image');
   }
   if (message.attachment) {
-    return `[File] ${message.attachment.name}`;
+    return t('preview.file', { name: message.attachment.name });
   }
-  return 'Message';
+  return t('preview.message');
 }
 
 /** A user limit typed by a moderator: empty is 0 (no limit), anything that
@@ -377,9 +383,9 @@ export function describeTyping(
     .filter(([user, expiry]) => user !== currentUser && expiry > now)
     .map(([user]) => displayName(user));
   if (users.length === 0) return null;
-  if (users.length === 1) return `${users[0]} is typing…`;
-  if (users.length === 2) return `${users[0]} and ${users[1]} are typing…`;
-  return 'Several people are typing…';
+  if (users.length === 1) return t('typing.one', { name: users[0] });
+  if (users.length === 2) return t('typing.two', { first: users[0], second: users[1] });
+  return t('typing.several');
 }
 
 /** Number of loaded replies per thread root id. */

@@ -20,6 +20,7 @@ import { refreshAudioDevices } from '../stores/audioDevices';
 import { openMicrophone } from './capture';
 import { connectMicSource, type MicSource } from './denoise';
 import { getAudioContext, resumeAudioContext } from './audioContext';
+import { t } from '../i18n';
 
 const WORKLET_URL = '/audio/recorder-processor.js';
 
@@ -62,7 +63,7 @@ export class MicTest {
 
     const context = getAudioContext();
     if (!context?.audioWorklet) {
-      throw new Error('Audio recording is unavailable on this system');
+      throw new Error(t('audio.recordingUnavailable'));
     }
     resumeAudioContext();
     // Loading the same module twice is a no-op, so this needs no caching.

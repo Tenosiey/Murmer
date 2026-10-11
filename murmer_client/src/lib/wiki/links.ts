@@ -5,6 +5,7 @@
  */
 
 import { wiki, type WikiLinkTarget } from '../stores/wiki';
+import { t } from '../i18n';
 
 export type { ParsedWikiTarget } from './slug';
 export { slugify, parseWikiTarget } from './slug';
@@ -62,7 +63,7 @@ export function wikilinks(node: HTMLElement, options: WikilinksOptions) {
         const exists = resolved.get(`${targets[i].channel}/${targets[i].slug}`);
         if (exists === false) {
           anchor.classList.add('wikilink-missing');
-          anchor.title = 'This page does not exist yet';
+          anchor.title = t('wikiView.missingLink');
         } else if (exists === true) {
           anchor.classList.remove('wikilink-missing');
           anchor.removeAttribute('title');

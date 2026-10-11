@@ -23,6 +23,7 @@
   import HealthTab from './dashboard/HealthTab.svelte';
   import EmojisTab from './dashboard/EmojisTab.svelte';
   import ModerationTab from './dashboard/ModerationTab.svelte';
+  import ReportsTab from './dashboard/ReportsTab.svelte';
   import InvitesTab from './dashboard/InvitesTab.svelte';
   import AuditTab from './dashboard/AuditTab.svelte';
   import StatsTab from './dashboard/StatsTab.svelte';
@@ -32,6 +33,7 @@
   import RolesTab from './dashboard/RolesTab.svelte';
   import DangerTab from './dashboard/DangerTab.svelte';
   import { modalFocus } from '$lib/focus';
+  import { t } from '$lib/i18n';
 
   interface Props {
     open: boolean;
@@ -45,18 +47,19 @@
   // Each server-wide topic lives on its own tab, gated by the permission it
   // controls so a role only sees what it can act on.
   const TABS = [
-    { id: 'overview', label: 'Overview', perm: PERMISSIONS.MANAGE_SERVER },
-    { id: 'health', label: 'Health', perm: PERMISSIONS.MANAGE_SERVER },
-    { id: 'emojis', label: 'Emojis', perm: PERMISSIONS.MANAGE_EMOJIS },
-    { id: 'moderation', label: 'Moderation', perm: PERMISSIONS.BAN_MEMBERS },
-    { id: 'invites', label: 'Invites', perm: PERMISSIONS.CREATE_INVITES },
-    { id: 'audit', label: 'Audit Log', perm: PERMISSIONS.VIEW_AUDIT_LOG },
-    { id: 'stats', label: 'Stats', perm: PERMISSIONS.MANAGE_SERVER },
-    { id: 'uploads', label: 'Files & Uploads', perm: PERMISSIONS.MANAGE_SERVER },
-    { id: 'voice', label: 'Voice', perm: PERMISSIONS.MANAGE_SERVER },
-    { id: 'screenshare', label: 'Screen Share', perm: PERMISSIONS.MANAGE_SERVER },
-    { id: 'roles', label: 'Roles', perm: PERMISSIONS.MANAGE_ROLES },
-    { id: 'danger', label: 'Danger Zone', perm: PERMISSIONS.ADMINISTRATOR }
+    { id: 'overview', perm: PERMISSIONS.MANAGE_SERVER },
+    { id: 'health', perm: PERMISSIONS.MANAGE_SERVER },
+    { id: 'emojis', perm: PERMISSIONS.MANAGE_EMOJIS },
+    { id: 'moderation', perm: PERMISSIONS.BAN_MEMBERS },
+    { id: 'reports', perm: PERMISSIONS.MANAGE_MESSAGES },
+    { id: 'invites', perm: PERMISSIONS.CREATE_INVITES },
+    { id: 'audit', perm: PERMISSIONS.VIEW_AUDIT_LOG },
+    { id: 'stats', perm: PERMISSIONS.MANAGE_SERVER },
+    { id: 'uploads', perm: PERMISSIONS.MANAGE_SERVER },
+    { id: 'voice', perm: PERMISSIONS.MANAGE_SERVER },
+    { id: 'screenshare', perm: PERMISSIONS.MANAGE_SERVER },
+    { id: 'roles', perm: PERMISSIONS.MANAGE_ROLES },
+    { id: 'danger', perm: PERMISSIONS.ADMINISTRATOR }
   ] as const;
   let activeTab: (typeof TABS)[number]['id'] = $state('emojis');
 
@@ -92,8 +95,8 @@
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div use:modalFocus class="modal-content" onclick={(event) => event.stopPropagation()} onkeydown={handleKeydown} role="document" tabindex="0">
       <div class="modal-header">
-        <h2 id="server-dashboard-title">Server Dashboard</h2>
-        <button class="icon-btn close-btn" onclick={close} aria-label="Close server dashboard">
+        <h2 id="server-dashboard-title">{t('dashboard.title')}</h2>
+        <button class="icon-btn close-btn" onclick={close} aria-label={t('dashboard.close')}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"></line>
             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -102,14 +105,14 @@
       </div>
 
       <div class="settings-layout">
-        <nav class="settings-tabs" aria-label="Server dashboard sections">
+        <nav class="settings-tabs" aria-label={t('dashboard.sections')}>
           {#each visibleTabs as tab}
             <button
               class="tab-btn"
               class:selected={activeTab === tab.id}
               aria-pressed={activeTab === tab.id}
               onclick={() => (activeTab = tab.id)}
-            >{tab.label}</button>
+            >{t(`dashboard.tab.${tab.id}`)}</button>
           {/each}
         </nav>
 
@@ -118,6 +121,7 @@
           <HealthTab active={activeTab === 'health'} />
           <EmojisTab active={activeTab === 'emojis'} />
           <ModerationTab active={activeTab === 'moderation'} {permissions} />
+          <ReportsTab active={activeTab === 'reports'} />
           <InvitesTab active={activeTab === 'invites'} />
           <AuditTab active={activeTab === 'audit'} />
           <StatsTab active={activeTab === 'stats'} />
@@ -130,7 +134,7 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-primary" onclick={close}>Done</button>
+        <button class="btn btn-primary" onclick={close}>{t('settings.done')}</button>
       </div>
     </div>
   </div>

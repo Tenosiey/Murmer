@@ -19,6 +19,7 @@ import { connectMicSource, type MicSource } from './denoise';
 import { getAudioContext, resumeAudioContext } from './audioContext';
 import { subscribeTick } from './ticker';
 import { configureVadAnalyser, NoiseFloorTracker, readVadLevel } from './vad';
+import { t } from '../i18n';
 
 export class MicLevelMonitor {
   private analyser: AnalyserNode | null = null;
@@ -66,7 +67,7 @@ export class MicLevelMonitor {
     }
 
     const context = getAudioContext();
-    if (!context) throw new Error('Audio processing is unavailable on this system');
+    if (!context) throw new Error(t('audio.processingUnavailable'));
     resumeAudioContext();
 
     // Built into locals and only published once the chain is complete: loading

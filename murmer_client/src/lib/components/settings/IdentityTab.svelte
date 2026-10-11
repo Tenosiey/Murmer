@@ -11,6 +11,8 @@
   import { uploadImage } from '$lib/upload';
   import UserAvatar from '$lib/components/UserAvatar.svelte';
   import { AUTO_AWAY_OPTIONS, autoAwayMinutes } from '$lib/stores/autoAway';
+  import { sendTypingIndicators } from '$lib/stores/settings';
+  import { t } from '$lib/i18n';
 
   interface Props {
     active: boolean;
@@ -70,9 +72,9 @@
 
 {#if active}
   <div class="settings-section">
-    <h3 class="section-title">Identity</h3>
+    <h3 class="section-title">{t('settings.tab.identity')}</h3>
     <div class="setting-group">
-      <span class="setting-label">Avatar</span>
+      <span class="setting-label">{t('identity.avatar')}</span>
       {#if $connection === 'connected' && $session.user}
         <div class="avatar-row">
           <UserAvatar name={$session.user} />
@@ -81,11 +83,15 @@
             onclick={() => avatarFileInput?.click()}
             disabled={avatarUploading}
           >
-            {avatarUploading ? 'Uploading…' : hasAvatar ? 'Change image' : 'Upload image'}
+            {avatarUploading
+              ? t('identity.uploading')
+              : hasAvatar
+                ? t('identity.changeImage')
+                : t('identity.uploadImage')}
           </button>
           {#if hasAvatar}
             <button class="btn btn-danger" onclick={removeAvatar} disabled={avatarUploading}>
-              Remove
+              {t('identity.remove')}
             </button>
           {/if}
           <input
@@ -100,15 +106,14 @@
           <div class="setting-description avatar-error" role="alert">{avatarError}</div>
         {/if}
         <div class="setting-description">
-          Shown next to your messages and in the member list. Stored on this server;
-          PNG, JPEG, GIF or WebP up to 1&nbsp;MB.
+          {t('identity.avatarHint')}
         </div>
       {:else}
-        <div class="setting-description">Connect to a server to set your avatar.</div>
+        <div class="setting-description">{t('identity.connectForAvatar')}</div>
       {/if}
     </div>
     <div class="setting-group">
-      <label class="setting-label" for="public-key-display">Public Key</label>
+      <label class="setting-label" for="public-key-display">{t('identity.publicKey')}</label>
       <div class="pubkey-row">
         <input
           id="public-key-display"
@@ -117,7 +122,7 @@
           readonly
           value={publicKey}
         />
-        <button class="icon-btn copy-btn" onclick={copyPublicKey} title="Copy public key">
+        <button class="icon-btn copy-btn" onclick={copyPublicKey} title={t('identity.copyKey')}>
           {#if keyCopied}
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="20,6 9,17 4,12"></polyline>
@@ -131,15 +136,15 @@
         </button>
       </div>
       <div class="setting-description">
-        Your Ed25519 public key identifies you on the server. Share it with the server admin to receive a role.
+        {t('identity.publicKeyHint')}
       </div>
     </div>
     <div class="setting-group">
-      <label for="auto-away-select" class="setting-label">Away when idle</label>
+      <label for="auto-away-select" class="setting-label">{t('identity.away')}</label>
       <div class="select-container">
         <select id="auto-away-select" class="device-select" bind:value={$autoAwayMinutes}>
           {#each AUTO_AWAY_OPTIONS as minutes}
-            <option value={minutes}>{minutes === 0 ? 'Never' : `After ${minutes} minutes`}</option>
+            <option value={minutes}>{minutes === 0 ? t('identity.never') : t('identity.afterMinutes', { count: minutes })}</option>
           {/each}
         </select>
         <div class="select-arrow">
@@ -149,9 +154,17 @@
         </div>
       </div>
       <div class="setting-description">
-        Sets your status to away when Murmer gets no mouse or keyboard input for that long, and
-        back to online when you return. A status you picked yourself is left alone.
+        {t('identity.awayHint')}
       </div>
+    </div>
+    <div class="setting-group">
+      <label class="toggle-row">
+        <input type="checkbox" bind:checked={$sendTypingIndicators} />
+        <span class="toggle-text">
+          <span class="toggle-label">{t('identity.sendTyping')}</span>
+          <span class="toggle-description">{t('identity.sendTypingHint')}</span>
+        </span>
+      </label>
     </div>
     <IdentityBackup />
   </div>
