@@ -5,8 +5,11 @@
 //! queried without parsing the payload. Since direct messages are end-to-end
 //! encrypted, the stored JSON carries `nonce`/`ciphertext` fields — the
 //! server never persists DM plaintext.
+//!
+//! A DM can be edited or deleted by its sender only; a delete removes the one
+//! stored row, which is both participants' copy.
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use super::{Db, DbCall, DbError};
 
@@ -63,6 +66,47 @@ pub async fn fetch_dm_history(
                 .collect::<Result<Vec<_>, _>>()?
         };
         Ok(rows)
+    })
+    .await
+}
+
+/// Fetch one direct message as `(sender, recipient, content)`.
+pub async fn get_direct_message(
+    db: &Db,
+    id: i64,
+) -> Result<Option<(String, String, String)>, DbError> {
+    db.call_db(move |conn| {
+        let row = conn
+            .prepare_cached("SELECT sender, recipient, content FROM direct_messages WHERE id = ?1")?
+            .query_row(params![id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .optional()?;
+        Ok(row)
+    })
+    .await
+}
+
+/// Replace a direct message's stored JSON. Returns `true` if a row changed.
+pub async fn update_direct_message(db: &Db, id: i64, content: &str) -> Result<bool, DbError> {
+    let content = content.to_owned();
+    db.call_db(move |conn| {
+        let affected = conn
+            .prepare_cached("UPDATE direct_messages SET content = ?2 WHERE id = ?1")?
+            .execute(params![id, content])?;
+        Ok(affected > 0)
+    })
+    .await
+}
+
+/// Delete a direct message for both participants. Returns `true` if a row
+/// was removed.
+pub async fn delete_direct_message(db: &Db, id: i64) -> Result<bool, DbError> {
+    db.call_db(move |conn| {
+        let affected = conn
+            .prepare_cached("DELETE FROM direct_messages WHERE id = ?1")?
+            .execute(params![id])?;
+        Ok(affected > 0)
     })
     .await
 }

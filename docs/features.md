@@ -192,6 +192,36 @@ already drops a message from the view, its pin and its thread; a bulk frame
 would be a second path to keep in step with it for a saving the cap makes
 small.
 
+**A ban can purge too, across channels.** `ban-user` with `deleteMessages`
+removes what the member posted in the last `BAN_DELETE_WINDOW_SECS`, in
+every channel, keyed on the generated `author` column — the account name,
+never a display name. It rides on `BAN_MEMBERS` rather than needing
+`MANAGE_MESSAGES` as well: a spam run is the usual reason to ban, and a ban
+that leaves the spam behind is half a ban. The window is fixed at an hour
+so a ban cannot quietly erase someone's whole history.
+
+## Message reports
+
+Server: `ws/handlers/reports.rs`, `db/reports.rs`. Client: the flag in
+`MessageItem.svelte`, `stores/reports.ts`, `dashboard/ReportsTab.svelte`.
+
+**The queue is per channel, not server-wide.** Reading and dismissing a
+report needs `MANAGE_MESSAGES` in the reported channel, so a moderator of
+one private channel never learns what was reported in another. Filing one
+needs only that the reporter can see the channel; anything else answers
+"message not found", because a report on a hidden message would otherwise
+confirm the id exists.
+
+**A report stores no copy of the message.** The excerpt is read from
+`messages` when the queue is listed. A copy would survive the message's
+deletion, retention and the Danger Zone purge — the moments an operator
+expects it gone. In an encrypted channel there is nothing for the server to
+show, and the moderator reads the message in the channel.
+
+**Dismissing is the only action in the queue.** Deleting the message is
+`delete-message`, which acts on the channel the connection has joined; the
+moderator goes there and sees the message in context first.
+
 ## Message links
 
 Client: `src/lib/message-link.ts`, with the jump itself in

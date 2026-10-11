@@ -1,5 +1,6 @@
 //! End-to-end tests for `/purge`, a moderator deleting the newest messages
-//! of a channel in one go.
+//! of a channel in one go, and for its cross-channel sibling: a ban that also
+//! deletes the member's last hour of messages.
 //!
 //! A purge cannot be undone and reaches past the requester's own messages,
 //! so the permission check is the whole of the protection; the refusals are
@@ -215,4 +216,63 @@ async fn a_count_outside_the_bound_is_refused() {
         assert_eq!(alice.next_error().await, "invalid-purge-count");
     }
     assert_eq!(remaining(&state, general).await, ids);
+}
+
+#[tokio::test]
+async fn a_ban_can_delete_the_last_hour_of_the_members_messages() {
+    let (addr, state) = start_server().await;
+    let general = db::get_channel_id_by_name(&state.db, "general")
+        .await
+        .expect("general channel");
+    let now = chrono::Utc::now();
+    let stamp = |minutes_ago: i64| (now - chrono::Duration::minutes(minutes_ago)).to_rfc3339();
+    let insert = async |user: &str, minutes_ago: i64| {
+        let body = json!({ "user": user, "text": "hi", "timestamp": stamp(minutes_ago) });
+        db::insert_message(&state.db, general, &body.to_string())
+            .await
+            .expect("insert")
+    };
+    let old = insert("bob", 120).await;
+    let recent = insert("bob", 5).await;
+    let other = insert("carol", 5).await;
+
+    let mut alice = Client::connect(addr, "alice").await;
+    // Connecting binds Bob's key, which a ban needs.
+    let _bob = Client::connect(addr, "bob").await;
+
+    alice
+        .send(json!({ "type": "ban-user", "user": "bob", "deleteMessages": true }))
+        .await;
+    alice
+        .until(|f| f["type"] == "message-deleted" && f["id"] == recent)
+        .await;
+    // Only Bob's, and only the last hour: older history and other members'
+    // messages stay.
+    assert_eq!(remaining(&state, general).await, [old, other]);
+
+    let log = db::list_audit_entries(&state.db).await.expect("audit log");
+    let entry = log.iter().find(|e| e.action == "ban").expect("ban logged");
+    assert_eq!(entry.detail, "deleted 1 messages");
+}
+
+#[tokio::test]
+async fn a_plain_ban_keeps_the_members_messages() {
+    let (addr, state) = start_server().await;
+    let general = db::get_channel_id_by_name(&state.db, "general")
+        .await
+        .expect("general channel");
+    let body = json!({ "user": "bob", "text": "hi", "timestamp": chrono::Utc::now().to_rfc3339() });
+    let id = db::insert_message(&state.db, general, &body.to_string())
+        .await
+        .expect("insert");
+
+    let mut alice = Client::connect(addr, "alice").await;
+    let _bob = Client::connect(addr, "bob").await;
+    alice
+        .send(json!({ "type": "ban-user", "user": "bob" }))
+        .await;
+    alice
+        .until(|f| f["type"] == "force-disconnect" && f["user"] == "bob")
+        .await;
+    assert_eq!(remaining(&state, general).await, [id]);
 }

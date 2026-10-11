@@ -23,6 +23,7 @@
   import HealthTab from './dashboard/HealthTab.svelte';
   import EmojisTab from './dashboard/EmojisTab.svelte';
   import ModerationTab from './dashboard/ModerationTab.svelte';
+  import ReportsTab from './dashboard/ReportsTab.svelte';
   import InvitesTab from './dashboard/InvitesTab.svelte';
   import AuditTab from './dashboard/AuditTab.svelte';
   import StatsTab from './dashboard/StatsTab.svelte';
@@ -50,6 +51,7 @@
     { id: 'health', perm: PERMISSIONS.MANAGE_SERVER },
     { id: 'emojis', perm: PERMISSIONS.MANAGE_EMOJIS },
     { id: 'moderation', perm: PERMISSIONS.BAN_MEMBERS },
+    { id: 'reports', perm: PERMISSIONS.MANAGE_MESSAGES },
     { id: 'invites', perm: PERMISSIONS.CREATE_INVITES },
     { id: 'audit', perm: PERMISSIONS.VIEW_AUDIT_LOG },
     { id: 'stats', perm: PERMISSIONS.MANAGE_SERVER },
@@ -119,6 +121,7 @@
           <HealthTab active={activeTab === 'health'} />
           <EmojisTab active={activeTab === 'emojis'} />
           <ModerationTab active={activeTab === 'moderation'} {permissions} />
+          <ReportsTab active={activeTab === 'reports'} />
           <InvitesTab active={activeTab === 'invites'} />
           <AuditTab active={activeTab === 'audit'} />
           <StatsTab active={activeTab === 'stats'} />

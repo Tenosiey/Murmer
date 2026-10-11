@@ -40,8 +40,8 @@ that runs both as a Tauri desktop app and, unchanged, in the browser.
   text channels: the server only ever stores ciphertext there
 - **Roles and permissions** with private channels, per-channel overrides,
   nicknames, moderation (kick, ban, timed mutes, slow mode, profanity filter,
-  auto-moderation rules) and an audit log, all managed from the Server
-  Dashboard
+  auto-moderation rules, message reports) and an audit log, all managed from
+  the Server Dashboard
 - **Per-channel wikis** with revision history and `[[wikilinks]]`
 - **Accounts are keys**: Ed25519 identities instead of passwords, with a
   recovery file or 24-word phrase to move them to another machine

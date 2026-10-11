@@ -634,6 +634,34 @@ function createChatStore() {
         break;
       }
 
+      // The sender edited or deleted a DM; the server routes both only to
+      // the two participants, as it does the DM itself.
+      case 'dm-edited':
+      case 'dm-deleted': {
+        const id = typeof msg.id === 'number' ? msg.id : null;
+        const from = typeof msg.from === 'string' ? msg.from : null;
+        const to = typeof msg.to === 'string' ? msg.to : null;
+        if (id === null || !from || !to || !current) break;
+        const peer = from === current ? to : from;
+        if (msg.type === 'dm-deleted') {
+          dm.remove(peer, id);
+          break;
+        }
+        const held = dm.find(peer, id);
+        // An edit to a message not loaded yet arrives with the history.
+        if (!held) break;
+        const { decryptFailed: _stale, ...rest } = held;
+        const editedAt = typeof msg.editedAt === 'string' ? msg.editedAt : undefined;
+        void decryptDmFrame(peer, {
+          ...rest,
+          nonce: msg.nonce,
+          ciphertext: msg.ciphertext,
+          edited: true,
+          editedAt
+        }).then((prepared) => dm.setHistory(peer, [prepared]));
+        break;
+      }
+
       case 'dm-history': {
         const peer = typeof msg.with === 'string' ? msg.with : null;
         if (peer) {
@@ -969,6 +997,26 @@ function createChatStore() {
     return null;
   }
 
+  /**
+   * Re-encrypt and send an edit of one of our own DMs.
+   * @returns null on success, or an error message for the caller to surface
+   */
+  async function editDm(peer: string, id: number, text: string): Promise<string | null> {
+    if (!wsManager.isConnected()) return t('chatError.notConnected');
+    const key = await fetchPeerKey(peer);
+    if (!key) return t('chatError.noPeerKey', { name: peer });
+    if (peerKeys.hasConflict(peer)) return t('chatError.peerKeyChanged', { name: peer });
+    const payload = encryptDm(text, key, loadKeyPair().secretKey);
+    if (!payload) return t('chatError.encryptFailed');
+    wsManager.send({ type: 'edit-dm', id, nonce: payload.nonce, ciphertext: payload.ciphertext });
+    return null;
+  }
+
+  /** Delete one of our own DMs for both sides. */
+  function deleteDm(id: number): void {
+    sendRaw({ type: 'delete-dm', id });
+  }
+
   /** Load the direct message history with another user. */
   function loadDmHistory(peer: string, before?: number): void {
     sendRaw({ type: 'load-dm-history', with: peer, before });
@@ -1210,6 +1258,8 @@ function createChatStore() {
     sendUpload,
     forward,
     sendDm,
+    editDm,
+    deleteDm,
     sendEphemeral,
     sendPoll,
     votePoll,

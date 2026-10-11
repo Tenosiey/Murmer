@@ -56,7 +56,8 @@ import {
   MAX_REMINDER_TEXT_LENGTH,
   MAX_POLL_OPTIONS,
   MAX_POLL_OPTION_LENGTH,
-  MAX_PURGE_COUNT
+  MAX_PURGE_COUNT,
+  MAX_REPORT_REASON_LENGTH
 } from '../src/lib/chat/constants';
 
 function readServerSource(relative: string): string {
@@ -338,6 +339,15 @@ describe('purge mirror', () => {
   // only find out after the confirmation dialog.
   it('agrees on the most messages one purge removes', () => {
     expect(serverNumberConstant(wsConstantsRs, 'MAX_PURGE_COUNT', 'usize')).toBe(MAX_PURGE_COUNT);
+  });
+});
+
+describe('report mirror', () => {
+  // The server refuses a longer reason, after the member typed it.
+  it('agrees on the longest report reason', () => {
+    expect(serverNumberConstant(wsConstantsRs, 'MAX_REPORT_REASON_LENGTH', 'usize')).toBe(
+      MAX_REPORT_REASON_LENGTH
+    );
   });
 });
 

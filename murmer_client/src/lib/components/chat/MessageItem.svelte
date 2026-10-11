@@ -48,6 +48,8 @@
     replyCount?: number;
     canEdit?: boolean;
     canDelete?: boolean;
+    /** Someone else's message, which the viewer may flag to moderators. */
+    canReport?: boolean;
     onFocusMessage: (id: number) => void;
     onFocusForwarded: (origin: ForwardInfo) => void;
     onReply: (msg: Message) => void;
@@ -58,6 +60,7 @@
     onTogglePin: (msg: Message) => void;
     onToggleSave: (msg: Message) => void;
     onDelete: (msg: Message) => void;
+    onReport: (msg: Message) => void;
     onOpenEmojiPicker: (id: number, event: MouseEvent) => void;
     onToggleReaction: (id: number, emoji: string, users: string[]) => void;
     onOpenThread: (id: number) => void;
@@ -75,6 +78,7 @@
     replyCount = 0,
     canEdit = false,
     canDelete = false,
+    canReport = false,
     onFocusMessage,
     onFocusForwarded,
     onReply,
@@ -85,6 +89,7 @@
     onTogglePin,
     onToggleSave,
     onDelete,
+    onReport,
     onOpenEmojiPicker,
     onToggleReaction,
     onOpenThread,
@@ -389,6 +394,12 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
         <span class="sr-only">{t(saved ? 'messageItem.unsave' : 'messageItem.save')}</span>
       </button>
+      {#if canReport}
+        <button type="button" class="message-action" onclick={() => onReport(message)} title={t('messageItem.report')}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+          <span class="sr-only">{t('messageItem.report')}</span>
+        </button>
+      {/if}
       {#if canDelete}
         <button
           type="button"

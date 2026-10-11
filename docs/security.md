@@ -95,6 +95,13 @@ the frame verbatim. **It must never gain a plaintext DM path.** Clients fetch
 a peer's key with the `get-user-key` frame, answered from the `user_keys`
 binding; users without a binding — bots, for instance — cannot receive DMs.
 
+Only the sender can edit or delete a DM (`edit-dm`, `delete-dm`). An edit is
+a fresh sealed payload through the same validation, so it is no plaintext
+path either; a delete removes the single stored row, which is both sides'
+copy. There is no moderator override: the server cannot read a DM, so no one
+but its author is in a position to judge it. A delete cannot reach a copy the
+recipient already saved elsewhere, and the client says so.
+
 That makes the server the key directory, which is trusted **on first contact
 only**: `stores/peerKeys.ts` pins each peer's key per server URL, flags a
 change, blocks sending until the user explicitly trusts the new key, and

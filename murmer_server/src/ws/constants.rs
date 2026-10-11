@@ -211,6 +211,21 @@ pub const MAX_POLL_OPTION_LENGTH: usize = 55;
 /// channel, so the cap bounds what one command costs them.
 pub const MAX_PURGE_COUNT: usize = 100;
 
+/// Longest reason a member may give when reporting a message.
+pub const MAX_REPORT_REASON_LENGTH: usize = 500;
+
+/// Most open reports one `list-reports` answer carries. The queue is
+/// oldest first, so what is cut off is the newest, which waits its turn.
+pub const MAX_LISTED_REPORTS: i64 = 200;
+
+/// How many characters of a reported message the queue shows.
+pub const REPORT_EXCERPT_CHARS: usize = 300;
+
+/// How far back a ban's `deleteMessages` reaches (Discord's "delete message
+/// history" default). Long enough to sweep a spam run, short enough that a
+/// ban never quietly erases someone's months of ordinary conversation.
+pub const BAN_DELETE_WINDOW_SECS: i64 = 3600;
+
 /// Maximum number of messages returned for a single thread.
 pub const MAX_THREAD_MESSAGES: i64 = 200;
 

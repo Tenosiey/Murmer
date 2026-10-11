@@ -138,7 +138,8 @@
     MAX_TOPIC_LENGTH,
     STATUS_LABELS,
     DEFAULT_CHANNEL_NAME,
-    MAX_REMINDER_TEXT_LENGTH
+    MAX_REMINDER_TEXT_LENGTH,
+    MAX_REPORT_REASON_LENGTH
   } from '$lib/chat/constants';
   import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
   import SchedulePanel from '$lib/components/SchedulePanel.svelte';
@@ -937,6 +938,22 @@
     setCommandFeedback(t('chatPage.forwardedToUser', { name: $displayNames(target.user) }));
   }
 
+  /** Flag a message to the moderators, with an optional reason. */
+  async function reportMessage(msg: Message) {
+    if (typeof msg.id !== 'number') return;
+    const reason = await dialogs.prompt({
+      title: t('chatPage.reportTitle'),
+      message: t('chatPage.reportMessage'),
+      label: t('chatPage.reportReason'),
+      multiline: true,
+      maxLength: MAX_REPORT_REASON_LENGTH,
+      confirmLabel: t('chatPage.reportConfirm'),
+      required: false
+    });
+    if (reason === null) return;
+    chat.sendRaw({ type: 'report-message', messageId: msg.id, reason: reason.trim() });
+  }
+
   /** Jump to the original of a forwarded message, switching channels first. */
   async function copyMessageLink(msg: Message) {
     const server = get(selectedServer);
@@ -1680,6 +1697,8 @@
                 onTogglePin={togglePinMessage}
                 onToggleSave={toggleSaveMessage}
                 onDelete={deleteChatMessage}
+                canReport={!!block.message.user && block.message.user !== $session.user}
+                onReport={reportMessage}
                 onOpenEmojiPicker={openEmojiPicker}
                 onToggleReaction={toggleReaction}
                 onOpenThread={openThread}
