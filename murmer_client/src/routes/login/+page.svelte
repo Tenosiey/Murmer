@@ -1,6 +1,7 @@
 <!--
-  Login page for Murmer. Users supply a display name that is persisted in the
-  session store and then redirected to their server list. The page guards
+  Login page for Murmer. Users supply their username, the permanent account
+  name, which is persisted in the session store before they are redirected
+  to their server list. The page guards
   against authenticated users revisiting the login screen.
 -->
 <script lang="ts">
@@ -41,10 +42,10 @@
     <form class="login-card surface-card" onsubmit={(event) => { event.preventDefault(); login(); }} aria-labelledby="login-heading">
       <h2 id="login-heading" class="sr-only">{t('login.detailsHeading')}</h2>
       <label class="field">
-        <span>{t('login.displayName')}</span>
+        <span>{t('login.username')}</span>
         <input
           bind:value={username}
-          placeholder={t('login.displayNamePlaceholder')}
+          placeholder={t('login.usernamePlaceholder')}
           autocomplete="username"
           autocapitalize="none"
           spellcheck={false}
