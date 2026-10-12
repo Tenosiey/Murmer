@@ -6,7 +6,6 @@ target
 **/dist
 **/build
 **/.svelte-kit
-pnpm-lock.yaml
 .vscode
 coverage
 *.log
