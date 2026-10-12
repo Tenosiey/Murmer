@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { setUploadSession, uploadAttachment, uploadForm, uploadErrorMessage } from './upload';
+import {
+  loadFile,
+  setUploadSession,
+  uploadAttachment,
+  uploadForm,
+  uploadErrorMessage
+} from './upload';
 
 describe('uploadForm', () => {
   afterEach(() => setUploadSession(null));
@@ -81,5 +87,41 @@ describe('uploadAttachment', () => {
     answer(200, { kind: 'image' });
     const result = await uploadAttachment('http://srv', new File(['x'], 'a.png'), 1024);
     expect(result).toEqual({ ok: false, message: 'File upload failed.' });
+  });
+});
+
+describe('sealed attachments', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('uploads only ciphertext and opens it again with the key it returns', async () => {
+    const plain = new TextEncoder().encode('Medical report for Jane Doe');
+    let posted: FormData | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        posted = init?.body as FormData;
+        return new Response(JSON.stringify({ url: '/files/1-abc.bin', kind: 'file' }));
+      })
+    );
+
+    const file = new File([plain], 'Medical_Report_Jane_Doe.pdf');
+    const result = await uploadAttachment('http://srv', file, 1024, true);
+
+    expect([...posted!.keys()]).toEqual(['session', 'sealed', 'file']);
+    const stored = posted!.get('file') as File;
+    // Only the extension leaves the client; it picks the upload category.
+    expect(stored.name).toBe('sealed.pdf');
+    const bytes = new Uint8Array(await stored.arrayBuffer());
+    expect(new TextDecoder().decode(bytes)).not.toContain('Jane');
+
+    if (!result.ok || !('attachment' in result.content)) throw new Error('no attachment');
+    const { attachment } = result.content;
+    expect(attachment.name).toBe('Medical_Report_Jane_Doe.pdf');
+    expect(attachment.key).toBeTypeOf('string');
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(bytes)));
+    const opened = await loadFile(attachment.url, attachment.key);
+    expect(new Uint8Array(await opened.arrayBuffer())).toEqual(plain);
+    await expect(loadFile(attachment.url, btoa('x'.repeat(32)))).rejects.toThrow();
   });
 });

@@ -19,6 +19,8 @@
   import { formatFullTimestamp, formatShortTime } from '#lib/chat/helpers.ts';
   import { drafts } from '#lib/stores/drafts.ts';
   import UserAvatar from '#lib/components/UserAvatar.svelte';
+  import FileImage from './FileImage.svelte';
+  import { saveSealedFile } from '#lib/upload.ts';
   import MentionSuggestions from './MentionSuggestions.svelte';
   import { t } from '#lib/i18n/index.ts';
 
@@ -144,6 +146,8 @@
 
   <div class="messages">
     {#each messages as msg (msg.id)}
+      {@const imageUrl = serverFileUrl(msg.image, httpBase)}
+      {@const attachmentUrl = msg.attachment ? serverFileUrl(msg.attachment.url, httpBase) : null}
       <div class="entry" class:emphasized={emphasize(msg)}>
         <div class="entry-meta">
           <UserAvatar name={(kind === 'dm' ? msg.from : msg.user) ?? '?'} size="sm" />
@@ -170,15 +174,25 @@
             <span class="undecryptable">{t('conversationPanel.thisMessageCouldNot')}</span>
           {:else if msg.text}
             {@html emojifyHtml(renderMarkdown(msg.text), $customEmojis, httpBase)}
-          {:else if serverFileUrl(msg.image, httpBase) && msg.spoiler}
+          {:else if imageUrl && msg.spoiler}
             <span class="spoiler spoiler-media" role="button" tabindex="0" aria-label={t('conversationPanel.spoilerImageSelectTo')}>
-              <img src={serverFileUrl(msg.image, httpBase)} alt="" loading="lazy" />
+              <FileImage url={imageUrl} fileKey={msg.imageKey} />
             </span>
-          {:else if serverFileUrl(msg.image, httpBase)}
-            <img src={serverFileUrl(msg.image, httpBase)} alt="" loading="lazy" />
-          {:else if msg.attachment && serverFileUrl(msg.attachment.url, httpBase)}
-            <a href={serverFileUrl(msg.attachment.url, httpBase)} target="_blank" rel="noopener noreferrer">
-              {msg.attachment.name}
+          {:else if imageUrl}
+            <FileImage url={imageUrl} fileKey={msg.imageKey} />
+          {:else if msg.attachment && attachmentUrl}
+            {@const attachment = msg.attachment}
+            <a
+              href={attachmentUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onclick={(event) => {
+                if (attachment.key === undefined) return;
+                event.preventDefault();
+                void saveSealedFile(attachmentUrl, attachment.name, attachment.key);
+              }}
+            >
+              {attachment.name}
             </a>
           {/if}
         </div>
@@ -359,7 +373,7 @@
     margin-top: 0;
   }
 
-  .entry-text img {
+  .entry-text :global(img.file-image) {
     max-width: 100%;
     border-radius: var(--radius-sm);
     margin-top: var(--space-1);

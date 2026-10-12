@@ -15,6 +15,7 @@
  * text exists so callers can show something better than "failed".
  */
 
+import { openFile, sealFile } from './channel-crypto';
 import { t } from './i18n';
 
 /**
@@ -45,11 +46,13 @@ function formatLimit(bytes: number): string {
  *
  * Order matters — the server checks the session as soon as it reaches the
  * file part, so that it never buffers bytes for a caller it has not
- * authenticated.
+ * authenticated. `sealed` marks ciphertext from `sealFile`, which the server
+ * then stores without a name and without looking for an image in it.
  */
-export function uploadForm(file: Blob, filename?: string): FormData {
+export function uploadForm(file: Blob, filename?: string, sealed = false): FormData {
   const form = new FormData();
   form.append('session', uploadSession ?? '');
+  if (sealed) form.append('sealed', '1');
   if (filename === undefined) form.append('file', file);
   else form.append('file', file, filename);
   return form;
@@ -115,8 +118,8 @@ export async function uploadImage(
 
 /** What a chat message carries for an uploaded file. */
 export type UploadedContent =
-  | { image: string }
-  | { attachment: { url: string; name: string; size: number } };
+  | { image: string; imageKey?: string }
+  | { attachment: { url: string; name: string; size: number; key?: string } };
 
 export type AttachmentResult =
   | { ok: true; content: UploadedContent }
@@ -129,14 +132,29 @@ export type AttachmentResult =
  * message when the server refuses the size after all — the policy can change
  * between picking the file and sending it. Never throws: failures come back
  * as `{ ok: false, message }`.
+ *
+ * With `seal`, for an encrypted channel, the bytes are encrypted first and
+ * the key comes back with the content, to travel inside the sealed message.
+ * Only the extension goes to the server, which picks the upload category.
  */
 export async function uploadAttachment(
   httpBase: string,
   file: File,
-  maxBytes: number
+  maxBytes: number,
+  seal = false
 ): Promise<AttachmentResult> {
   try {
-    const res = await fetch(httpBase + '/upload', { method: 'POST', body: uploadForm(file) });
+    let body: FormData;
+    let key: string | undefined;
+    if (seal) {
+      const sealed = sealFile(new Uint8Array(await file.arrayBuffer()));
+      key = sealed.key;
+      const extension = /\.[^.]+$/.exec(file.name)?.[0] ?? '';
+      body = uploadForm(new Blob([sealed.data]), `sealed${extension}`, true);
+    } else {
+      body = uploadForm(file);
+    }
+    const res = await fetch(httpBase + '/upload', { method: 'POST', body });
     if (res.status === 413) {
       return {
         ok: false,
@@ -149,6 +167,11 @@ export async function uploadAttachment(
     const data = await res.json();
     if (typeof data.url !== 'string') throw new Error('upload response missing url');
     const url = data.url.startsWith('http') ? data.url : httpBase + data.url;
+    if (key) {
+      return file.type.startsWith('image/')
+        ? { ok: true, content: { image: url, imageKey: key } }
+        : { ok: true, content: { attachment: { url, name: file.name, size: file.size, key } } };
+    }
     if (data.kind === 'image' || file.type.startsWith('image/')) {
       return { ok: true, content: { image: url } };
     }
@@ -165,5 +188,37 @@ export async function uploadAttachment(
   } catch (e) {
     console.error('upload failed', e);
     return { ok: false, message: t('upload.fileFailed') };
+  }
+}
+
+/**
+ * Fetch a stored file as a blob, opening it first when it was sealed with
+ * `key`. Throws when the fetch fails or the file does not open, which callers
+ * show as a file that could not be loaded.
+ */
+export async function loadFile(url: string, key?: string): Promise<Blob> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (key === undefined) return response.blob();
+  const opened = openFile(new Uint8Array(await response.arrayBuffer()), key);
+  if (!opened) throw new Error('file does not open with its key');
+  return new Blob([opened]);
+}
+
+/**
+ * Save a sealed attachment: open it in memory and hand the plaintext to the
+ * browser as a download. A link to the stored file would save ciphertext.
+ */
+export async function saveSealedFile(url: string, name: string, key: string): Promise<void> {
+  try {
+    const href = URL.createObjectURL(await loadFile(url, key));
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.download = name;
+    anchor.click();
+    // Revoked later rather than now: the download reads the blob after click.
+    setTimeout(() => URL.revokeObjectURL(href), 60_000);
+  } catch (error) {
+    console.warn('Could not open sealed attachment', error);
   }
 }

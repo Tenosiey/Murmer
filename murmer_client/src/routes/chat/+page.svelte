@@ -647,7 +647,12 @@
     const file = pendingFile;
     if (!file) return;
     const base = httpBaseFromWs(get(selectedServer) ?? 'ws://localhost:3001/ws');
-    const result = await uploadAttachment(base, file, $uploadConfig.maxBytes);
+    const result = await uploadAttachment(
+      base,
+      file,
+      $uploadConfig.maxBytes,
+      currentChannelEncrypted
+    );
     const spoiler = pendingSpoiler;
     clearPendingFile();
     const error = result.ok
