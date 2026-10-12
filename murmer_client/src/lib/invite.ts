@@ -1,6 +1,6 @@
-import { normalizeServerUrl } from '$lib/utils';
-import { httpBaseFromWs } from '$lib/server-url';
-import type { ServerEntry } from '$lib/stores/servers';
+import { normalizeServerUrl } from '#lib/utils.ts';
+import { httpBaseFromWs } from '#lib/server-url.ts';
+import type { ServerEntry } from '#lib/stores/servers.ts';
 
 export interface InviteData {
   url: string;

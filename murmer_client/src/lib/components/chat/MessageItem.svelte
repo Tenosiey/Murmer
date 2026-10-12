@@ -8,33 +8,33 @@
   message collapses to a one-line placeholder until "Show" is pressed.
 -->
 <script lang="ts">
-  import type { ForwardInfo, Message } from '$lib/types';
-  import { channels } from '$lib/stores/channels';
-  import { roles } from '$lib/stores/roles';
-  import { displayNames } from '$lib/stores/profiles';
-  import { session } from '$lib/stores/session';
-  import { renderMarkdown } from '$lib/markdown';
-  import { hideSpoilers } from '$lib/spoilers';
-  import { emojifyHtml, isEmojiOnlyText } from '$lib/emoji';
+  import type { ForwardInfo, Message } from '#lib/types.ts';
+  import { channels } from '#lib/stores/channels.ts';
+  import { roles } from '#lib/stores/roles.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { session } from '#lib/stores/session.ts';
+  import { renderMarkdown } from '#lib/markdown.ts';
+  import { hideSpoilers } from '#lib/spoilers.ts';
+  import { emojifyHtml, isEmojiOnlyText } from '#lib/emoji.ts';
   import {
     ephemeralInfo,
     formatFileSize,
     formatFullTimestamp,
     formatShortTime,
     reactionEntries
-  } from '$lib/chat/helpers';
-  import { giphyGifUrl } from '$lib/link-preview';
-  import { customEmojis, shortcodeToEmoji } from '$lib/stores/customEmojis';
-  import { selectedServer } from '$lib/stores/servers';
-  import { blockedUsers } from '$lib/stores/blocks';
-  import { httpBaseFromWs, serverFileUrl } from '$lib/server-url';
-  import LinkPreview from '$lib/components/LinkPreview.svelte';
-  import UserAvatar from '$lib/components/UserAvatar.svelte';
-  import RoleIcon from '$lib/components/RoleIcon.svelte';
+  } from '#lib/chat/helpers.ts';
+  import { giphyGifUrl } from '#lib/link-preview.ts';
+  import { customEmojis, shortcodeToEmoji } from '#lib/stores/customEmojis.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { blockedUsers } from '#lib/stores/blocks.ts';
+  import { httpBaseFromWs, serverFileUrl } from '#lib/server-url.ts';
+  import LinkPreview from '#lib/components/LinkPreview.svelte';
+  import UserAvatar from '#lib/components/UserAvatar.svelte';
+  import RoleIcon from '#lib/components/RoleIcon.svelte';
   import AudioAttachment from './AudioAttachment.svelte';
   import PollCard from './PollCard.svelte';
-  import { isPlayableAudio } from '$lib/voice-message';
-  import { t } from '$lib/i18n';
+  import { isPlayableAudio } from '#lib/voice-message.ts';
+  import { t } from '#lib/i18n/index.ts';
 
 
   interface Props {

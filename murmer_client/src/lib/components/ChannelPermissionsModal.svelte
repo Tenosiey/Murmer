@@ -6,23 +6,23 @@
 -->
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { chat } from '$lib/stores/chat';
-  import { roleDefinitions } from '$lib/stores/roleDefinitions';
-  import { channelOverrides, overridesKey } from '$lib/stores/channelOverrides';
-  import { channels } from '$lib/stores/channels';
-  import { channelKeys } from '$lib/stores/channelKeys';
-  import { channelKeyFingerprint } from '$lib/channel-crypto';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { describeServerError } from '$lib/errors';
+  import { chat } from '#lib/stores/chat.ts';
+  import { roleDefinitions } from '#lib/stores/roleDefinitions.ts';
+  import { channelOverrides, overridesKey } from '#lib/stores/channelOverrides.ts';
+  import { channels } from '#lib/stores/channels.ts';
+  import { channelKeys } from '#lib/stores/channelKeys.ts';
+  import { channelKeyFingerprint } from '#lib/channel-crypto.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { describeServerError } from '#lib/errors.ts';
   import {
     PERMISSIONS,
     overrideState,
     applyOverrideState,
     type OverrideState
-  } from '$lib/chat/permissions';
-  import type { Message } from '$lib/types';
-  import { modalFocus } from '$lib/focus';
-  import { t } from '$lib/i18n';
+  } from '#lib/chat/permissions.ts';
+  import type { Message } from '#lib/types.ts';
+  import { modalFocus } from '#lib/focus.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     open: boolean;

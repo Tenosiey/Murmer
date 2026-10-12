@@ -1,5 +1,5 @@
 import { get, writable } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { chat } from './chat';
 import { session } from './session';
 import type { Message, UserStatus } from '../types';

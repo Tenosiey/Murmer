@@ -5,15 +5,15 @@
   every user's self-reported stats, refreshed while the panel is open.
 -->
 <script lang="ts">
-  import { displayNames } from '$lib/stores/profiles';
-  import { ping } from '$lib/stores/ping';
-  import { voiceStats } from '$lib/stores/voice';
-  import { viaServer } from '$lib/stores/voiceTransport';
-  import { t } from '$lib/i18n';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { ping } from '#lib/stores/ping.ts';
+  import { voiceStats } from '#lib/stores/voice.ts';
+  import { viaServer } from '#lib/stores/voiceTransport.ts';
+  import { t } from '#lib/i18n/index.ts';
   import {
     allConnectionStats,
     canViewAllConnectionStats
-  } from '$lib/stores/connectionStats';
+  } from '#lib/stores/connectionStats.ts';
 
   /** How often the admin list refreshes while the panel is open. */
   const REFRESH_INTERVAL_MS = 5000;

@@ -1,7 +1,7 @@
 <!--
   Mention completion for a message field. Typing `@` lists members by the
   name the UI shows them as; picking one inserts their account name, which is
-  the only thing a mention notifies by (see `$lib/chat/mentions.ts`). Members
+  the only thing a mention notifies by (see `#lib/chat/mentions.ts`). Members
   who may ping groups also get `@here` and the roles, listed first.
 
   Attaches to any input or textarea the parent passes as `field`, and anchors
@@ -11,13 +11,13 @@
 -->
 <script lang="ts">
   import { tick } from 'svelte';
-  import { onlineUsers } from '$lib/stores/online';
-  import { offlineUsers } from '$lib/stores/users';
-  import { displayNames } from '$lib/stores/profiles';
-  import { session } from '$lib/stores/session';
-  import { roleDefinitions } from '$lib/stores/roleDefinitions';
-  import { can } from '$lib/stores/permissions';
-  import { PERMISSIONS } from '$lib/chat/permissions';
+  import { onlineUsers } from '#lib/stores/online.ts';
+  import { offlineUsers } from '#lib/stores/users.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { session } from '#lib/stores/session.ts';
+  import { roleDefinitions } from '#lib/stores/roleDefinitions.ts';
+  import { can } from '#lib/stores/permissions.ts';
+  import { PERMISSIONS } from '#lib/chat/permissions.ts';
   import {
     MAX_MENTION_SUGGESTIONS,
     groupCandidates,
@@ -25,9 +25,9 @@
     mentionCandidates,
     mentionQuery,
     type MentionCandidate
-  } from '$lib/chat/mentions';
-  import UserAvatar from '$lib/components/UserAvatar.svelte';
-  import { t } from '$lib/i18n';
+  } from '#lib/chat/mentions.ts';
+  import UserAvatar from '#lib/components/UserAvatar.svelte';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     field: HTMLInputElement | HTMLTextAreaElement | undefined;

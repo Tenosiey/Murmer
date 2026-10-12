@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { dialogs } from '$lib/stores/dialogs';
-  import { stats, statsConfig, statsSnapshot } from '$lib/stores/stats';
-  import { session } from '$lib/stores/session';
-  import UserStatsPanel from '$lib/components/UserStatsPanel.svelte';
-  import { t } from '$lib/i18n';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { stats, statsConfig, statsSnapshot } from '#lib/stores/stats.ts';
+  import { session } from '#lib/stores/session.ts';
+  import UserStatsPanel from '#lib/components/UserStatsPanel.svelte';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

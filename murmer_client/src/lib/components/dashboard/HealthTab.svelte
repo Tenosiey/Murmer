@@ -4,8 +4,8 @@
     formatUptime,
     formatMs,
     METRICS_POLL_INTERVAL_MS
-  } from '$lib/stores/serverMetrics';
-  import { t } from '$lib/i18n';
+  } from '#lib/stores/serverMetrics.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

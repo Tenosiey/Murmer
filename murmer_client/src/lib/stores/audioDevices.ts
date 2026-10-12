@@ -9,7 +9,7 @@
  * is the moment labels become available.
  */
 import { writable } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { captureStream } from './voiceCapture';
 
 export const audioInputs = writable<MediaDeviceInfo[]>([]);

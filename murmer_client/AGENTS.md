@@ -4,7 +4,7 @@ Read the repository root [`AGENTS.md`](../AGENTS.md) first — it carries the
 hard constraints, the invariants and the index of task guides. This file adds
 the client's commands and module map.
 
-**SvelteKit 2** (static adapter, SSR off) with **Svelte 5 runes**, inside a
+**SvelteKit 3** (static adapter, SSR off) with **Svelte 5 runes**, inside a
 **Tauri 2** shell. The *same* build is also the **web client**, served as a
 plain page by any static host — most simply by the Murmer server itself
 (`WEB_CLIENT_DIR`). There is no second bundle and no build flag. How that

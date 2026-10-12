@@ -1,16 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { chat, onServerError } from '$lib/stores/chat';
-  import { selectedServer } from '$lib/stores/servers';
-  import { customEmojis, customEmojiList } from '$lib/stores/customEmojis';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { httpBaseFromWs } from '$lib/server-url';
-  import { uploadImage } from '$lib/upload';
-  import { t } from '$lib/i18n';
+  import { chat, onServerError } from '#lib/stores/chat.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { customEmojis, customEmojiList } from '#lib/stores/customEmojis.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
+  import { uploadImage } from '#lib/upload.ts';
+  import { t } from '#lib/i18n/index.ts';
   import {
     EMOJI_NAME_RE,
     MAX_EMOJI_FILE_BYTES
-  } from '$lib/chat/constants';
+  } from '#lib/chat/constants.ts';
 
   interface Props {
     active: boolean;

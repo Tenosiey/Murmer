@@ -20,11 +20,11 @@
     phraseToSeed,
     seedToPhrase,
     suggestedFileName
-  } from '$lib/identity';
-  import { keyPairFromSeed, loadKeyPair, replaceKeyPair, seedOf } from '$lib/keypair';
-  import { session } from '$lib/stores/session';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { t } from '$lib/i18n';
+  } from '#lib/identity.ts';
+  import { keyPairFromSeed, loadKeyPair, replaceKeyPair, seedOf } from '#lib/keypair.ts';
+  import { session } from '#lib/stores/session.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   /** Shortest passphrase worth calling one. The file is the account. */
   const MIN_PASSPHRASE = 8;

@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { InviteData } from '$lib/invite';
+import type { InviteData } from '#lib/invite.ts';
 
 /**
  * An invite the user opened but has not accepted yet.

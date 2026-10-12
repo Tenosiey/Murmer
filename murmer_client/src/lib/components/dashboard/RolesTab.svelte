@@ -1,23 +1,23 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { chat, onServerError } from '$lib/stores/chat';
-  import { selectedServer } from '$lib/stores/servers';
-  import { customEmojiList } from '$lib/stores/customEmojis';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { httpBaseFromWs } from '$lib/server-url';
-  import { uploadImage } from '$lib/upload';
+  import { chat, onServerError } from '#lib/stores/chat.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { customEmojiList } from '#lib/stores/customEmojis.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
+  import { uploadImage } from '#lib/upload.ts';
   import {
     MAX_ROLE_ICON_BYTES
-  } from '$lib/chat/constants';
-  import { roleDefinitions } from '$lib/stores/roleDefinitions';
-  import { myTopPosition } from '$lib/stores/permissions';
+  } from '#lib/chat/constants.ts';
+  import { roleDefinitions } from '#lib/stores/roleDefinitions.ts';
+  import { myTopPosition } from '#lib/stores/permissions.ts';
   import {
     PERMISSIONS,
     PERMISSION_GROUPS,
     hasPermission
-  } from '$lib/chat/permissions';
-  import type { RoleDef } from '$lib/types';
-  import { t } from '$lib/i18n';
+  } from '#lib/chat/permissions.ts';
+  import type { RoleDef } from '#lib/types.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

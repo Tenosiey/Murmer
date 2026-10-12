@@ -1,4 +1,4 @@
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { get, writable } from 'svelte/store';
 import { loadBool } from './settings';
 import { isBlocked } from './blocks';

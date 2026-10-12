@@ -10,7 +10,7 @@
  * system, so a user typing in another window counts as idle here.
  */
 import { get, writable } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { session } from './session';
 import { statuses } from './status';
 import type { UserStatus } from '../types';

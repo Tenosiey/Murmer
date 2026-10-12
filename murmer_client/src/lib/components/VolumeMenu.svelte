@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { displayNames } from '$lib/stores/profiles';
+  import { displayNames } from '#lib/stores/profiles.ts';
 
-  import { userVolumes, setUserVolume, MAX_USER_VOLUME } from '$lib/stores/settings';
-  import { soundboardPrefs } from '$lib/stores/soundboardSettings';
-  import { t } from '$lib/i18n';
+  import { userVolumes, setUserVolume, MAX_USER_VOLUME } from '#lib/stores/settings.ts';
+  import { soundboardPrefs } from '#lib/stores/soundboardSettings.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     open: boolean;

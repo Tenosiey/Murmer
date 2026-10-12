@@ -10,7 +10,7 @@
  * jumping there reads it.
  */
 import { derived, get, writable } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { selectedServer } from './servers';
 import type { Message } from '../types';
 

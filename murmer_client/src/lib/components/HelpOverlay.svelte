@@ -1,9 +1,9 @@
 <script lang="ts">
 
   import { tick } from 'svelte';
-  import { HELP_COMMANDS } from '$lib/chat/constants';
-  import { hotkeys, HOTKEY_ACTIONS, formatCombo } from '$lib/stores/hotkeys';
-  import { t } from '$lib/i18n';
+  import { HELP_COMMANDS } from '#lib/chat/constants.ts';
+  import { hotkeys, HOTKEY_ACTIONS, formatCombo } from '#lib/stores/hotkeys.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   let boundActions = $derived(HOTKEY_ACTIONS.filter((action) => $hotkeys[action.id]));
 

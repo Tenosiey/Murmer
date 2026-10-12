@@ -6,11 +6,11 @@
     screenShareVolume,
     screenShareMuted,
     ttsEnabled
-  } from '$lib/stores/settings';
-  import { soundboardEnabled, soundboardVolume } from '$lib/stores/soundboardSettings';
-  import { audioOutputs, refreshAudioDevices } from '$lib/stores/audioDevices';
+  } from '#lib/stores/settings.ts';
+  import { soundboardEnabled, soundboardVolume } from '#lib/stores/soundboardSettings.ts';
+  import { audioOutputs, refreshAudioDevices } from '#lib/stores/audioDevices.ts';
   import { onMount } from 'svelte';
-  import { t } from '$lib/i18n';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

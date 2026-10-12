@@ -1,18 +1,18 @@
 <script lang="ts">
-  import IdentityBackup from '$lib/components/IdentityBackup.svelte';
-  import { loadKeyPair } from '$lib/keypair';
+  import IdentityBackup from '#lib/components/IdentityBackup.svelte';
+  import { loadKeyPair } from '#lib/keypair.ts';
   import { onMount } from 'svelte';
-  import { session } from '$lib/stores/session';
-  import { avatars } from '$lib/stores/avatars';
-  import { connection } from '$lib/stores/connection';
-  import { selectedServer } from '$lib/stores/servers';
-  import { httpBaseFromWs } from '$lib/server-url';
-  import { MAX_AVATAR_BYTES } from '$lib/chat/constants';
-  import { uploadImage } from '$lib/upload';
-  import UserAvatar from '$lib/components/UserAvatar.svelte';
-  import { AUTO_AWAY_OPTIONS, autoAwayMinutes } from '$lib/stores/autoAway';
-  import { sendTypingIndicators } from '$lib/stores/settings';
-  import { t } from '$lib/i18n';
+  import { session } from '#lib/stores/session.ts';
+  import { avatars } from '#lib/stores/avatars.ts';
+  import { connection } from '#lib/stores/connection.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
+  import { MAX_AVATAR_BYTES } from '#lib/chat/constants.ts';
+  import { uploadImage } from '#lib/upload.ts';
+  import UserAvatar from '#lib/components/UserAvatar.svelte';
+  import { AUTO_AWAY_OPTIONS, autoAwayMinutes } from '#lib/stores/autoAway.ts';
+  import { sendTypingIndicators } from '#lib/stores/settings.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

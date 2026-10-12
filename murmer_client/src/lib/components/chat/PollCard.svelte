@@ -6,11 +6,11 @@
   counted.
 -->
 <script lang="ts">
-  import type { PollInfo } from '$lib/types';
-  import { chat } from '$lib/stores/chat';
-  import { session } from '$lib/stores/session';
-  import { displayNames } from '$lib/stores/profiles';
-  import { t } from '$lib/i18n';
+  import type { PollInfo } from '#lib/types.ts';
+  import { chat } from '#lib/stores/chat.ts';
+  import { session } from '#lib/stores/session.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     messageId: number;

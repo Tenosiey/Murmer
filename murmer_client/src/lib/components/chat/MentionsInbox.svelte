@@ -5,14 +5,14 @@
   `stores/mentionInbox.ts`, which also collects mentions arriving live.
 -->
 <script lang="ts">
-  import { chat } from '$lib/stores/chat';
-  import { mentionInbox } from '$lib/stores/mentionInbox';
-  import { channels } from '$lib/stores/channels';
-  import { displayNames } from '$lib/stores/profiles';
-  import { formatLocalDateTime } from '$lib/chat/helpers';
-  import { modalFocus } from '$lib/focus';
-  import UserAvatar from '$lib/components/UserAvatar.svelte';
-  import { t } from '$lib/i18n';
+  import { chat } from '#lib/stores/chat.ts';
+  import { mentionInbox } from '#lib/stores/mentionInbox.ts';
+  import { channels } from '#lib/stores/channels.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { formatLocalDateTime } from '#lib/chat/helpers.ts';
+  import { modalFocus } from '#lib/focus.ts';
+  import UserAvatar from '#lib/components/UserAvatar.svelte';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     open: boolean;

@@ -6,23 +6,23 @@
   checks the permission on every one of these frames.
 -->
 <script lang="ts">
-  import { can } from '$lib/stores/permissions';
-  import { channels } from '$lib/stores/channels';
-  import { voiceChannels } from '$lib/stores/voiceChannels';
-  import { categories } from '$lib/stores/categories';
-  import { voiceDefaults } from '$lib/stores/voiceDefaults';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { t } from '$lib/i18n';
-  import { PERMISSIONS } from '$lib/chat/permissions';
+  import { can } from '#lib/stores/permissions.ts';
+  import { channels } from '#lib/stores/channels.ts';
+  import { voiceChannels } from '#lib/stores/voiceChannels.ts';
+  import { categories } from '#lib/stores/categories.ts';
+  import { voiceDefaults } from '#lib/stores/voiceDefaults.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { t } from '#lib/i18n/index.ts';
+  import { PERMISSIONS } from '#lib/chat/permissions.ts';
   import {
     VOICE_QUALITY_PRESETS,
     DEFAULT_VOICE_PRESET,
     MAX_VOICE_USER_LIMIT
-  } from '$lib/chat/constants';
-  import { parseUserLimit } from '$lib/chat/helpers';
-  import type { CategoryInfo, ContextMenuItem } from '$lib/types';
-  import ContextMenu from '$lib/components/ContextMenu.svelte';
-  import ChannelPermissionsModal from '$lib/components/ChannelPermissionsModal.svelte';
+  } from '#lib/chat/constants.ts';
+  import { parseUserLimit } from '#lib/chat/helpers.ts';
+  import type { CategoryInfo, ContextMenuItem } from '#lib/types.ts';
+  import ContextMenu from '#lib/components/ContextMenu.svelte';
+  import ChannelPermissionsModal from '#lib/components/ChannelPermissionsModal.svelte';
 
   let menuOpen = $state(false);
   let menuX = $state(0);

@@ -10,11 +10,11 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { parseInviteLink } from '$lib/invite';
-  import { pendingInvite } from '$lib/stores/pendingInvite';
-  import { session } from '$lib/stores/session';
-  import MurmerLogo from '$lib/components/MurmerLogo.svelte';
-  import { t } from '$lib/i18n';
+  import { parseInviteLink } from '#lib/invite.ts';
+  import { pendingInvite } from '#lib/stores/pendingInvite.ts';
+  import { session } from '#lib/stores/session.ts';
+  import MurmerLogo from '#lib/components/MurmerLogo.svelte';
+  import { t } from '#lib/i18n/index.ts';
 
   let invalid = $state(false);
 

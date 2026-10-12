@@ -6,8 +6,8 @@
   Renders nothing when the role has no icon or the image fails to load.
 -->
 <script lang="ts">
-  import { selectedServer } from '$lib/stores/servers';
-  import { httpBaseFromWs } from '$lib/server-url';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
 
   interface Props {
     /** Role icon URL as stored on the server, e.g. `/files/badge.png`. */

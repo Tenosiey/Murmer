@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
-import { browser } from '$app/environment';
-import { t } from '$lib/i18n';
+import { browser } from '$app/env';
+import { t } from '#lib/i18n/index.ts';
 
 /**
  * Customizable app-wide hotkeys. A binding is a combo string like

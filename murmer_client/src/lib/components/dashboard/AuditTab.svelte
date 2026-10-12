@@ -1,14 +1,14 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { onServerError } from '$lib/stores/chat';
-  import { displayNames } from '$lib/stores/profiles';
-  import { auditLog } from '$lib/stores/auditLog';
-  import { t } from '$lib/i18n';
+  import { onServerError } from '#lib/stores/chat.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { auditLog } from '#lib/stores/auditLog.ts';
+  import { t } from '#lib/i18n/index.ts';
   import {
     auditActionLabel,
     auditTargetIsMember,
     AUDIT_ACTOR_ADMIN_TOKEN
-  } from '$lib/chat/audit';
+  } from '#lib/chat/audit.ts';
 
   interface Props {
     active: boolean;

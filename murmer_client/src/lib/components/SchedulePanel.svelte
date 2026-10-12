@@ -8,11 +8,11 @@
   what is still queued.
 -->
 <script lang="ts">
-  import { chat } from '$lib/stores/chat';
-  import { scheduled } from '$lib/stores/scheduled';
-  import { channels } from '$lib/stores/channels';
-  import { describeWhen, describeScheduleFailure } from '$lib/chat/schedule';
-  import { t } from '$lib/i18n';
+  import { chat } from '#lib/stores/chat.ts';
+  import { scheduled } from '#lib/stores/scheduled.ts';
+  import { channels } from '#lib/stores/channels.ts';
+  import { describeWhen, describeScheduleFailure } from '#lib/chat/schedule.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     open: boolean;

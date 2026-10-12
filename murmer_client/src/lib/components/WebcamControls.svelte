@@ -10,12 +10,12 @@
     cameraQuality,
     mirrorSelfView,
     toggleCamera
-  } from '$lib/stores/webcam';
-  import { videoInputs, refreshVideoDevices } from '$lib/stores/videoDevices';
-  import { CAMERA_QUALITIES, type CameraQuality } from '$lib/voice/camera';
-  import { session } from '$lib/stores/session';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { t } from '$lib/i18n';
+  } from '#lib/stores/webcam.ts';
+  import { videoInputs, refreshVideoDevices } from '#lib/stores/videoDevices.ts';
+  import { CAMERA_QUALITIES, type CameraQuality } from '#lib/voice/camera.ts';
+  import { session } from '#lib/stores/session.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     currentVoiceChannel?: number | null;

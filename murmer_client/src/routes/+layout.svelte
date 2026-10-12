@@ -16,11 +16,11 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { APP_VERSION } from '$lib/version';
-  import { theme } from '$lib/stores/theme';
-  import DialogHost from '$lib/components/DialogHost.svelte';
-  import { installSpoilerReveal } from '$lib/spoilers';
-  import { promptForUpdate } from '$lib/updater';
+  import { APP_VERSION } from '#lib/version.ts';
+  import { theme } from '#lib/stores/theme.ts';
+  import DialogHost from '#lib/components/DialogHost.svelte';
+  import { installSpoilerReveal } from '#lib/spoilers.ts';
+  import { promptForUpdate } from '#lib/updater.ts';
 
   // Fonts are bundled locally so startup never blocks on a network fetch
   // and the desktop client works fully offline.
