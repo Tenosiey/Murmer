@@ -159,6 +159,11 @@ those files. Copying `murmer.db` by hand is safe only from a stopped server:
 recent writes sit in `murmer.db-wal` until the server folds them in, which it
 does every five minutes and on a clean shutdown.
 
+Deleted messages and DMs are wiped from the database file, not just hidden.
+A database created before secure deletion shipped still holds what was
+deleted before the upgrade in its free pages; run `VACUUM` once, with the
+server stopped, to rewrite the file without them: `sqlite3 murmer.db VACUUM`.
+
 **Invites.** Hand out invite codes minted in Server Dashboard → **Invites**:
 they carry a lifetime and a use limit and can be revoked without changing
 `SERVER_PASSWORD`. Revoking stops future joins; someone who already joined is

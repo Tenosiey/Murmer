@@ -145,6 +145,11 @@ pub async fn init(db_path: &str) -> Result<Db, DbError> {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        // Zero freed content, so a deleted message or DM is gone from the file
+        // rather than left for `strings` to find in a copy or backup. `FAST`
+        // skips pages that would cost extra I/O, which is exactly the gap a
+        // leaked database falls through, so it is `ON`.
+        conn.pragma_update(None, "secure_delete", "ON")?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
 
         // Every query in the process shares this one connection, so its page
@@ -567,6 +572,14 @@ CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
     DELETE FROM messages_fts WHERE rowid = old.id;
 END;
 "#,
+        )?;
+        // The pragma above does not reach FTS5: without this a delete only
+        // appends a tombstone and the words stay in the index segments until
+        // some later merge. Persisted in the index, so this is a no-op after
+        // the first startup.
+        tx.execute(
+            "INSERT INTO messages_fts (messages_fts, rank) VALUES ('secure-delete', 1)",
+            [],
         )?;
 
         // Skipped on every normal startup. The anti-join it avoids scans every
