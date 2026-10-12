@@ -114,7 +114,7 @@ Genuinely missing:
    for the microphone (see step 1).
 3. No entitlements file, which the hardened runtime needs once notarization is
    on.
-4. `release.yml` is `runs-on: windows-latest`, single job.
+4. `release.yml` has no macOS entry in its build matrix.
 5. CI never compiles the shell for macOS, so a break would only surface at tag
    time, which is the worst possible moment.
 
@@ -199,8 +199,13 @@ rule. The default would be 10.13.
 
 ## Step 4 — `release.yml`: draft → matrix → publish
 
-The current single job becomes three. The middle one is a matrix; the outer
-two exist so that two build jobs never race to create the same release.
+**Done for Linux:** `release.yml` already has this draft → matrix →
+publish shape, with gh CLI in place of `github-script`. macOS adds the
+matrix entry and the steps marked macOS below; the sketch is kept for the
+reasoning.
+
+The middle job is a matrix; the outer two exist so that two build jobs never
+race to create the same release.
 
 ```yaml
 name: Release

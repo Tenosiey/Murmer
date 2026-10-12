@@ -1,0 +1,25 @@
+# Repackages the .deb from the GitHub release, so Arch runs exactly the
+# binary the release workflow built and signed instead of a second build.
+#
+# Not published to the AUR from here. To build it locally or update an AUR
+# package: set pkgver to the release, run `updpkgsums`, then `makepkg -si`.
+# Update it through pacman like any other package: the binary still thinks
+# it came from a .deb, so the in-app updater offers new releases but fails
+# to install them here (it runs dpkg). Arch users who want in-app updates
+# use the AppImage instead.
+pkgname=murmer-bin
+pkgver=2026.1011.0
+pkgrel=1
+pkgdesc='Self-hostable voice and text chat'
+arch=('x86_64')
+url='https://github.com/Tenosiey/Murmer'
+license=('MIT')
+depends=('gtk3' 'webkit2gtk-4.1' 'libayatana-appindicator' 'hicolor-icon-theme')
+provides=('murmer')
+conflicts=('murmer')
+source=("$url/releases/download/v$pkgver/Murmer_${pkgver}_amd64.deb")
+sha256sums=('SKIP')
+
+package() {
+  bsdtar -xf data.tar.gz -C "$pkgdir"
+}

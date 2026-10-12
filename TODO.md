@@ -135,8 +135,8 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Narrow-window and touch layout. The web client is a shipped target, and
       nine `max-width` media queries in the whole client is what it has to
       meet a phone with
-- [ ] Release builds for macOS and Linux, and a signed Windows installer.
-      `release.yml` builds Windows only and unsigned, and the people most
+- [ ] Release builds for macOS, and a signed Windows installer.
+      `release.yml` builds Windows unsigned, and the people most
       likely to want Murmer are the ones trained to stop at SmartScreen's
       warning. macOS is `plans/macos-client.md`
 - [ ] Rules screening — new members accept the server rules before they can

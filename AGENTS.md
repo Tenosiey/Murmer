@@ -207,6 +207,7 @@ murmer_server/      Axum WebSocket + HTTP server (Rust)
 agents/skills/      task guides, indexed above
 docs/               architecture and subsystem reference
 plans/              design notes for unbuilt work
+packaging/aur/      Arch PKGBUILD repackaging the release .deb (not published)
 docker-compose.yml  boots the server; the SQLite database lives on a volume
 ```
 
