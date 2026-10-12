@@ -146,6 +146,19 @@ new key can claim it:
 docker exec <server-container> murmer_server unbind-name <user_name>
 ```
 
+**Backups.** Take one while the server runs with SQLite's online backup,
+which gives a consistent snapshot even mid-write, then copy it out:
+
+```bash
+docker compose exec server sqlite3 /app/data/murmer.db ".backup /app/data/backup.db"
+docker compose cp server:/app/data/backup.db ./murmer-backup.db
+```
+
+Back up the `uploads` volume alongside it; the database only references
+those files. Copying `murmer.db` by hand is safe only from a stopped server:
+recent writes sit in `murmer.db-wal` until the server folds them in, which it
+does every five minutes and on a clean shutdown.
+
 **Invites.** Hand out invite codes minted in Server Dashboard → **Invites**:
 they carry a lifetime and a use limit and can be revoked without changing
 `SERVER_PASSWORD`. Revoking stops future joins; someone who already joined is

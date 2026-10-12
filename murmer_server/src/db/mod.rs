@@ -177,6 +177,39 @@ pub async fn init(db_path: &str) -> Result<Db, DbError> {
     Ok(conn)
 }
 
+/// Fold the write-ahead log back into the main database file and truncate it.
+///
+/// Until this runs, recent writes live only in `murmer.db-wal`, so a copy of
+/// `murmer.db` alone is empty or stale. SQLite's own auto-checkpoint waits for
+/// 1000 pages, which a small server may not write for days, and the process
+/// exits without closing the connection that would checkpoint on its own.
+pub async fn checkpoint(db: &Db) -> Result<(), DbError> {
+    db.call_db(|conn| {
+        // Returns (busy, wal pages, checkpointed pages); with one connection
+        // nothing can hold it busy, so the row carries nothing worth acting on.
+        conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))
+    })
+    .await
+}
+
+/// Checkpoint every few minutes, so a file copy taken while the server runs
+/// lags by at most that much rather than by everything since startup.
+pub fn spawn_checkpoint(db: Db) {
+    tokio::spawn(async move {
+        let mut ticker =
+            tokio::time::interval(std::time::Duration::from_secs(CHECKPOINT_INTERVAL_SECONDS));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            if let Err(e) = checkpoint(&db).await {
+                error!("WAL checkpoint failed: {e}");
+            }
+        }
+    });
+}
+
+const CHECKPOINT_INTERVAL_SECONDS: u64 = 300;
+
 /// Add `column` to `table` if it does not exist yet. SQLite has no
 /// `ADD COLUMN IF NOT EXISTS`, so the schema is inspected first.
 fn ensure_column(

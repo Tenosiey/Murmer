@@ -186,6 +186,8 @@ async fn main() -> Result<()> {
         murmer_server::sfu::deliver(Arc::clone(&state), outbox);
     }
     upload::spawn_upload_sweep(Arc::clone(&state));
+    db::spawn_checkpoint(state.db.clone());
+    let state_db = state.db.clone();
     if let Some(days) = config.message_retention_days {
         info!(
             days,
@@ -266,6 +268,13 @@ async fn main() -> Result<()> {
     .with_graceful_shutdown(shutdown_signal())
     .await
     .context("server task failed")?;
+
+    // Leave a self-contained murmer.db behind, so a stopped server can be
+    // backed up by copying that one file.
+    match db::checkpoint(&state_db).await {
+        Ok(()) => info!("database checkpointed"),
+        Err(e) => tracing::error!("final WAL checkpoint failed: {e}"),
+    }
 
     Ok(())
 }
