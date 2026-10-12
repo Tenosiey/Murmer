@@ -74,8 +74,8 @@ Add `localhost:3001` as a server in the app and you are in.
 The server reads these environment variables, and also a `.env` file:
 `docker compose` reads it from the repository root, `cargo run` from
 `murmer_server/` or any parent. Start from `.env.example`. Under Docker,
-`DATABASE_PATH`, `UPLOAD_DIR` and `WEB_CLIENT_DIR` are set in
-`docker-compose.yml` instead, since they name paths inside the container.
+`DATABASE_PATH` and `UPLOAD_DIR` are set in `docker-compose.yml` instead,
+since they name paths inside the container.
 
 `docker-compose.yml` is production-shaped: `SERVER_PASSWORD` is required, CORS
 is off and the port is published on loopback only, for a TLS reverse proxy.
@@ -165,17 +165,37 @@ member holding their own key. The full list is in
 ## Web client
 
 The same build runs in a browser. Everything works except OS-wide hotkeys,
-launch on login and the built-in updater. The simplest deployment is to let
-the Murmer server host it:
+launch on login and the built-in updater. It is off by default; the simplest
+deployment is to let the Murmer server host it. The server image already
+carries it, so under Docker one line in `.env` turns it on:
+
+```bash
+WEB_CLIENT_DIR=/app/web
+```
+
+Without Docker, build it and point the server at the output:
 
 ```bash
 cd murmer_client && bun install && bun run build      # writes build/
 WEB_CLIENT_DIR=/path/to/murmer_client/build murmer_server
 ```
 
-Served that way it shares an origin with `/ws`, so CORS stays off, and every
-page carries the desktop app's Content-Security-Policy. Any other static host
-works too, as long as it:
+Members then open the server's own address (`https://chat.example.com`) in a
+browser; the web client offers that server on first visit. Served that way it
+shares an origin with `/ws`, so CORS stays off, invite links copied from the
+hub open a working page instead of a blank one, and every page carries the
+desktop app's Content-Security-Policy. It still needs HTTPS in front (the
+TLS reverse proxy `docker-compose.yml` expects): browsers only allow the
+microphone and screen capture in a secure context.
+
+Turning it on is a trust decision for your members: the web client holds
+each member's identity key, and whoever serves its JavaScript can change it.
+A member who uses it trusts you with their key and their DMs, which the
+desktop app does not ask of them; members who would rather not can keep
+using the desktop app on the same server. The details are in
+[`docs/security.md`](docs/security.md#what-encryption-does-not-cover).
+
+Any other static host works too, as long as it:
 
 - serves **HTTPS** — browsers only allow microphone and screen capture in a
   secure context, and an HTTPS page can only reach `wss://` servers;

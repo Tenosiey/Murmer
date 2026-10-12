@@ -1,0 +1,14 @@
+# Prune the image build context (the repo root, so the image can carry the
+# web client as well as the server)
+**/target
+**/.git
+**/.github
+**/.idea
+**/.vscode
+**/node_modules
+**/.svelte-kit
+murmer_client/build
+murmer_client/src-tauri
+**/.env
+docker-compose.override.yml
+docker-compose.yml

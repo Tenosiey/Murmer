@@ -94,5 +94,5 @@ jobs:
           fi
           image=ghcr.io/tenosiey/murmer-server
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker build -t "$image:$version" -t "$image:latest" murmer_server
+          docker build -f murmer_server/Dockerfile -t "$image:$version" -t "$image:latest" .
           docker push --all-tags "$image"
