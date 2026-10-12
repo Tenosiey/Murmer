@@ -102,6 +102,15 @@ copy. There is no moderator override: the server cannot read a DM, so no one
 but its author is in a position to judge it. A delete cannot reach a copy the
 recipient already saved elsewhere, and the client says so.
 
+A delete, of a DM or of any message, also leaves nothing on disk: the
+connection runs with `secure_delete = ON` and the search index with FTS5's
+`secure-delete`, so freed pages are zeroed instead of keeping the old bytes
+for anyone with a copy of the file. Without them the row vanished from every
+query but its text survived in `murmer.db` and its WAL, readable with
+`strings` from a backup or a leaked file. The zeroed page lands in the WAL
+and reaches the main file at the next checkpoint (every five minutes). A
+backup taken before the delete still holds the row; that is out of reach.
+
 That makes the server the key directory, which is trusted **on first contact
 only**: `stores/peerKeys.ts` pins each peer's key per server URL, flags a
 change, blocks sending until the user explicitly trusts the new key, and
