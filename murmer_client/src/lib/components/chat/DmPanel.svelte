@@ -7,17 +7,17 @@
   page's job, since it also closes an open thread.
 -->
 <script lang="ts">
-  import { chat } from '$lib/stores/chat';
-  import { dm } from '$lib/stores/dm';
-  import { session } from '$lib/stores/session';
-  import { displayNames } from '$lib/stores/profiles';
-  import { dmDraft } from '$lib/stores/drafts';
-  import { peerKeys } from '$lib/stores/peerKeys';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { t } from '$lib/i18n';
-  import { dmFingerprint } from '$lib/dm-crypto';
-  import { loadKeyPair } from '$lib/keypair';
-  import type { Message } from '$lib/types';
+  import { chat } from '#lib/stores/chat.ts';
+  import { dm } from '#lib/stores/dm.ts';
+  import { session } from '#lib/stores/session.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { dmDraft } from '#lib/stores/drafts.ts';
+  import { peerKeys } from '#lib/stores/peerKeys.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { t } from '#lib/i18n/index.ts';
+  import { dmFingerprint } from '#lib/dm-crypto.ts';
+  import { loadKeyPair } from '#lib/keypair.ts';
+  import type { Message } from '#lib/types.ts';
   import ConversationPanel from './ConversationPanel.svelte';
 
   const conversations = dm.conversations;

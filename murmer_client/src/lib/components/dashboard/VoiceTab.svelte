@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { onServerError } from '$lib/stores/chat';
+  import { onServerError } from '#lib/stores/chat.ts';
   import {
     VOICE_QUALITY_PRESETS,
     MAX_VOICE_BITRATE
-  } from '$lib/chat/constants';
-  import { voiceDefaults, setVoiceDefaults } from '$lib/stores/voiceDefaults';
-  import { t } from '$lib/i18n';
+  } from '#lib/chat/constants.ts';
+  import { voiceDefaults, setVoiceDefaults } from '#lib/stores/voiceDefaults.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

@@ -4,13 +4,13 @@
   an entry from an encrypted channel holds no text, so it reads as a pointer.
 -->
 <script lang="ts">
-  import { savedMessages, toggleSavedMessage, type SavedMessage } from '$lib/stores/savedMessages';
-  import { channels } from '$lib/stores/channels';
-  import { displayNames } from '$lib/stores/profiles';
-  import { formatLocalDateTime } from '$lib/chat/helpers';
-  import { modalFocus } from '$lib/focus';
-  import UserAvatar from '$lib/components/UserAvatar.svelte';
-  import { t } from '$lib/i18n';
+  import { savedMessages, toggleSavedMessage, type SavedMessage } from '#lib/stores/savedMessages.ts';
+  import { channels } from '#lib/stores/channels.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { formatLocalDateTime } from '#lib/chat/helpers.ts';
+  import { modalFocus } from '#lib/focus.ts';
+  import UserAvatar from '#lib/components/UserAvatar.svelte';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     open: boolean;

@@ -1,5 +1,5 @@
-import type { UserStats } from '$lib/stores/stats';
-import { t } from '$lib/i18n';
+import type { UserStats } from '#lib/stores/stats.ts';
+import { t } from '#lib/i18n/index.ts';
 
 /**
  * Achievement definitions derived from lifetime stats. Everything here is

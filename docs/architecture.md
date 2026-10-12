@@ -10,7 +10,7 @@ each.
 ```
 murmer_client/                          murmer_server/
 ┌──────────────────────────┐            ┌───────────────────────────┐
-│ SvelteKit 2 (static,     │  /ws       │ Axum 0.8 (Rust 2024)      │
+│ SvelteKit 3 (static,     │  /ws       │ Axum 0.8 (Rust 2024)      │
 │ SSR off) + Svelte 5 runes│◄──────────►│ WebSocket + HTTP          │
 │                          │  JSON      │                           │
 │ ┌──────────┐ ┌─────────┐ │  frames    │ ┌───────────────────────┐ │

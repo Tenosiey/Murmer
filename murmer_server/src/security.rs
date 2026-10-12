@@ -283,6 +283,13 @@ async fn check_window(
 /// `MAX_AUTH_ATTEMPTS_PER_MINUTE` authentication attempts per IP address within
 /// a 60-second window. This helps prevent brute force attacks on user accounts.
 ///
+/// Every attempt takes a slot up front and a successful login hands it back
+/// with [`refund_auth_attempt`], so only failures stay counted. Counting
+/// successes too locked out the sixth member reconnecting from one address
+/// (a household, or everyone behind a misconfigured proxy) after a restart.
+/// Reserving first rather than recording failures afterwards keeps the limit
+/// exact against many sockets guessing at once.
+///
 /// # Arguments
 /// * `rate_limiter` - The shared rate limiter state
 /// * `ip` - The IP address to check (should be the real client IP)
@@ -303,6 +310,13 @@ pub async fn check_auth_rate_limit(rate_limiter: &RateLimiter, ip: &str) -> bool
         warn!("Rate limit exceeded for auth attempts from IP: {}", ip);
     }
     allowed
+}
+
+/// Hand back the slot a successful login took in [`check_auth_rate_limit`].
+pub async fn refund_auth_attempt(rate_limiter: &RateLimiter, ip: &str) {
+    if let Some(timestamps) = rate_limiter.auth_attempts.lock().await.entries.get_mut(ip) {
+        timestamps.pop_back();
+    }
 }
 
 /// Check if an IP address is rate limited for file uploads.

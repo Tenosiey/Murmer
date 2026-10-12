@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { APP_VERSION } from '$lib/version';
-  import MurmerLogo from '$lib/components/MurmerLogo.svelte';
-  import { isTauri } from '$lib/platform';
-  import { findUpdate, offerUpdate } from '$lib/updater';
-  import { t } from '$lib/i18n';
+  import { APP_VERSION } from '#lib/version.ts';
+  import MurmerLogo from '#lib/components/MurmerLogo.svelte';
+  import { isTauri } from '#lib/platform.ts';
+  import { findUpdate, offerUpdate } from '#lib/updater.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

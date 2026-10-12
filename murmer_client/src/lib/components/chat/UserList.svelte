@@ -3,18 +3,18 @@
      Clicking a user opens their profile (which offers "Send message");
      right-clicking opens the user menu (profile, DM, roles, moderation). -->
 <script lang="ts">
-  import { onlineUsers } from '$lib/stores/online';
-  import { offlineUsers } from '$lib/stores/users';
-  import { roles } from '$lib/stores/roles';
-  import { displayNames, statusTexts } from '$lib/stores/profiles';
-  import { dm } from '$lib/stores/dm';
-  import { rightSidebarWidth } from '$lib/stores/layout';
-  import { STATUS_LABELS } from '$lib/chat/constants';
-  import { ensureStatus } from '$lib/chat/helpers';
-  import UserAvatar from '$lib/components/UserAvatar.svelte';
-  import RoleIcon from '$lib/components/RoleIcon.svelte';
-  import type { UserStatus } from '$lib/types';
-  import { t } from '$lib/i18n';
+  import { onlineUsers } from '#lib/stores/online.ts';
+  import { offlineUsers } from '#lib/stores/users.ts';
+  import { roles } from '#lib/stores/roles.ts';
+  import { displayNames, statusTexts } from '#lib/stores/profiles.ts';
+  import { dm } from '#lib/stores/dm.ts';
+  import { rightSidebarWidth } from '#lib/stores/layout.ts';
+  import { STATUS_LABELS } from '#lib/chat/constants.ts';
+  import { ensureStatus } from '#lib/chat/helpers.ts';
+  import UserAvatar from '#lib/components/UserAvatar.svelte';
+  import RoleIcon from '#lib/components/RoleIcon.svelte';
+  import type { UserStatus } from '#lib/types.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     statusMap: Record<string, UserStatus>;

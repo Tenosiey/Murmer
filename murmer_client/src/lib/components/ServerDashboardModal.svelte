@@ -18,7 +18,7 @@
   `.modal-body :global(...)`.
 -->
 <script lang="ts">
-  import { PERMISSIONS, hasPermission } from '$lib/chat/permissions';
+  import { PERMISSIONS, hasPermission } from '#lib/chat/permissions.ts';
   import OverviewTab from './dashboard/OverviewTab.svelte';
   import HealthTab from './dashboard/HealthTab.svelte';
   import EmojisTab from './dashboard/EmojisTab.svelte';
@@ -32,8 +32,8 @@
   import ScreenShareTab from './dashboard/ScreenShareTab.svelte';
   import RolesTab from './dashboard/RolesTab.svelte';
   import DangerTab from './dashboard/DangerTab.svelte';
-  import { modalFocus } from '$lib/focus';
-  import { t } from '$lib/i18n';
+  import { modalFocus } from '#lib/focus.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     open: boolean;

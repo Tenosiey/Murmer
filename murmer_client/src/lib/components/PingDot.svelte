@@ -3,7 +3,7 @@
   Uses Material 3 semantic colors for status indication.
 -->
 <script lang="ts">
-  import { t } from '$lib/i18n';
+  import { t } from '#lib/i18n/index.ts';
   interface Props {
     ping?: number;
     size?: 'sm' | 'md' | 'lg';

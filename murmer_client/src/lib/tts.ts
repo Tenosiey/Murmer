@@ -7,13 +7,13 @@
  * the listener's answer, and a muted channel stays silent either way.
  */
 import { get } from 'svelte/store';
-import { chat } from '$lib/stores/chat';
-import { channelNotifications } from '$lib/stores/channelNotifications';
-import { isBlocked } from '$lib/stores/blocks';
-import { displayNames } from '$lib/stores/profiles';
-import { ttsEnabled } from '$lib/stores/settings';
-import { hideSpoilers } from '$lib/spoilers';
-import type { Message } from '$lib/types';
+import { chat } from '#lib/stores/chat.ts';
+import { channelNotifications } from '#lib/stores/channelNotifications.ts';
+import { isBlocked } from '#lib/stores/blocks.ts';
+import { displayNames } from '#lib/stores/profiles.ts';
+import { ttsEnabled } from '#lib/stores/settings.ts';
+import { hideSpoilers } from '#lib/spoilers.ts';
+import type { Message } from '#lib/types.ts';
 
 /** What to say for a message: who, then what, with spoilers kept hidden. */
 export function ttsUtterance(name: string, text: string): string {

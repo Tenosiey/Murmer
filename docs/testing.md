@@ -62,13 +62,14 @@ what the stores need from the framework:
 - `test/setup.ts` — a minimal in-memory `Storage`, cleared before every test
   so persisted state cannot leak between them. A real DOM implementation
   would buy nothing but install time.
-- `test/stubs/app-environment.ts` — the `$app/environment` stand-in.
+- `test/stubs/app-env.ts` — the `$app/env` stand-in.
   `browser` is `true`, because the app only ever runs in a browser (static
   adapter, SSR off) and stores guard `localStorage` access with it; `false`
   here would silently skip every persistence path under test.
 
-Only two aliases are configured, `$lib` and `$app/environment` — that is
-everything the app modules ask of the framework. `vitest.config.ts` is
+Only two aliases are configured, `$app/env` and `$app/paths` — that is
+everything the app modules ask of the framework; `#lib` is a package.json
+subpath import that resolves without one. `vitest.config.ts` is
 deliberately *not* an extension of `vite.config.ts`: the SvelteKit plugin
 wants a synced `.svelte-kit/` and a dev server, neither of which the store
 tests need.

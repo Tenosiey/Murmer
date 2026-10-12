@@ -6,22 +6,22 @@
 <script lang="ts">
 
   import { goto } from '$app/navigation';
-  import { servers, selectedServer, type ServerEntry } from '$lib/stores/servers';
-  import { session } from '$lib/stores/session';
+  import { servers, selectedServer, type ServerEntry } from '#lib/stores/servers.ts';
+  import { session } from '#lib/stores/session.ts';
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import SettingsModal from '$lib/components/SettingsModal.svelte';
-  import { normalizeServerUrl } from '$lib/utils';
-  import { serverStatus } from '$lib/stores/serverStatus';
-  import { serverIdentityCache } from '$lib/stores/serverIdentity';
-  import { httpBaseFromWs } from '$lib/server-url';
-  import { connectionError } from '$lib/stores/connection';
-  import StatusDot from '$lib/components/StatusDot.svelte';
-  import { createInviteLink, looksLikeInviteLink, parseInviteLink } from '$lib/invite';
-  import { pendingInvite } from '$lib/stores/pendingInvite';
-  import { isWebClient } from '$lib/platform';
-  import { pendingMessageLink } from '$lib/message-link';
-  import { t } from '$lib/i18n';
+  import SettingsModal from '#lib/components/SettingsModal.svelte';
+  import { normalizeServerUrl } from '#lib/utils.ts';
+  import { serverStatus } from '#lib/stores/serverStatus.ts';
+  import { serverIdentityCache } from '#lib/stores/serverIdentity.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
+  import { connectionError } from '#lib/stores/connection.ts';
+  import StatusDot from '#lib/components/StatusDot.svelte';
+  import { createInviteLink, looksLikeInviteLink, parseInviteLink } from '#lib/invite.ts';
+  import { pendingInvite } from '#lib/stores/pendingInvite.ts';
+  import { isWebClient } from '#lib/platform.ts';
+  import { pendingMessageLink } from '#lib/message-link.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   onMount(() => {
     if (!get(session).user) {
@@ -41,6 +41,12 @@
       error = t('servers.unknownMessageLink');
     }
     serverStatus.start();
+    // A web client is usually served by the Murmer server it belongs to
+    // (WEB_CLIENT_DIR), so a first visit offers that server instead of an
+    // empty field. Only a suggestion: nothing is saved until the user adds it.
+    if (isWebClient && get(servers).length === 0 && !get(pendingInvite)) {
+      newServer = location.origin;
+    }
     // Surface the reason we were sent back here (wrong password, ban, ...).
     const carried = get(connectionError);
     if (carried) {

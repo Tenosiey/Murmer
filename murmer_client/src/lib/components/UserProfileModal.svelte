@@ -15,29 +15,29 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { displayNames } from '$lib/stores/profiles';
-  import { onServerError } from '$lib/stores/chat';
-  import { session } from '$lib/stores/session';
-  import { avatars } from '$lib/stores/avatars';
-  import { profiles, statusTexts } from '$lib/stores/profiles';
-  import { roleDefinitions } from '$lib/stores/roleDefinitions';
-  import { userRoleIds } from '$lib/stores/roles';
-  import { selectedServer } from '$lib/stores/servers';
-  import { blockedUsers, confirmBlock } from '$lib/stores/blocks';
-  import { httpBaseFromWs } from '$lib/server-url';
-  import { uploadImage } from '$lib/upload';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { onServerError } from '#lib/stores/chat.ts';
+  import { session } from '#lib/stores/session.ts';
+  import { avatars } from '#lib/stores/avatars.ts';
+  import { profiles, statusTexts } from '#lib/stores/profiles.ts';
+  import { roleDefinitions } from '#lib/stores/roleDefinitions.ts';
+  import { userRoleIds } from '#lib/stores/roles.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { blockedUsers, confirmBlock } from '#lib/stores/blocks.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
+  import { uploadImage } from '#lib/upload.ts';
   import {
     MAX_ABOUT_LENGTH,
     MAX_AVATAR_BYTES,
     MAX_DISPLAY_NAME_LENGTH,
     MAX_NICKNAME_LENGTH,
     MAX_STATUS_TEXT_LENGTH
-  } from '$lib/chat/constants';
-  import UserAvatar from '$lib/components/UserAvatar.svelte';
-  import RoleIcon from '$lib/components/RoleIcon.svelte';
-  import type { RoleDef } from '$lib/types';
-  import { modalFocus } from '$lib/focus';
-  import { t } from '$lib/i18n';
+  } from '#lib/chat/constants.ts';
+  import UserAvatar from '#lib/components/UserAvatar.svelte';
+  import RoleIcon from '#lib/components/RoleIcon.svelte';
+  import type { RoleDef } from '#lib/types.ts';
+  import { modalFocus } from '#lib/focus.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   /** Split around the name, which is rendered bold. */
   const nicknameHint = t('userProfileModal.nicknameHint').split('{name}');

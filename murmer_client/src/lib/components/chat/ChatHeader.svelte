@@ -3,24 +3,24 @@
   theme/notification toggles and the search/settings/leave/logout actions.
 -->
 <script lang="ts">
-  import PingDot from '$lib/components/PingDot.svelte';
-  import ConnectionBars from '$lib/components/ConnectionBars.svelte';
-  import ConnectionStatsPanel from '$lib/components/ConnectionStatsPanel.svelte';
-  import { ping } from '$lib/stores/ping';
-  import { session } from '$lib/stores/session';
-  import { displayNames } from '$lib/stores/profiles';
-  import { selectedServer } from '$lib/stores/servers';
-  import { serverIdentity } from '$lib/stores/serverIdentity';
-  import { httpBaseFromWs } from '$lib/server-url';
-  import { isUnencryptedRemote } from '$lib/utils';
-  import { theme } from '$lib/stores/theme';
-  import { statuses } from '$lib/stores/status';
-  import { STATUS_LABELS, USER_STATUS_VALUES } from '$lib/chat/constants';
-  import { channelNotifications, type ChannelNotificationPreference } from '$lib/stores/channelNotifications';
-  import { NOTIFICATION_OPTIONS } from '$lib/chat/constants';
-  import { ensureStatus } from '$lib/chat/helpers';
-  import type { UserStatus } from '$lib/types';
-  import { t } from '$lib/i18n';
+  import PingDot from '#lib/components/PingDot.svelte';
+  import ConnectionBars from '#lib/components/ConnectionBars.svelte';
+  import ConnectionStatsPanel from '#lib/components/ConnectionStatsPanel.svelte';
+  import { ping } from '#lib/stores/ping.ts';
+  import { session } from '#lib/stores/session.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { serverIdentity } from '#lib/stores/serverIdentity.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
+  import { isUnencryptedRemote } from '#lib/utils.ts';
+  import { theme } from '#lib/stores/theme.ts';
+  import { statuses } from '#lib/stores/status.ts';
+  import { STATUS_LABELS, USER_STATUS_VALUES } from '#lib/chat/constants.ts';
+  import { channelNotifications, type ChannelNotificationPreference } from '#lib/stores/channelNotifications.ts';
+  import { NOTIFICATION_OPTIONS } from '#lib/chat/constants.ts';
+  import { ensureStatus } from '#lib/chat/helpers.ts';
+  import type { UserStatus } from '#lib/types.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     channelId: number;

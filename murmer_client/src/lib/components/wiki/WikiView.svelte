@@ -5,20 +5,20 @@
   regardless.
 -->
 <script lang="ts">
-  import { wiki, type WikiPage } from '$lib/stores/wiki';
-  import { wikilinks, slugify, type WikiNavigation } from '$lib/wiki/links';
+  import { wiki, type WikiPage } from '#lib/stores/wiki.ts';
+  import { wikilinks, slugify, type WikiNavigation } from '#lib/wiki/links.ts';
   import WikiEditor from './WikiEditor.svelte';
   import WikiHistory from './WikiHistory.svelte';
-  import ContextMenu from '$lib/components/ContextMenu.svelte';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { renderMarkdown } from '$lib/markdown';
-  import { emojifyHtml } from '$lib/emoji';
-  import { customEmojis } from '$lib/stores/customEmojis';
-  import { selectedServer } from '$lib/stores/servers';
-  import { httpBaseFromWs } from '$lib/server-url';
-  import { formatLocalDateTime } from '$lib/chat/helpers';
-  import type { ContextMenuItem } from '$lib/types';
-  import { t } from '$lib/i18n';
+  import ContextMenu from '#lib/components/ContextMenu.svelte';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { renderMarkdown } from '#lib/markdown.ts';
+  import { emojifyHtml } from '#lib/emoji.ts';
+  import { customEmojis } from '#lib/stores/customEmojis.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
+  import { formatLocalDateTime } from '#lib/chat/helpers.ts';
+  import type { ContextMenuItem } from '#lib/types.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   
   

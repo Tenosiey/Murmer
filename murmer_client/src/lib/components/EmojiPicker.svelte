@@ -7,11 +7,11 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import { customEmojiList } from '$lib/stores/customEmojis';
-  import { selectedServer } from '$lib/stores/servers';
-  import { httpBaseFromWs } from '$lib/server-url';
-  import { unicodeFromShortcode } from '$lib/emoji';
-  import { t } from '$lib/i18n';
+  import { customEmojiList } from '#lib/stores/customEmojis.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
+  import { unicodeFromShortcode } from '#lib/emoji.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     open?: boolean;

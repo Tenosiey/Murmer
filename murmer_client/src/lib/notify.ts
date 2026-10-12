@@ -1,6 +1,6 @@
-import { browser } from '$app/environment';
-import { isTauri } from '$lib/platform';
-import { hideSpoilers } from '$lib/spoilers';
+import { browser } from '$app/env';
+import { isTauri } from '#lib/platform.ts';
+import { hideSpoilers } from '#lib/spoilers.ts';
 
 export async function notify(title: string, rawBody?: string) {
   if (!browser) return;

@@ -8,33 +8,35 @@
   message collapses to a one-line placeholder until "Show" is pressed.
 -->
 <script lang="ts">
-  import type { ForwardInfo, Message } from '$lib/types';
-  import { channels } from '$lib/stores/channels';
-  import { roles } from '$lib/stores/roles';
-  import { displayNames } from '$lib/stores/profiles';
-  import { session } from '$lib/stores/session';
-  import { renderMarkdown } from '$lib/markdown';
-  import { hideSpoilers } from '$lib/spoilers';
-  import { emojifyHtml, isEmojiOnlyText } from '$lib/emoji';
+  import type { AttachmentInfo, ForwardInfo, Message } from '#lib/types.ts';
+  import { channels } from '#lib/stores/channels.ts';
+  import { roles } from '#lib/stores/roles.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { session } from '#lib/stores/session.ts';
+  import { renderMarkdown } from '#lib/markdown.ts';
+  import { hideSpoilers } from '#lib/spoilers.ts';
+  import { emojifyHtml, isEmojiOnlyText } from '#lib/emoji.ts';
   import {
     ephemeralInfo,
     formatFileSize,
     formatFullTimestamp,
     formatShortTime,
     reactionEntries
-  } from '$lib/chat/helpers';
-  import { giphyGifUrl } from '$lib/link-preview';
-  import { customEmojis, shortcodeToEmoji } from '$lib/stores/customEmojis';
-  import { selectedServer } from '$lib/stores/servers';
-  import { blockedUsers } from '$lib/stores/blocks';
-  import { httpBaseFromWs, serverFileUrl } from '$lib/server-url';
-  import LinkPreview from '$lib/components/LinkPreview.svelte';
-  import UserAvatar from '$lib/components/UserAvatar.svelte';
-  import RoleIcon from '$lib/components/RoleIcon.svelte';
+  } from '#lib/chat/helpers.ts';
+  import { giphyGifUrl } from '#lib/link-preview.ts';
+  import { customEmojis, shortcodeToEmoji } from '#lib/stores/customEmojis.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { blockedUsers } from '#lib/stores/blocks.ts';
+  import { httpBaseFromWs, serverFileUrl } from '#lib/server-url.ts';
+  import LinkPreview from '#lib/components/LinkPreview.svelte';
+  import UserAvatar from '#lib/components/UserAvatar.svelte';
+  import RoleIcon from '#lib/components/RoleIcon.svelte';
   import AudioAttachment from './AudioAttachment.svelte';
+  import FileImage from './FileImage.svelte';
+  import { saveSealedFile } from '#lib/upload.ts';
   import PollCard from './PollCard.svelte';
-  import { isPlayableAudio } from '$lib/voice-message';
-  import { t } from '$lib/i18n';
+  import { isPlayableAudio } from '#lib/voice-message.ts';
+  import { t } from '#lib/i18n/index.ts';
 
 
   interface Props {
@@ -119,6 +121,14 @@
   let attachmentUrl = $derived(
     message.attachment ? serverFileUrl(message.attachment.url, httpBase) : null
   );
+
+  /* A sealed attachment is opened here and saved from memory; following the
+     link would download the ciphertext the server holds. */
+  function openSealedDownload(event: MouseEvent, url: string, attachment: AttachmentInfo) {
+    if (attachment.key === undefined) return;
+    event.preventDefault();
+    void saveSealedFile(url, attachment.name, attachment.key);
+  }
 
   let shortTime = $derived(formatShortTime(message));
   let fullTime = $derived(formatFullTimestamp(message));
@@ -263,21 +273,23 @@
       {/if}
       {#if imageUrl && message.spoiler}
         <span class="spoiler spoiler-media" role="button" tabindex="0" aria-label={t('messageItem.spoilerImageSelectTo')}>
-          <img src={imageUrl} alt="" loading="lazy" />
+          <FileImage url={imageUrl} fileKey={message.imageKey} />
         </span>
       {:else if imageUrl}
-        <img src={imageUrl} alt="" loading="lazy" />
+        <FileImage url={imageUrl} fileKey={message.imageKey} />
       {/if}
       {#if message.attachment && attachmentUrl && isPlayableAudio(message.attachment.name)}
-        <AudioAttachment url={attachmentUrl} name={message.attachment.name} />
+        <AudioAttachment url={attachmentUrl} name={message.attachment.name} fileKey={message.attachment.key} />
       {/if}
       {#if message.attachment && attachmentUrl}
+        {@const attachment = message.attachment}
         <a
           class="attachment-card"
           href={attachmentUrl}
-          download={message.attachment.name}
+          download={attachment.name}
           target="_blank"
           rel="noopener noreferrer"
+          onclick={(event) => openSealedDownload(event, attachmentUrl, attachment)}
         >
           <span class="attachment-icon" aria-hidden="true">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
@@ -767,7 +779,7 @@
     color: color-mix(in srgb, var(--color-primary) 65%, var(--color-on-surface) 35%);
   }
 
-  .content img {
+  .content :global(img.file-image) {
     max-width: min(420px, 100%);
     border-radius: var(--radius-md);
     margin-top: var(--space-2);

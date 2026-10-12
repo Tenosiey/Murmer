@@ -9,7 +9,7 @@ This is the procedure.
 ## Non-negotiables
 
 - **Runes only.** `$state`, `$props()`, `$derived`, `$effect`. `runes: true`
-  in `svelte.config.js` fails the build on `export let` or `$:`, and
+  in `vite.config.ts` fails the build on `export let` or `$:`, and
   `svelte/legacy` is never imported.
 - **Tokens only.** No hardcoded colors, font sizes or one-off spacing. Use
   `--color-*`, `--space-*` (4px scale, for *all* padding/margin/gap),
@@ -21,7 +21,7 @@ This is the procedure.
   `.surface-card` are defined in `src/routes/+layout.svelte`. Restyling a
   button locally is how a design system dies.
 - **Icons are inline stroke SVGs at 1.8 stroke width.** No emoji as icons.
-- **User-facing text through `t()`** from `$lib/i18n`, with the English in
+- **User-facing text through `t()`** from `#lib/i18n/index.ts`, with the English in
   `src/lib/i18n/en.ts`. Fill values with `{name}` placeholders rather than
   concatenating, and make anything that varies with a number a plural
   object, since word order and plural rules differ between languages.

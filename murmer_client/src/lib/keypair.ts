@@ -1,5 +1,5 @@
 import nacl from 'tweetnacl';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 const STORAGE_KEY = 'murmer_keypair';
 

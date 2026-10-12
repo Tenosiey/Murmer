@@ -74,8 +74,8 @@ Add `localhost:3001` as a server in the app and you are in.
 The server reads these environment variables, and also a `.env` file:
 `docker compose` reads it from the repository root, `cargo run` from
 `murmer_server/` or any parent. Start from `.env.example`. Under Docker,
-`DATABASE_PATH`, `UPLOAD_DIR` and `WEB_CLIENT_DIR` are set in
-`docker-compose.yml` instead, since they name paths inside the container.
+`DATABASE_PATH` and `UPLOAD_DIR` are set in `docker-compose.yml` instead,
+since they name paths inside the container.
 
 `docker-compose.yml` is production-shaped: `SERVER_PASSWORD` is required, CORS
 is off and the port is published on loopback only, for a TLS reverse proxy.
@@ -93,12 +93,12 @@ it on a public server.
 | `CORS_ALLOW_ORIGINS` | No | Comma-separated allowed origins (omit in production) |
 | `WEB_CLIENT_DIR` | No | Directory with the built web client to serve at `/` (see [Web client](#web-client)) |
 | `MAX_MESSAGES_PER_MINUTE` | No | Per-user message rate limit (default: 30) |
-| `MAX_AUTH_ATTEMPTS_PER_MINUTE` | No | Per-IP auth rate limit (default: 5) |
+| `MAX_AUTH_ATTEMPTS_PER_MINUTE` | No | Failed logins one IP may make per minute before further logins from it are refused (default: 5); successful logins do not count |
 | `MAX_UPLOADS_PER_MINUTE` | No | Per-IP file upload rate limit (default: 20) |
 | `MAX_PREVIEWS_PER_MINUTE` | No | Per-IP limit on link previews the server fetches (default: 30); cached previews do not count |
 | `UPLOAD_QUOTA_USER_MB` | No | Megabytes of uploads one user may keep stored (default: 1024, `0` for no limit) |
 | `UPLOAD_QUOTA_TOTAL_MB` | No | Megabytes of uploads the whole server may keep stored (default: 20480, `0` for no limit). A file is deleted a few minutes after the last unencrypted message carrying it is |
-| `TRUSTED_PROXIES` | Behind a reverse proxy | Comma-separated addresses or CIDR ranges of your reverse proxies (e.g. `127.0.0.1` or `172.16.0.0/12` for Docker). Only requests from these may set the client IP through `X-Forwarded-For`; without it every user behind the proxy shares one per-IP rate limit, so a few failed logins lock everyone out |
+| `TRUSTED_PROXIES` | Behind a reverse proxy | Comma-separated addresses or CIDR ranges of your reverse proxies, as the server sees them. With the shipped `docker-compose.yml` and a proxy on the host, use `172.16.0.0/12`: the server sees the Docker bridge gateway, not `127.0.0.1`. Use `127.0.0.1` only when the server runs directly on the host (`cargo run`). Only requests from these may set the client IP through `X-Forwarded-For`; a wrong value is silently ignored and every user behind the proxy then shares one per-IP rate limit, so a few failed logins lock everyone out |
 | `MAX_FRAMES_PER_SECOND` | No | Sustained WebSocket frames one connection may send per second, with ten seconds' worth allowed in a burst (default: 20, `0` for no limit) |
 | `STUN_SERVERS` | No | Comma-separated `stun:`/`stuns:` URLs clients use to set up voice and screen share (defaults to `stun:stun.l.google.com:19302`; set it empty to contact no STUN server, which limits calls to peers on the same network) |
 | `MAX_VOICE_CHANNEL_USERS` | No | People allowed in one voice channel (default: 10, `0` for no limit). A channel's own user limit can only lower this |
@@ -146,6 +146,24 @@ new key can claim it:
 docker exec <server-container> murmer_server unbind-name <user_name>
 ```
 
+**Backups.** Take one while the server runs with SQLite's online backup,
+which gives a consistent snapshot even mid-write, then copy it out:
+
+```bash
+docker compose exec server sqlite3 /app/data/murmer.db ".backup /app/data/backup.db"
+docker compose cp server:/app/data/backup.db ./murmer-backup.db
+```
+
+Back up the `uploads` volume alongside it; the database only references
+those files. Copying `murmer.db` by hand is safe only from a stopped server:
+recent writes sit in `murmer.db-wal` until the server folds them in, which it
+does every five minutes and on a clean shutdown.
+
+Deleted messages and DMs are wiped from the database file, not just hidden.
+A database created before secure deletion shipped still holds what was
+deleted before the upgrade in its free pages; run `VACUUM` once, with the
+server stopped, to rewrite the file without them: `sqlite3 murmer.db VACUUM`.
+
 **Invites.** Hand out invite codes minted in Server Dashboard → **Invites**:
 they carry a lifetime and a use limit and can be revoked without changing
 `SERVER_PASSWORD`. Revoking stops future joins; someone who already joined is
@@ -156,26 +174,46 @@ link is still a credential.
 
 **Encrypted channels** are a per-channel choice with real trade-offs: no
 server-side search, no bot posting, no forwarding, polls, link previews or
-moderation filters, and uploaded file bytes stay unencrypted. They protect
-against other members and a leaked database, **not against whoever runs the
-server**: the operator decides who is on a channel's roster and can add a
-member holding their own key. The full list is in
+moderation filters, and the server still sees each file's size and type.
+They protect against other members and a leaked database, **not against
+whoever runs the server**: the operator decides who is on a channel's roster
+and can add a member holding their own key. The full list is in
 [`docs/security.md`](docs/security.md#what-encryption-does-not-cover).
 
 ## Web client
 
 The same build runs in a browser. Everything works except OS-wide hotkeys,
-launch on login and the built-in updater. The simplest deployment is to let
-the Murmer server host it:
+launch on login and the built-in updater. It is off by default; the simplest
+deployment is to let the Murmer server host it. The server image already
+carries it, so under Docker one line in `.env` turns it on:
+
+```bash
+WEB_CLIENT_DIR=/app/web
+```
+
+Without Docker, build it and point the server at the output:
 
 ```bash
 cd murmer_client && bun install && bun run build      # writes build/
 WEB_CLIENT_DIR=/path/to/murmer_client/build murmer_server
 ```
 
-Served that way it shares an origin with `/ws`, so CORS stays off, and every
-page carries the desktop app's Content-Security-Policy. Any other static host
-works too, as long as it:
+Members then open the server's own address (`https://chat.example.com`) in a
+browser; the web client offers that server on first visit. Served that way it
+shares an origin with `/ws`, so CORS stays off, invite links copied from the
+hub open a working page instead of a blank one, and every page carries the
+desktop app's Content-Security-Policy. It still needs HTTPS in front (the
+TLS reverse proxy `docker-compose.yml` expects): browsers only allow the
+microphone and screen capture in a secure context.
+
+Turning it on is a trust decision for your members: the web client holds
+each member's identity key, and whoever serves its JavaScript can change it.
+A member who uses it trusts you with their key and their DMs, which the
+desktop app does not ask of them; members who would rather not can keep
+using the desktop app on the same server. The details are in
+[`docs/security.md`](docs/security.md#what-encryption-does-not-cover).
+
+Any other static host works too, as long as it:
 
 - serves **HTTPS** — browsers only allow microphone and screen capture in a
   secure context, and an HTTPS page can only reach `wss://` servers;
@@ -183,6 +221,20 @@ works too, as long as it:
   `try_files $uri $uri.html /200.html;`), so deep links like `/invite#…`
   resolve;
 - is named in `CORS_ALLOW_ORIGINS` on every Murmer server it talks to.
+
+## Installing the desktop app
+
+Every [release](https://github.com/Tenosiey/Murmer/releases/latest) carries
+a Windows installer and, for Linux, a `.deb` and an AppImage:
+
+- **Windows**: run `Murmer_<version>_x64-setup.exe`.
+- **Debian and Ubuntu**: `sudo apt install ./Murmer_<version>_amd64.deb`.
+- **Arch and other distributions**: make `Murmer_<version>_amd64.AppImage`
+  executable and run it, or build the package in
+  [`packaging/aur/`](packaging/aur/PKGBUILD) with `makepkg -si`.
+
+The installer, the `.deb` and the AppImage update themselves in the app; the
+Arch package updates through pacman.
 
 ## Building the desktop app
 

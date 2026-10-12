@@ -1,14 +1,14 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { onServerError } from '$lib/stores/chat';
+  import { onServerError } from '#lib/stores/chat.ts';
   import {
     MIN_UPLOAD_MAX_BYTES,
     MAX_UPLOAD_MAX_BYTES,
     UPLOAD_CATEGORIES
-  } from '$lib/chat/constants';
-  import { storageUsage, formatBytes } from '$lib/stores/storageUsage';
-  import { uploadConfig, setUploadConfig } from '$lib/stores/uploadConfig';
-  import { t } from '$lib/i18n';
+  } from '#lib/chat/constants.ts';
+  import { storageUsage, formatBytes } from '#lib/stores/storageUsage.ts';
+  import { uploadConfig, setUploadConfig } from '#lib/stores/uploadConfig.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

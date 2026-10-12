@@ -4,7 +4,9 @@
 # it (or pass `-f docker-compose.yml`) on a public server.
 services:
   server:
-    build: ./murmer_server
+    build:
+      context: .
+      dockerfile: murmer_server/Dockerfile
     # Or skip the build and run a released server; README.md has the details.
     # image: ghcr.io/tenosiey/murmer-server:latest
     restart: unless-stopped
@@ -19,9 +21,8 @@ services:
       UPLOAD_DIR: /app/uploads
       # Required, so a server is never open to anyone who finds the port.
       SERVER_PASSWORD: ${SERVER_PASSWORD:?set SERVER_PASSWORD in .env}
-      # Uncomment with the web client mount below to serve it at /. Build it
-      # first with `bun run build` in murmer_client/.
-      # WEB_CLIENT_DIR: /app/web
+      # The image carries the web client; set WEB_CLIENT_DIR=/app/web in .env
+      # to serve it at /.
     # Loopback only: put a TLS reverse proxy (see README.md) in front. The
     # server speaks plain HTTP/WS, which must not face the internet.
     ports:
@@ -31,7 +32,6 @@ services:
     volumes:
       - db_data:/app/data
       - uploads:/app/uploads
-      # - ./murmer_client/build:/app/web:ro
 volumes:
   db_data:
   uploads:

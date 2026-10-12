@@ -5,13 +5,13 @@
   disappears entirely the moment the last camera goes off.
 -->
 <script lang="ts">
-  import { displayNames } from '$lib/stores/profiles';
-  import { speakingUsers } from '$lib/stores/voiceSpeaking';
-  import { voiceMuteStates } from '$lib/stores/voiceMute';
-  import { microphoneMuted } from '$lib/stores/settings';
-  import { mirrorSelfView } from '$lib/stores/webcam';
-  import type { WebcamTile } from '$lib/types';
-  import { t } from '$lib/i18n';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { speakingUsers } from '#lib/stores/voiceSpeaking.ts';
+  import { voiceMuteStates } from '#lib/stores/voiceMute.ts';
+  import { microphoneMuted } from '#lib/stores/settings.ts';
+  import { mirrorSelfView } from '#lib/stores/webcam.ts';
+  import type { WebcamTile } from '#lib/types.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     /** The cameras to show, our own preview first. */

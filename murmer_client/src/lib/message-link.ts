@@ -11,8 +11,8 @@
  * be able to make that happen on its own.
  */
 import { writable } from 'svelte/store';
-import { normalizeServerUrl } from '$lib/utils';
-import { httpBaseFromWs } from '$lib/server-url';
+import { normalizeServerUrl } from '#lib/utils.ts';
+import { httpBaseFromWs } from '#lib/server-url.ts';
 
 export interface MessageLink {
   /** The server's WebSocket URL, normalized like the server list's. */

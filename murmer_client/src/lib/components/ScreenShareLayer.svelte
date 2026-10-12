@@ -8,11 +8,11 @@
   another; the small bar only appears once there is more than one to arrange.
 -->
 <script lang="ts">
-  import { browser } from '$app/environment';
+  import { browser } from '$app/env';
   import ScreenShareWindow from './ScreenShareWindow.svelte';
-  import { screenShareWindows } from '$lib/stores/screenShareWindows';
-  import type { WatchedScreenShare } from '$lib/types';
-  import { t } from '$lib/i18n';
+  import { screenShareWindows } from '#lib/stores/screenShareWindows.ts';
+  import type { WatchedScreenShare } from '#lib/types.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     /** The shares to show, in the order they were opened. */

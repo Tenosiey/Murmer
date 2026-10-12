@@ -9,7 +9,7 @@
   the new key, e.g. after comparing fingerprints out of band.
 */
 import { get, writable } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 const STORAGE_KEY = 'murmer_peer_keys';
 

@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store';
-import { assets } from '$app/paths';
-import { isTauri } from '$lib/platform';
+import { asset } from '$app/paths';
+import { isTauri } from '#lib/platform.ts';
 
 export type Theme = 'dark' | 'light';
 
@@ -16,9 +16,9 @@ const ACCENT_KEY = 'murmer-accent';
 function applyFavicon(value: Theme) {
   if (typeof document === 'undefined') return;
   const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-  // `assets` mirrors the `%sveltekit.assets%` prefix app.html uses for the
-  // initial href, so both agree if a base path is ever configured.
-  if (link) link.href = `${assets}/logo/murmer-${value}.svg`;
+  // `asset` applies the same `%sveltekit.assets%` prefix app.html uses for
+  // the initial href, so both agree if a base path is ever configured.
+  if (link) link.href = asset(`logo/murmer-${value}.svg`);
 }
 
 /**

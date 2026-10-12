@@ -67,7 +67,7 @@ Two rules keep the trees from rotting:
 - **Never bump versions by hand** — only via `bun run bump`, see
   [`agents/skills/releasing.md`](agents/skills/releasing.md).
 - **Svelte components use the runes syntax** (`$state`, `$props`, `$derived`,
-  `$effect`) — `runes: true` in `svelte.config.js` fails the build on legacy
+  `$effect`) — `runes: true` in `vite.config.ts` fails the build on legacy
   syntax (`export let`, `$:`). Shared state still lives in `svelte/store`
   modules (`src/lib/stores/`), consumed via `$store` auto-subscription; never
   import from `svelte/legacy`.
@@ -207,6 +207,7 @@ murmer_server/      Axum WebSocket + HTTP server (Rust)
 agents/skills/      task guides, indexed above
 docs/               architecture and subsystem reference
 plans/              design notes for unbuilt work
+packaging/aur/      Arch PKGBUILD repackaging the release .deb (not published)
 docker-compose.yml  boots the server; the SQLite database lives on a volume
 ```
 

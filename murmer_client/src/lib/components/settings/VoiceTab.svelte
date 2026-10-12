@@ -13,14 +13,14 @@
     autoGainControl,
     micGain,
     MAX_MIC_GAIN
-  } from '$lib/stores/settings';
-  import { audioInputs } from '$lib/stores/audioDevices';
-  import { PushToTalkManager } from '$lib/voice/ptt';
-  import { VAD_THRESHOLD_MIN, VAD_THRESHOLD_MAX } from '$lib/voice/vad';
-  import { suspendGlobalHotkeys, resumeGlobalHotkeys } from '$lib/stores/globalHotkeys';
-  import MicLevelMeter from '$lib/components/MicLevelMeter.svelte';
-  import MicTestPanel from '$lib/components/MicTestPanel.svelte';
-  import { t } from '$lib/i18n';
+  } from '#lib/stores/settings.ts';
+  import { audioInputs } from '#lib/stores/audioDevices.ts';
+  import { PushToTalkManager } from '#lib/voice/ptt.ts';
+  import { VAD_THRESHOLD_MIN, VAD_THRESHOLD_MAX } from '#lib/voice/vad.ts';
+  import { suspendGlobalHotkeys, resumeGlobalHotkeys } from '#lib/stores/globalHotkeys.ts';
+  import MicLevelMeter from '#lib/components/MicLevelMeter.svelte';
+  import MicTestPanel from '#lib/components/MicTestPanel.svelte';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

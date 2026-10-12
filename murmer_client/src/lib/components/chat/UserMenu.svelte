@@ -7,22 +7,22 @@
   every one of these frames.
 -->
 <script lang="ts">
-  import { chat } from '$lib/stores/chat';
-  import { session } from '$lib/stores/session';
-  import { userRoleIds } from '$lib/stores/roles';
-  import { roleDefinitions } from '$lib/stores/roleDefinitions';
-  import { can, myTopPosition, myPermissions } from '$lib/stores/permissions';
-  import { displayNames, profiles } from '$lib/stores/profiles';
-  import { blockedUsers, confirmBlock } from '$lib/stores/blocks';
-  import { onlineUsers } from '$lib/stores/online';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { t } from '$lib/i18n';
-  import { poke } from '$lib/stores/pokes';
-  import { PERMISSIONS, computeTopPosition } from '$lib/chat/permissions';
-  import { MAX_NICKNAME_LENGTH } from '$lib/chat/constants';
-  import type { ContextMenuItem } from '$lib/types';
-  import ContextMenu from '$lib/components/ContextMenu.svelte';
-  import UserStatsModal from '$lib/components/UserStatsModal.svelte';
+  import { chat } from '#lib/stores/chat.ts';
+  import { session } from '#lib/stores/session.ts';
+  import { userRoleIds } from '#lib/stores/roles.ts';
+  import { roleDefinitions } from '#lib/stores/roleDefinitions.ts';
+  import { can, myTopPosition, myPermissions } from '#lib/stores/permissions.ts';
+  import { displayNames, profiles } from '#lib/stores/profiles.ts';
+  import { blockedUsers, confirmBlock } from '#lib/stores/blocks.ts';
+  import { onlineUsers } from '#lib/stores/online.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { t } from '#lib/i18n/index.ts';
+  import { poke } from '#lib/stores/pokes.ts';
+  import { PERMISSIONS, computeTopPosition } from '#lib/chat/permissions.ts';
+  import { MAX_NICKNAME_LENGTH } from '#lib/chat/constants.ts';
+  import type { ContextMenuItem } from '#lib/types.ts';
+  import ContextMenu from '#lib/components/ContextMenu.svelte';
+  import UserStatsModal from '#lib/components/UserStatsModal.svelte';
 
   interface Props {
     onOpenProfile: (user: string) => void;

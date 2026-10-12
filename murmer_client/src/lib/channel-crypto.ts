@@ -26,8 +26,10 @@
     which limits that to first contact, the same bound DMs have.
   - There is no forward secrecy within an epoch: whoever holds an epoch's key
     can read every message sent under it, forever.
-  - Uploaded files are not covered. Their bytes live on the server; only the
-    attachment's name and URL travel inside the ciphertext.
+  - Uploaded files are sealed too, each under a fresh key of its own that
+    travels inside the message (`sealFile`). The server stores ciphertext
+    under a nameless key; it still learns the file's size and, from the
+    upload's extension, its category.
 */
 import nacl from 'tweetnacl';
 import { fromBase64, toBase64 } from './keypair';
@@ -70,6 +72,8 @@ export interface ChannelMessagePayload {
   spoiler?: boolean;
   /** Quoted snippet of the message being replied to. */
   replyText?: string;
+  /** Key of the sealed image file, see `sealFile`. */
+  imageKey?: string;
 }
 
 /** A fresh random channel key, base64 encoded. */
@@ -210,4 +214,37 @@ export function channelKeyFingerprint(channelKey: string): string {
     .map((b) => b.toString(16).padStart(2, '0').toUpperCase())
     .join('');
   return hex.replace(/(.{4})(?=.)/g, '$1 ');
+}
+
+/**
+ * Seal a file's bytes for upload under a fresh key of its own: the nonce, then
+ * the secretbox. A file key rather than the channel key, so the key that opens
+ * the file is exactly what the message carries, whatever epoch it was sent in.
+ */
+export function sealFile(bytes: Uint8Array): { data: Uint8Array<ArrayBuffer>; key: string } {
+  const key = nacl.randomBytes(nacl.secretbox.keyLength);
+  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+  const box = nacl.secretbox(bytes, nonce, key);
+  const data = new Uint8Array(nonce.length + box.length);
+  data.set(nonce);
+  data.set(box, nonce.length);
+  return { data, key: toBase64(key) };
+}
+
+/** Open a file sealed by `sealFile`. Null when it does not authenticate. */
+export function openFile(data: Uint8Array, key: string): Uint8Array<ArrayBuffer> | null {
+  let raw: Uint8Array;
+  try {
+    raw = fromBase64(key);
+  } catch {
+    return null;
+  }
+  const nonceLength = nacl.secretbox.nonceLength;
+  if (raw.length !== nacl.secretbox.keyLength || data.length < nonceLength) return null;
+  // tweetnacl allocates a plain ArrayBuffer; its types just do not say so.
+  return nacl.secretbox.open(
+    data.subarray(nonceLength),
+    data.subarray(0, nonceLength),
+    raw
+  ) as Uint8Array<ArrayBuffer> | null;
 }

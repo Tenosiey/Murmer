@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store';
-import type { Message, SearchResults } from '../types';
+import type { AttachmentInfo, Message, SearchResults } from '../types';
 import { session } from './session';
 import { notify } from '../notify';
 import { channelNotifications } from './channelNotifications';
@@ -188,6 +188,7 @@ function createChatStore() {
       const failed: Message = { ...msg };
       delete failed.text;
       delete failed.image;
+      delete failed.imageKey;
       delete failed.attachment;
       delete failed.spoiler;
       if (key) {
@@ -202,6 +203,7 @@ function createChatStore() {
     delete opened.decryptPending;
     if (typeof payload.text === 'string') opened.text = payload.text;
     if (typeof payload.image === 'string') opened.image = payload.image;
+    if (typeof payload.imageKey === 'string') opened.imageKey = payload.imageKey;
     if (payload.attachment) opened.attachment = payload.attachment;
     if (payload.spoiler === true) opened.spoiler = true;
     // The server cannot quote an encrypted message, so it sends the reply's id
@@ -916,16 +918,17 @@ function createChatStore() {
   }
 
   /**
-   * Send an uploaded image or file. The bytes live on the server either way;
-   * in an encrypted channel the reference to them travels sealed, so who
-   * shared what is not readable from the message store.
+   * Send an uploaded image or file. In an encrypted channel the bytes on the
+   * server are sealed (`uploadAttachment` with `seal`), and the reference and
+   * the key that opens them travel inside the sealed message.
    * @returns null on success, or an error message for the caller to surface
    */
   function sendUpload(
     user: string,
     content: {
       image?: string;
-      attachment?: { url: string; name: string; size: number };
+      imageKey?: string;
+      attachment?: AttachmentInfo;
       spoiler?: boolean;
     }
   ): string | null {

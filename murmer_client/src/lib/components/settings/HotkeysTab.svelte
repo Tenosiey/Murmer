@@ -7,10 +7,10 @@
     eventToCombo,
     formatCombo,
     type HotkeyActionId
-  } from '$lib/stores/hotkeys';
-  import { suspendGlobalHotkeys, resumeGlobalHotkeys } from '$lib/stores/globalHotkeys';
-  import { isTauri } from '$lib/platform';
-  import { t } from '$lib/i18n';
+  } from '#lib/stores/hotkeys.ts';
+  import { suspendGlobalHotkeys, resumeGlobalHotkeys } from '#lib/stores/globalHotkeys.ts';
+  import { isTauri } from '#lib/platform.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

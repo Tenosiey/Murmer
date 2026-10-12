@@ -13,7 +13,7 @@
  * that was switched off would still look live.
  */
 import { writable, get } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { chat } from './chat';
 import { connection } from './connection';
 import { voice } from './voice';

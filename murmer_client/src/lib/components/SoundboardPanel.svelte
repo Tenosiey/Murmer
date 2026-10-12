@@ -11,18 +11,18 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { chat } from '$lib/stores/chat';
-  import { selectedServer } from '$lib/stores/servers';
-  import { soundsByPopularity } from '$lib/stores/soundboard';
+  import { chat } from '#lib/stores/chat.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { soundsByPopularity } from '#lib/stores/soundboard.ts';
   import {
     soundboardEnabled,
     soundboardVolume,
     soundboardPrefs
-  } from '$lib/stores/soundboardSettings';
-  import { httpBaseFromWs } from '$lib/server-url';
-  import { uploadForm, uploadErrorMessage } from '$lib/upload';
-  import { describeServerError } from '$lib/errors';
-  import { dialogs } from '$lib/stores/dialogs';
+  } from '#lib/stores/soundboardSettings.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
+  import { uploadForm, uploadErrorMessage } from '#lib/upload.ts';
+  import { describeServerError } from '#lib/errors.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
   import {
     MAX_SOUND_FILE_BYTES,
     MAX_SOUND_NAME_LEN,
@@ -30,9 +30,9 @@
     SOUNDBOARD_COOLDOWN_MS,
     SOUND_ACCEPT,
     SOUND_EXTENSIONS
-  } from '$lib/chat/constants';
-  import type { Message, SoundboardSound } from '$lib/types';
-  import { t } from '$lib/i18n';
+  } from '#lib/chat/constants.ts';
+  import type { Message, SoundboardSound } from '#lib/types.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     /** The voice channel the user is in, or null when not connected. */

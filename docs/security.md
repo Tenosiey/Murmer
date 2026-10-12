@@ -102,6 +102,15 @@ copy. There is no moderator override: the server cannot read a DM, so no one
 but its author is in a position to judge it. A delete cannot reach a copy the
 recipient already saved elsewhere, and the client says so.
 
+A delete, of a DM or of any message, also leaves nothing on disk: the
+connection runs with `secure_delete = ON` and the search index with FTS5's
+`secure-delete`, so freed pages are zeroed instead of keeping the old bytes
+for anyone with a copy of the file. Without them the row vanished from every
+query but its text survived in `murmer.db` and its WAL, readable with
+`strings` from a backup or a leaked file. The zeroed page lands in the WAL
+and reaches the main file at the next checkpoint (every five minutes). A
+backup taken before the delete still holds the row; that is out of reach.
+
 That makes the server the key directory, which is trusted **on first contact
 only**: `stores/peerKeys.ts` pins each peer's key per server URL, flags a
 change, blocks sending until the user explicitly trusts the new key, and
@@ -173,12 +182,26 @@ All of this is deliberate, and `README.md` points operators here:
   would take members seeing, or approving, each new wrap — design work, not
   a fix.
 
+- **The operator of a web client.** A browser runs whatever JavaScript the
+  page's origin serves on each load, and that code holds the identity key
+  and does the decrypting. So a web client served by the server
+  (`WEB_CLIENT_DIR`) puts DMs and encrypted channels in the operator's
+  reach — a modified bundle can read the key once and send it home — and,
+  since the key is the account everywhere, every other server that member
+  uses too. The desktop app runs code from the signed release instead, so
+  it does not extend that trust. This is why the web client is off unless
+  the operator sets it, and why the image ships it root-owned: the server
+  process itself cannot rewrite it.
+
 - **Server-side search** — there is no text to index.
 - **Bots** — `POST /channels/:id/messages` refuses; a bot has no identity key
   to encrypt with.
-- **Uploaded file bytes** — only the attachment's name and URL travel sealed.
-  For the same reason, deleting a sealed message leaves its file on disk;
-  see [Quota and deletion](#quota-and-deletion).
+- **An uploaded file's size and type.** The client seals the bytes under a
+  fresh key that travels inside the message, and the server stores them
+  under a key without the filename, but it sees how large the file is and,
+  from the extension the upload category is picked by, what kind. It cannot
+  see which message carries which file, so deleting a sealed message leaves
+  its file on disk; see [Quota and deletion](#quota-and-deletion).
 - **Link previews** and content-derived stats.
 - **The profanity filter and the auto-moderation rules** — the server holds
   no text to mask or match. Doing either would mean handing the server the
@@ -357,6 +380,11 @@ reverse proxy the socket peer is the proxy, so `security::client_ip` reads
 Anyone can send that header; believing it from a client would hand it a
 fresh bucket per request. Left unset behind a proxy, every user shares one
 bucket and five failed logins lock the whole server out.
+
+Only failed logins stay in the authentication window. A presence reserves
+a slot before it is checked and hands it back once every rejection is
+behind it, so successes never count, yet a burst of parallel guesses on
+many sockets cannot all slip past the check before any is recorded.
 
 The limits (`MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
 `MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND` — documented in

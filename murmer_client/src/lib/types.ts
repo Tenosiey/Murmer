@@ -2,6 +2,8 @@ export interface AttachmentInfo {
   url: string;
   name: string;
   size: number;
+  /** Key of the sealed file, in an encrypted channel. See `sealFile`. */
+  key?: string;
 }
 
 export interface ReplyInfo {
@@ -41,6 +43,8 @@ export interface Message {
   user?: string;
   text?: string;
   attachment?: AttachmentInfo;
+  /** Key of the sealed image file, in an encrypted channel. */
+  imageKey?: string;
   /** The image is a spoiler, blurred until clicked. */
   spoiler?: boolean;
   time?: string;

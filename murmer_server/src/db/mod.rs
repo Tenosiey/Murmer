@@ -145,6 +145,11 @@ pub async fn init(db_path: &str) -> Result<Db, DbError> {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        // Zero freed content, so a deleted message or DM is gone from the file
+        // rather than left for `strings` to find in a copy or backup. `FAST`
+        // skips pages that would cost extra I/O, which is exactly the gap a
+        // leaked database falls through, so it is `ON`.
+        conn.pragma_update(None, "secure_delete", "ON")?;
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
 
         // Every query in the process shares this one connection, so its page
@@ -176,6 +181,39 @@ pub async fn init(db_path: &str) -> Result<Db, DbError> {
 
     Ok(conn)
 }
+
+/// Fold the write-ahead log back into the main database file and truncate it.
+///
+/// Until this runs, recent writes live only in `murmer.db-wal`, so a copy of
+/// `murmer.db` alone is empty or stale. SQLite's own auto-checkpoint waits for
+/// 1000 pages, which a small server may not write for days, and the process
+/// exits without closing the connection that would checkpoint on its own.
+pub async fn checkpoint(db: &Db) -> Result<(), DbError> {
+    db.call_db(|conn| {
+        // Returns (busy, wal pages, checkpointed pages); with one connection
+        // nothing can hold it busy, so the row carries nothing worth acting on.
+        conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))
+    })
+    .await
+}
+
+/// Checkpoint every few minutes, so a file copy taken while the server runs
+/// lags by at most that much rather than by everything since startup.
+pub fn spawn_checkpoint(db: Db) {
+    tokio::spawn(async move {
+        let mut ticker =
+            tokio::time::interval(std::time::Duration::from_secs(CHECKPOINT_INTERVAL_SECONDS));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            if let Err(e) = checkpoint(&db).await {
+                error!("WAL checkpoint failed: {e}");
+            }
+        }
+    });
+}
+
+const CHECKPOINT_INTERVAL_SECONDS: u64 = 300;
 
 /// Add `column` to `table` if it does not exist yet. SQLite has no
 /// `ADD COLUMN IF NOT EXISTS`, so the schema is inspected first.
@@ -534,6 +572,14 @@ CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
     DELETE FROM messages_fts WHERE rowid = old.id;
 END;
 "#,
+        )?;
+        // The pragma above does not reach FTS5: without this a delete only
+        // appends a tombstone and the words stay in the index segments until
+        // some later merge. Persisted in the index, so this is a no-op after
+        // the first startup.
+        tx.execute(
+            "INSERT INTO messages_fts (messages_fts, rank) VALUES ('secure-delete', 1)",
+            [],
         )?;
 
         // Skipped on every normal startup. The anti-join it avoids scans every

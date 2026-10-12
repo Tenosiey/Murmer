@@ -12,11 +12,11 @@
     screenShareServerMaxBitrate,
     screenSharePreview,
     toggleScreenSharePreview
-  } from '$lib/stores/screenShare';
-  import { session } from '$lib/stores/session';
-  import { QUALITY_PRESETS, type QualityPreset } from '$lib/screenshare/manager';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { t } from '$lib/i18n';
+  } from '#lib/stores/screenShare.ts';
+  import { session } from '#lib/stores/session.ts';
+  import { QUALITY_PRESETS, type QualityPreset } from '#lib/screenshare/manager.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { t } from '#lib/i18n/index.ts';
   
   interface Props {
     currentVoiceChannel?: number | null;

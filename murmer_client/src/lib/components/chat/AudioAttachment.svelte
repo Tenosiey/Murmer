@@ -5,13 +5,16 @@
   the history just to render it would download all of them up front.
 -->
 <script lang="ts">
-  import { t } from '$lib/i18n';
+  import { t } from '#lib/i18n/index.ts';
+  import { loadFile } from '#lib/upload.ts';
   interface Props {
     url: string;
     name: string;
+    /** Key of a sealed clip, from an encrypted channel. */
+    fileKey?: string;
   }
 
-  let { url, name }: Props = $props();
+  let { url, name, fileKey }: Props = $props();
 
   let src: string | null = $state(null);
   let loading = $state(false);
@@ -21,9 +24,7 @@
     loading = true;
     failed = false;
     try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      src = URL.createObjectURL(await response.blob());
+      src = URL.createObjectURL(await loadFile(url, fileKey));
     } catch (error) {
       console.warn('Could not load audio attachment', error);
       failed = true;

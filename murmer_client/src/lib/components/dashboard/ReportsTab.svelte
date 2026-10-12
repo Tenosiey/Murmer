@@ -6,10 +6,10 @@
 -->
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { reports } from '$lib/stores/reports';
-  import { channels } from '$lib/stores/channels';
-  import { displayNames } from '$lib/stores/profiles';
-  import { t } from '$lib/i18n';
+  import { reports } from '#lib/stores/reports.ts';
+  import { channels } from '#lib/stores/channels.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

@@ -1,5 +1,5 @@
 {
-  "extends": "./.svelte-kit/tsconfig.json",
+  "extends": "$app/tsconfig",
   "compilerOptions": {
     "allowJs": true,
     "checkJs": true,
@@ -11,10 +11,10 @@
     "strict": true,
     "noUnusedLocals": true,
     "moduleResolution": "bundler"
-  }
-  // Path aliases are handled by https://kit.svelte.dev/docs/configuration#alias
-  // except $lib which is handled by https://kit.svelte.dev/docs/configuration#files
-  //
-  // If you want to overwrite includes/excludes, make sure to copy over the relevant includes/excludes
-  // from the referenced tsconfig.json - TypeScript does not merge them in
+  },
+  // TypeScript does not merge include/exclude with the extended config, so
+  // SvelteKit expects them repeated here. `#lib` resolves through the
+  // subpath import in package.json, other aliases through SvelteKit.
+  "include": ["src", "test", "*"],
+  "exclude": ["src/service-worker"]
 }

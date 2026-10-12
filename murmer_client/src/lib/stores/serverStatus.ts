@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { servers } from './servers';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { httpBaseFromWs } from '../server-url';
 
 export interface StatusMap {

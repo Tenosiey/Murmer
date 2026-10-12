@@ -1,87 +1,87 @@
 <!--
   Primary chat surface: the connection lifecycle, which channel is open,
   the voice session, the composer and the message list with its scroll
-  behaviour. The sections around it live in `$lib/components/chat/` and
+  behaviour. The sections around it live in `#lib/components/chat/` and
   report back through callbacks; logic worth testing lives in
-  `$lib/chat/`. The scroll handling stays here on purpose: it reacts to
+  `#lib/chat/`. The scroll handling stays here on purpose: it reacts to
   history pages, channel switches and jumps to a message, all of which this
   page drives (see agents/skills/svelte-ui.md before moving it).
 -->
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
-  import { chat } from '$lib/stores/chat';
-  import { userRoleIds } from '$lib/stores/roles';
-  import { roleDefinitions } from '$lib/stores/roleDefinitions';
-  import { channelOverrides } from '$lib/stores/channelOverrides';
-  import { canSpeak, resetVoicePermissions } from '$lib/stores/voicePermissions';
-  import { can, myPermissions } from '$lib/stores/permissions';
-  import { PERMISSIONS } from '$lib/chat/permissions';
-  import { session } from '$lib/stores/session';
-  import { uploadAttachment } from '$lib/upload';
-  import { displayNames, profiles } from '$lib/stores/profiles';
-  import { voice, voiceVideo } from '$lib/stores/voice';
-  import { selectedServer, servers } from '$lib/stores/servers';
-  import { onlineUsers } from '$lib/stores/online';
-  import { offlineUsers } from '$lib/stores/users';
-  import { outputMuted, microphoneMuted } from '$lib/stores/settings';
-  import { remoteAudio } from '$lib/voice/remoteAudio';
+  import { chat } from '#lib/stores/chat.ts';
+  import { userRoleIds } from '#lib/stores/roles.ts';
+  import { roleDefinitions } from '#lib/stores/roleDefinitions.ts';
+  import { channelOverrides } from '#lib/stores/channelOverrides.ts';
+  import { canSpeak, resetVoicePermissions } from '#lib/stores/voicePermissions.ts';
+  import { can, myPermissions } from '#lib/stores/permissions.ts';
+  import { PERMISSIONS } from '#lib/chat/permissions.ts';
+  import { session } from '#lib/stores/session.ts';
+  import { uploadAttachment } from '#lib/upload.ts';
+  import { displayNames, profiles } from '#lib/stores/profiles.ts';
+  import { voice, voiceVideo } from '#lib/stores/voice.ts';
+  import { selectedServer, servers } from '#lib/stores/servers.ts';
+  import { onlineUsers } from '#lib/stores/online.ts';
+  import { offlineUsers } from '#lib/stores/users.ts';
+  import { outputMuted, microphoneMuted } from '#lib/stores/settings.ts';
+  import { remoteAudio } from '#lib/voice/remoteAudio.ts';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
-  import SettingsModal from '$lib/components/SettingsModal.svelte';
-  import SearchOverlay from '$lib/components/SearchOverlay.svelte';
-  import HelpOverlay from '$lib/components/HelpOverlay.svelte';
-  import VolumeMenu from '$lib/components/VolumeMenu.svelte';
-  import ChannelSidebar from '$lib/components/chat/ChannelSidebar.svelte';
-  import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
-  import PinnedBar from '$lib/components/chat/PinnedBar.svelte';
-  import UserList from '$lib/components/chat/UserList.svelte';
-  import MessageItem from '$lib/components/chat/MessageItem.svelte';
-  import MessageComposer from '$lib/components/chat/MessageComposer.svelte';
-  import ConversationPanel from '$lib/components/chat/ConversationPanel.svelte';
-  import ConnectionOverlay from '$lib/components/chat/ConnectionOverlay.svelte';
-  import SidebarResizer from '$lib/components/chat/SidebarResizer.svelte';
-  import DmPanel from '$lib/components/chat/DmPanel.svelte';
-  import UserMenu from '$lib/components/chat/UserMenu.svelte';
-  import ChannelMenu from '$lib/components/chat/ChannelMenu.svelte';
-  import MentionsInbox from '$lib/components/chat/MentionsInbox.svelte';
-  import SavedMessages from '$lib/components/chat/SavedMessages.svelte';
-  import { savedEntry, savedMessages, toggleSavedMessage } from '$lib/stores/savedMessages';
-  import { mentionInbox } from '$lib/stores/mentionInbox';
-  import { ping } from '$lib/stores/ping';
-  import { channels } from '$lib/stores/channels';
-  import { voiceChannels } from '$lib/stores/voiceChannels';
-  import type { ChannelInfo, ForwardInfo } from '$lib/types';
-  import { forwardOptions, forwardedDmText, parseForwardTarget } from '$lib/chat/forward';
+  import SettingsModal from '#lib/components/SettingsModal.svelte';
+  import SearchOverlay from '#lib/components/SearchOverlay.svelte';
+  import HelpOverlay from '#lib/components/HelpOverlay.svelte';
+  import VolumeMenu from '#lib/components/VolumeMenu.svelte';
+  import ChannelSidebar from '#lib/components/chat/ChannelSidebar.svelte';
+  import ChatHeader from '#lib/components/chat/ChatHeader.svelte';
+  import PinnedBar from '#lib/components/chat/PinnedBar.svelte';
+  import UserList from '#lib/components/chat/UserList.svelte';
+  import MessageItem from '#lib/components/chat/MessageItem.svelte';
+  import MessageComposer from '#lib/components/chat/MessageComposer.svelte';
+  import ConversationPanel from '#lib/components/chat/ConversationPanel.svelte';
+  import ConnectionOverlay from '#lib/components/chat/ConnectionOverlay.svelte';
+  import SidebarResizer from '#lib/components/chat/SidebarResizer.svelte';
+  import DmPanel from '#lib/components/chat/DmPanel.svelte';
+  import UserMenu from '#lib/components/chat/UserMenu.svelte';
+  import ChannelMenu from '#lib/components/chat/ChannelMenu.svelte';
+  import MentionsInbox from '#lib/components/chat/MentionsInbox.svelte';
+  import SavedMessages from '#lib/components/chat/SavedMessages.svelte';
+  import { savedEntry, savedMessages, toggleSavedMessage } from '#lib/stores/savedMessages.ts';
+  import { mentionInbox } from '#lib/stores/mentionInbox.ts';
+  import { ping } from '#lib/stores/ping.ts';
+  import { channels } from '#lib/stores/channels.ts';
+  import { voiceChannels } from '#lib/stores/voiceChannels.ts';
+  import type { ChannelInfo, ForwardInfo } from '#lib/types.ts';
+  import { forwardOptions, forwardedDmText, parseForwardTarget } from '#lib/chat/forward.ts';
   import {
     parseWhen,
     scheduleBoundsError,
     reminderTextError,
     describeWhen
-  } from '$lib/chat/schedule';
-  import { leftSidebarWidth, rightSidebarWidth } from '$lib/stores/layout';
-  import { channelTopics } from '$lib/stores/channelTopics';
-  import { statuses } from '$lib/stores/status';
-  import { startAutoAway } from '$lib/stores/autoAway';
+  } from '#lib/chat/schedule.ts';
+  import { leftSidebarWidth, rightSidebarWidth } from '#lib/stores/layout.ts';
+  import { channelTopics } from '#lib/stores/channelTopics.ts';
+  import { statuses } from '#lib/stores/status.ts';
+  import { startAutoAway } from '#lib/stores/autoAway.ts';
   import {
     createMessageLink,
     parseMessageLink,
     pendingMessageLink,
     type MessageLink
-  } from '$lib/message-link';
-  import { isWebClient } from '$lib/platform';
-  import { APP_VERSION } from '$lib/version';
-  import { parseSlashCommand } from '$lib/chat/commands';
-  import { parseSearchQuery } from '$lib/chat/search';
+  } from '#lib/message-link.ts';
+  import { isWebClient } from '#lib/platform.ts';
+  import { APP_VERSION } from '#lib/version.ts';
+  import { parseSlashCommand } from '#lib/chat/commands.ts';
+  import { parseSearchQuery } from '#lib/chat/search.ts';
   // Side effect only: starts reading `/tts` messages aloud.
-  import '$lib/tts';
-  import { pinned } from '$lib/stores/pins';
-  import { scheduledAttention } from '$lib/stores/scheduled';
-  import { typing } from '$lib/stores/typing';
-  import { unread } from '$lib/stores/unread';
-  import { threadData } from '$lib/stores/thread';
-  import { dm } from '$lib/stores/dm';
-  import { channelDraft, drafts, threadDraft } from '$lib/stores/drafts';
-  import { channelKeys } from '$lib/stores/channelKeys';
+  import '#lib/tts.ts';
+  import { pinned } from '#lib/stores/pins.ts';
+  import { scheduledAttention } from '#lib/stores/scheduled.ts';
+  import { typing } from '#lib/stores/typing.ts';
+  import { unread } from '#lib/stores/unread.ts';
+  import { threadData } from '#lib/stores/thread.ts';
+  import { dm } from '#lib/stores/dm.ts';
+  import { channelDraft, drafts, threadDraft } from '#lib/stores/drafts.ts';
+  import { channelKeys } from '#lib/stores/channelKeys.ts';
   import {
     watchedScreenShares,
     screenShareTiles,
@@ -91,23 +91,23 @@
     leaveScreenShareAsViewer,
     stopScreenShare,
     toggleScreenSharePreview
-  } from '$lib/stores/screenShare';
-  import ScreenShareLayer from '$lib/components/ScreenShareLayer.svelte';
+  } from '#lib/stores/screenShare.ts';
+  import ScreenShareLayer from '#lib/components/ScreenShareLayer.svelte';
   import {
     activeWebcams,
     localCameraStream,
     stopCamera
-  } from '$lib/stores/webcam';
-  import WebcamStage from '$lib/components/WebcamStage.svelte';
-  import { loadKeyPair, sign } from '$lib/keypair';
-  import { httpBaseFromWs } from '$lib/server-url';
-  import { connection, connectionError } from '$lib/stores/connection';
-  import { reconnectDelay } from '$lib/websocket-manager';
-  import { uploadConfig, describeUploadRejection } from '$lib/stores/uploadConfig';
-  import { slowModeWait } from '$lib/stores/chatSettings';
-  import { describeServerError, isFatalConnectionError } from '$lib/errors';
-  import { NOTICES, describeForceDisconnect } from '$lib/chat/notices';
-  import type { Message, WebcamTile } from '$lib/types';
+  } from '#lib/stores/webcam.ts';
+  import WebcamStage from '#lib/components/WebcamStage.svelte';
+  import { loadKeyPair, sign } from '#lib/keypair.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
+  import { connection, connectionError } from '#lib/stores/connection.ts';
+  import { reconnectDelay } from '#lib/websocket-manager.ts';
+  import { uploadConfig, describeUploadRejection } from '#lib/stores/uploadConfig.ts';
+  import { slowModeWait } from '#lib/stores/chatSettings.ts';
+  import { describeServerError, isFatalConnectionError } from '#lib/errors.ts';
+  import { NOTICES, describeForceDisconnect } from '#lib/chat/notices.ts';
+  import type { Message, WebcamTile } from '#lib/types.ts';
   import {
     pingToStrength,
     buildMessageBlocks,
@@ -120,35 +120,35 @@
     canEditMessage,
     lastEditableMessage,
     canDeleteMessage
-  } from '$lib/chat/helpers';
-  import { dialogs } from '$lib/stores/dialogs';
+  } from '#lib/chat/helpers.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
   import {
     hotkeys,
     eventToCombo,
     firesWhileTyping,
     isTextInputTarget,
     type HotkeyActionId
-  } from '$lib/stores/hotkeys';
+  } from '#lib/stores/hotkeys.ts';
   import {
     setGlobalHotkeyActions,
     clearGlobalHotkeyActions
-  } from '$lib/stores/globalHotkeys';
-  import EmojiPicker from '$lib/components/EmojiPicker.svelte';
+  } from '#lib/stores/globalHotkeys.ts';
+  import EmojiPicker from '#lib/components/EmojiPicker.svelte';
   import {
     MAX_TOPIC_LENGTH,
     STATUS_LABELS,
     DEFAULT_CHANNEL_NAME,
     MAX_REMINDER_TEXT_LENGTH,
     MAX_REPORT_REASON_LENGTH
-  } from '$lib/chat/constants';
-  import ServerDashboardModal from '$lib/components/ServerDashboardModal.svelte';
-  import SchedulePanel from '$lib/components/SchedulePanel.svelte';
-  import UserProfileModal from '$lib/components/UserProfileModal.svelte';
-  import WikiView from '$lib/components/wiki/WikiView.svelte';
-  import { wikilinks } from '$lib/wiki/links';
-  import { fileDrop } from '$lib/chat/fileDrop';
-  import { groupMentionsIn } from '$lib/chat/mentions';
-  import { t } from '$lib/i18n';
+  } from '#lib/chat/constants.ts';
+  import ServerDashboardModal from '#lib/components/ServerDashboardModal.svelte';
+  import SchedulePanel from '#lib/components/SchedulePanel.svelte';
+  import UserProfileModal from '#lib/components/UserProfileModal.svelte';
+  import WikiView from '#lib/components/wiki/WikiView.svelte';
+  import { wikilinks } from '#lib/wiki/links.ts';
+  import { fileDrop } from '#lib/chat/fileDrop.ts';
+  import { groupMentionsIn } from '#lib/chat/mentions.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   let message = $state('');
   let composer: MessageComposer | undefined = $state();
@@ -647,7 +647,12 @@
     const file = pendingFile;
     if (!file) return;
     const base = httpBaseFromWs(get(selectedServer) ?? 'ws://localhost:3001/ws');
-    const result = await uploadAttachment(base, file, $uploadConfig.maxBytes);
+    const result = await uploadAttachment(
+      base,
+      file,
+      $uploadConfig.maxBytes,
+      currentChannelEncrypted
+    );
     const spoiler = pendingSpoiler;
     clearPendingFile();
     const error = result.ok
