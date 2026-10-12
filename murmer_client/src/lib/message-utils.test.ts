@@ -50,6 +50,12 @@ describe('normalizeAttachment', () => {
     });
   });
 
+  it('keeps the key of a sealed attachment', () => {
+    const sealed = { url: 'https://host/files/1-ab.bin', name: 'a.pdf', size: 3, key: 'k' };
+    expect(normalizeAttachment(sealed)).toEqual(sealed);
+    expect(normalizeAttachment({ ...sealed, key: 7 })).not.toHaveProperty('key');
+  });
+
   it('rejects every scheme that could execute on click', () => {
     // A compromised or malicious server controls this field, and the UI turns
     // it into an href — anything but http(s) must never reach the DOM.

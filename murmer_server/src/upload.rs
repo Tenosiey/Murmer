@@ -16,6 +16,12 @@
 //! contains a relative URL that clients can combine with the server URL to
 //! fetch the file later.
 //!
+//! A `sealed` upload is a file a client encrypted for an encrypted channel.
+//! Its extension still picks the category, so the upload policy holds, but
+//! the server can check nothing else about it: it skips the magic bytes and
+//! stores it under a nameless `.bin` key that is only ever served as a
+//! download.
+//!
 //! Every stored file is recorded against its uploader in the `uploads` table,
 //! which is what the per-user and server-wide byte quotas ([`UploadQuota`])
 //! are counted from, and what lets a deleted message take its file with it
@@ -324,6 +330,7 @@ pub async fn upload(
     // Credential fields come first and the file part ends the loop, so the
     // session is checked before a single byte of the file is buffered.
     let mut session = String::new();
+    let mut sealed = false;
     let mut field = loop {
         let mut field = match multipart.next_field().await {
             Ok(Some(field)) => field,
@@ -334,6 +341,12 @@ pub async fn upload(
             }
         };
 
+        // `sealed` marks bytes the client encrypted for an encrypted channel.
+        // Its value is not read; being present is the flag.
+        if field.name() == Some("sealed") {
+            sealed = true;
+            continue;
+        }
         if field.name() != Some("session") {
             break field;
         }
@@ -416,8 +429,10 @@ pub async fn upload(
     }
 
     // Image extensions must also pass magic-byte validation so a mislabelled
-    // file cannot masquerade as an image.
-    if category.id == IMAGE_CATEGORY
+    // file cannot masquerade as an image. Ciphertext has no magic bytes; it
+    // is stored under `.bin` below, so it is never served as an image either.
+    if !sealed
+        && category.id == IMAGE_CATEGORY
         && !detect_file_type(&data).is_some_and(|t| ALLOWED_IMAGE_TYPES.contains(&t))
     {
         warn!("Rejected upload with invalid file type for: {}", filename);
@@ -430,11 +445,18 @@ pub async fn upload(
     // knowing a file was posted is not enough to fetch it.
     let secret: [u8; 16] = rand::random();
     let secret: String = secret.iter().map(|b| format!("{b:02x}")).collect();
-    let key = format!(
-        "{}-{secret}-{}",
-        chrono::Utc::now().timestamp_millis(),
-        filename
-    );
+    // A sealed file's name would tell the operator what it is, so its key
+    // carries none, and `.bin` makes `/files` serve it as an opaque download
+    // and keeps it out of every validator that wants an image or a sound.
+    let key = if sealed {
+        format!("{}-{secret}.bin", chrono::Utc::now().timestamp_millis())
+    } else {
+        format!(
+            "{}-{secret}-{}",
+            chrono::Utc::now().timestamp_millis(),
+            filename
+        )
+    };
     let quota = state.upload_quota;
     match db::reserve_upload(
         &state.db,
@@ -478,7 +500,7 @@ pub async fn upload(
                     "url": url,
                     "name": filename,
                     "size": data.len(),
-                    "kind": if category.id == IMAGE_CATEGORY { "image" } else { "file" },
+                    "kind": if !sealed && category.id == IMAGE_CATEGORY { "image" } else { "file" },
                     "category": category.id,
                 }))
                 .into_response()

@@ -187,9 +187,12 @@ All of this is deliberate, and `README.md` points operators here:
 - **Server-side search** — there is no text to index.
 - **Bots** — `POST /channels/:id/messages` refuses; a bot has no identity key
   to encrypt with.
-- **Uploaded file bytes** — only the attachment's name and URL travel sealed.
-  For the same reason, deleting a sealed message leaves its file on disk;
-  see [Quota and deletion](#quota-and-deletion).
+- **An uploaded file's size and type.** The client seals the bytes under a
+  fresh key that travels inside the message, and the server stores them
+  under a key without the filename, but it sees how large the file is and,
+  from the extension the upload category is picked by, what kind. It cannot
+  see which message carries which file, so deleting a sealed message leaves
+  its file on disk; see [Quota and deletion](#quota-and-deletion).
 - **Link previews** and content-derived stats.
 - **The profanity filter and the auto-moderation rules** — the server holds
   no text to mask or match. Doing either would mean handing the server the

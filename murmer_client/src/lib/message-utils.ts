@@ -41,7 +41,10 @@ export function normalizeAttachment(value: unknown): AttachmentInfo | undefined 
   const name = raw.name.trim();
   if (!name) return undefined;
   const size = typeof raw.size === 'number' && Number.isFinite(raw.size) && raw.size >= 0 ? raw.size : 0;
-  return { url: raw.url, name, size };
+  // A sealed attachment carries the key that opens its bytes.
+  return typeof raw.key === 'string'
+    ? { url: raw.url, name, size, key: raw.key }
+    : { url: raw.url, name, size };
 }
 
 /**

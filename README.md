@@ -169,10 +169,10 @@ link is still a credential.
 
 **Encrypted channels** are a per-channel choice with real trade-offs: no
 server-side search, no bot posting, no forwarding, polls, link previews or
-moderation filters, and uploaded file bytes stay unencrypted. They protect
-against other members and a leaked database, **not against whoever runs the
-server**: the operator decides who is on a channel's roster and can add a
-member holding their own key. The full list is in
+moderation filters, and the server still sees each file's size and type.
+They protect against other members and a leaked database, **not against
+whoever runs the server**: the operator decides who is on a channel's roster
+and can add a member holding their own key. The full list is in
 [`docs/security.md`](docs/security.md#what-encryption-does-not-cover).
 
 ## Web client

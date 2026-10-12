@@ -147,6 +147,38 @@ async fn a_filename_with_a_dot_run_is_stored_under_a_registrable_key() {
 }
 
 #[tokio::test]
+async fn a_sealed_upload_is_stored_nameless_and_skips_the_image_check() {
+    let dir = temp_upload_dir("sealed");
+    let (app, state) = make_app(dir.clone(), RateLimiter::new()).await;
+    open_session(&state, "session-s", "sam").await;
+    let ciphertext = b"not an image, just opaque ciphertext";
+
+    let plain = post_upload(
+        &app,
+        body(&[("session", "session-s")], "secret.png", ciphertext),
+    )
+    .await;
+    assert_eq!(plain, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+
+    let status = post_upload(
+        &app,
+        body(
+            &[("session", "session-s"), ("sealed", "1")],
+            "Medical_Report.png",
+            ciphertext,
+        ),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let stored = stored_files(&dir);
+    assert_eq!(stored.len(), 1);
+    assert!(stored[0].ends_with(".bin"), "{}", stored[0]);
+    assert!(!stored[0].contains("Medical"), "{}", stored[0]);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[tokio::test]
 async fn an_upload_without_credentials_writes_nothing() {
     let dir = temp_upload_dir("anonymous");
     let (app, _state) = make_app(dir.clone(), RateLimiter::new()).await;
