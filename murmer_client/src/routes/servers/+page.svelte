@@ -41,6 +41,12 @@
       error = t('servers.unknownMessageLink');
     }
     serverStatus.start();
+    // A web client is usually served by the Murmer server it belongs to
+    // (WEB_CLIENT_DIR), so a first visit offers that server instead of an
+    // empty field. Only a suggestion: nothing is saved until the user adds it.
+    if (isWebClient && get(servers).length === 0 && !get(pendingInvite)) {
+      newServer = location.origin;
+    }
     // Surface the reason we were sent back here (wrong password, ban, ...).
     const carried = get(connectionError);
     if (carried) {
