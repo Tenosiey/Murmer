@@ -323,6 +323,10 @@ pub(super) async fn handle_presence(
                 return Err(());
             }
 
+            // Every rejection is behind us: only failed logins count toward
+            // the per-IP limit.
+            security::refund_auth_attempt(&state.rate_limiter, client_ip).await;
+
             // A client may arrive with the status it last chose, so a member
             // appearing offline is never announced as online in between.
             let status = v

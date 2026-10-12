@@ -93,12 +93,12 @@ it on a public server.
 | `CORS_ALLOW_ORIGINS` | No | Comma-separated allowed origins (omit in production) |
 | `WEB_CLIENT_DIR` | No | Directory with the built web client to serve at `/` (see [Web client](#web-client)) |
 | `MAX_MESSAGES_PER_MINUTE` | No | Per-user message rate limit (default: 30) |
-| `MAX_AUTH_ATTEMPTS_PER_MINUTE` | No | Per-IP auth rate limit (default: 5) |
+| `MAX_AUTH_ATTEMPTS_PER_MINUTE` | No | Failed logins one IP may make per minute before further logins from it are refused (default: 5); successful logins do not count |
 | `MAX_UPLOADS_PER_MINUTE` | No | Per-IP file upload rate limit (default: 20) |
 | `MAX_PREVIEWS_PER_MINUTE` | No | Per-IP limit on link previews the server fetches (default: 30); cached previews do not count |
 | `UPLOAD_QUOTA_USER_MB` | No | Megabytes of uploads one user may keep stored (default: 1024, `0` for no limit) |
 | `UPLOAD_QUOTA_TOTAL_MB` | No | Megabytes of uploads the whole server may keep stored (default: 20480, `0` for no limit). A file is deleted a few minutes after the last unencrypted message carrying it is |
-| `TRUSTED_PROXIES` | Behind a reverse proxy | Comma-separated addresses or CIDR ranges of your reverse proxies (e.g. `127.0.0.1` or `172.16.0.0/12` for Docker). Only requests from these may set the client IP through `X-Forwarded-For`; without it every user behind the proxy shares one per-IP rate limit, so a few failed logins lock everyone out |
+| `TRUSTED_PROXIES` | Behind a reverse proxy | Comma-separated addresses or CIDR ranges of your reverse proxies, as the server sees them. With the shipped `docker-compose.yml` and a proxy on the host, use `172.16.0.0/12`: the server sees the Docker bridge gateway, not `127.0.0.1`. Use `127.0.0.1` only when the server runs directly on the host (`cargo run`). Only requests from these may set the client IP through `X-Forwarded-For`; a wrong value is silently ignored and every user behind the proxy then shares one per-IP rate limit, so a few failed logins lock everyone out |
 | `MAX_FRAMES_PER_SECOND` | No | Sustained WebSocket frames one connection may send per second, with ten seconds' worth allowed in a burst (default: 20, `0` for no limit) |
 | `STUN_SERVERS` | No | Comma-separated `stun:`/`stuns:` URLs clients use to set up voice and screen share (defaults to `stun:stun.l.google.com:19302`; set it empty to contact no STUN server, which limits calls to peers on the same network) |
 | `MAX_VOICE_CHANNEL_USERS` | No | People allowed in one voice channel (default: 10, `0` for no limit). A channel's own user limit can only lower this |
