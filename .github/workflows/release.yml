@@ -1,23 +1,78 @@
-# Builds, signs and publishes a Windows release (NSIS installer + updater
-# artifacts + latest.json) whenever a version tag like v2026.710.0 is
-# pushed. The in-app updater reads latest.json from the latest GitHub release.
-# Once that succeeds, the server image goes to GHCR under the same version.
+# Builds, signs and publishes a release whenever a version tag like
+# v2026.710.0 is pushed: the Windows NSIS installer and the Linux .deb and
+# AppImage, each with signed updater artifacts, plus the latest.json the
+# in-app updater reads from the latest GitHub release. Once that succeeds,
+# the server image goes to GHCR under the same version.
+#
+# Three stages so the two platform builds can run in parallel: a draft
+# release is created up front, both builds upload into it by id, and only
+# when both succeeded is it published. Letting each build create the release
+# itself would race two jobs to create the same tag. tauri-action reads the
+# latest.json already on the release and merges its own platform in, so the
+# build that finishes second keeps the first one's entry.
 name: Release
 
 on:
   push:
     tags:
       - 'v*'
-  # Run from main when a tag cannot be pushed: tauri-action then creates the
-  # tag itself, on the commit the run was started from.
+  # Run from main when a tag cannot be pushed: publishing the draft then
+  # creates the tag, on the commit the run was started from.
   workflow_dispatch:
 
 jobs:
-  release:
+  create-release:
     # A manual run publishes whatever branch it was started on; only main
     # carries a finished release.
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.create.outputs.id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The app version from tauri.conf.json, so a manual run names the
+      # release the same way a pushed tag does. `generate_release_notes`
+      # appends every pull request merged since the previous release, by
+      # title and author. They are the patch notes, so PR titles are written
+      # for users. Plain gh CLI, so no further third-party action sees a
+      # write token.
+      - name: Create draft release
+        id: create
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(jq -r .version murmer_client/src-tauri/tauri.conf.json)
+          id=$(gh api "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="v$version" \
+            -f target_commitish="$GITHUB_SHA" \
+            -f name="Murmer v$version" \
+            -f body='See the assets below to download and install this version.' \
+            -F draft=true \
+            -F generate_release_notes=true \
+            --jq .id)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: create-release
+    strategy:
+      # A failed Linux build must not throw away a finished Windows one, or
+      # the other way round. The release then stays a draft with partial
+      # assets, which no user's updater ever sees.
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: nsis
+          # The oldest supported Ubuntu, not the newest: the binary only runs
+          # on a glibc at least as new as the one it was linked against, so
+          # building on 24.04 would lock out Debian 12. The AppImage covers
+          # Arch and anything else without a .deb.
+          - os: ubuntu-22.04
+            bundles: deb,appimage
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
     steps:
@@ -46,7 +101,24 @@ jobs:
         working-directory: murmer_client
         run: bun install --frozen-lockfile
 
-      - name: Build and publish release
+      # The same WebKitGTK stack as ci.yml's Tauri job, plus patchelf, which
+      # the AppImage bundler needs to rewrite the bundled libraries' paths.
+      - name: Install Tauri system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            build-essential \
+            file \
+            patchelf
+
+      - name: Build and upload
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -54,27 +126,33 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: murmer_client
-          # The app version from tauri.conf.json, so a manual run names the
-          # release the same way a pushed tag does.
-          tagName: 'v__VERSION__'
-          releaseName: 'Murmer v__VERSION__'
-          releaseBody: 'See the assets below to download and install this version.'
-          # Appends GitHub's generated notes below the body: every pull
-          # request merged since the previous release, by title and author.
-          # They are the patch notes, so PR titles are written for users.
-          generateReleaseNotes: true
-          # Must stay a normal release (not draft/prerelease): the updater
-          # endpoint releases/latest/download/latest.json skips prereleases.
-          releaseDraft: false
-          prerelease: false
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          args: --bundles ${{ matrix.bundles }}
+
+  # Must end a normal release (not draft/prerelease): the updater endpoint
+  # releases/latest/download/latest.json skips both.
+  publish-release:
+    needs: [create-release, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X PATCH \
+            "repos/$GITHUB_REPOSITORY/releases/${{ needs.create-release.outputs.release_id }}" \
+            -F draft=false \
+            -F prerelease=false
 
   # Publishes ghcr.io/tenosiey/murmer-server:<version> and :latest so
   # operators can pull a server matching the desktop release instead of
-  # building it. Waits for the desktop release: `latest` should never point
+  # building it. Waits for the published release: `latest` should never point
   # at a version whose installer failed to publish. Plain docker CLI, so no
   # further third-party action sees a write token.
   server-image:
-    needs: release
+    needs: publish-release
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -94,5 +172,5 @@ jobs:
           fi
           image=ghcr.io/tenosiey/murmer-server
           echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker build -f murmer_server/Dockerfile -t "$image:$version" -t "$image:latest" .
+          docker build -t "$image:$version" -t "$image:latest" murmer_server
           docker push --all-tags "$image"

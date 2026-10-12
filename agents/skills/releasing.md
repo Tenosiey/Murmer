@@ -56,10 +56,16 @@ six versioned files:
    `tauri.conf.json` and creates it on the commit it ran from, so the bump
    must already be on `main`.
 
-Either way `.github/workflows/release.yml` builds the NSIS installer, signs
-the updater artifacts and publishes a regular GitHub release. Once that
-succeeds it pushes the server image to `ghcr.io/tenosiey/murmer-server`,
-tagged with the version and `latest`.
+Either way `.github/workflows/release.yml` creates a draft release, builds
+the Windows NSIS installer and the Linux `.deb` and AppImage into it in
+parallel, signs the updater artifacts and, once both builds succeed,
+publishes it as a regular release whose `latest.json` lists both platforms.
+Then it pushes the server image to `ghcr.io/tenosiey/murmer-server`, tagged
+with the version and `latest`. If a build fails the release stays a draft:
+delete it and re-run the workflow, or every re-run adds another draft.
+
+`packaging/aur/PKGBUILD` is not bumped with the rest and is not published:
+whoever maintains an AUR package sets its `pkgver` and runs `updpkgsums`.
 
 **Agent sessions stop after step 2.** A cloud agent cannot push tags or
 start workflows, so it bumps, opens the pull requests and then tells the
