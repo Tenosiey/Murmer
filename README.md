@@ -217,6 +217,20 @@ Any other static host works too, as long as it:
   resolve;
 - is named in `CORS_ALLOW_ORIGINS` on every Murmer server it talks to.
 
+## Installing the desktop app
+
+Every [release](https://github.com/Tenosiey/Murmer/releases/latest) carries
+a Windows installer and, for Linux, a `.deb` and an AppImage:
+
+- **Windows**: run `Murmer_<version>_x64-setup.exe`.
+- **Debian and Ubuntu**: `sudo apt install ./Murmer_<version>_amd64.deb`.
+- **Arch and other distributions**: make `Murmer_<version>_amd64.AppImage`
+  executable and run it, or build the package in
+  [`packaging/aur/`](packaging/aur/PKGBUILD) with `makepkg -si`.
+
+The installer, the `.deb` and the AppImage update themselves in the app; the
+Arch package updates through pacman.
+
 ## Building the desktop app
 
 Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/),
