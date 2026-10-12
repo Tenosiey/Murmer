@@ -5,12 +5,12 @@
 -->
 <script lang="ts">
 
-  import { session } from '$lib/stores/session';
+  import { session } from '#lib/stores/session.ts';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import MurmerLogo from '$lib/components/MurmerLogo.svelte';
-  import { t } from '$lib/i18n';
+  import MurmerLogo from '#lib/components/MurmerLogo.svelte';
+  import { t } from '#lib/i18n/index.ts';
   let username = $state('');
 
   onMount(() => {

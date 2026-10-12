@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { onServerError } from '$lib/stores/chat';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { displayNames } from '$lib/stores/profiles';
+  import { onServerError } from '#lib/stores/chat.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
   import {
     MAX_MESSAGE_LENGTH,
     MIN_CONFIGURABLE_MESSAGE_LENGTH,
@@ -17,25 +17,25 @@
     MAX_AUTOMOD_RULES,
     MAX_MUTE_SECONDS,
     MIN_MUTE_SECONDS
-  } from '$lib/chat/constants';
+  } from '#lib/chat/constants.ts';
   import {
     chatSettings,
     requestChatSettings,
     setChatSettings
-  } from '$lib/stores/chatSettings';
+  } from '#lib/stores/chatSettings.ts';
   import {
     automodRules,
     clampMuteSeconds,
     requestAutomodRules,
     setAutomodRules,
     type AutomodRule
-  } from '$lib/stores/automod';
-  import { bans } from '$lib/stores/bans';
-  import { t } from '$lib/i18n';
+  } from '#lib/stores/automod.ts';
+  import { bans } from '#lib/stores/bans.ts';
+  import { t } from '#lib/i18n/index.ts';
   import {
     PERMISSIONS,
     hasPermission
-  } from '$lib/chat/permissions';
+  } from '#lib/chat/permissions.ts';
 
   interface Props {
     active: boolean;

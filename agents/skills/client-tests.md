@@ -29,7 +29,7 @@ test that needs a clean one takes a fresh instance:
 ```ts
 beforeEach(async () => {
   vi.resetModules();
-  const store = await import('$lib/stores/example');
+  const store = await import('#lib/stores/example.ts');
   // ...
 });
 ```
@@ -41,7 +41,7 @@ all, and if it is not, fixing that is the better change.
 
 `localStorage` is a real in-memory `Storage` provided by `test/setup.ts` and
 cleared before every test, so persisted state cannot leak between them.
-`$app/environment` is stubbed with `browser = true`, because the app only
+`$app/env` is stubbed with `browser = true`, because the app only
 ever runs in a browser and a `false` there would silently skip every
 persistence path under test.
 
@@ -56,8 +56,8 @@ If you need a DOM, use **jsdom, not happy-dom**. happy-dom 20 mis-drives
 DOMPurify's tree walk and leaves `<script>` tags in the output, so a suite
 written against it would assert the exact opposite of the truth.
 
-Only `$lib` and `$app/environment` are aliased. If a test needs a third piece
-of the framework, that is usually a sign the logic should move into a pure
+Only `$app/env` and `$app/paths` are aliased; `#lib` is a package.json
+subpath import and needs none. If a test needs another piece of the framework, that is usually a sign the logic should move into a pure
 module first.
 
 ## Writing the assertions

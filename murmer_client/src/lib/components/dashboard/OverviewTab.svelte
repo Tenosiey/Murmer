@@ -1,19 +1,19 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { onServerError } from '$lib/stores/chat';
-  import { selectedServer } from '$lib/stores/servers';
-  import { httpBaseFromWs } from '$lib/server-url';
-  import { uploadImage } from '$lib/upload';
-  import { onlineUsers } from '$lib/stores/online';
-  import { displayNames } from '$lib/stores/profiles';
+  import { onServerError } from '#lib/stores/chat.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
+  import { uploadImage } from '#lib/upload.ts';
+  import { onlineUsers } from '#lib/stores/online.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
   import {
     MAX_SERVER_NAME_LENGTH,
     MAX_SERVER_DESCRIPTION_LENGTH,
     MAX_WELCOME_MESSAGE_LENGTH,
     MAX_SERVER_ICON_BYTES
-  } from '$lib/chat/constants';
-  import { serverIdentity } from '$lib/stores/serverIdentity';
-  import { t } from '$lib/i18n';
+  } from '#lib/chat/constants.ts';
+  import { serverIdentity } from '#lib/stores/serverIdentity.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

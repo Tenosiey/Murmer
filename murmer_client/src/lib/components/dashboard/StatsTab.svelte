@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { stats, statsConfig } from '$lib/stores/stats';
-  import { t } from '$lib/i18n';
+  import { stats, statsConfig } from '#lib/stores/stats.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

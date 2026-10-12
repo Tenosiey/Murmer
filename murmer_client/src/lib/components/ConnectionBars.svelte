@@ -4,7 +4,7 @@
   Uses Material 3 color tokens for consistent theming.
 -->
 <script lang="ts">
-  import { t } from '$lib/i18n';
+  import { t } from '#lib/i18n/index.ts';
   interface Props {
     strength?: number;
     /** The connection dropped and is being repaired; see `voice/recovery.ts`. */

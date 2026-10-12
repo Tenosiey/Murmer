@@ -7,12 +7,12 @@
 
 
   import { onMount, onDestroy } from 'svelte';
-  import { chat } from '$lib/stores/chat';
-  import { stats, statsSnapshot } from '$lib/stores/stats';
-  import UserStatsPanel from '$lib/components/UserStatsPanel.svelte';
-  import type { Message } from '$lib/types';
-  import { modalFocus } from '$lib/focus';
-  import { t } from '$lib/i18n';
+  import { chat } from '#lib/stores/chat.ts';
+  import { stats, statsSnapshot } from '#lib/stores/stats.ts';
+  import UserStatsPanel from '#lib/components/UserStatsPanel.svelte';
+  import type { Message } from '#lib/types.ts';
+  import { modalFocus } from '#lib/focus.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     open: boolean;

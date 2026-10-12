@@ -9,7 +9,7 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import type { ContextMenuItem } from '$lib/types';
+  import type { ContextMenuItem } from '#lib/types.ts';
 
   interface Props {
     items?: ContextMenuItem[];

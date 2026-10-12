@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 const LEFT_KEY = 'murmer_left_width';
 const RIGHT_KEY = 'murmer_right_width';

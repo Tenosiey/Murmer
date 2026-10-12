@@ -8,7 +8,7 @@
  * hashes, and a webcam plugged in later never appearing at all.
  */
 import { writable } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 export const videoInputs = writable<MediaDeviceInfo[]>([]);
 

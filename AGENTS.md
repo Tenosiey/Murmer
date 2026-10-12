@@ -67,7 +67,7 @@ Two rules keep the trees from rotting:
 - **Never bump versions by hand** — only via `bun run bump`, see
   [`agents/skills/releasing.md`](agents/skills/releasing.md).
 - **Svelte components use the runes syntax** (`$state`, `$props`, `$derived`,
-  `$effect`) — `runes: true` in `svelte.config.js` fails the build on legacy
+  `$effect`) — `runes: true` in `vite.config.ts` fails the build on legacy
   syntax (`export let`, `$:`). Shared state still lives in `svelte/store`
   modules (`src/lib/stores/`), consumed via `$store` auto-subscription; never
   import from `svelte/legacy`.

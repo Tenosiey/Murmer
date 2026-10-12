@@ -5,9 +5,9 @@
   every client. Sizes follow the spacing scale.
 -->
 <script lang="ts">
-  import { avatars } from '$lib/stores/avatars';
-  import { selectedServer } from '$lib/stores/servers';
-  import { httpBaseFromWs } from '$lib/server-url';
+  import { avatars } from '#lib/stores/avatars.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
 
   interface Props {
     name: string;

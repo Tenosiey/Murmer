@@ -9,17 +9,17 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { ScreenSharePeer } from '$lib/types';
-  import { setShareAudio, shareAudio } from '$lib/stores/screenShare';
+  import type { ScreenSharePeer } from '#lib/types.ts';
+  import { setShareAudio, shareAudio } from '#lib/stores/screenShare.ts';
   import {
     screenShareWindows,
     WINDOW_HEADER_HEIGHT,
     type ScreenShareWindowState,
     type Viewport
-  } from '$lib/stores/screenShareWindows';
-  import { displayNames } from '$lib/stores/profiles';
-  import { outputMuted, outputDeviceId } from '$lib/stores/settings';
-  import { t } from '$lib/i18n';
+  } from '#lib/stores/screenShareWindows.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { outputMuted, outputDeviceId } from '#lib/stores/settings.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     /** Identifies this window in the geometry store. */

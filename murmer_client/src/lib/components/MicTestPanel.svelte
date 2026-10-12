@@ -8,8 +8,8 @@
 -->
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { MicTest, MIC_TEST_SECONDS } from '$lib/voice/micTest';
-  import { t } from '$lib/i18n';
+  import { MicTest, MIC_TEST_SECONDS } from '#lib/voice/micTest.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   type Phase = 'idle' | 'recording' | 'playing';
 

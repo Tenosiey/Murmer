@@ -1,12 +1,12 @@
 <!-- Bar above the message list showing pinned messages for the current channel. -->
 <script lang="ts">
-  import { chat } from '$lib/stores/chat';
-  import type { PinnedEntry } from '$lib/stores/pins';
-  import type { Message } from '$lib/types';
-  import { PIN_PREVIEW_LIMIT } from '$lib/chat/constants';
-  import { formatLocalDateTime } from '$lib/chat/helpers';
-  import { hideSpoilers } from '$lib/spoilers';
-  import { t } from '$lib/i18n';
+  import { chat } from '#lib/stores/chat.ts';
+  import type { PinnedEntry } from '#lib/stores/pins.ts';
+  import type { Message } from '#lib/types.ts';
+  import { PIN_PREVIEW_LIMIT } from '#lib/chat/constants.ts';
+  import { formatLocalDateTime } from '#lib/chat/helpers.ts';
+  import { hideSpoilers } from '#lib/spoilers.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   
   interface Props {

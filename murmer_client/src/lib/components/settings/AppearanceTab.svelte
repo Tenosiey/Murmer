@@ -7,9 +7,9 @@
     parseThemeCode,
     themeCode,
     type Accent
-  } from '$lib/stores/theme';
-  import ThemeWheel from '$lib/components/ThemeWheel.svelte';
-  import { t } from '$lib/i18n';
+  } from '#lib/stores/theme.ts';
+  import ThemeWheel from '#lib/components/ThemeWheel.svelte';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

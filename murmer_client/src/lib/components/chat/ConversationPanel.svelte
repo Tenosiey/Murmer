@@ -6,21 +6,21 @@
 -->
 <script lang="ts">
 
-  import type { Message } from '$lib/types';
+  import type { Message } from '#lib/types.ts';
   import { onDestroy, untrack } from 'svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import { renderMarkdown } from '$lib/markdown';
-  import { emojifyHtml } from '$lib/emoji';
-  import { customEmojis } from '$lib/stores/customEmojis';
-  import { displayNames } from '$lib/stores/profiles';
-  import { selectedServer } from '$lib/stores/servers';
-  import { httpBaseFromWs, serverFileUrl } from '$lib/server-url';
-  import { formatFullTimestamp, formatShortTime } from '$lib/chat/helpers';
-  import { drafts } from '$lib/stores/drafts';
-  import UserAvatar from '$lib/components/UserAvatar.svelte';
+  import { renderMarkdown } from '#lib/markdown.ts';
+  import { emojifyHtml } from '#lib/emoji.ts';
+  import { customEmojis } from '#lib/stores/customEmojis.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { httpBaseFromWs, serverFileUrl } from '#lib/server-url.ts';
+  import { formatFullTimestamp, formatShortTime } from '#lib/chat/helpers.ts';
+  import { drafts } from '#lib/stores/drafts.ts';
+  import UserAvatar from '#lib/components/UserAvatar.svelte';
   import MentionSuggestions from './MentionSuggestions.svelte';
-  import { t } from '$lib/i18n';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     title: string;

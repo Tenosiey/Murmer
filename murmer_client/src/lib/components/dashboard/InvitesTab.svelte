@@ -1,14 +1,14 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
-  import { onServerError } from '$lib/stores/chat';
-  import { selectedServer } from '$lib/stores/servers';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { displayNames } from '$lib/stores/profiles';
-  import { invites, inviteSpent, type InviteEntry } from '$lib/stores/invites';
-  import { servers } from '$lib/stores/servers';
-  import { createInviteLink } from '$lib/invite';
-  import { isWebClient } from '$lib/platform';
-  import { t } from '$lib/i18n';
+  import { onServerError } from '#lib/stores/chat.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { invites, inviteSpent, type InviteEntry } from '#lib/stores/invites.ts';
+  import { servers } from '#lib/stores/servers.ts';
+  import { createInviteLink } from '#lib/invite.ts';
+  import { isWebClient } from '#lib/platform.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

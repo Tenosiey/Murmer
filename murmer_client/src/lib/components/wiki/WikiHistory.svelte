@@ -5,12 +5,12 @@
   ones are pruned and simply do not appear here.
 -->
 <script lang="ts">
-  import { wiki, type WikiPage, type WikiRevision, type WikiRevisionMeta } from '$lib/stores/wiki';
-  import { collapseUnchanged, diffLines, type DiffRow } from '$lib/wiki/diff';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { formatBytes } from '$lib/stores/storageUsage';
-  import { formatLocalDateTime } from '$lib/chat/helpers';
-  import { t } from '$lib/i18n';
+  import { wiki, type WikiPage, type WikiRevision, type WikiRevisionMeta } from '#lib/stores/wiki.ts';
+  import { collapseUnchanged, diffLines, type DiffRow } from '#lib/wiki/diff.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { formatBytes } from '#lib/stores/storageUsage.ts';
+  import { formatLocalDateTime } from '#lib/chat/helpers.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     channelId: number;

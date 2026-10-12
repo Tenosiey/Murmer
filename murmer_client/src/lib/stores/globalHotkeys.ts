@@ -1,5 +1,5 @@
 import { get } from 'svelte/store';
-import { isTauri } from '$lib/platform';
+import { isTauri } from '#lib/platform.ts';
 import {
   hotkeys,
   HOTKEY_ACTIONS,

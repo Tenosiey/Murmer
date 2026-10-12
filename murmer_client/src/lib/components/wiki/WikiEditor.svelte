@@ -4,15 +4,15 @@
   (someone else saved first) shows a banner instead of silently overwriting.
 -->
 <script lang="ts">
-  import { renderMarkdown } from '$lib/markdown';
-  import { emojifyHtml } from '$lib/emoji';
-  import { customEmojis } from '$lib/stores/customEmojis';
-  import { selectedServer } from '$lib/stores/servers';
-  import { httpBaseFromWs } from '$lib/server-url';
-  import { wiki, type WikiPage } from '$lib/stores/wiki';
-  import { wikilinks } from '$lib/wiki/links';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { t } from '$lib/i18n';
+  import { renderMarkdown } from '#lib/markdown.ts';
+  import { emojifyHtml } from '#lib/emoji.ts';
+  import { customEmojis } from '#lib/stores/customEmojis.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
+  import { wiki, type WikiPage } from '#lib/stores/wiki.ts';
+  import { wikilinks } from '#lib/wiki/links.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   
   interface Props {

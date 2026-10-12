@@ -6,7 +6,7 @@
   colors below are the wheel's content, not UI chrome.
 -->
 <script lang="ts">
-  import { t } from '$lib/i18n';
+  import { t } from '#lib/i18n/index.ts';
   interface Props {
     hue: number;
     saturation: number;

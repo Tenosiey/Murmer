@@ -6,7 +6,7 @@
   again" reads as "now" rather than as the only way back.
 -->
 <script lang="ts">
-  import { t } from '$lib/i18n';
+  import { t } from '#lib/i18n/index.ts';
   interface Props {
     state: 'connecting' | 'disconnected' | 'failed';
     server?: string | null;

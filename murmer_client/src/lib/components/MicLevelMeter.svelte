@@ -10,15 +10,15 @@
 -->
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { t } from '$lib/i18n';
-  import { MicLevelMonitor } from '$lib/voice/micLevel';
-  import { captureStream } from '$lib/stores/voiceCapture';
+  import { t } from '#lib/i18n/index.ts';
+  import { MicLevelMonitor } from '#lib/voice/micLevel.ts';
+  import { captureStream } from '#lib/stores/voiceCapture.ts';
   import {
     inputDeviceId,
     echoCancellation,
     noiseSuppressionMode,
     autoGainControl
-  } from '$lib/stores/settings';
+  } from '#lib/stores/settings.ts';
 
   interface Props {
     /**

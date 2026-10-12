@@ -4,41 +4,41 @@
   camera).
 -->
 <script lang="ts">
-  import { browser } from '$app/environment';
+  import { browser } from '$app/env';
   import { SvelteSet } from 'svelte/reactivity';
-  import ConnectionBars from '$lib/components/ConnectionBars.svelte';
-  import ScreenShareControls from '$lib/components/ScreenShareControls.svelte';
-  import WebcamControls from '$lib/components/WebcamControls.svelte';
-  import SoundboardPanel from '$lib/components/SoundboardPanel.svelte';
-  import RoleIcon from '$lib/components/RoleIcon.svelte';
-  import { chat } from '$lib/stores/chat';
-  import { channels } from '$lib/stores/channels';
-  import { voiceChannels } from '$lib/stores/voiceChannels';
-  import { categories } from '$lib/stores/categories';
-  import { voiceUsers } from '$lib/stores/voiceUsers';
-  import { voiceStats, voiceReconnecting } from '$lib/stores/voice';
-  import { viaServer } from '$lib/stores/voiceTransport';
-  import { session } from '$lib/stores/session';
-  import { roles } from '$lib/stores/roles';
-  import { displayNames } from '$lib/stores/profiles';
-  import { leftSidebarWidth } from '$lib/stores/layout';
-  import { microphoneMuted, outputMuted, voiceMode, isPttActive } from '$lib/stores/settings';
-  import { canSpeak } from '$lib/stores/voicePermissions';
-  import { speakingUsers } from '$lib/stores/voiceSpeaking';
-  import { voiceMuteStates } from '$lib/stores/voiceMute';
-  import { handQueue, sendHand, voiceHands } from '$lib/stores/voiceHands';
+  import ConnectionBars from '#lib/components/ConnectionBars.svelte';
+  import ScreenShareControls from '#lib/components/ScreenShareControls.svelte';
+  import WebcamControls from '#lib/components/WebcamControls.svelte';
+  import SoundboardPanel from '#lib/components/SoundboardPanel.svelte';
+  import RoleIcon from '#lib/components/RoleIcon.svelte';
+  import { chat } from '#lib/stores/chat.ts';
+  import { channels } from '#lib/stores/channels.ts';
+  import { voiceChannels } from '#lib/stores/voiceChannels.ts';
+  import { categories } from '#lib/stores/categories.ts';
+  import { voiceUsers } from '#lib/stores/voiceUsers.ts';
+  import { voiceStats, voiceReconnecting } from '#lib/stores/voice.ts';
+  import { viaServer } from '#lib/stores/voiceTransport.ts';
+  import { session } from '#lib/stores/session.ts';
+  import { roles } from '#lib/stores/roles.ts';
+  import { displayNames } from '#lib/stores/profiles.ts';
+  import { leftSidebarWidth } from '#lib/stores/layout.ts';
+  import { microphoneMuted, outputMuted, voiceMode, isPttActive } from '#lib/stores/settings.ts';
+  import { canSpeak } from '#lib/stores/voicePermissions.ts';
+  import { speakingUsers } from '#lib/stores/voiceSpeaking.ts';
+  import { voiceMuteStates } from '#lib/stores/voiceMute.ts';
+  import { handQueue, sendHand, voiceHands } from '#lib/stores/voiceHands.ts';
   import {
     activeScreenShares,
     screenSharePreview,
     watchedScreenShares
-  } from '$lib/stores/screenShare';
-  import { activeWebcams } from '$lib/stores/webcam';
-  import { unread } from '$lib/stores/unread';
-  import { can } from '$lib/stores/permissions';
-  import { PERMISSIONS } from '$lib/chat/permissions';
-  import { formatVoiceQuality, orderVoiceChannels } from '$lib/chat/helpers';
-  import type { CategoryInfo, ChannelInfo, VoiceChannelInfo } from '$lib/types';
-  import { t } from '$lib/i18n';
+  } from '#lib/stores/screenShare.ts';
+  import { activeWebcams } from '#lib/stores/webcam.ts';
+  import { unread } from '#lib/stores/unread.ts';
+  import { can } from '#lib/stores/permissions.ts';
+  import { PERMISSIONS } from '#lib/chat/permissions.ts';
+  import { formatVoiceQuality, orderVoiceChannels } from '#lib/chat/helpers.ts';
+  import type { CategoryInfo, ChannelInfo, VoiceChannelInfo } from '#lib/types.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     currentChatChannelId: number;

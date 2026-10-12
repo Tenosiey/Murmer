@@ -1,5 +1,5 @@
 /**
- * Stand-in for SvelteKit's `$app/environment`, aliased in `vitest.config.ts`.
+ * Stand-in for SvelteKit's `$app/env`, aliased in `vitest.config.ts`.
  *
  * `browser` is `true` because the app only ever runs in a browser (static
  * adapter, SSR off) — stores guard their `localStorage` access with it, and a

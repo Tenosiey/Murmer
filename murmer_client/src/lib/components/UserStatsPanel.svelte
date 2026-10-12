@@ -4,14 +4,14 @@
   itself is display-only — opt-in and purge controls live with the caller.
 -->
 <script lang="ts">
-  import type { UserStatsSnapshot } from '$lib/stores/stats';
-  import { computeAchievements, type AchievementIcon } from '$lib/stats/achievements';
-  import { customEmojis } from '$lib/stores/customEmojis';
-  import { selectedServer } from '$lib/stores/servers';
-  import { httpBaseFromWs } from '$lib/server-url';
-  import { describeDuration } from '$lib/chat/helpers';
-  import { formatBytes } from '$lib/stores/storageUsage';
-  import { t } from '$lib/i18n';
+  import type { UserStatsSnapshot } from '#lib/stores/stats.ts';
+  import { computeAchievements, type AchievementIcon } from '#lib/stats/achievements.ts';
+  import { customEmojis } from '#lib/stores/customEmojis.ts';
+  import { selectedServer } from '#lib/stores/servers.ts';
+  import { httpBaseFromWs } from '#lib/server-url.ts';
+  import { describeDuration } from '#lib/chat/helpers.ts';
+  import { formatBytes } from '#lib/stores/storageUsage.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     snapshot: UserStatsSnapshot;

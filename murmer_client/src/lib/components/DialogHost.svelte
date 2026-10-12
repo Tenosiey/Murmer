@@ -7,8 +7,8 @@
   import { tick } from 'svelte';
   import { fade, scale } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import { activeDialog, settleDialog, type ActiveDialog } from '$lib/stores/dialogs';
-  import { t } from '$lib/i18n';
+  import { activeDialog, settleDialog, type ActiveDialog } from '#lib/stores/dialogs.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   let value = $state('');
   let selected = $state('');

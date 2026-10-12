@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { chat, onServerError } from '$lib/stores/chat';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { t } from '$lib/i18n';
+  import { chat, onServerError } from '#lib/stores/chat.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     active: boolean;

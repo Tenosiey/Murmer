@@ -1,16 +1,16 @@
 <script lang="ts">
 
-  import { displayNames } from '$lib/stores/profiles';
+  import { displayNames } from '#lib/stores/profiles.ts';
   import { tick } from 'svelte';
-  import { hideSpoilers } from '$lib/spoilers';
-  import type { Message, SearchResults, WikiSearchHit } from '$lib/types';
-  import { t } from '$lib/i18n';
+  import { hideSpoilers } from '#lib/spoilers.ts';
+  import type { Message, SearchResults, WikiSearchHit } from '#lib/types.ts';
+  import { t } from '#lib/i18n/index.ts';
   import {
     searchResultPreview,
     formatSearchTimestamp,
     parseTimestampValue,
     ephemeralInfo
-  } from '$lib/chat/helpers';
+  } from '#lib/chat/helpers.ts';
 
   interface Props {
     open: boolean;

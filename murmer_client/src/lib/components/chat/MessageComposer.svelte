@@ -6,17 +6,17 @@
   send/reply/file state live in the chat page, which passes callbacks down.
 -->
 <script lang="ts">
-  import { displayNames } from '$lib/stores/profiles';
+  import { displayNames } from '#lib/stores/profiles.ts';
 
-  import type { Message } from '$lib/types';
-  import { formatFileSize, searchResultPreview } from '$lib/chat/helpers';
-  import { MESSAGE_INPUT_MAX_HEIGHT } from '$lib/chat/constants';
-  import { uploadAccept } from '$lib/stores/uploadConfig';
-  import { chatSettings } from '$lib/stores/chatSettings';
-  import { dialogs } from '$lib/stores/dialogs';
-  import { startVoiceRecording, type VoiceRecording } from '$lib/voice-message';
+  import type { Message } from '#lib/types.ts';
+  import { formatFileSize, searchResultPreview } from '#lib/chat/helpers.ts';
+  import { MESSAGE_INPUT_MAX_HEIGHT } from '#lib/chat/constants.ts';
+  import { uploadAccept } from '#lib/stores/uploadConfig.ts';
+  import { chatSettings } from '#lib/stores/chatSettings.ts';
+  import { dialogs } from '#lib/stores/dialogs.ts';
+  import { startVoiceRecording, type VoiceRecording } from '#lib/voice-message.ts';
   import MentionSuggestions from './MentionSuggestions.svelte';
-  import { t } from '$lib/i18n';
+  import { t } from '#lib/i18n/index.ts';
 
   /** Split around the name, which is rendered bold. */
   const replyingToLabel = t('messageComposer.replyingTo').split('{name}');

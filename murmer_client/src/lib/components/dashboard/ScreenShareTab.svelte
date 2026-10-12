@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { onServerError } from '$lib/stores/chat';
-  import { t } from '$lib/i18n';
+  import { onServerError } from '#lib/stores/chat.ts';
+  import { t } from '#lib/i18n/index.ts';
   import {
     screenShareServerMaxBitrate,
     setServerScreenShareMaxBitrate
-  } from '$lib/stores/screenShare';
+  } from '#lib/stores/screenShare.ts';
 
   interface Props {
     active: boolean;

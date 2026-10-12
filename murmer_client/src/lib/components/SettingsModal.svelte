@@ -10,7 +10,7 @@
   reach `IdentityBackup`, which uses the same setting-group classes.
 -->
 <script lang="ts">
-  import { serverInfo } from '$lib/stores/serverInfo';
+  import { serverInfo } from '#lib/stores/serverInfo.ts';
   import AppearanceTab from './settings/AppearanceTab.svelte';
   import AudioTab from './settings/AudioTab.svelte';
   import VoiceTab from './settings/VoiceTab.svelte';
@@ -18,8 +18,8 @@
   import IdentityTab from './settings/IdentityTab.svelte';
   import StatsTab from './settings/StatsTab.svelte';
   import AboutTab from './settings/AboutTab.svelte';
-  import { modalFocus } from '$lib/focus';
-  import { t } from '$lib/i18n';
+  import { modalFocus } from '#lib/focus.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     open: boolean;

@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte';
-  import { browser } from '$app/environment';
-  import { fetchLinkPreview, giphyGifUrl, type LinkPreviewData } from '$lib/link-preview';
-  import { t } from '$lib/i18n';
+  import { browser } from '$app/env';
+  import { fetchLinkPreview, giphyGifUrl, type LinkPreviewData } from '#lib/link-preview.ts';
+  import { t } from '#lib/i18n/index.ts';
 
   interface Props {
     url: string;
