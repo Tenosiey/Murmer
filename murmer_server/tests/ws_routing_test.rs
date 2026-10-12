@@ -657,6 +657,38 @@ async fn a_keyless_presence_does_not_reveal_whether_the_password_was_right() {
     assert_eq!(answers[0], answers[1], "the answer is a password oracle");
 }
 
+/// The ban and the name binding are checked against the name, so a presence
+/// without one used to be admitted past both: a banned key with the password
+/// kept reading the default channel until the idle timeout.
+#[tokio::test]
+async fn a_presence_without_a_name_is_refused() {
+    let addr = start_server_with_password(Some("hunter2")).await;
+    let (mut ws, _) = connect_async(format!("ws://{addr}/ws"))
+        .await
+        .expect("connect");
+    let Some(Ok(Message::Text(greeting))) = ws.next().await else {
+        panic!("no challenge");
+    };
+    let greeting: Value = serde_json::from_str(&greeting).unwrap();
+    let challenge = greeting["challenge"].as_str().unwrap();
+    let signature = signing_key("mallory").sign(format!("presence:{challenge}").as_bytes());
+    ws.send(Message::text(
+        json!({
+            "type": "presence",
+            "publicKey": public_key("mallory"),
+            "signature": STANDARD.encode(signature.to_bytes()),
+            "password": "hunter2",
+        })
+        .to_string(),
+    ))
+    .await
+    .expect("send");
+    assert_eq!(
+        frames_until_closed(&mut ws).await,
+        vec![json!({ "type": "error", "message": "invalid-username" })]
+    );
+}
+
 /// One identity key is the account on every server, so a proof another
 /// server (or another connection) could have seen must not log in here.
 #[tokio::test]

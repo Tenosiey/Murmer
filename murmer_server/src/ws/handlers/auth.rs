@@ -191,6 +191,16 @@ pub(super) async fn handle_presence(
     // both bound to the key.
     let verified_key = verify_key_proof(sender, state, v, client_ip, challenge).await?;
 
+    // The name binding and the ban list are both checked below only against
+    // a name. A presence without one used to be admitted past them, so a
+    // banned key with the password went on reading the default channel and
+    // every broadcast until the idle timeout, then reconnected.
+    if !v.get("user").is_some_and(Value::is_string) {
+        error!("Rejected presence without a user name");
+        send_error(sender, errors::INVALID_USERNAME).await;
+        return Err(());
+    }
+
     let mut pending_invite: Option<String> = None;
     if !*authenticated {
         match &state.password {
