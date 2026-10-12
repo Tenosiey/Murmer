@@ -83,7 +83,7 @@ impl Default for UploadQuota {
 pub async fn remove_upload(state: &AppState, key: &str) {
     let _ = tokio::fs::remove_file(state.upload_dir.join(key)).await;
     if let Err(e) = db::forget_upload(&state.db, key).await {
-        error!("Failed to forget upload {key}: {e}");
+        error!("Failed to forget an upload: {e}");
     }
 }
 
@@ -466,7 +466,14 @@ pub async fn upload(
         Ok(_) => match tokio::fs::rename(temp_path.as_path(), &path).await {
             Ok(_) => {
                 let url = format!("/files/{}", key);
-                info!("Stored upload {key} for {user}");
+                // Never the key: it is the whole capability to fetch the
+                // file, so a log line with it hands every private
+                // attachment to whoever reads the logs.
+                info!(
+                    bytes = data.len(),
+                    category = category.id,
+                    "Stored upload for {user}"
+                );
                 Json(serde_json::json!({
                     "url": url,
                     "name": filename,
