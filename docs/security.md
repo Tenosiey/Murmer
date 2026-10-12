@@ -173,6 +173,17 @@ All of this is deliberate, and `README.md` points operators here:
   would take members seeing, or approving, each new wrap — design work, not
   a fix.
 
+- **The operator of a web client.** A browser runs whatever JavaScript the
+  page's origin serves on each load, and that code holds the identity key
+  and does the decrypting. So a web client served by the server
+  (`WEB_CLIENT_DIR`) puts DMs and encrypted channels in the operator's
+  reach — a modified bundle can read the key once and send it home — and,
+  since the key is the account everywhere, every other server that member
+  uses too. The desktop app runs code from the signed release instead, so
+  it does not extend that trust. This is why the web client is off unless
+  the operator sets it, and why the image ships it root-owned: the server
+  process itself cannot rewrite it.
+
 - **Server-side search** — there is no text to index.
 - **Bots** — `POST /channels/:id/messages` refuses; a bot has no identity key
   to encrypt with.
