@@ -369,6 +369,11 @@ Anyone can send that header; believing it from a client would hand it a
 fresh bucket per request. Left unset behind a proxy, every user shares one
 bucket and five failed logins lock the whole server out.
 
+Only failed logins stay in the authentication window. A presence reserves
+a slot before it is checked and hands it back once every rejection is
+behind it, so successes never count, yet a burst of parallel guesses on
+many sockets cannot all slip past the check before any is recorded.
+
 The limits (`MAX_MESSAGES_PER_MINUTE`, `MAX_AUTH_ATTEMPTS_PER_MINUTE`,
 `MAX_UPLOADS_PER_MINUTE`, `MAX_FRAMES_PER_SECOND` — documented in
 `README.md`)

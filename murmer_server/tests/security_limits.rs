@@ -3,7 +3,7 @@ use murmer_server::{
     security::{
         FRAME_BURST_SECONDS, FrameBudget, MAX_ADMIN_FAILURES_PER_MINUTE, RATE_WINDOW,
         SWEEP_INTERVAL, admin_token_matches, check_auth_rate_limit, check_message_rate_limit,
-        validate_channel_name, validate_user_name, voice_channel_has_room,
+        refund_auth_attempt, validate_channel_name, validate_user_name, voice_channel_has_room,
     },
 };
 use serial_test::serial;
@@ -44,6 +44,28 @@ fn rejects_auth_when_limit_reached() {
                 let limiter = RateLimiter::new();
                 assert!(check_auth_rate_limit(&limiter, "127.0.0.1").await);
                 assert!(!check_auth_rate_limit(&limiter, "127.0.0.1").await);
+            });
+        });
+    });
+}
+
+#[test]
+#[serial]
+fn successful_logins_do_not_count_toward_the_auth_limit() {
+    with_var("MAX_AUTH_ATTEMPTS_PER_MINUTE", Some("2"), || {
+        with_runtime(|rt| {
+            rt.block_on(async {
+                let limiter = RateLimiter::new();
+                for _ in 0..10 {
+                    assert!(check_auth_rate_limit(&limiter, "10.0.0.1").await);
+                    refund_auth_attempt(&limiter, "10.0.0.1").await;
+                }
+                // Failures still count, and a refund for another IP frees
+                // nothing here.
+                assert!(check_auth_rate_limit(&limiter, "10.0.0.1").await);
+                assert!(check_auth_rate_limit(&limiter, "10.0.0.1").await);
+                refund_auth_attempt(&limiter, "10.0.0.2").await;
+                assert!(!check_auth_rate_limit(&limiter, "10.0.0.1").await);
             });
         });
     });
