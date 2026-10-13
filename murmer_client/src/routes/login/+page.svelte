@@ -12,7 +12,9 @@
   import { get } from 'svelte/store';
   import MurmerLogo from '#lib/components/MurmerLogo.svelte';
   import { t } from '#lib/i18n/index.ts';
+  import { isValidUserName } from '#lib/chat/constants.ts';
   let username = $state('');
+  let invalid = $state(false);
 
   onMount(() => {
     const existing = get(session).user;
@@ -22,6 +24,8 @@
   });
 
   function login() {
+    invalid = !isValidUserName(username);
+    if (invalid) return;
     session.set({ user: username });
     goto('/servers');
   }
@@ -50,8 +54,14 @@
           autocapitalize="none"
           spellcheck={false}
           required
+          aria-invalid={invalid}
+          aria-describedby={invalid ? 'login-name-error' : undefined}
+          oninput={() => (invalid = false)}
         />
       </label>
+      {#if invalid}
+        <p id="login-name-error" class="error" role="alert">{t('login.invalidName')}</p>
+      {/if}
       <button type="submit" class="btn btn-primary">{t('login.continue')}</button>
       <p class="hint">{t('login.hint')}</p>
     </form>
@@ -113,6 +123,12 @@
 
   .login-card .btn {
     min-height: var(--control-height-lg);
+  }
+
+  .error {
+    margin: 0;
+    color: var(--color-error);
+    font-size: var(--text-sm);
   }
 
   .hint {
