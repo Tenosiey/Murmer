@@ -1917,7 +1917,7 @@
   }
 
   /* Responsive: stack panes on narrow windows. */
-  @media (max-width: 1100px) {
+  @media (max-width: 900px) {
     .page {
       flex-direction: column;
       height: auto;

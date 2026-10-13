@@ -56,7 +56,7 @@
   }
 
   /* The panes stack on narrow windows, leaving nothing side by side to resize. */
-  @media (max-width: 1100px) {
+  @media (max-width: 900px) {
     .resizer {
       display: none;
     }
