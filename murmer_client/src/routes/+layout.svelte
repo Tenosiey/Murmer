@@ -16,6 +16,7 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { page } from '$app/state';
   import { APP_VERSION } from '#lib/version.ts';
   import { theme } from '#lib/stores/theme.ts';
   import DialogHost from '#lib/components/DialogHost.svelte';
@@ -650,4 +651,8 @@
 
 <DialogHost />
 
-<div class="version">{APP_VERSION}</div>
+<!-- On the chat page the badge would sit over the member list or, once the
+     panes stack, the send button; Settings → About carries it there. -->
+{#if page.route.id !== '/chat'}
+  <div class="version">{APP_VERSION}</div>
+{/if}

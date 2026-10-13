@@ -751,6 +751,7 @@
   .channels {
     width: clamp(200px, 18vw, 280px);
     flex-shrink: 0;
+    container-type: inline-size;
     background: var(--color-bg);
     padding: var(--space-3) var(--space-2);
     display: flex;
@@ -1040,6 +1041,8 @@
 
   .voice-channel-quality {
     margin-left: auto;
+    /* Gives way long before the channel name does. */
+    flex-shrink: 100;
     font-size: var(--text-xs);
     font-weight: 500;
     color: var(--color-muted);
@@ -1047,6 +1050,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Too narrow for both: an ellipsis where the quality was reads as part of
+     the channel name. The quality is also in the channel's settings. */
+  @container (max-width: 199px) {
+    .voice-channel-quality {
+      display: none;
+    }
   }
 
   .voice-channel-limit {
