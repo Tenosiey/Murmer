@@ -12,6 +12,7 @@
   import { scheduled } from '#lib/stores/scheduled.ts';
   import { channels } from '#lib/stores/channels.ts';
   import { describeWhen, describeScheduleFailure } from '#lib/chat/schedule.ts';
+  import { modalFocus } from '#lib/focus.ts';
   import { t } from '#lib/i18n/index.ts';
 
   interface Props {
@@ -79,6 +80,7 @@
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div
       class="modal-content"
+      use:modalFocus
       onclick={(event) => event.stopPropagation()}
       onkeydown={handleKeydown}
       role="document"
