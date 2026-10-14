@@ -9,7 +9,8 @@ import {
   normalizePoll,
   normalizeReactions,
   normalizeReplyTo,
-  prepareMessage
+  prepareMessage,
+  sealedUploadKeys
 } from './message-utils';
 
 describe('normalizeForwardedFrom', () => {
@@ -293,5 +294,22 @@ describe('mergeHistory', () => {
   it('leaves the store alone for an empty page', () => {
     const held = [msg(1)];
     expect(mergeHistory(held, [])).toBe(held);
+  });
+});
+
+describe('sealedUploadKeys', () => {
+  it('names the image and attachment of a sealed message', () => {
+    const msg: Message = {
+      type: 'chat',
+      enc: {},
+      image: 'https://h/files/k-image',
+      attachment: { url: 'https://h/files/k-doc', name: 'd.pdf', size: 1 }
+    };
+    expect(sealedUploadKeys(msg)).toEqual(['k-image', 'k-doc']);
+  });
+
+  it('names nothing for a plaintext message or a foreign url', () => {
+    expect(sealedUploadKeys({ type: 'chat', image: 'https://h/files/k' })).toEqual([]);
+    expect(sealedUploadKeys({ type: 'chat', enc: {}, image: 'https://elsewhere/x.png' })).toEqual([]);
   });
 });

@@ -289,3 +289,55 @@ async fn a_purge_releases_files_the_same_way() {
         ["k-purged"]
     );
 }
+
+#[tokio::test]
+async fn a_sealed_message_releases_only_the_files_its_author_names_and_owns() {
+    let db = setup().await;
+    let channel = db::get_channel_id_by_name(&db, "general")
+        .await
+        .expect("general");
+    for (key, owner) in [("k-sealed", "ada"), ("k-avatar", "ada"), ("k-bobs", "bob")] {
+        assert!(
+            db::reserve_upload(&db, key, owner, 1, 0, 0)
+                .await
+                .expect("reserve")
+        );
+    }
+    db::bind_user_key(&db, "ada", "ada-key")
+        .await
+        .expect("bind");
+    assert!(
+        db::set_user_avatar(&db, "ada", "/files/k-avatar")
+            .await
+            .expect("avatar")
+    );
+    let sealed = post(
+        &db,
+        channel,
+        serde_json::json!({ "user": "ada", "enc": { "epoch": 1, "nonce": "n", "ciphertext": "c" } }),
+    )
+    .await;
+
+    // The trigger cannot see inside `enc`, so the delete alone frees nothing.
+    assert!(db::delete_message(&db, sealed).await.expect("delete"));
+    assert!(
+        db::take_unreferenced_uploads(&db)
+            .await
+            .expect("sweep")
+            .is_empty()
+    );
+
+    // Naming somebody else's file does nothing, and a file something
+    // readable still names survives the sweep.
+    db::release_own_uploads(
+        &db,
+        "ada",
+        vec!["k-sealed".into(), "k-avatar".into(), "k-bobs".into()],
+    )
+    .await
+    .expect("release");
+    assert_eq!(
+        db::take_unreferenced_uploads(&db).await.expect("sweep"),
+        ["k-sealed"]
+    );
+}

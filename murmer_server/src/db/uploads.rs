@@ -12,8 +12,10 @@
 //! trigger marks a file `released` when a message naming it is deleted —
 //! by its author, a moderator, retention, a purge or a reset alike — and
 //! [`take_unreferenced_uploads`] hands back the released files nothing else
-//! still names. Files inside encrypted messages are never released: the
-//! server cannot see which file a sealed message carries.
+//! still names. Files inside encrypted messages are released only by
+//! [`release_own_uploads`], when their author's client names them on
+//! deleting its own message: the server cannot see which file a sealed
+//! message carries.
 
 use rusqlite::params;
 
@@ -162,6 +164,23 @@ pub async fn forget_upload(db: &Db, key: &str) -> Result<(), DbError> {
     db.call_db(move |conn| {
         conn.prepare_cached("DELETE FROM uploads WHERE key = ?1")?
             .execute(params![key])?;
+        Ok(())
+    })
+    .await
+}
+
+/// Release the uploads `user` named on deleting their own sealed message,
+/// for the next sweep. Keys `user` did not upload are ignored, so naming
+/// someone else's file does nothing; a named file that something readable
+/// still names is kept by [`take_unreferenced_uploads`] as usual.
+pub async fn release_own_uploads(db: &Db, user: &str, keys: Vec<String>) -> Result<(), DbError> {
+    let user = user.to_owned();
+    db.call_db(move |conn| {
+        let mut stmt = conn
+            .prepare_cached("UPDATE uploads SET released = 1 WHERE key = ?1 AND user_name = ?2")?;
+        for key in &keys {
+            stmt.execute(params![key, user])?;
+        }
         Ok(())
     })
     .await
