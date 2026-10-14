@@ -60,11 +60,6 @@ the idea comes from and what users will expect it to behave like.
 
 ## 📚 Documentation
 
-- [ ] Privacy at a glance in `README.md`, linked from every "encrypted" in
-      the feature list: what the operator sees, that mesh voice shows each
-      participant's IP to the others, that DM and encrypted-channel files
-      are not encrypted, and that in the web client the operator serves the
-      code holding your key
 - [ ] A production deployment guide: a Caddy or nginx TLS front with
       `TRUSTED_PROXIES`, a password or invites, backing up the database and
       `uploads/`, and how long to keep logs (they pair names with IPs)
