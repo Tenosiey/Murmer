@@ -35,6 +35,7 @@ the SQLite database on a named volume.
 | `web_client.rs` | Serving `WEB_CLIENT_DIR` under the desktop app's Content-Security-Policy |
 | `upload.rs` | `/upload`: the signed-proof gate, validation, the categorised safe-list |
 | `admin.rs` | `/role`, guarded by a bearer token |
+| `health.rs` | `/health`, a database round-trip for uptime monitors and the Docker health check |
 | `roles.rs` | Role definitions and default role colors |
 | `link_preview.rs` | `/link-preview`, returning OpenGraph metadata |
 | `security.rs` | Rate limiting, replay protection, validation utilities |
