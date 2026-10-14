@@ -200,8 +200,9 @@ All of this is deliberate, and `README.md` points operators here:
   fresh key that travels inside the message, and the server stores them
   under a key without the filename, but it sees how large the file is and,
   from the extension the upload category is picked by, what kind. It cannot
-  see which message carries which file, so deleting a sealed message leaves
-  its file on disk; see [Quota and deletion](#quota-and-deletion).
+  see which message carries which file, so only the author's own delete
+  takes a sealed message's file with it; see
+  [Quota and deletion](#quota-and-deletion).
 - **Link previews** and content-derived stats.
 - **The profanity filter and the auto-moderation rules** — the server holds
   no text to mask or match. Doing either would mean handing the server the
@@ -305,8 +306,11 @@ to remember. `upload::spawn_upload_sweep` then removes released files that
 nothing else names: a server-made forward, an avatar, an emoji, a sound, the
 server icon or a wiki page keeps the file alive. Two gaps are deliberate:
 
-- a file in an **encrypted** message or a DM is never released, because the
-  server cannot see which file a sealed message carries;
+- a file in an **encrypted** message is released only when its author
+  deletes it: their client names the files in `delete-message`, and the
+  server releases those of them the author uploaded. Any other delete of a
+  sealed message leaves its file, because the server cannot see which file
+  it carries. A DM carries no upload of its own;
 - a file that was uploaded but never posted is kept, and counts against its
   uploader's quota. Sweeping unposted files would also sweep every file in a
   sealed message, for the same reason.

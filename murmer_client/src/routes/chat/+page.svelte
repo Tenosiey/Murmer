@@ -18,6 +18,7 @@
   import { PERMISSIONS } from '#lib/chat/permissions.ts';
   import { session } from '#lib/stores/session.ts';
   import { uploadAttachment } from '#lib/upload.ts';
+  import { sealedUploadKeys } from '#lib/message-utils.ts';
   import { displayNames, profiles } from '#lib/stores/profiles.ts';
   import { voice, voiceVideo } from '#lib/stores/voice.ts';
   import { selectedServer, servers } from '#lib/stores/servers.ts';
@@ -1279,7 +1280,7 @@
       danger: true
     });
     if (!confirmed) return;
-    chat.delete(msg.id);
+    chat.delete(msg.id, sealedUploadKeys(msg));
   }
 
   function highlightMessageById(messageId: number): boolean {

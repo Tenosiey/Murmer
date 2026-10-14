@@ -900,6 +900,23 @@ pub(super) async fn handle_delete_message(
             // moderator deletions say nothing about the requester's habits.
             if is_own {
                 super::stats::record(state, &requester, vec![(db::Stat::MessagesDeleted, 1)]).await;
+
+                // A sealed message hides which files it carries, so its
+                // author's client names them (at most an image and an
+                // attachment). Only the author's own uploads are released.
+                let files: Vec<String> = v
+                    .get("files")
+                    .and_then(|f| f.as_array())
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|k| k.as_str().map(str::to_owned))
+                    .take(2)
+                    .collect();
+                if !files.is_empty()
+                    && let Err(e) = db::release_own_uploads(&state.db, &requester, files).await
+                {
+                    error!("failed to release uploads of message {message_id}: {e}");
+                }
             }
         }
         Ok(false) => {

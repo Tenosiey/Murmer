@@ -22,6 +22,14 @@ the idea comes from and what users will expect it to behave like.
 
 ## 🔧 Tech debt / hardening
 
+- [ ] Age limit for attachments, chosen by the operator. A sealed
+      message's files go with it only when its author deletes it (their
+      client names them); a moderator's delete, retention, the Danger Zone
+      purge or reset of an encrypted channel, and a file uploaded but never
+      posted, still leave the file on disk. **Not** a sweep reconciling `uploads/` against
+      the database: the server can never prove a sealed file unreferenced,
+      and such a sweep would delete every attachment of every encrypted
+      channel
 - [ ] Drop the Google STUN default (`DEFAULT_STUN_SERVER` in
       `config.rs`). Every call by every user tells Google their IP and when
       they are in a call unless the operator changes it, which undoes the
@@ -47,16 +55,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] Raid protection. On a password-less server anyone can mint unlimited
       keys and accounts; there is no join verification, account-age gate or
       captcha (Discord verification levels)
-- [ ] Reclaim orphaned uploads. Deleting an emoji, avatar, server icon or
-      sound removes its file; deleting a *message* does not, and neither does
-      the Danger Zone purge or reset. The dashboard's storage breakdown can
-      only ever grow. **Not** a sweep reconciling `uploads/` against the
-      database: an encrypted channel seals its attachment URLs into `enc`, a
-      forward into a DM seals them into the ciphertext, and the purge keeps
-      DMs — so the server can never prove a file unreferenced, and a sweep
-      would delete every attachment of every encrypted channel. The options
-      that remain are the author's client naming the files when it deletes
-      its own message, or an operator-chosen age limit for attachments
 
 ---
 
