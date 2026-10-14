@@ -50,6 +50,6 @@ USER murmer
 EXPOSE 3001
 ENV RUST_LOG=murmer_server=info
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl -fsS http://127.0.0.1:3001/ || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD curl -fsS http://127.0.0.1:3001/health || exit 1
 
 CMD ["murmer_server"]

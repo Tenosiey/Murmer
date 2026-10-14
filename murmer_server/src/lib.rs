@@ -9,6 +9,7 @@ pub mod bot;
 pub mod channel_overrides;
 pub mod config;
 pub mod db;
+pub mod health;
 pub mod link_preview;
 pub mod mentions;
 pub mod metrics;

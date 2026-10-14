@@ -195,6 +195,14 @@ A database created before secure deletion shipped still holds what was
 deleted before the upgrade in its free pages; run `VACUUM` once, with the
 server stopped, to rewrite the file without them: `sqlite3 murmer.db VACUUM`.
 
+**Monitoring.** Point an uptime monitor such as Uptime Kuma at
+`GET /health` (an HTTP(s) monitor on `https://your-host/health`, or
+`http://<server>:3001/health` from the same network). It answers `200 ok`
+only after a query round-trips through the database, and `503` when the
+database stops answering — which a monitor on the bare port would miss. It
+returns no data and needs no authentication. The Docker image's health check
+uses the same endpoint.
+
 **Invites.** Hand out invite codes minted in Server Dashboard → **Invites**:
 they carry a lifetime and a use limit and can be revoked without changing
 `SERVER_PASSWORD`. Revoking stops future joins; someone who already joined is

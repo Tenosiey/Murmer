@@ -33,8 +33,8 @@ use axum::{
 };
 use dotenvy::dotenv;
 use murmer_server::{
-    AppState, VoiceChannelState, VoiceMode, admin, automod, bot, config::Config, db, link_preview,
-    upload, web_client, ws,
+    AppState, VoiceChannelState, VoiceMode, admin, automod, bot, config::Config, db, health,
+    link_preview, upload, web_client, ws,
 };
 use std::{
     collections::HashSet,
@@ -212,13 +212,14 @@ async fn main() -> Result<()> {
         )
         .route("/link-preview", get(link_preview::link_preview))
         .route("/role", post(admin::set_role))
+        .route("/health", get(health::health))
         .merge(bot::routes::router())
         .nest_service("/files", upload::files_router(&config.upload_dir))
         .with_state(state);
 
     // Everything the API does not claim: the web client when one is
-    // configured, otherwise the bare liveness response the health check and
-    // the client's reachability probe expect from `/`.
+    // configured, otherwise the bare liveness response the client's
+    // reachability probe expects from `/`.
     router = match &config.web_client_dir {
         Some(dir) => {
             info!(path = %dir.display(), "serving web client");
