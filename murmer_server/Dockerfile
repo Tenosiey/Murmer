@@ -3,7 +3,7 @@
 # The Rust version is spelled out in the tag, not passed as an ARG: Dependabot
 # cannot update an image named through a variable. It must match the channel
 # in the repo-root rust-toolchain.toml, which CI checks.
-FROM docker.io/library/rust:1.99.0-slim-trixie@sha256:0952c7a429d2f53c7f1f5e0796190690e7d8db367ec4a66ce0419763b9e5e0d0 AS builder
+FROM docker.io/library/rust:1.99.0-slim-trixie@sha256:2752b332db73fdbb7dc576f06c82ed1f312005784ef913d7e04a28f5f55dc581 AS builder
 WORKDIR /app
 
 # Cache dependencies
@@ -19,14 +19,14 @@ RUN cargo build --release --locked
 # The web client rides along in every image so an operator can turn it on
 # with one setting (WEB_CLIENT_DIR=/app/web) instead of installing Bun and
 # building it themselves. Unset, the server never reads the directory.
-FROM docker.io/oven/bun:1.4.2-slim@sha256:cb3bbbb08e13a4a2ff400f24c7a2a1d5efa83f6ef8544d52d95a519631e2fc61 AS web
+FROM docker.io/oven/bun:1.4.3-slim@sha256:14a223fa35747ec728bce300ef85888bc5f7958164d15bbba6a54b22b52a3288 AS web
 WORKDIR /app
 COPY murmer_client/package.json murmer_client/bun.lock ./
 RUN bun install --frozen-lockfile
 COPY murmer_client ./
 RUN bun run build
 
-FROM docker.io/library/debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+FROM docker.io/library/debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
 LABEL org.opencontainers.image.source="https://github.com/Tenosiey/Murmer"
 LABEL org.opencontainers.image.description="Murmer WebSocket server"
 WORKDIR /app
