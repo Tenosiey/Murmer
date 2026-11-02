@@ -19,7 +19,7 @@ RUN cargo build --release --locked
 # The web client rides along in every image so an operator can turn it on
 # with one setting (WEB_CLIENT_DIR=/app/web) instead of installing Bun and
 # building it themselves. Unset, the server never reads the directory.
-FROM docker.io/oven/bun:1.4.3-slim@sha256:14a223fa35747ec728bce300ef85888bc5f7958164d15bbba6a54b22b52a3288 AS web
+FROM docker.io/oven/bun:1.4.4-slim@sha256:1846adf22496bd711036aae8be147e57bdebbaea2e5264e3e0b5af1db187d9a4 AS web
 WORKDIR /app
 COPY murmer_client/package.json murmer_client/bun.lock ./
 RUN bun install --frozen-lockfile
