@@ -1111,6 +1111,13 @@ async fn handle_voice_join(
             .collect();
         if let Some(entry) = map.get_mut(&ch_id) {
             entry.users.insert(u.to_string());
+            // A member who asked to stay off the mesh takes the whole call
+            // onto the SFU: in a mesh the others would still learn their
+            // address. Set before `broadcast_voice` decides the mode, so the
+            // joiner never meets the mesh at all.
+            if v.get("viaServer").and_then(Value::as_bool) == Some(true) {
+                entry.sticky = true;
+            }
         }
         *voice_channel = Some(ch_id);
         drop(map);
@@ -1535,15 +1542,24 @@ async fn send_voice_mutes(
 /// this, so the operator — not a URL compiled into the client — decides whom
 /// a call contacts. The shape is `RTCConfiguration.iceServers`, so the client
 /// can pass it through.
+///
+/// `sfu` says whether calls here can go through the server at all (`off`,
+/// `auto`) or always do (`only`), so the client can tell a member whether
+/// their "always via server" setting is honoured or already enforced.
 async fn send_ice_config(state: &Arc<AppState>, sender: &mut SplitSink<WebSocket, Message>) {
     let ice_servers: Vec<Value> = state
         .stun_servers
         .iter()
         .map(|url| serde_json::json!({ "urls": url }))
         .collect();
+    let sfu = match state.sfu_thresholds {
+        None => "off",
+        Some(t) if t.always() => "only",
+        Some(_) => "auto",
+    };
     send_json(
         sender,
-        &serde_json::json!({ "type": "ice-config", "iceServers": ice_servers }),
+        &serde_json::json!({ "type": "ice-config", "iceServers": ice_servers, "sfu": sfu }),
     )
     .await;
 }
