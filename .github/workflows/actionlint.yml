@@ -34,7 +34,9 @@ jobs:
       # download script would not, and no further third-party action is
       # added (taiki-e/install-action does not ship actionlint).
       - name: Install actionlint
-        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Lint workflows
-        run: "$(go env GOPATH)/bin/actionlint"
+        run: actionlint
