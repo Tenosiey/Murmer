@@ -29,11 +29,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # The same pinned installer audit.yml uses, so no further third-party
-      # action is added for one prebuilt binary.
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
-        with:
-          tool: actionlint
+      # Built from source with the runner's preinstalled Go: the module
+      # checksum database pins what `@v1.7.7` resolves to, which a plain
+      # download script would not, and no further third-party action is
+      # added (taiki-e/install-action does not ship actionlint).
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
 
       - name: Lint workflows
-        run: actionlint
+        run: "$(go env GOPATH)/bin/actionlint"
