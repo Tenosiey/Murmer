@@ -32,7 +32,8 @@ import {
   noiseSuppressionMode,
   autoGainControl,
   micGain,
-  clampMicGain
+  clampMicGain,
+  alwaysViaServer
 } from '../stores/settings';
 import { resetSpeaking, setSpeaking, SPEAKING_RMS_THRESHOLD } from '../stores/voiceSpeaking';
 import { captureStream } from '../stores/voiceCapture';
@@ -1261,7 +1262,7 @@ export class VoiceManager {
     this.updateTransmissionMode();
     this.syncGlobalPushToTalk();
 
-    chat.sendRaw({ type: 'voice-join', user, channelId });
+    chat.sendRaw({ type: 'voice-join', user, channelId, viaServer: get(alwaysViaServer) });
     this.broadcastMuteState();
   }
 

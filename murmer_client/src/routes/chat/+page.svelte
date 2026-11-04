@@ -24,7 +24,8 @@
   import { selectedServer, servers } from '#lib/stores/servers.ts';
   import { onlineUsers } from '#lib/stores/online.ts';
   import { offlineUsers } from '#lib/stores/users.ts';
-  import { outputMuted, microphoneMuted } from '#lib/stores/settings.ts';
+  import { outputMuted, microphoneMuted, alwaysViaServer } from '#lib/stores/settings.ts';
+  import { serverRelay } from '#lib/stores/iceConfig.ts';
   import { remoteAudio } from '#lib/voice/remoteAudio.ts';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
@@ -1134,6 +1135,19 @@
 
   async function joinVoiceChannel(id: number) {
     if (!$session.user) return;
+    // Without an SFU the setting cannot be kept, and joining would show our
+    // address to everyone in the call; that is the user's call, not ours.
+    if (
+      $alwaysViaServer &&
+      $serverRelay === 'off' &&
+      !(await dialogs.confirm({
+        title: t('chatPage.p2pOnlyTitle'),
+        message: t('chatPage.p2pOnlyMessage'),
+        confirmLabel: t('chatPage.p2pOnlyConfirm')
+      }))
+    ) {
+      return;
+    }
     if (inVoice && currentVoiceChannelId !== null) {
       // Switching channels ends the old voice session and with it any
       // running screen share or camera and every share we were watching

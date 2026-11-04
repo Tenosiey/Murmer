@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 # Build from the repo root: docker build -f murmer_server/Dockerfile .
-FROM docker.io/library/rust:1.99.0-slim-trixie@sha256:2752b332db73fdbb7dc576f06c82ed1f312005784ef913d7e04a28f5f55dc581 AS builder
+FROM docker.io/library/rust:1.99.1-slim-trixie@sha256:ea0999ff67355d958b8799b6751c879a6d770076d26047dca66f6e51e77930d3 AS builder
 WORKDIR /app
 
 # Build with the Rust pinned in rust-toolchain.toml, not whatever the image
