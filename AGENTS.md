@@ -143,7 +143,9 @@ every push to `main`/`dev` and on every pull request. A second workflow,
 every Monday and fails on nothing else; run `cargo audit` and `bun audit` by
 hand when you change a dependency rather than waiting for it. A third,
 `.github/workflows/docker.yml`, builds the server image whenever its
-Dockerfile changes.
+Dockerfile or the Rust toolchain changes, and a fourth,
+`.github/workflows/actionlint.yml`, lints the workflows whenever one
+changes.
 
 ```bash
 cd murmer_server && cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test

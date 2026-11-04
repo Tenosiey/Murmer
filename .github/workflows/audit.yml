@@ -45,10 +45,12 @@ jobs:
       # the client should not hide another in the server for a week.
       #
       # `bun audit` resolves `bun.lock`, so no `bun install` (and no cache)
-      # is needed.
+      # is needed. Low-severity advisories are left out for the same reason
+      # as the informational ones below: a single low one with no patched
+      # release (deepmerge, through vite-plugin-svelte) kept the job red.
       - name: Client dependencies
         working-directory: murmer_client
-        run: bun audit
+        run: bun audit --audit-level=moderate
 
       # `--file` likewise inspects the lockfile directly, so neither Rust
       # crate needs its toolchain or a build. Informational advisories
