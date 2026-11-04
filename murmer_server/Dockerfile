@@ -1,10 +1,15 @@
 # syntax=docker/dockerfile:1.6
 # Build from the repo root: docker build -f murmer_server/Dockerfile .
-# The Rust version is spelled out in the tag, not passed as an ARG: Dependabot
-# cannot update an image named through a variable. It must match the channel
-# in the repo-root rust-toolchain.toml, which CI checks.
 FROM docker.io/library/rust:1.99.0-slim-trixie@sha256:2752b332db73fdbb7dc576f06c82ed1f312005784ef913d7e04a28f5f55dc581 AS builder
 WORKDIR /app
+
+# Build with the Rust pinned in rust-toolchain.toml, not whatever the image
+# ships. The two used to have to match by hand, and every toolchain bump left
+# CI red until someone noticed: Dependabot releases the toolchain and the
+# image tag days apart. Now a lagging image only costs one download. Kept
+# out of /app so its components (clippy, rustfmt, docs) are not installed.
+COPY rust-toolchain.toml /tmp/
+RUN rustup default "$(sed -n 's/^channel = "\(.*\)"$/\1/p' /tmp/rust-toolchain.toml)"
 
 # Cache dependencies
 COPY murmer_server/Cargo.toml murmer_server/Cargo.lock ./
