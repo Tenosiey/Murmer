@@ -253,6 +253,11 @@ export const en = {
   'voice.releaseHint': 'How long you keep transmitting after you stop talking. Longer keeps the pauses between words intact; shorter cuts the room off sooner, at the risk of clipping the ends of your sentences. Takes effect immediately, including mid-call.',
   'voice.inputLevel': 'Input level',
   'voice.inputLevelHint': 'Speak to check that the selected microphone is picking you up.',
+  'voice.privacy': 'Privacy',
+  'voice.viaServer': 'Always via server',
+  'voice.viaServerHint': 'Take every call through the server, so nobody else in it learns your IP address. The server can then see and hear the call, as it does whenever the "Via server" badge shows. Applies from your next join.',
+  'voice.viaServerOnly': 'This server sends every call through itself, so this is always on here.',
+  'voice.viaServerOff': 'This server cannot carry calls, so here they stay peer to peer and others in a call see your IP address.',
 
   // Identity backup
   'backup.genericError': 'Something went wrong. Please try again.',
@@ -1426,6 +1431,9 @@ export const en = {
   'chatPage.joinVoiceMessage': 'You must be in a voice channel to view screen shares.',
   'chatPage.shareUnavailableTitle': 'Screen share unavailable',
   'chatPage.shareUnavailableMessage': 'Could not open this screen share. The stream may have ended.',
+  'chatPage.p2pOnlyTitle': 'Join peer to peer?',
+  'chatPage.p2pOnlyMessage': 'You asked to take calls through the server, but this server cannot carry them. Everyone in this call will see your IP address.',
+  'chatPage.p2pOnlyConfirm': 'Join anyway',
   'chatPage.micFailed': 'Could not access your microphone. Check the permission and input device.',
   'chatPage.topicTitle': 'Channel topic',
   'chatPage.topicMessage': 'Shown next to the channel name. Leave empty to clear the topic.',

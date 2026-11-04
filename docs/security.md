@@ -348,6 +348,13 @@ difference is the point of this section:
   `SFU_PUBLIC_IP`, and why the voice panel shows a "Via server" badge
   whenever it is in use: someone who chose a self-hosted mesh for privacy
   should be able to see when they do not have it.
+- **The mesh trades the server's view for every peer's address.** Each
+  member of a mesh call learns every other member's IP. A member who would
+  rather trust the operator than the other callers turns on "Always via
+  server", which moves any call they join onto the SFU; `SFU_ONLY` does the
+  same for every call. The server makes the switch; on a server without an
+  SFU there is nothing to switch to, so the client asks before joining peer
+  to peer instead.
 - **End-to-end encryption through the SFU is not built.** Encoded
   transforms (SFrame) could hide media from the server, but whether
   WebView2, WebKitGTK and WKWebView all support `RTCRtpScriptTransform` has

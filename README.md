@@ -75,7 +75,10 @@ is shaped this way, is [`docs/security.md`](docs/security.md).
   and the STUN server (Google's unless the operator sets `STUN_SERVERS`)
   learns it too. A call marked "Via server" runs through the server's SFU
   instead: members connect only to the server, which can see and hear the
-  media.
+  media. Turn on **Always via server** in the voice settings to put every
+  call you join on the SFU (the whole call moves, so nobody in it learns
+  your address); the client warns before joining on a server without an
+  SFU. An operator can enforce it for everyone with `SFU_ONLY`.
 - **In the web client the operator serves the code that holds your key.**
   A browser runs whatever JavaScript the server hands it on each load, so a
   modified web client could read your DMs and encrypted channels, on every
@@ -137,6 +140,7 @@ it on a public server.
 | `SFU_UDP_PORT` | No | The one UDP port the SFU uses for all media (default: 3479); open it in your firewall and, under Docker, publish it as `udp` |
 | `SFU_THRESHOLD` | No | People in a voice channel at which it moves to the SFU (default: 7, at least 2). It moves back at `SFU_RETURN_THRESHOLD` |
 | `SFU_RETURN_THRESHOLD` | No | People in an SFU channel at which it moves back to peer-to-peer (default: three below `SFU_THRESHOLD`, must be below it). The gap stops a channel at the threshold from switching back and forth whenever someone reconnects |
+| `SFU_ONLY` | No | `true` sends every call through the SFU whatever its size, so no member ever learns another's IP address; members see the "Always via server" setting locked on. Overrides both thresholds and needs `SFU_PUBLIC_IP` (default: `false`) |
 | `MESSAGE_RETENTION_DAYS` | No | Delete channel messages, with their reactions and pins, once they are this many days old; checked hourly. DMs are kept. Unset or `0` keeps everything |
 
 Every capability, channel and wiki management included, is gated by roles
