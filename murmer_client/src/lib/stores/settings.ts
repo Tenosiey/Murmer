@@ -385,3 +385,13 @@ export const sendTypingIndicators = writable<boolean>(loadBool(SEND_TYPING_KEY, 
 sendTypingIndicators.subscribe((value) => {
   if (browser) localStorage.setItem(SEND_TYPING_KEY, String(value));
 });
+
+// Take every call through the server's SFU, so nobody else in it learns our
+// IP address. Sent with each `voice-join`; the server then moves the whole
+// call onto the SFU, since a mesh among the rest would still reach us.
+const ALWAYS_VIA_SERVER_KEY = 'murmer_always_via_server';
+export const alwaysViaServer = writable<boolean>(loadBool(ALWAYS_VIA_SERVER_KEY, false));
+
+alwaysViaServer.subscribe((value) => {
+  if (browser) localStorage.setItem(ALWAYS_VIA_SERVER_KEY, String(value));
+});

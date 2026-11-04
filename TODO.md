@@ -83,10 +83,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] AFK channel — move a member who has been deafened or silent for N
       minutes into a designated channel (TeamSpeak, Discord). In a full mesh
       an idle member still costs everyone a connection
-- [ ] Always through the server — a per-user setting to take every call over
-      the SFU, and an operator "SFU only" mode. In the mesh every
-      participant learns everyone else's IP address, which Discord and
-      TeamSpeak never reveal; today only `SFU_THRESHOLD=2` comes close
 - [ ] Direct calls — call someone from a DM, with ringing, accept and decline
       (Skype, Discord). Voice exists only in server channels today, so a
       private call means creating a private channel first. The peer

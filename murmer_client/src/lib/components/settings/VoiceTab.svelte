@@ -12,8 +12,10 @@
     noiseSuppressionMode,
     autoGainControl,
     micGain,
-    MAX_MIC_GAIN
+    MAX_MIC_GAIN,
+    alwaysViaServer
   } from '#lib/stores/settings.ts';
+  import { serverRelay } from '#lib/stores/iceConfig.ts';
   import { audioInputs } from '#lib/stores/audioDevices.ts';
   import { PushToTalkManager } from '#lib/voice/ptt.ts';
   import { VAD_THRESHOLD_MIN, VAD_THRESHOLD_MAX } from '#lib/voice/vad.ts';
@@ -273,6 +275,31 @@
         <div class="setting-description">
           {t('voice.inputLevelHint')}
         </div>
+      {/if}
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <h3 class="section-title">{t('voice.privacy')}</h3>
+
+    <div class="setting-group">
+      <label class="toggle-row">
+        <!-- The server enforces SFU-only; the box only reports it. -->
+        <input
+          type="checkbox"
+          checked={$serverRelay === 'only' || $alwaysViaServer}
+          disabled={$serverRelay === 'only'}
+          onchange={(e) => alwaysViaServer.set(e.currentTarget.checked)}
+        />
+        <span class="toggle-text">
+          <span class="toggle-label">{t('voice.viaServer')}</span>
+          <span class="toggle-description">{t('voice.viaServerHint')}</span>
+        </span>
+      </label>
+      {#if $serverRelay === 'only'}
+        <div class="setting-description">{t('voice.viaServerOnly')}</div>
+      {:else if $serverRelay === 'off' && $alwaysViaServer}
+        <div class="setting-description">{t('voice.viaServerOff')}</div>
       {/if}
     </div>
   </div>
