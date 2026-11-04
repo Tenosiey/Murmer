@@ -1,0 +1,39 @@
+# Lints the workflows themselves whenever one changes. A typo in a workflow
+# fails silently: a misspelt key or expression makes GitHub skip the job or
+# reject the file, and nothing goes red until the run that mattered (a
+# release, a Monday audit) never happens. actionlint also runs shellcheck
+# over every `run:` block.
+name: Actionlint
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - .github/workflows/**
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - .github/workflows/**
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: Workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The same pinned installer audit.yml uses, so no further third-party
+      # action is added for one prebuilt binary.
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        with:
+          tool: actionlint
+
+      - name: Lint workflows
+        run: actionlint
