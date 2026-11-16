@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 # Build from the repo root: docker build -f murmer_server/Dockerfile .
-FROM docker.io/library/rust:1.99.1-slim-trixie@sha256:ea0999ff67355d958b8799b6751c879a6d770076d26047dca66f6e51e77930d3 AS builder
+FROM docker.io/library/rust:1.99.1-slim-trixie@sha256:f6c4a35d21dbb3c89d7a8d056c193e94fc09037f2b58dd858b09c39a47dd02d7 AS builder
 WORKDIR /app
 
 # Build with the Rust pinned in rust-toolchain.toml, not whatever the image
@@ -31,7 +31,7 @@ RUN bun install --frozen-lockfile
 COPY murmer_client ./
 RUN bun run build
 
-FROM docker.io/library/debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
+FROM docker.io/library/debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
 LABEL org.opencontainers.image.source="https://github.com/Tenosiey/Murmer"
 LABEL org.opencontainers.image.description="Murmer WebSocket server"
 WORKDIR /app
