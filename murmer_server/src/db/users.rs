@@ -107,20 +107,6 @@ pub async fn get_all_avatars(db: &Db) -> Result<Vec<(String, String)>, DbError> 
     .await
 }
 
-/// How many users currently reference an avatar URL. Replaced avatar files
-/// are only removed from disk when no other user still points at them.
-pub async fn count_avatar_references(db: &Db, avatar: &str) -> Result<i64, DbError> {
-    let avatar = avatar.to_owned();
-    db.call_db(move |conn| {
-        conn.query_row(
-            "SELECT COUNT(*) FROM user_keys WHERE avatar = ?1",
-            params![avatar],
-            |row| row.get(0),
-        )
-    })
-    .await
-}
-
 /// A user's profile as stored on their name/key binding. `display_name`,
 /// `nickname` and `about` are empty when unset; `created_at` is when the name
 /// was first claimed and doubles as "member since".

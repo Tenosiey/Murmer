@@ -250,17 +250,13 @@ pub(super) async fn handle_set_avatar(
         }
     }
 
-    // Best-effort cleanup of the replaced file. Unlike the server icon an
-    // upload URL can be referenced by several users, so it is only deleted
-    // once the last reference is gone; the URL is re-validated before
-    // touching the filesystem in case the DB row was tampered with.
+    // The replaced file is released, not deleted: the avatar may have
+    // pointed at an emoji, an icon or somebody else's chat image, and the
+    // sweep keeps whatever is still named.
     if let Some(old_url) = old_avatar
-        && db::count_avatar_references(&state.db, &old_url)
-            .await
-            .is_ok_and(|count| count == 0)
         && let Some(key) = upload_key_from_url(&old_url)
     {
-        crate::upload::remove_upload(state, key).await;
+        crate::upload::release_upload(state, key).await;
     }
 
     info!(requester, "Avatar updated");

@@ -125,10 +125,8 @@ pub(super) async fn handle_remove_emoji(
 
     match db::remove_emoji(&state.db, &name).await {
         Ok(Some(url)) => {
-            // Best-effort file cleanup; re-validate the stored URL before
-            // touching the filesystem in case the DB row was tampered with.
             if let Some(key) = upload_key_from_url(&url) {
-                crate::upload::remove_upload(state, key).await;
+                crate::upload::release_upload(state, key).await;
             }
             info!(requester, name, "Custom emoji removed");
             broadcast_emojis(state).await;
