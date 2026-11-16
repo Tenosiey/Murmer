@@ -64,6 +64,18 @@ describe('renderMarkdown / rendering', () => {
     }
   });
 
+  it('drops links and forms that would navigate the app window itself', () => {
+    for (const text of [
+      '[link](//example.com/login)',
+      '[link](/somewhere)',
+      '<a href="//example.com">x</a>',
+      '<a href="tauri://localhost/x">x</a>'
+    ]) {
+      expect(render(text).querySelector('a')?.hasAttribute('href'), text).toBe(false);
+    }
+    expect(render('<form action="/x"><button>go</button></form>').querySelector('form')).toBeNull();
+  });
+
   it('renders lists, whose markers the inline heuristic does not carry', () => {
     for (const [text, expected] of [
       ['- a\n- b', '<ul>\n<li>a</li>\n<li>b</li>\n</ul>\n'],
