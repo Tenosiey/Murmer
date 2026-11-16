@@ -13,11 +13,12 @@ import { isBlocked } from '#lib/stores/blocks.ts';
 import { displayNames } from '#lib/stores/profiles.ts';
 import { ttsEnabled } from '#lib/stores/settings.ts';
 import { hideSpoilers } from '#lib/spoilers.ts';
+import { t } from '#lib/i18n/index.ts';
 import type { Message } from '#lib/types.ts';
 
 /** What to say for a message: who, then what, with spoilers kept hidden. */
 export function ttsUtterance(name: string, text: string): string {
-  return `${name} says ${hideSpoilers(text).trim()}`;
+  return t('tts.says', { name, text: hideSpoilers(text).trim() });
 }
 
 chat.onLiveMessage((msg: Message) => {
