@@ -902,7 +902,17 @@ async fn handle_poke(
         send_error(sender, errors::POKE_UNAVAILABLE).await;
         return;
     };
-    if target == from || !state.direct.lock().await.contains_key(target) {
+    // Someone appearing offline has to answer exactly like someone who is
+    // gone, or a poke is a way to tell the two apart.
+    let reachable = target != from
+        && state.direct.lock().await.contains_key(target)
+        && state
+            .statuses
+            .lock()
+            .await
+            .get(target)
+            .is_none_or(|status| status != "offline");
+    if !reachable {
         send_error(sender, errors::POKE_UNAVAILABLE).await;
         return;
     }

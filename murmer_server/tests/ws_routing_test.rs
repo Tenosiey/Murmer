@@ -944,6 +944,13 @@ async fn a_poke_reaches_only_its_target_and_is_paced() {
     let refused = carol.until(|f| f["type"] == "error").await;
     assert_eq!(refused.last().unwrap()["message"], "poke-unavailable");
 
+    // Someone appearing offline answers exactly like someone who is gone.
+    bob.mark("offline").await;
+    carol.until_mark("bob", "offline").await;
+    carol.send(json!({ "type": "poke", "target": "bob" })).await;
+    let refused = carol.until(|f| f["type"] == "error").await;
+    assert_eq!(refused.last().unwrap()["message"], "poke-unavailable");
+
     alice.mark("away").await;
     let seen = carol.until_mark("alice", "away").await;
     assert!(
