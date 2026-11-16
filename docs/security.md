@@ -364,10 +364,9 @@ difference is the point of this section:
   only while their camera is announced. It learns membership from every
   join and leave, so a member who leaves the channel for any reason, a kick
   or ban included, loses their connection at once, whatever their client
-  does. A mute re-syncs immediately and again when a timed one ends; a role
-  or override edit that takes Talk away only applies at the channel's next
-  join, leave, camera or mute change (`sync_sfu` in `ws/helpers.rs`). On the
-  mesh, Talk remains a hint.
+  does. A mute re-syncs immediately and again when a timed one ends, and
+  so does a role or override edit that takes Talk away (`sync_sfu` in
+  `ws/helpers.rs`). On the mesh, Talk remains a hint.
 - **Only members get a connection.** An `sfu-offer` is accepted only from a
   member of the channel it names, while that channel is in SFU mode; a
   screen-share offer additionally needs an announced share with both ends

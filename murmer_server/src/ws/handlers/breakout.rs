@@ -279,7 +279,7 @@ pub(super) async fn close_breakouts(
 
     for room_id in &rooms {
         super::channel_overrides::cleanup_channel(state, ChannelKind::Voice, *room_id).await;
-        state.voice_channels.lock().await.remove(room_id);
+        drop_voice_channel(state, *room_id).await;
         if let Err(e) = db::remove_voice_channel(&state.db, *room_id).await {
             // The room is already gone from memory and from every client; log
             // it because the row would come back as a channel after a restart.

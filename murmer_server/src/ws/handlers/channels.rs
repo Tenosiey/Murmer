@@ -730,7 +730,7 @@ pub(super) async fn handle_delete_voice_channel(
     // in a room with no parent.
     super::breakout::close_breakouts(state, ch_id, false).await;
     super::channel_overrides::cleanup_channel(state, ChannelKind::Voice, ch_id).await;
-    state.voice_channels.lock().await.remove(&ch_id);
+    drop_voice_channel(state, ch_id).await;
     if let Err(e) = db::remove_voice_channel(&state.db, ch_id).await {
         // The in-memory removal already happened and is broadcast anyway;
         // log it because the channel would reappear after a restart.

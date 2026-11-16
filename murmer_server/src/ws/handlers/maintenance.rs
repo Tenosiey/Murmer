@@ -134,7 +134,10 @@ pub(super) async fn handle_reset_server(
     // Every cache below mirrors rows the transaction just deleted; leaving
     // any of them populated would keep a deleted channel joinable or a
     // deleted role granting permissions until the next restart.
-    state.voice_channels.lock().await.clear();
+    let voice_ids: Vec<i32> = state.voice_channels.lock().await.keys().copied().collect();
+    for id in voice_ids {
+        drop_voice_channel(state, id).await;
+    }
     state.channel_overrides.lock().await.clear();
 
     let role_defs = db::list_role_defs(&state.db).await.unwrap_or_default();

@@ -156,11 +156,9 @@ pub fn sfu_slots(channel_limit: u32) -> usize {
 /// audio with Talk (`SEND_MESSAGES` in the channel) and no server mute,
 /// video while their camera is announced, a screen share while it is.
 ///
-/// Called on every membership change (from [`broadcast_voice`]) and when a
-/// camera, a screen share or a mute changes. A role or override edit takes effect at the
-/// channel's next such change.
-// ponytail: role edits re-sync lazily; push a sync from the role handlers
-// if a demoted speaker staying audible until the next join matters.
+/// Called on every membership change (from [`broadcast_voice`]), when a
+/// camera, a screen share or a mute changes, and for every occupied channel
+/// when roles or overrides do ([`invalidate_channel_visibility`]).
 pub async fn sync_sfu(state: &Arc<AppState>, channel_id: i32) {
     let Some(sfu) = &state.sfu else {
         return;
@@ -205,6 +203,22 @@ pub async fn sync_sfu(state: &Arc<AppState>, channel_id: i32) {
         });
     }
     sfu.sync(channel_id, members);
+}
+
+/// Forget a deleted voice channel and everything that hung on it: its
+/// tiles, its raised hands and its SFU connections. Without this the SFU
+/// went on forwarding a call whose channel no longer existed, and the next
+/// channel to reuse the id inherited the leftovers.
+pub async fn drop_voice_channel(state: &Arc<AppState>, channel_id: i32) {
+    state.voice_channels.lock().await.remove(&channel_id);
+    state.active_screen_shares.lock().await.remove(&channel_id);
+    state.active_webcams.lock().await.remove(&channel_id);
+    state
+        .voice_hands
+        .lock()
+        .await
+        .retain(|_, (channel, _)| *channel != channel_id);
+    sync_sfu(state, channel_id).await;
 }
 
 /// [`sync_sfu`] for whichever voice channel `user` is in, after a server
@@ -982,13 +996,34 @@ pub async fn user_can_see_channel(
 /// Called from the three broadcasts that announce a change to the inputs of
 /// [`user_can_see_channel`] — channel overrides, role definitions and role
 /// assignments — so a mutation cannot reach clients without also invalidating
-/// the server's memo. See [`AppState::visibility_epoch`].
+/// the server's memo. See [`AppState::visibility_epoch`]. The SFU's idea of
+/// who may talk is rebuilt from the same inputs, so it is refreshed here too.
 pub fn invalidate_channel_visibility(state: &Arc<AppState>) {
     // Release pairs with the Acquire load in `VisibilityCache`: a connection
     // that observes the new epoch also observes the mutation that caused it.
     state
         .visibility_epoch
         .fetch_add(1, std::sync::atomic::Ordering::Release);
+
+    // The same inputs decide who may talk, and on the SFU that is enforced:
+    // a member who just lost Talk must stop being forwarded now, not at the
+    // channel's next join or leave.
+    if state.sfu.is_some() {
+        let state = Arc::clone(state);
+        tokio::spawn(async move {
+            let occupied: Vec<i32> = state
+                .voice_channels
+                .lock()
+                .await
+                .iter()
+                .filter(|(_, info)| !info.users.is_empty())
+                .map(|(id, _)| *id)
+                .collect();
+            for channel_id in occupied {
+                sync_sfu(&state, channel_id).await;
+            }
+        });
+    }
 }
 
 /// One connection's memo of which channels it may receive frames for.
