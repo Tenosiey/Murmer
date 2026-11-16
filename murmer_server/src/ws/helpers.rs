@@ -1575,8 +1575,8 @@ pub fn parse_poll(raw: &Value) -> Result<Value, &'static str> {
 /// stored `poll` field, or the error frame to send back.
 ///
 /// Voting answers to the same rules as reacting: seeing the channel, and
-/// for a new vote `SEND_MESSAGES` there; taking a vote back only needs the
-/// channel to be visible. A message in a channel the voter cannot see is
+/// for a new vote `SEND_MESSAGES` there and no mute; taking a vote back only
+/// needs the channel to be visible. A message in a channel the voter cannot see is
 /// reported as missing, so ids cannot be probed through this frame.
 ///
 /// An encrypted channel refuses votes even on a poll posted before the
@@ -1606,6 +1606,11 @@ pub async fn prepare_poll_vote(
         return Err(super::errors::CANNOT_POLL_ENCRYPTED);
     }
     if let Some(option) = option {
+        // A mute silences every way of speaking in a channel, a vote
+        // included; taking one back stays possible.
+        if super::handlers::is_muted(state, user).await {
+            return Err(super::errors::MUTED);
+        }
         if !has_channel_permission(
             state,
             user,

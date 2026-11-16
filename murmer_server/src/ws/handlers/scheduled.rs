@@ -203,10 +203,8 @@ pub(super) async fn handle_schedule_message(
     {
         return;
     }
-    // Whatever the client tagged on beyond a message body is not part of one.
+    // A scheduled message cannot also be ephemeral, see the module doc.
     if let Some(map) = v.as_object_mut() {
-        map.remove("scheduledFor");
-        map.remove("ephemeral");
         map.remove("expiresAt");
     }
     v["type"] = Value::String("chat".into());
