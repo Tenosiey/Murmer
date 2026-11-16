@@ -29,10 +29,8 @@ pub async fn get_user_key(db: &Db, user_name: &str) -> Result<Option<String>, Db
 
 /// Look up the account name a public key is bound to, if any.
 ///
-/// The reverse of [`get_user_key`], used by HTTP endpoints that authenticate
-/// with a signed proof instead of a WebSocket session: a key with no binding
-/// has never successfully authenticated with this server, which on a
-/// password-protected server is what keeps outsiders out.
+/// The reverse of [`get_user_key`]. A key with no binding has never
+/// successfully authenticated with this server.
 pub async fn user_for_key(db: &Db, public_key: &str) -> Result<Option<String>, DbError> {
     let public_key = public_key.to_owned();
     db.call_db(move |conn| {

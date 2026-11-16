@@ -855,9 +855,8 @@ pub async fn channel_permissions(
     overrides.apply(base, &role_ids, user_key.as_deref())
 }
 
-/// Whether `user` may see a channel. Managers (server-wide `MANAGE_CHANNELS`,
-/// which also covers the no-`ADMIN_TOKEN` fallback) and administrators always
-/// can, so they can administer private channels; everyone else needs
+/// Whether `user` may see a channel. Managers (server-wide
+/// `MANAGE_CHANNELS`) and administrators always can, so they can administer private channels; everyone else needs
 /// `VIEW_CHANNELS` after overrides.
 pub async fn can_view_channel(
     state: &Arc<AppState>,

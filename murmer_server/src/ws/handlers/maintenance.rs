@@ -1,8 +1,7 @@
 //! Danger Zone handlers: purging every message and resetting the server, plus
 //! the operator's standing retention limit ([`spawn_message_retention`]).
 //!
-//! Both require `ADMINISTRATOR` (never the no-`ADMIN_TOKEN` fallback that
-//! keeps channel management open) *and* a typed confirmation phrase echoed
+//! Both require `ADMINISTRATOR` *and* a typed confirmation phrase echoed
 //! back in the frame, so a stray click or a replayed frame cannot wipe a
 //! server. The database work runs in one transaction in `db::maintenance`;
 //! what is left here is refreshing the in-memory caches that mirror the rows

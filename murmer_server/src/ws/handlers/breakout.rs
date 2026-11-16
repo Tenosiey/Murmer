@@ -7,8 +7,8 @@
 //! Opening and closing a split needs `MANAGE_CHANNELS` — the same permission
 //! that creates and deletes the channels it is made of.
 //!
-//! The move itself is a *request*, not an eviction. Audio is peer-to-peer, so
-//! the server cannot relocate a call: it addresses a `breakout-move` frame to
+//! The move itself is a *request*, not an eviction. The client owns its voice
+//! connections, so the server cannot relocate a call: it addresses a `breakout-move` frame to
 //! each member and the client tears down its peer connections and joins the
 //! room the same way it would from a click. A client that ignores the frame
 //! simply stays where it is, which is the same outcome as a member who was

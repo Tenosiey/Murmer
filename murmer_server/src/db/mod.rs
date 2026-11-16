@@ -343,8 +343,8 @@ CREATE TABLE IF NOT EXISTS user_keys (
     status_expires_at INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT ({NOW_UTC})
 );
--- `user_for_key` resolves an account from the key that signed an upload, on
--- every `/upload` request; without this the lookup scans the whole table.
+-- Roles, bans and mutes key on the public key and are resolved back to an
+-- account name; without this each such lookup scans the whole table.
 CREATE INDEX IF NOT EXISTS idx_user_keys_public_key ON user_keys (public_key);
 CREATE TABLE IF NOT EXISTS bans (
     public_key TEXT PRIMARY KEY,

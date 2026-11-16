@@ -4,7 +4,8 @@
 //! authenticated user who can see the channel — a private channel's pages
 //! are as much its content as its messages are. Writes additionally need the
 //! wiki role gate. (`wiki-resolve` only answers "does this page exist" for
-//! channels addressed by name and is deliberately left ungated.) Every mutation broadcasts a
+//! channels addressed by name, and reports pages of a channel the requester
+//! cannot see as missing.) Every mutation broadcasts a
 //! full `wiki-index` metadata snapshot (no bodies) to the channel; joining
 //! clients receive the same snapshot, so all clients converge on the
 //! persisted state. Page bodies travel only in `wiki-page`/`wiki-conflict`
