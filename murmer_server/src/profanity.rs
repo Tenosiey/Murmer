@@ -8,11 +8,12 @@
 //! alphanumeric characters and each run is compared, lowercased, against the
 //! list. That is what keeps "class" out of a filter for "ass" — a substring
 //! match would mangle innocent words and quickly train operators to turn the
-//! feature off. It also means the mask keeps the message's shape (one `*` per
+//! feature off. It also means the mask keeps the message's shape (one `•` per
 //! character) instead of leaking the length of the list entry.
 
-/// Character a filtered word is replaced with.
-const MASK_CHAR: char = '*';
+/// Character a filtered word is replaced with. Not `*`: the text is rendered
+/// as Markdown, where two masked words turned everything between them bold.
+const MASK_CHAR: char = '•';
 
 /// Whether `c` is part of a word for matching purposes.
 fn is_word_char(c: char) -> bool {
@@ -28,7 +29,7 @@ pub fn word_runs(text: &str) -> impl Iterator<Item = &str> {
         .filter(|run| !run.is_empty())
 }
 
-/// Replace every word of `text` that appears in `words` with asterisks.
+/// Replace every word of `text` that appears in `words` with bullets.
 /// Returns `None` when nothing matched, so the common case allocates nothing
 /// and the caller can leave the message untouched.
 ///
@@ -86,17 +87,17 @@ mod tests {
         let list = words(&["damn", "heck"]);
         assert_eq!(
             mask("Damn, that HECK", &list).as_deref(),
-            Some("****, that ****")
+            Some("••••, that ••••")
         );
-        assert_eq!(mask("well, damn!", &list).as_deref(), Some("well, ****!"));
+        assert_eq!(mask("well, damn!", &list).as_deref(), Some("well, ••••!"));
     }
 
     #[test]
     fn leaves_innocent_words_alone() {
         let list = words(&["ass"]);
-        // A substring matcher would turn these into "cl***" and "p***".
+        // A substring matcher would turn these into "cl•••" and "p•••".
         assert_eq!(mask("class pass", &list), None);
-        assert_eq!(mask("ass", &list).as_deref(), Some("***"));
+        assert_eq!(mask("ass", &list).as_deref(), Some("•••"));
     }
 
     #[test]
@@ -110,11 +111,11 @@ mod tests {
         let list = words(&["mist"]);
         assert_eq!(
             mask("(mist) — mist, mistig", &list).as_deref(),
-            Some("(****) — ****, mistig")
+            Some("(••••) — ••••, mistig")
         );
         // Non-ASCII words are matched by their lowercase form, and the mask
         // keeps one character per character rather than per byte.
         let list = words(&["straße"]);
-        assert_eq!(mask("Straße!", &list).as_deref(), Some("******!"));
+        assert_eq!(mask("Straße!", &list).as_deref(), Some("••••••!"));
     }
 }

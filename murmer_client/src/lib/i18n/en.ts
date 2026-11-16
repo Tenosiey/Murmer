@@ -720,7 +720,7 @@ export const en = {
   'moderation.slowMode': 'Slow mode',
   'moderation.maxMessageLength': 'Max message length',
   'moderation.profanityFilter': 'Profanity filter',
-  'moderation.replaceFilteredWordsWith': 'Replace filtered words with asterisks in new messages. Masking happens on the server before a message is stored, so the original never reaches anyone — including whoever edits it afterwards.',
+  'moderation.replaceFilteredWordsWith': 'Replace filtered words with bullets (•••) in new messages. Masking happens on the server before a message is stored, so the original never reaches anyone — including whoever edits it afterwards.',
   'moderation.filteredWords': 'Filtered words',
   'moderation.saveChanges': 'Save changes',
   'moderation.autoModerationRules': 'Auto-moderation rules',
