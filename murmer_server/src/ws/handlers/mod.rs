@@ -36,6 +36,7 @@ mod uploads;
 mod voice_defaults;
 mod wiki;
 
+pub(crate) use channel_overrides::cleanup_channel;
 pub use maintenance::spawn_message_retention;
 pub(crate) use moderation::is_muted;
 pub use pins::broadcast_pins;

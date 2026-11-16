@@ -433,7 +433,7 @@ pub(super) async fn handle_get_channel_overrides(
 }
 
 /// Remove all overrides for a deleted channel (DB + cache).
-pub(super) async fn cleanup_channel(state: &Arc<AppState>, kind: ChannelKind, channel_id: i32) {
+pub(crate) async fn cleanup_channel(state: &Arc<AppState>, kind: ChannelKind, channel_id: i32) {
     if let Err(e) = db::delete_overrides_for_channel(&state.db, kind, channel_id).await {
         error!("failed to clean up overrides for deleted channel: {e}");
     }
