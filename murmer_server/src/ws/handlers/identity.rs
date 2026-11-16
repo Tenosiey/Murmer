@@ -190,12 +190,10 @@ pub(super) async fn handle_set_server_identity(
         return;
     }
 
-    // Best-effort cleanup of the replaced icon file; re-validate the stored
-    // URL before touching the filesystem in case the DB row was tampered with.
     if let Some(old_url) = replaced_icon
         && let Some(key) = upload_key_from_url(&old_url)
     {
-        crate::upload::remove_upload(state, key).await;
+        crate::upload::release_upload(state, key).await;
     }
 
     info!(requester, "Server identity updated");

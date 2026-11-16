@@ -29,10 +29,8 @@ pub async fn get_user_key(db: &Db, user_name: &str) -> Result<Option<String>, Db
 
 /// Look up the account name a public key is bound to, if any.
 ///
-/// The reverse of [`get_user_key`], used by HTTP endpoints that authenticate
-/// with a signed proof instead of a WebSocket session: a key with no binding
-/// has never successfully authenticated with this server, which on a
-/// password-protected server is what keeps outsiders out.
+/// The reverse of [`get_user_key`]. A key with no binding has never
+/// successfully authenticated with this server.
 pub async fn user_for_key(db: &Db, public_key: &str) -> Result<Option<String>, DbError> {
     let public_key = public_key.to_owned();
     db.call_db(move |conn| {
@@ -103,20 +101,6 @@ pub async fn get_all_avatars(db: &Db) -> Result<Vec<(String, String)>, DbError> 
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
-    })
-    .await
-}
-
-/// How many users currently reference an avatar URL. Replaced avatar files
-/// are only removed from disk when no other user still points at them.
-pub async fn count_avatar_references(db: &Db, avatar: &str) -> Result<i64, DbError> {
-    let avatar = avatar.to_owned();
-    db.call_db(move |conn| {
-        conn.query_row(
-            "SELECT COUNT(*) FROM user_keys WHERE avatar = ?1",
-            params![avatar],
-            |row| row.get(0),
-        )
     })
     .await
 }

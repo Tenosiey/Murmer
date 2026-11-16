@@ -196,6 +196,23 @@ async fn a_read_only_member_may_take_a_vote_back_but_not_cast_one() {
 }
 
 #[tokio::test]
+async fn a_muted_member_may_take_a_vote_back_but_not_cast_one() {
+    let state = make_state().await;
+    let general = channel(&state, "lunch").await;
+    let id = poll(&state, general).await;
+    db::bind_user_key(&state.db, "bob", "pk-bob")
+        .await
+        .expect("bind");
+    state.mutes.lock().await.insert("pk-bob".to_string(), None);
+
+    assert_eq!(
+        prepare_poll_vote(&state, "bob", id, Some(0)).await.err(),
+        Some(errors::MUTED)
+    );
+    assert!(prepare_poll_vote(&state, "bob", id, None).await.is_ok());
+}
+
+#[tokio::test]
 async fn an_ordinary_message_takes_no_votes() {
     let state = make_state().await;
     let general = channel(&state, "lunch").await;

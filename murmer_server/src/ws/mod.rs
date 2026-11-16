@@ -4,6 +4,7 @@
 pub mod constants;
 pub mod errors;
 mod handlers;
+pub(crate) use handlers::cleanup_channel;
 pub mod helpers;
 pub mod validation;
 

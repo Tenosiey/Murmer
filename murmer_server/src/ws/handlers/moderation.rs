@@ -3,8 +3,7 @@
 //!
 //! Each action requires the matching permission (`KICK_MEMBERS`,
 //! `BAN_MEMBERS`, `MUTE_MEMBERS`, `MOVE_MEMBERS`) and the requester must strictly outrank the
-//! target in the role hierarchy. Unlike channel management there is no "no
-//! admin token" fallback: moderation is never open to unprivileged users.
+//! target in the role hierarchy.
 //!
 //! A ban may also delete what the member posted in the last hour
 //! (`deleteMessages`), across every channel, the way Discord's "delete
@@ -478,8 +477,8 @@ pub(super) async fn handle_get_ban_list(
 /// Handle `move-member`: ask a member who is in voice to switch to another
 /// voice channel.
 ///
-/// Like a breakout room, this is a request rather than an eviction: audio is
-/// peer-to-peer, so the server addresses the same `breakout-move` frame to
+/// Like a breakout room, this is a request rather than an eviction: the
+/// client owns its voice connections, so the server addresses the same `breakout-move` frame to
 /// the target and their client joins the channel as if they had clicked it.
 /// That join is checked like any other, so a target who may not see the
 /// channel stays put. The requester must see it too, or a move would confirm

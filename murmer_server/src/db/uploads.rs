@@ -12,7 +12,8 @@
 //! trigger marks a file `released` when a message naming it is deleted —
 //! by its author, a moderator, retention, a purge or a reset alike — and
 //! [`take_unreferenced_uploads`] hands back the released files nothing else
-//! still names. Files inside encrypted messages are released only by
+//! still names. A dropped avatar, emoji, sound or icon goes the same way
+//! through [`release_upload`]. Files inside encrypted messages are released only by
 //! [`release_own_uploads`], when their author's client names them on
 //! deleting its own message: the server cannot see which file a sealed
 //! message carries.
@@ -169,6 +170,20 @@ pub async fn forget_upload(db: &Db, key: &str) -> Result<(), DbError> {
     .await
 }
 
+/// Release an upload whose avatar, emoji, sound or icon reference was just
+/// dropped, for the next sweep. Never delete such a file directly: any
+/// member may point their avatar at any stored image, so "my reference is
+/// gone" says nothing about a message, emoji or icon still naming it.
+pub async fn release_upload(db: &Db, key: &str) -> Result<(), DbError> {
+    let key = key.to_owned();
+    db.call_db(move |conn| {
+        conn.prepare_cached("UPDATE uploads SET released = 1 WHERE key = ?1")?
+            .execute(params![key])?;
+        Ok(())
+    })
+    .await
+}
+
 /// Release the uploads `user` named on deleting their own sealed message,
 /// for the next sweep. Keys `user` did not upload are ignored, so naming
 /// someone else's file does nothing; a named file that something readable
@@ -188,9 +203,9 @@ pub async fn release_own_uploads(db: &Db, user: &str, keys: Vec<String>) -> Resu
 
 /// Take every released upload that nothing names any more, deleting its row;
 /// the caller removes the files. A released upload that is still named — a
-/// forwarded copy of the message, an avatar, an emoji, a sound, the server
-/// icon or a wiki page — is un-released instead, until a later delete
-/// releases it again.
+/// forwarded copy of the message, an avatar, an emoji, a sound, a role or
+/// server icon or a wiki page — is un-released instead, until a later
+/// delete releases it again.
 ///
 /// ponytail: one `instr` scan of `messages` per released key. Released keys
 /// are few per sweep; index message attachments if that stops being true.
@@ -205,6 +220,7 @@ pub async fn take_unreferenced_uploads(db: &Db) -> Result<Vec<String>, DbError> 
                      UNION ALL SELECT 1 FROM emojis WHERE url = '/files/' || uploads.key \
                      UNION ALL SELECT 1 FROM soundboard_sounds WHERE url = '/files/' || uploads.key \
                      UNION ALL SELECT 1 FROM server_settings WHERE value = '/files/' || uploads.key \
+                     UNION ALL SELECT 1 FROM role_definitions WHERE icon = '/files/' || uploads.key \
                      UNION ALL SELECT 1 FROM wiki_pages \
                          WHERE instr(body, '/files/' || uploads.key) > 0) \
                  RETURNING key",

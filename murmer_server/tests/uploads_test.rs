@@ -341,3 +341,50 @@ async fn a_sealed_message_releases_only_the_files_its_author_names_and_owns() {
         ["k-sealed"]
     );
 }
+
+/// Any member can point their avatar at any stored image and clear it
+/// again. That used to delete the file outright, so one member could erase
+/// an emoji, an icon or somebody else's chat image.
+#[tokio::test]
+async fn a_dropped_avatar_never_takes_a_file_something_else_still_names() {
+    let db = setup().await;
+    let channel = db::get_channel_id_by_name(&db, "general")
+        .await
+        .expect("general");
+    for key in ["k-emoji", "k-role", "k-chat", "k-own"] {
+        assert!(
+            db::reserve_upload(&db, key, "ada", 1, 0, 0)
+                .await
+                .expect("reserve")
+        );
+    }
+    db::add_emoji(&db, "party", "/files/k-emoji", "ada")
+        .await
+        .expect("emoji");
+    let role = db::list_role_defs(&db).await.expect("roles").remove(0);
+    db::update_role_def(
+        &db,
+        role.id,
+        &role.name,
+        None,
+        Some("/files/k-role"),
+        role.permissions,
+    )
+    .await
+    .expect("role icon");
+    post(
+        &db,
+        channel,
+        serde_json::json!({ "user": "ada", "image": "https://h/files/k-chat" }),
+    )
+    .await;
+
+    // What `set-avatar` does with each replaced avatar.
+    for key in ["k-emoji", "k-role", "k-chat", "k-own"] {
+        db::release_upload(&db, key).await.expect("release");
+    }
+    assert_eq!(
+        db::take_unreferenced_uploads(&db).await.expect("sweep"),
+        ["k-own"]
+    );
+}

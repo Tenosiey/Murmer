@@ -293,11 +293,6 @@ export interface ScreenShareAudio {
   muted: boolean;
 }
 
-export interface ScreenShareActive {
-  userId: string;
-  channelId: number;
-}
-
 /** One tile on the video stage. */
 export interface WebcamTile {
   /** Stable list key; our own preview and a peer never collide. */
