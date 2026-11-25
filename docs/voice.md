@@ -315,6 +315,53 @@ would notice them missing:
   Otherwise the error lands on the target, who did nothing, and the mover
   sees a drag that silently did not happen.
 
+## Direct calls
+
+A member rings another from the DM header (`stores/calls.ts`, server side
+`ws/handlers/calls.rs`); the callee accepts or declines from a banner that
+follows them around the app, and either side hangs up with Leave.
+
+A call belongs to no channel the server stores, but it is still a voice
+channel on the inside: `call-start` creates an in-memory one under a
+*negative* id, and both clients join it with `voice-join` like any other.
+That is the whole reason it is shaped this way. Mesh and SFU, cameras,
+screen shares, mutes, stats and connection repair all work in a call
+without a line of their own, where a separate media path would have had to
+grow every one of them again. The channel is created sticky, so on a server
+running the SFU a call goes through it from the first join and neither side
+learns the other's address; without the SFU it is a mesh of two.
+
+What makes it private is `is_call` in `ws/helpers.rs`. Database ids count
+up from 1 and call ids down from -1, so the sign alone marks a call, and
+every visibility and permission answer for one comes from its two parties
+and nothing else:
+
+- **Nobody else sees or joins it, administrators included.** Elsewhere
+  Manage Channels and Administrator see every private channel so they can
+  administer it; a call is a conversation, not something to administer, so
+  that bypass deliberately does not apply. Deleting it or splitting it into
+  breakout rooms is refused for the same reason.
+- **It is never listed.** Not in `voice-channel-list`, not even to its
+  parties, whose clients show it in the voice controls instead.
+- **It has no overrides,** and `VisibilityCache` would hand a channel with
+  none to everybody. `is_call` makes it count as restricted, which is the
+  check that keeps `voice-users` and `voice-join` for a call off everyone
+  else's socket.
+
+A call is over as soon as its headcount drops below the most it held: one
+party leaving a call of two ends it for both, and so does joining a server
+channel, which leaves the call. It also ends when it rings out
+(`CALL_RING_TIMEOUT`), when an answered call is never joined, and when a
+party's last connection closes. Each of those exists because the
+alternative is invisible: both parties "busy" for good, with no call left
+to hang up.
+
+Only the device that placed or answered a call joins it. All of an
+account's devices hear every call frame, which is what lets the others
+stop ringing the moment one answers. A blocked caller is never shown: the
+call rings out on their side as missed, and the server never learns who is
+blocked.
+
 ## Soundboard playback
 
 Soundboard sounds are never mixed into a microphone stream. The server

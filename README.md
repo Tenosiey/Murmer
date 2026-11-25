@@ -35,7 +35,8 @@ that runs both as a Tauri desktop app and, unchanged, in the browser.
 - **Voice** over peer-to-peer WebRTC, or through the server's optional SFU
   for large channels, with RNNoise noise suppression,
   voice activation or push-to-talk, camera video, screen sharing (several
-  at once, each in its own window), breakout rooms and a soundboard
+  at once, each in its own window), breakout rooms, a soundboard and
+  direct calls from a DM
 - **[End-to-end encryption](#privacy-at-a-glance)** for direct messages
   and, optionally, for private text channels: the server only ever stores
   ciphertext there

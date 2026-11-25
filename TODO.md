@@ -83,11 +83,6 @@ the idea comes from and what users will expect it to behave like.
 - [ ] AFK channel — move a member who has been deafened or silent for N
       minutes into a designated channel (TeamSpeak, Discord). In a full mesh
       an idle member still costs everyone a connection
-- [ ] Direct calls — call someone from a DM, with ringing, accept and decline
-      (Skype, Discord). Voice exists only in server channels today, so a
-      private call means creating a private channel first. The peer
-      connection code carries over; what is new is the ringing state and a
-      call that belongs to no channel
 - [ ] Priority speaker — while a member with the permission talks, everyone
       else's playback is ducked (Mumble, Discord). The soundboard ducking
       (`voice/soundboard.ts`) is the same mechanism pointed at voices
