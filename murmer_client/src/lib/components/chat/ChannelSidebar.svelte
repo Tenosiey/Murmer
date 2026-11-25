@@ -39,6 +39,7 @@
   import { formatVoiceQuality, orderVoiceChannels } from '#lib/chat/helpers.ts';
   import type { CategoryInfo, ChannelInfo, VoiceChannelInfo } from '#lib/types.ts';
   import { t } from '#lib/i18n/index.ts';
+  import { call } from '#lib/stores/calls.ts';
 
   interface Props {
     currentChatChannelId: number;
@@ -629,7 +630,11 @@
     <div class="voice-controls-panel">
       {#if inVoice}
         <div class="voice-controls-header">
-          {t('channelSidebar.voiceControls')}
+          {#if $call?.accepted && $call.id === currentVoiceChannelId}
+            {t('calls.active', { name: $displayNames($call.peer) })}
+          {:else}
+            {t('channelSidebar.voiceControls')}
+          {/if}
           {#if $viaServer}
             <span
               class="badge via-server"
