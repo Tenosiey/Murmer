@@ -724,6 +724,11 @@ pub(super) async fn handle_delete_voice_channel(
         send_error(sender, errors::CHANNEL_PERMISSION_DENIED).await;
         return;
     }
+    // A direct call is nobody's to delete; its parties hang up instead.
+    if is_call(ChannelKind::Voice, ch_id) {
+        send_error(sender, errors::UNKNOWN_VOICE_CHANNEL).await;
+        return;
+    }
 
     // Breakout rooms of this channel go with it: their way back is the
     // channel being deleted, so leaving them behind would strand everybody

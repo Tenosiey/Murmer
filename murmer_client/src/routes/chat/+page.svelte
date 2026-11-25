@@ -151,6 +151,8 @@
   import { fileDrop } from '#lib/chat/fileDrop.ts';
   import { groupMentionsIn } from '#lib/chat/mentions.ts';
   import { t } from '#lib/i18n/index.ts';
+  import CallBanner from '#lib/components/CallBanner.svelte';
+  import { setCallVoiceHooks } from '#lib/stores/calls.ts';
 
   let message = $state('');
   let composer: MessageComposer | undefined = $state();
@@ -415,8 +417,11 @@
       }
       // The server dropped us from voice with the old connection, so rejoin
       // the call too rather than sit in it with nobody signaling.
+      // A direct call ended with the old connection, though; there is no
+      // call left to rejoin.
       if (inVoice && currentVoiceChannelId !== null) {
-        void joinVoiceChannel(currentVoiceChannelId);
+        if (currentVoiceChannelId < 0) leaveVoice();
+        else void joinVoiceChannel(currentVoiceChannelId);
       }
       ping.start();
       await scrollBottom();
@@ -555,6 +560,13 @@
     connectToServer();
     // Voice hotkeys also fire as OS-level global shortcuts while another
     // window has focus (Tauri shell only; a no-op in the plain browser).
+    setCallVoiceHooks({
+      join: (id) => void joinVoiceChannel(id),
+      // By the time a call ends we may already have moved to a channel.
+      leave: (id) => {
+        if (inVoice && currentVoiceChannelId === id) leaveVoice();
+      }
+    });
     setGlobalHotkeyActions({
       toggleMic: toggleMicrophone,
       toggleDeafen: toggleOutput,
@@ -595,6 +607,7 @@
       expiryTicker = null;
     }
     clearGlobalHotkeyActions();
+    setCallVoiceHooks(null);
   });
 
   let stopAutoAway: (() => void) | null = null;
@@ -1769,6 +1782,7 @@
       {/if}
 
       <DmPanel />
+      <CallBanner />
 
       {#each $voice as peer (peer.id)}
         <audio autoplay use:remoteAudio={{ stream: peer.stream, userId: peer.id }}></audio>

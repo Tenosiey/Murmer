@@ -3,8 +3,9 @@
   end-to-end encrypted, so beyond sending it carries the two things only a DM
   needs: accepting a peer's changed identity key, and showing the fingerprint
   to compare out of band before doing so. The viewer's own messages can be
-  edited (re-encrypted and sent again) or deleted for both sides. Opening a conversation is the chat
-  page's job, since it also closes an open thread.
+  edited (re-encrypted and sent again) or deleted for both sides. The header
+  also places a direct call to the peer (`stores/calls.ts`). Opening a
+  conversation is the chat page's job, since it also closes an open thread.
 -->
 <script lang="ts">
   import { chat } from '#lib/stores/chat.ts';
@@ -17,6 +18,7 @@
   import { t } from '#lib/i18n/index.ts';
   import { dmFingerprint } from '#lib/dm-crypto.ts';
   import { loadKeyPair } from '#lib/keypair.ts';
+  import { call, startCall } from '#lib/stores/calls.ts';
   import type { Message } from '#lib/types.ts';
   import ConversationPanel from './ConversationPanel.svelte';
 
@@ -105,6 +107,7 @@
     keyWarning={$activePeer in $conflicts}
     onTrustKey={trustKey}
     onVerify={verify}
+    onCall={$call ? undefined : () => $activePeer && startCall($activePeer)}
     canModify={(msg) => msg.from === $session.user && typeof msg.id === 'number'}
     onEdit={edit}
     onDelete={remove}

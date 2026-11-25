@@ -303,3 +303,8 @@ pub const MAX_REMINDER_TEXT_LENGTH: usize = 500;
 /// Two indexed queries against small tables, so the cost is negligible; the
 /// interval is what bounds how late a delivery can be.
 pub const SCHEDULER_TICK_SECONDS: u64 = 10;
+
+/// How long a direct call rings before it ends as missed. Long enough to
+/// find the window, short enough that a call to somebody away from their
+/// desk does not hold the caller in an empty voice session.
+pub const CALL_RING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);

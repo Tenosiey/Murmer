@@ -115,7 +115,13 @@ pub(super) async fn handle_open_breakouts(
         return;
     };
 
-    let Some(parent) = state.voice_channels.lock().await.get(&parent_id).cloned() else {
+    // A direct call is not a channel a manager may split: the rooms would
+    // carry its parties into public channels.
+    let parent = match is_call(ChannelKind::Voice, parent_id) {
+        true => None,
+        false => state.voice_channels.lock().await.get(&parent_id).cloned(),
+    };
+    let Some(parent) = parent else {
         send_error(sender, errors::UNKNOWN_VOICE_CHANNEL).await;
         return;
     };
