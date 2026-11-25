@@ -584,3 +584,11 @@ pub const POKE_UNAVAILABLE: &str = r#"{"type":"error","message":"poke-unavailabl
 
 /// The sender poked again inside the cooldown.
 pub const POKE_COOLDOWN: &str = r#"{"type":"error","message":"poke-cooldown"}"#;
+
+/// The callee is not online, is the caller, or is not a member at all. One
+/// code for all three, as for a poke: someone appearing offline must answer
+/// exactly like someone who is gone.
+pub const CALL_UNAVAILABLE: &str = r#"{"type":"error","message":"call-unavailable"}"#;
+
+/// The caller or the callee is already in a direct call, ringing or answered.
+pub const CALL_BUSY: &str = r#"{"type":"error","message":"call-busy"}"#;

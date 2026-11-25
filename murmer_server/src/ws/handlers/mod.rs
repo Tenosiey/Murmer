@@ -10,6 +10,7 @@ mod audit;
 mod auth;
 mod automod;
 mod breakout;
+mod calls;
 mod channel_keys;
 mod channel_overrides;
 mod channels;
@@ -36,6 +37,7 @@ mod uploads;
 mod voice_defaults;
 mod wiki;
 
+pub(crate) use calls::headcount_changed as call_headcount_changed;
 pub(crate) use channel_overrides::cleanup_channel;
 pub use maintenance::spawn_message_retention;
 pub(crate) use moderation::is_muted;
@@ -417,6 +419,15 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, client_ip: std::
                             }
                             "voice-leave" => {
                                 handle_voice_leave(&state, &v, &mut voice_channel, &user_name).await;
+                            }
+                            "call-start" => {
+                                calls::handle_call_start(&state, &mut sender, &v, &user_name).await;
+                            }
+                            "call-accept" => {
+                                calls::handle_call_accept(&state, &v, &user_name).await;
+                            }
+                            "call-end" => {
+                                calls::handle_call_end(&state, &v, &user_name).await;
                             }
                             // WebRTC signaling frames are relayed verbatim, so make sure a
                             // client can only speak for itself, and only to a peer in its
@@ -1630,6 +1641,7 @@ async fn handle_disconnect(
         return;
     }
 
+    calls::end_calls_of(state, &name).await;
     state.users.lock().await.remove(&name);
     broadcast_users(state).await;
     state.connection_stats.lock().await.remove(&name);

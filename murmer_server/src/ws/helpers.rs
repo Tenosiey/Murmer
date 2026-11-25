@@ -142,6 +142,9 @@ pub async fn broadcast_voice(state: &Arc<AppState>, channel_id: i32) {
         }
     }
     sync_sfu(state, channel_id).await;
+    if is_call(ChannelKind::Voice, channel_id) {
+        super::handlers::call_headcount_changed(state, channel_id, list.len()).await;
+    }
 }
 
 /// How many receive slots a client's SFU offer needs in a channel with this
@@ -591,7 +594,11 @@ pub async fn voice_channel_list_frame(
     entries.sort_by(|a, b| (a.1.position, &a.1.name).cmp(&(b.1.position, &b.1.name)));
     let mut channels: Vec<Value> = Vec::new();
     for (id, info) in &entries {
-        if !user_can_see_channel(state, user, ChannelKind::Voice, *id).await {
+        // A direct call is a voice channel only on the inside; it is never
+        // listed, not even to its two parties.
+        if is_call(ChannelKind::Voice, *id)
+            || !user_can_see_channel(state, user, ChannelKind::Voice, *id).await
+        {
             continue;
         }
         let mut descriptor = voice_channel_descriptor(*id, info);
@@ -835,6 +842,16 @@ pub async fn channel_permissions(
     channel_id: i32,
 ) -> Permissions {
     let base = effective_permissions(state, user).await;
+    // A call has exactly two members and no overrides: its parties may see
+    // and talk in it, and nobody else holds anything there, administrators
+    // included. Their role cannot open somebody's private conversation.
+    if is_call(kind, channel_id) {
+        return if call_party(state, user, channel_id).await {
+            base | permissions::VIEW_CHANNELS | permissions::SEND_MESSAGES
+        } else {
+            0
+        };
+    }
     if base & permissions::ADMINISTRATOR != 0 {
         return permissions::ALL;
     }
@@ -855,6 +872,23 @@ pub async fn channel_permissions(
     overrides.apply(base, &role_ids, user_key.as_deref())
 }
 
+/// Whether a voice channel id names a direct call. Call ids are handed out
+/// counting down from -1 (`handlers/calls.rs`) while database rows count up
+/// from 1, so the sign alone tells them apart.
+pub fn is_call(kind: ChannelKind, channel_id: i32) -> bool {
+    kind == ChannelKind::Voice && channel_id < 0
+}
+
+/// Whether `user` is one of the two parties to the call `channel_id`.
+pub async fn call_party(state: &Arc<AppState>, user: &str, channel_id: i32) -> bool {
+    state
+        .calls
+        .lock()
+        .await
+        .get(&channel_id)
+        .is_some_and(|call| call.has_party(user))
+}
+
 /// Whether `user` may see a channel. Managers (server-wide
 /// `MANAGE_CHANNELS`) and administrators always can, so they can administer private channels; everyone else needs
 /// `VIEW_CHANNELS` after overrides.
@@ -864,6 +898,9 @@ pub async fn can_view_channel(
     kind: ChannelKind,
     channel_id: i32,
 ) -> bool {
+    if is_call(kind, channel_id) {
+        return call_party(state, user, channel_id).await;
+    }
     if has_permission(state, user, permissions::MANAGE_CHANNELS).await {
         return true;
     }
@@ -969,6 +1006,9 @@ pub async fn channel_members(state: &Arc<AppState>, channel_id: i32) -> Vec<(Str
 /// from the in-memory cache. Used to mark channels with a lock and to hide
 /// them from anonymous viewers.
 pub async fn channel_is_private(state: &Arc<AppState>, kind: ChannelKind, channel_id: i32) -> bool {
+    if is_call(kind, channel_id) {
+        return true;
+    }
     let map = state.channel_overrides.lock().await;
     map.get(&(kind, channel_id))
         .map(|set| set.restricts_view())
@@ -1075,11 +1115,13 @@ impl VisibilityCache {
         if let Some(&allowed) = self.answers.get(&(kind, channel_id)) {
             return allowed;
         }
-        let restricted = state
-            .channel_overrides
-            .lock()
-            .await
-            .contains_key(&(kind, channel_id));
+        // A call has no overrides, so the fast path would hand it to everyone.
+        let restricted = is_call(kind, channel_id)
+            || state
+                .channel_overrides
+                .lock()
+                .await
+                .contains_key(&(kind, channel_id));
         let allowed = !restricted || user_can_see_channel(state, user, kind, channel_id).await;
         self.answers.insert((kind, channel_id), allowed);
         allowed

@@ -339,6 +339,26 @@ pub struct VoiceChannelState {
     pub sticky: bool,
 }
 
+/// A direct call between two members, ringing or answered
+/// (`ws/handlers/calls.rs`). Its media rides an ordinary entry in
+/// [`AppState::voice_channels`] under the same id, so every voice feature
+/// works in a call unchanged; only the two parties may see or join it.
+#[derive(Clone, Debug)]
+pub struct Call {
+    pub caller: String,
+    pub callee: String,
+    pub accepted: bool,
+    /// Most members the call has held at once. The call ends as soon as its
+    /// headcount drops below this: one party leaving ends it for both.
+    pub peak: usize,
+}
+
+impl Call {
+    pub fn has_party(&self, user: &str) -> bool {
+        self.caller == user || self.callee == user
+    }
+}
+
 /// Whether a voice channel's media runs peer to peer or through the
 /// server's SFU (`docs/voice.md`). The server decides and
 /// announces it in `voice-mode`; clients follow.
@@ -365,6 +385,10 @@ pub struct AppState {
     pub known_users: Mutex<HashSet<String>>,
     /// Voice channel state, keyed by voice channel ID.
     pub voice_channels: Mutex<HashMap<i32, VoiceChannelState>>,
+    /// Direct calls, keyed by their voice channel id, which is always
+    /// negative so it can never meet a database row
+    /// (`ws::helpers::is_call`).
+    pub calls: Mutex<HashMap<i32, Call>>,
     /// All role definitions, keyed by role id. Loaded at startup and mutated
     /// as roles are created/edited/deleted.
     pub role_defs: Mutex<HashMap<i64, RoleDef>>,
@@ -470,6 +494,10 @@ pub struct AppState {
     /// [`ws::constants::AUTH_TIMEOUT`]. A field only so tests need not wait
     /// out the real ten seconds.
     pub auth_timeout: std::time::Duration,
+    /// How long a call rings before it counts as missed,
+    /// [`ws::constants::CALL_RING_TIMEOUT`]. A field for the same reason as
+    /// `auth_timeout`.
+    pub ring_timeout: std::time::Duration,
 }
 
 impl AppState {
@@ -485,6 +513,7 @@ impl AppState {
             users: Mutex::default(),
             known_users: Mutex::default(),
             voice_channels: Mutex::default(),
+            calls: Mutex::default(),
             role_defs: Mutex::default(),
             user_roles: Mutex::default(),
             channel_overrides: Mutex::default(),
@@ -516,6 +545,7 @@ impl AppState {
             upload_sessions: Mutex::default(),
             trusted_proxies: Vec::new(),
             auth_timeout: ws::constants::AUTH_TIMEOUT,
+            ring_timeout: ws::constants::CALL_RING_TIMEOUT,
         }
     }
 }
