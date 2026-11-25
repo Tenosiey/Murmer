@@ -37,7 +37,7 @@ jobs:
 
       # Ships the prebuilt binary; `cargo install cargo-audit` would spend
       # several minutes compiling it on every run.
-      - uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
           tool: cargo-audit
 
@@ -45,10 +45,12 @@ jobs:
       # the client should not hide another in the server for a week.
       #
       # `bun audit` resolves `bun.lock`, so no `bun install` (and no cache)
-      # is needed.
+      # is needed. Low-severity advisories are left out for the same reason
+      # as the informational ones below: a single low one with no patched
+      # release (deepmerge, through vite-plugin-svelte) kept the job red.
       - name: Client dependencies
         working-directory: murmer_client
-        run: bun audit
+        run: bun audit --audit-level=moderate
 
       # `--file` likewise inspects the lockfile directly, so neither Rust
       # crate needs its toolchain or a build. Informational advisories

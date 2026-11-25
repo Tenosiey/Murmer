@@ -206,10 +206,8 @@ pub(super) async fn handle_remove_sound(
 
     match db::remove_sound(&state.db, id).await {
         Ok(Some(url)) => {
-            // Best-effort file cleanup; re-validate the stored URL before
-            // touching the filesystem in case the DB row was tampered with.
             if let Some(key) = sound_key_from_url(&url) {
-                crate::upload::remove_upload(state, key).await;
+                crate::upload::release_upload(state, key).await;
             }
             info!(requester, id, "Soundboard sound removed");
             broadcast_sounds(state).await;

@@ -84,16 +84,15 @@ impl Default for UploadQuota {
     }
 }
 
-/// Remove a stored upload and return its bytes to its owner's quota.
-/// Best-effort: a file already gone is not an error.
-pub async fn remove_upload(state: &AppState, key: &str) {
-    let _ = tokio::fs::remove_file(state.upload_dir.join(key)).await;
-    if let Err(e) = db::forget_upload(&state.db, key).await {
-        error!("Failed to forget an upload: {e}");
+/// Hand an upload whose reference was just dropped to the next sweep, which
+/// deletes it once nothing else names it. Best-effort.
+pub async fn release_upload(state: &AppState, key: &str) {
+    if let Err(e) = db::release_upload(&state.db, key).await {
+        error!("Failed to release an upload: {e}");
     }
 }
 
-/// Delete the files of messages that are gone and named nowhere else. See
+/// Delete the released files that are named nowhere any more. See
 /// [`db::take_unreferenced_uploads`].
 pub async fn sweep_released_uploads(state: &AppState) {
     match db::take_unreferenced_uploads(&state.db).await {
@@ -102,7 +101,7 @@ pub async fn sweep_released_uploads(state: &AppState) {
                 let _ = tokio::fs::remove_file(state.upload_dir.join(key)).await;
             }
             if !keys.is_empty() {
-                info!(removed = keys.len(), "Deleted uploads of deleted messages");
+                info!(removed = keys.len(), "Deleted unreferenced uploads");
             }
         }
         Err(e) => error!("Upload sweep failed: {e}"),

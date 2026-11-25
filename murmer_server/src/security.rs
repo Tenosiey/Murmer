@@ -119,6 +119,14 @@ pub struct SfuThresholds {
     pub to_mesh: usize,
 }
 
+impl SfuThresholds {
+    /// Whether every call is on the SFU (`SFU_ONLY`): `SFU_THRESHOLD` itself
+    /// cannot go below two, so a threshold of one only comes from there.
+    pub fn always(&self) -> bool {
+        self.to_sfu <= 1
+    }
+}
+
 /// The mode a voice channel of `headcount` members should be in.
 ///
 /// `thresholds` is `None` while the SFU is off, which keeps every channel on
@@ -597,6 +605,17 @@ mod tests {
                 "{current:?} with {headcount} people, sticky {sticky}"
             );
         }
+    }
+
+    #[test]
+    fn sfu_only_puts_a_channel_of_one_on_the_sfu() {
+        let only = Some(SfuThresholds {
+            to_sfu: 1,
+            to_mesh: 0,
+        });
+        assert_eq!(next_mode(Mesh, 1, false, only), Sfu);
+        assert_eq!(next_mode(Sfu, 1, false, only), Sfu);
+        assert_eq!(next_mode(Sfu, 0, false, only), Mesh);
     }
 
     #[test]

@@ -273,6 +273,22 @@ async fn edit_only_own_messages() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(body["error"], "not-message-author");
+
+    // Once the channel is encrypted, the bot's old message is no way to put
+    // plaintext into it.
+    db::set_channel_e2ee(&state.db, channel, true)
+        .await
+        .expect("encrypt");
+    let (status, body) = request(
+        &app,
+        "PATCH",
+        &format!("/api/v1/channels/{channel}/messages/{own}"),
+        &token,
+        Some(json!({"text": "plaintext"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body["error"], "channel-requires-encryption");
 }
 
 #[tokio::test]

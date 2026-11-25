@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('./chat', () => ({ chat: { on() {}, off() {} } }));
 vi.mock('./connection', () => ({ connection: { subscribe: () => () => {} } }));
 
-const { parseIceServers } = await import('./iceConfig');
+const { parseIceServers, parseServerRelay } = await import('./iceConfig');
 
 describe('parseIceServers', () => {
   it('keeps STUN entries and drops everything else', () => {
@@ -23,5 +23,16 @@ describe('parseIceServers', () => {
   it('treats a malformed frame as no servers', () => {
     expect(parseIceServers(undefined)).toEqual([]);
     expect(parseIceServers({ urls: 'stun:a' })).toEqual([]);
+  });
+});
+
+describe('parseServerRelay', () => {
+  it('keeps the three known modes and nothing else', () => {
+    expect(parseServerRelay('off')).toBe('off');
+    expect(parseServerRelay('auto')).toBe('auto');
+    expect(parseServerRelay('only')).toBe('only');
+    expect(parseServerRelay('ONLY')).toBeNull();
+    expect(parseServerRelay(true)).toBeNull();
+    expect(parseServerRelay(undefined)).toBeNull();
   });
 });

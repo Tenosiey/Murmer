@@ -32,10 +32,22 @@
   let boosted = $derived(userVolume > 1);
 </script>
 
+<svelte:window onkeydown={(event) => open && event.key === 'Escape' && onClose()} />
+
 {#if open && user}
+  <!-- The overlay swallows the next right-click too, so it closes the menu
+       rather than leaving the browser's own menu on top of it. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="volume-menu-overlay" onclick={onClose}>
+  <div
+    class="volume-menu-overlay"
+    onclick={onClose}
+    oncontextmenu={(event) => {
+      if (event.target !== event.currentTarget) return;
+      event.preventDefault();
+      onClose();
+    }}
+  >
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="volume-menu" style="left: {x}px; top: {y}px;" onclick={(event) => event.stopPropagation()}>

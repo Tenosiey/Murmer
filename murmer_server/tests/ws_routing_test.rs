@@ -739,12 +739,18 @@ async fn a_chat_frame_cannot_carry_a_forwarding_stamp_or_reactions() {
             "forwardedFrom": { "id": 1, "user": "bob", "channel": "general", "channelId": 1 },
             "reactions": { "👍": ["bob", "carol"] },
             "edited": true,
+            "bot": true,
+            "decryptFailed": true,
         }))
         .await;
     let seen = bob.until(|f| f["type"] == "chat").await;
     let chat = seen.last().unwrap();
     assert!(chat.get("forwardedFrom").is_none(), "{chat}");
     assert!(chat.get("edited").is_none(), "{chat}");
+    // Only known fields are stored at all, so nothing the client renders
+    // specially can be claimed: not the bot badge, not a failed decryption.
+    assert!(chat.get("bot").is_none(), "{chat}");
+    assert!(chat.get("decryptFailed").is_none(), "{chat}");
     assert_eq!(chat["reactions"], json!({}), "{chat}");
 }
 
@@ -938,6 +944,13 @@ async fn a_poke_reaches_only_its_target_and_is_paced() {
     let refused = carol.until(|f| f["type"] == "error").await;
     assert_eq!(refused.last().unwrap()["message"], "poke-unavailable");
 
+    // Someone appearing offline answers exactly like someone who is gone.
+    bob.mark("offline").await;
+    carol.until_mark("bob", "offline").await;
+    carol.send(json!({ "type": "poke", "target": "bob" })).await;
+    let refused = carol.until(|f| f["type"] == "error").await;
+    assert_eq!(refused.last().unwrap()["message"], "poke-unavailable");
+
     alice.mark("away").await;
     let seen = carol.until_mark("alice", "away").await;
     assert!(
@@ -1105,6 +1118,35 @@ async fn a_muted_member_cannot_publish_through_their_profile() {
         let refused = bob.until(|f| f["type"] == "error").await;
         assert_eq!(refused.last().unwrap()["message"], "muted");
         assert!(of_type(&refused, "profile-update").is_empty());
+    }
+}
+
+/// A mute that only stopped new messages left the old ones as a voice: edit
+/// one, or react, and the channel hears from the muted member anyway.
+#[tokio::test]
+async fn a_muted_member_cannot_speak_through_edits_or_reactions() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+
+    bob.send(json!({ "type": "chat", "user": "bob", "text": "before" }))
+        .await;
+    let seen = bob.until(|f| f["type"] == "chat").await;
+    let id = seen.last().unwrap()["id"].as_i64().expect("message id");
+    alice
+        .send(json!({ "type": "mute-user", "user": "bob" }))
+        .await;
+    bob.until(|f| f["type"] == "user-muted").await;
+
+    for frame in [
+        json!({ "type": "edit-message", "messageId": id, "text": "after" }),
+        json!({ "type": "react", "messageId": id, "emoji": "👍", "action": "add" }),
+    ] {
+        bob.send(frame).await;
+        let refused = bob.until(|f| f["type"] == "error").await;
+        assert_eq!(refused.last().unwrap()["message"], "muted");
+        assert!(of_type(&refused, "message-edited").is_empty());
+        assert!(of_type(&refused, "reaction-update").is_empty());
     }
 }
 

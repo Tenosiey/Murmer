@@ -61,7 +61,7 @@
     { id: 'roles', perm: PERMISSIONS.MANAGE_ROLES },
     { id: 'danger', perm: PERMISSIONS.ADMINISTRATOR }
   ] as const;
-  let activeTab: (typeof TABS)[number]['id'] = $state('emojis');
+  let activeTab: (typeof TABS)[number]['id'] = $state('overview');
 
   let visibleTabs = $derived(TABS.filter((tab) => hasPermission(permissions, tab.perm)));
   // If the active tab disappears (e.g. the viewer's role changed), fall back

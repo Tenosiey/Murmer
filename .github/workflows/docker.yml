@@ -1,5 +1,5 @@
-# Builds the server image whenever its Dockerfile changes, which is mostly
-# Dependabot moving the base images. Nothing else in CI builds the image, so
+# Builds the server image whenever its Dockerfile or the Rust toolchain it
+# installs changes, which is mostly Dependabot moving either. Nothing else in CI builds the image, so
 # a broken one would otherwise surface on an operator's `docker compose up`.
 name: Docker
 
@@ -8,11 +8,13 @@ on:
     branches: [main, dev]
     paths:
       - murmer_server/Dockerfile
+      - rust-toolchain.toml
       - .dockerignore
   pull_request:
     branches: [main, dev]
     paths:
       - murmer_server/Dockerfile
+      - rust-toolchain.toml
       - .dockerignore
 
 concurrency:

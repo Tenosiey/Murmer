@@ -129,11 +129,18 @@ marked.use({ renderer, extensions: [wikilinkExtension as any, spoilerExtension a
    window, where a copy of the login or backup screen is a convincing way to
    ask for a recovery phrase. So every external link opens outside the app
    (the opener plugin hands `_blank` to the system browser), and without an
-   opener or referrer. Wikilinks (`href="#"`) are left to their click handler. */
+   opener or referrer. Wikilinks (`href="#"`) are left to their click handler.
+   Anything else loses its href: a relative or protocol-relative link
+   (`[x](//example.com)`) resolves against the app's own origin and would be
+   followed in place after all. */
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-  if (node.tagName === 'A' && /^(https?|mailto):/i.test(node.getAttribute('href') ?? '')) {
+  if (node.tagName !== 'A') return;
+  const href = node.getAttribute('href');
+  if (/^(https?|mailto):/i.test(href ?? '')) {
     node.setAttribute('target', '_blank');
     node.setAttribute('rel', 'noopener noreferrer');
+  } else if (href !== '#') {
+    node.removeAttribute('href');
   }
 });
 
@@ -192,7 +199,8 @@ export function renderMarkdown(text: string): string {
        and attributes that load a resource are dropped — SVG and MathML with
        them, which markdown never emits. */
     USE_PROFILES: { html: true },
-    FORBID_TAGS: ['img', 'audio', 'video', 'source', 'track', 'picture', 'input'],
+    // A form is the other way, besides a link, to navigate the app window.
+    FORBID_TAGS: ['img', 'audio', 'video', 'source', 'track', 'picture', 'input', 'form'],
     FORBID_ATTR: ['style', 'src', 'srcset', 'poster', 'background']
   });
 

@@ -295,3 +295,33 @@ async fn a_failed_mesh_pair_moves_its_channel_to_the_sfu_until_it_empties() {
     let frames = bob.until(|f| f["type"] == "voice-permissions").await;
     assert_eq!(frames.last().unwrap()["mode"], "mesh");
 }
+
+/// A member who joins asking to go via the server puts the call on the SFU
+/// at any size, before anyone could build a mesh to them, and it stays
+/// there until the channel empties.
+#[tokio::test]
+async fn a_member_asking_for_the_server_puts_the_call_on_the_sfu() {
+    let addr = start_server().await;
+    let mut alice = Client::connect(addr, "alice").await;
+    let mut bob = Client::connect(addr, "bob").await;
+
+    alice
+        .send(json!({ "type": "voice-join", "channelId": LOUNGE }))
+        .await;
+    let frames = alice.until(|f| f["type"] == "voice-permissions").await;
+    assert_eq!(frames.last().unwrap()["mode"], "mesh");
+
+    bob.send(json!({ "type": "voice-join", "channelId": LOUNGE, "viaServer": true }))
+        .await;
+    let frames = bob.until(|f| f["type"] == "voice-permissions").await;
+    assert_eq!(frames.last().unwrap()["mode"], "sfu");
+    assert_eq!(next_modes(&mut alice).await[0]["mode"], "sfu");
+
+    // Bob leaving does not drop alice back onto the mesh mid-call.
+    bob.send(json!({ "type": "voice-leave", "channelId": LOUNGE }))
+        .await;
+    alice
+        .until(|f| f["type"] == "voice-users" && f["users"].as_array().unwrap().len() == 1)
+        .await;
+    assert!(modes_seen(&mut alice).await.is_empty());
+}

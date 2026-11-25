@@ -2,6 +2,19 @@ import type { ChannelNotificationPreference } from '../stores/channelNotificatio
 import type { UserStatus } from '../types';
 import { t } from '../i18n';
 
+/* Account name rules; must match `validate_user_name` on the server. Rust's
+   `is_alphanumeric` is Unicode-aware, so "Jörg" passes and an emoji does not,
+   and the 32 is bytes, not characters. Checked on the login page so a name
+   every server would refuse is caught before it is bound to the session. */
+export const MAX_USER_NAME_BYTES = 32;
+export function isValidUserName(name: string): boolean {
+  return (
+    name.trim() === name &&
+    new TextEncoder().encode(name).length <= MAX_USER_NAME_BYTES &&
+    /^[\p{Alphabetic}\p{N}_ -]+$/u.test(name)
+  );
+}
+
 /* Custom server emoji naming rules; must match the server's validation. */
 export const EMOJI_NAME_RE = /^[a-z0-9_]{2,32}$/;
 export const EMOJI_SHORTCODE_RE = /^:([a-z0-9_]{2,32}):$/;

@@ -403,6 +403,27 @@ pub(super) async fn authorize_send(
     true
 }
 
+/// Every field of a stored message that comes from the client's `chat`
+/// frame, plus the `user` and `channelId` the server has just stamped.
+/// `mentions` is not among them: `handle_chat` alone authorizes group pings
+/// and puts them back, so a scheduled body can never carry one on the
+/// strength of a permission that may be gone when it is posted.
+const CLIENT_MESSAGE_FIELDS: [&str; 13] = [
+    "type",
+    "user",
+    "channelId",
+    "text",
+    "image",
+    "imageKey",
+    "attachment",
+    "spoiler",
+    "tts",
+    "poll",
+    "enc",
+    "replyTo",
+    "expiresAt",
+];
+
 /// Turn a client `chat` frame into the body the server stores: the encryption
 /// shape the channel demands, auto-moderation, the profanity mask, the stamped
 /// author and channel, and the reply rebuilt from the message it quotes.
@@ -529,19 +550,12 @@ pub(super) async fn prepare_chat_body(
     v["user"] = Value::String(user.to_string());
     v["channelId"] = Value::from(channel_id);
     if let Some(map) = v.as_object_mut() {
-        map.remove("channel");
-        // The frame is stored as sent, so every field the *server* stamps on
-        // a message is dropped here: a client-written `forwardedFrom` would
-        // put words under another member's name with the server's own
-        // attribution chip on top (see `forwarded_body`), and the others
-        // would fake reactions or an edit that never happened.
-        for field in ["forwardedFrom", "reactions", "edited", "editedAt", "time"] {
-            map.remove(field);
-        }
-        // Group pings are authorized by `handle_chat` alone, which puts them
-        // back once checked. A scheduled body must never carry one: it would
-        // ping on the strength of a permission that may be gone by then.
-        map.remove("mentions");
+        // Only the fields a client may write survive; everything else on a
+        // stored message is stamped by the server. A denylist here let a
+        // client claim `bot`, and before that `forwardedFrom`, which put
+        // words under another member's name with the server's own
+        // attribution chip on top (see `forwarded_body`).
+        map.retain(|field, _| CLIENT_MESSAGE_FIELDS.contains(&field.as_str()));
     }
     let timestamp = stamp_message_time(v);
 
@@ -651,27 +665,26 @@ pub(super) async fn handle_chat(
         v["mentions"] = mentions;
     }
 
-    let mut ephemeral_expiry: Option<DateTime<Utc>> = None;
-    if let Some(raw_expiry) = v.get("expiresAt").and_then(|value| value.as_str()) {
-        if let Ok(parsed) = DateTime::parse_from_rfc3339(raw_expiry) {
-            let mut expiry = parsed.with_timezone(&Utc);
-            let min_allowed = timestamp + ChronoDuration::seconds(MIN_EPHEMERAL_SECONDS);
-            let max_allowed = timestamp + ChronoDuration::seconds(MAX_EPHEMERAL_SECONDS);
-            if expiry < min_allowed {
-                expiry = min_allowed;
-            }
-            if expiry > max_allowed {
-                expiry = max_allowed;
-            }
+    let ephemeral_expiry = v
+        .get("expiresAt")
+        .and_then(|value| value.as_str())
+        .and_then(|raw| DateTime::parse_from_rfc3339(raw).ok())
+        .map(|parsed| {
+            parsed.with_timezone(&Utc).clamp(
+                timestamp + ChronoDuration::seconds(MIN_EPHEMERAL_SECONDS),
+                timestamp + ChronoDuration::seconds(MAX_EPHEMERAL_SECONDS),
+            )
+        });
+    match ephemeral_expiry {
+        Some(expiry) => {
             v["expiresAt"] = Value::String(expiry.to_rfc3339());
             v["ephemeral"] = Value::Bool(true);
-            ephemeral_expiry = Some(expiry);
-        } else if let Some(map) = v.as_object_mut() {
-            map.remove("expiresAt");
-            map.remove("ephemeral");
         }
-    } else if let Some(map) = v.as_object_mut() {
-        map.remove("ephemeral");
+        None => {
+            if let Some(map) = v.as_object_mut() {
+                map.remove("expiresAt");
+            }
+        }
     }
 
     publish_message(state, v, channel_id, user, &timestamp, ephemeral_expiry).await;
@@ -900,6 +913,23 @@ pub(super) async fn handle_delete_message(
             // moderator deletions say nothing about the requester's habits.
             if is_own {
                 super::stats::record(state, &requester, vec![(db::Stat::MessagesDeleted, 1)]).await;
+
+                // A sealed message hides which files it carries, so its
+                // author's client names them (at most an image and an
+                // attachment). Only the author's own uploads are released.
+                let files: Vec<String> = v
+                    .get("files")
+                    .and_then(|f| f.as_array())
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|k| k.as_str().map(str::to_owned))
+                    .take(2)
+                    .collect();
+                if !files.is_empty()
+                    && let Err(e) = db::release_own_uploads(&state.db, &requester, files).await
+                {
+                    error!("failed to release uploads of message {message_id}: {e}");
+                }
             }
         }
         Ok(false) => {
@@ -1003,6 +1033,13 @@ pub(super) async fn handle_edit_message(
         return;
     };
 
+    // An edit puts new words in the channel, so it needs everything a new
+    // message needs: a muted member, or one who lost Send or the channel
+    // itself, must not keep talking through their old messages.
+    if !authorize_send(state, sender, channel_id, &requester).await {
+        return;
+    }
+
     // An edit replaces the message's payload, so it has to arrive in whatever
     // form the channel stores: a sealed envelope in an encrypted channel, text
     // in a plaintext one.
@@ -1077,6 +1114,11 @@ pub(super) async fn handle_edit_message(
     let edited_at = Utc::now().to_rfc3339();
     if encrypted {
         content["enc"] = new_enc.clone();
+        // A message from before the channel was encrypted must not keep its
+        // old plaintext beside the sealed edit.
+        if let Some(map) = content.as_object_mut() {
+            map.remove("text");
+        }
     } else {
         content["text"] = Value::String(new_text.clone());
     }
@@ -1276,6 +1318,12 @@ pub(super) async fn handle_react(
     let emoji = raw_emoji.trim();
     if !is_valid_reaction_key(emoji) {
         send_error(sender, errors::INVALID_EMOJI).await;
+        return;
+    }
+
+    // A mute silences reactions too; removing one stays possible.
+    if action == "add" && super::moderation::is_muted(state, &user).await {
+        send_error(sender, errors::MUTED).await;
         return;
     }
 

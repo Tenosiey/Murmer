@@ -200,8 +200,12 @@ All of this is deliberate, and `README.md` points operators here:
   fresh key that travels inside the message, and the server stores them
   under a key without the filename, but it sees how large the file is and,
   from the extension the upload category is picked by, what kind. It cannot
-  see which message carries which file, so deleting a sealed message leaves
-  its file on disk; see [Quota and deletion](#quota-and-deletion).
+  see which message carries which file, so only the author's own delete
+  takes a sealed message's file with it; see
+  [Quota and deletion](#quota-and-deletion).
+- **The channel's wiki.** Pages are stored and searched as plaintext; only
+  messages are sealed. Sealing them would take the server-side search and
+  the revision merge with it, which is a decision still to be made.
 - **Link previews** and content-derived stats.
 - **The profanity filter and the auto-moderation rules** — the server holds
   no text to mask or match. Doing either would mean handing the server the
@@ -302,11 +306,18 @@ Deleting a message deletes its file. A trigger on `messages` marks the file
 released on **any** delete, so the author's delete, a moderator's, retention,
 the Danger Zone purge and reset all take files with them without each having
 to remember. `upload::spawn_upload_sweep` then removes released files that
-nothing else names: a server-made forward, an avatar, an emoji, a sound, the
-server icon or a wiki page keeps the file alive. Two gaps are deliberate:
+nothing else names: a server-made forward, an avatar, an emoji, a sound, a
+role or server icon or a wiki page keeps the file alive. A replaced avatar
+or server icon and a removed emoji or sound are released the same way and
+never deleted on the spot — any member can point their avatar at any stored
+image, so one dropped reference proves nothing about the others. Two gaps
+are deliberate:
 
-- a file in an **encrypted** message or a DM is never released, because the
-  server cannot see which file a sealed message carries;
+- a file in an **encrypted** message is released only when its author
+  deletes it: their client names the files in `delete-message`, and the
+  server releases those of them the author uploaded. Any other delete of a
+  sealed message leaves its file, because the server cannot see which file
+  it carries. A DM carries no upload of its own;
 - a file that was uploaded but never posted is kept, and counts against its
   uploader's quota. Sweeping unposted files would also sweep every file in a
   sealed message, for the same reason.
@@ -344,6 +355,13 @@ difference is the point of this section:
   `SFU_PUBLIC_IP`, and why the voice panel shows a "Via server" badge
   whenever it is in use: someone who chose a self-hosted mesh for privacy
   should be able to see when they do not have it.
+- **The mesh trades the server's view for every peer's address.** Each
+  member of a mesh call learns every other member's IP. A member who would
+  rather trust the operator than the other callers turns on "Always via
+  server", which moves any call they join onto the SFU; `SFU_ONLY` does the
+  same for every call. The server makes the switch; on a server without an
+  SFU there is nothing to switch to, so the client asks before joining peer
+  to peer instead.
 - **End-to-end encryption through the SFU is not built.** Encoded
   transforms (SFrame) could hide media from the server, but whether
   WebView2, WebKitGTK and WKWebView all support `RTCRtpScriptTransform` has
@@ -353,10 +371,9 @@ difference is the point of this section:
   only while their camera is announced. It learns membership from every
   join and leave, so a member who leaves the channel for any reason, a kick
   or ban included, loses their connection at once, whatever their client
-  does. A mute re-syncs immediately and again when a timed one ends; a role
-  or override edit that takes Talk away only applies at the channel's next
-  join, leave, camera or mute change (`sync_sfu` in `ws/helpers.rs`). On the
-  mesh, Talk remains a hint.
+  does. A mute re-syncs immediately and again when a timed one ends, and
+  so does a role or override edit that takes Talk away (`sync_sfu` in
+  `ws/helpers.rs`). On the mesh, Talk remains a hint.
 - **Only members get a connection.** An `sfu-offer` is accepted only from a
   member of the channel it names, while that channel is in SFU mode; a
   screen-share offer additionally needs an announced share with both ends

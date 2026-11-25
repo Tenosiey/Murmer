@@ -122,7 +122,7 @@ that is not obvious until it ships.
 | Instead of | Use | Because |
 | --- | --- | --- |
 | `window.prompt` / `confirm` / `alert` | `dialogs.*` from `stores/dialogs.ts` | WebView2 does not support them at all, so the desktop app silently gets nothing |
-| A hand-rolled `FormData` for `/upload` | `uploadForm` in `src/lib/upload.ts` | The signed proof must be a multipart field ahead of the file; the server rejects anything else |
+| A hand-rolled `FormData` for `/upload` | `uploadForm` in `src/lib/upload.ts` | The upload session must be a multipart field ahead of the file; the server rejects anything else |
 | The raw user name, or `profile.displayName` | `$displayNames(user)` from `stores/profiles.ts` | Skips the nickname a moderator may have set. The raw name is the account name and stays the lookup key |
 | New CSS for a button or input | The tokens and primitives from `src/routes/+layout.svelte` | A hardcoded color or size follows neither the theme nor the accent re-tint |
 | An English string in markup or a `.ts` module | `t('area.key')` from `src/lib/i18n`, text in `i18n/en.ts` | Strings left inline are the ones a translation can never reach; `{name}` placeholders and plural objects keep word order and grammar out of the code |
@@ -143,7 +143,9 @@ every push to `main`/`dev` and on every pull request. A second workflow,
 every Monday and fails on nothing else; run `cargo audit` and `bun audit` by
 hand when you change a dependency rather than waiting for it. A third,
 `.github/workflows/docker.yml`, builds the server image whenever its
-Dockerfile changes.
+Dockerfile or the Rust toolchain changes, and a fourth,
+`.github/workflows/actionlint.yml`, lints the workflows whenever one
+changes.
 
 ```bash
 cd murmer_server && cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test

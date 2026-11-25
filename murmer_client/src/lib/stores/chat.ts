@@ -1222,12 +1222,12 @@ function createChatStore() {
     return null;
   }
 
-  function deleteMessage(messageId: number): void {
+  /** @param files - Upload keys the sealed message carries (`sealedUploadKeys`); the server frees only the author's own. */
+  function deleteMessage(messageId: number, files: string[] = []): void {
     if (!wsManager.isConnected()) return;
     if (typeof messageId !== 'number' || Number.isNaN(messageId)) return;
 
-    const payload = { type: 'delete-message', messageId };
-    wsManager.send(payload);
+    wsManager.send({ type: 'delete-message', messageId, files });
   }
 
   /** Disconnect from the WebSocket server. */

@@ -128,7 +128,8 @@
   }
 </script>
 
-<svelte:window onclick={() => (openMenu = null)} />
+<!-- Focus stays on the toggle, so Escape is heard on the window, not the menu. -->
+<svelte:window onclick={() => (openMenu = null)} onkeydown={(event) => openMenu && handleMenuKeydown(event)} />
 
 <div class="header">
   <div class="title">

@@ -759,6 +759,13 @@ async fn edit_message_handler(
         return json_error(StatusCode::NOT_FOUND, "message-not-found");
     }
 
+    // The same refusal as `send_message`: a message the bot posted before
+    // the channel was encrypted must not become a way to put plaintext
+    // into it afterwards.
+    if ws::helpers::channel_is_e2ee(&state, channel_id).await {
+        return json_error(StatusCode::FORBIDDEN, "channel-requires-encryption");
+    }
+
     // Editing rewrites someone's words, so it is never extended to
     // `manage_messages` - a bot may only edit its own messages.
     let is_own = record
@@ -1093,6 +1100,9 @@ async fn delete_channel_handler(
 
     match db::remove_channel(&state.db, channel_id).await {
         Ok(()) => {
+            // Channel ids are reused, so overrides left behind would decide
+            // who sees whatever channel gets this id next.
+            ws::cleanup_channel(&state, ChannelKind::Text, channel_id).await;
             state.channels.lock().await.remove(&channel_id);
             ws::helpers::broadcast_remove_channel(&state, channel_id);
             StatusCode::NO_CONTENT.into_response()

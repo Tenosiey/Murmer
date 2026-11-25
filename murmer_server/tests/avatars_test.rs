@@ -36,7 +36,7 @@ async fn avatar_round_trip() {
 }
 
 #[tokio::test]
-async fn avatar_snapshot_and_reference_counting() {
+async fn avatar_snapshot_lists_every_user_with_an_avatar() {
     let db = db::init(":memory:").await.expect("in-memory db");
 
     db::bind_user_key(&db, "alice", "pk-alice")
@@ -58,21 +58,5 @@ async fn avatar_snapshot_and_reference_counting() {
             ("alice".to_string(), "/files/1-shared.png".to_string()),
             ("bob".to_string(), "/files/1-shared.png".to_string()),
         ]
-    );
-
-    // Two references; after alice clears hers, one remains — the file must
-    // not be deleted until the count reaches zero.
-    assert_eq!(
-        db::count_avatar_references(&db, "/files/1-shared.png")
-            .await
-            .expect("count"),
-        2
-    );
-    db::set_user_avatar(&db, "alice", "").await.expect("clear");
-    assert_eq!(
-        db::count_avatar_references(&db, "/files/1-shared.png")
-            .await
-            .expect("count"),
-        1
     );
 }

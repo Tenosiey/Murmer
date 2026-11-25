@@ -269,3 +269,17 @@ export function mergeHistory(existing: Message[], page: Message[]): Message[] {
   const sortKey = (m: Message) => (typeof m.id === 'number' ? m.id : Number.MAX_SAFE_INTEGER);
   return [...kept, ...page].sort((a, b) => sortKey(a) - sortKey(b));
 }
+
+/**
+ * The upload keys of the files a sealed message carries, for its author to
+ * name when deleting it. The server cannot see inside `enc`, so without this
+ * a deleted encrypted message would leave its files on disk for good. A
+ * plaintext message returns none: the server finds those files itself.
+ */
+export function sealedUploadKeys(msg: Message): string[] {
+  if (msg.enc === undefined) return [];
+  const urls = [typeof msg.image === 'string' ? msg.image : undefined, msg.attachment?.url];
+  return urls
+    .map((url) => (url && url.includes('/files/') ? url.slice(url.indexOf('/files/') + 7) : ''))
+    .filter((key) => key !== '');
+}

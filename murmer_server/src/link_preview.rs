@@ -358,7 +358,10 @@ fn extract_preview(html: &str, url: &Url) -> Preview {
 /// consumers behave.
 fn collect_meta_tags(html: &str) -> HashMap<String, String> {
     let mut map = HashMap::new();
-    let lower = html.to_lowercase();
+    // ASCII only: full lowercasing changes the byte length of some
+    // characters (`İ`, the Kelvin sign), and offsets found in the copy are
+    // used to slice the original — a fetched page could panic the handler.
+    let lower = html.to_ascii_lowercase();
     let mut pos = 0;
     while let Some(start) = lower[pos..].find("<meta") {
         let tag_start = pos + start;
@@ -381,7 +384,7 @@ fn collect_meta_tags(html: &str) -> HashMap<String, String> {
 
 /// Extract the text of the first `<title>` element.
 fn html_title(html: &str) -> Option<String> {
-    let lower = html.to_lowercase();
+    let lower = html.to_ascii_lowercase();
     let start = lower.find("<title")?;
     let open_end = lower[start..].find('>')? + start + 1;
     let close = lower[open_end..].find("</title")? + open_end;
@@ -521,6 +524,16 @@ mod tests {
             preview.image.as_deref(),
             Some("https://example.com/img/cover.png")
         );
+    }
+
+    #[test]
+    fn characters_that_change_length_when_lowercased_do_not_shift_the_slices() {
+        let html = "<p>İİİİ\u{212A}\u{212A}</p><TITLE>é Title</TITLE>\
+            <meta property=\"og:description\" content=\"İ desc\">";
+        let url = Url::parse("https://example.com/").unwrap();
+        let preview = extract_preview(html, &url);
+        assert_eq!(preview.title.as_deref(), Some("é Title"));
+        assert_eq!(preview.description.as_deref(), Some("İ desc"));
     }
 
     #[test]

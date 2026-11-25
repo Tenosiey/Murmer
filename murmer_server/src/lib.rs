@@ -9,6 +9,7 @@ pub mod bot;
 pub mod channel_overrides;
 pub mod config;
 pub mod db;
+pub mod health;
 pub mod link_preview;
 pub mod mentions;
 pub mod metrics;
@@ -331,9 +332,10 @@ pub struct VoiceChannelState {
     /// How the channel's media travels; decided by
     /// [`security::next_mode`] on every join and leave.
     pub mode: VoiceMode,
-    /// Set when a mesh pair in the channel could not connect: the channel
-    /// then stays on the SFU until it empties, because the network that
-    /// broke the pair will not mend mid-call.
+    /// Set when a mesh pair in the channel could not connect, or a member
+    /// joined asking to go via the server: the channel then stays on the
+    /// SFU until it empties, because the network that broke the pair will
+    /// not mend mid-call, and the member's address would leak to the mesh.
     pub sticky: bool,
 }
 

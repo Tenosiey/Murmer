@@ -225,6 +225,16 @@ with the two equal. A channel the relay fallback made *sticky*
 channel resets to the mesh. With
 `SFU_PUBLIC_IP` unset every channel is mesh, always.
 
+A member with **Always via server** on joins with `viaServer: true`, which
+makes the channel sticky the same way, before the mode is decided: the
+joiner's first answer already says `sfu`, so their client never offers a
+mesh. The whole call moves rather than just that member, because there is no
+half-mesh in which the others can reach them without learning their address.
+`SFU_ONLY` is the operator's version: it sets both thresholds to their floor,
+so a channel of one is already on the SFU. `ice-config` carries `sfu`
+(`off`, `auto`, `only`) so the settings can show the switch locked on, and
+so the client can warn before a join on a server that cannot keep it.
+
 The SFU is embedded in the server (str0m, one tokio task, one UDP port)
 rather than a separate media server such as LiveKit or mediasoup: those
 bring their own SDK, tokens and client library, which would mean a second

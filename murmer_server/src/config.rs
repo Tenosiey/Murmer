@@ -123,6 +123,7 @@ impl Config {
     ///   (default 7)
     /// - `SFU_RETURN_THRESHOLD` (optional): the headcount that moves it back
     ///   (default three below `SFU_THRESHOLD`)
+    /// - `SFU_ONLY` (optional): `true` puts every call on the SFU at any size
     pub fn from_env() -> Result<Self> {
         let database_path = env::var("DATABASE_PATH").unwrap_or_else(|_| "murmer.db".to_string());
 
@@ -190,6 +191,7 @@ impl Config {
             env::var("SFU_UDP_PORT").ok().as_deref(),
             env::var("SFU_THRESHOLD").ok().as_deref(),
             env::var("SFU_RETURN_THRESHOLD").ok().as_deref(),
+            env::var("SFU_ONLY").ok().as_deref(),
             crate::security::max_voice_channel_users(),
         )?;
 
@@ -297,12 +299,23 @@ fn parse_sfu(
     udp_port: Option<&str>,
     threshold: Option<&str>,
     return_threshold: Option<&str>,
+    only: Option<&str>,
     max_voice_users: usize,
 ) -> Result<Option<SfuConfig>> {
     fn set(v: Option<&str>) -> Option<&str> {
         v.map(str::trim).filter(|v| !v.is_empty())
     }
+    let only = match set(only) {
+        None | Some("false") => false,
+        Some("true") => true,
+        Some(other) => anyhow::bail!("SFU_ONLY {other:?} must be true or false"),
+    };
     let Some(public_ip) = set(public_ip) else {
+        // An operator who asked for SFU-only promised members their address
+        // stays hidden; quietly running every call as a mesh would break it.
+        if only {
+            anyhow::bail!("SFU_ONLY needs the SFU; set SFU_PUBLIC_IP");
+        }
         return Ok(None);
     };
     let public_ip = public_ip
@@ -342,13 +355,23 @@ fn parse_sfu(
              above 0 or unset SFU_PUBLIC_IP"
         );
     }
+    // SFU-only is the thresholds at their floor: a channel of one is on the
+    // SFU already, so the second member never sees the first's address.
+    let thresholds = if only {
+        crate::security::SfuThresholds {
+            to_sfu: 1,
+            to_mesh: 0,
+        }
+    } else {
+        crate::security::SfuThresholds {
+            to_sfu: threshold,
+            to_mesh: return_threshold,
+        }
+    };
     Ok(Some(SfuConfig {
         public_ip,
         udp_port,
-        thresholds: crate::security::SfuThresholds {
-            to_sfu: threshold,
-            to_mesh: return_threshold,
-        },
+        thresholds,
     }))
 }
 
@@ -404,23 +427,23 @@ mod tests {
     #[test]
     fn sfu_is_off_unless_an_address_is_set() {
         assert!(
-            parse_sfu(None, Some("4000"), None, None, 10)
+            parse_sfu(None, Some("4000"), None, None, None, 10)
                 .unwrap()
                 .is_none()
         );
         assert!(
-            parse_sfu(Some(" "), None, None, None, 10)
+            parse_sfu(Some(" "), None, None, None, None, 10)
                 .unwrap()
                 .is_none()
         );
-        let sfu = parse_sfu(Some("203.0.113.5"), None, None, None, 10)
+        let sfu = parse_sfu(Some("203.0.113.5"), None, None, None, None, 10)
             .unwrap()
             .unwrap();
         assert_eq!(
             (sfu.udp_port, sfu.thresholds.to_sfu, sfu.thresholds.to_mesh),
             (DEFAULT_SFU_UDP_PORT, DEFAULT_SFU_THRESHOLD, 4)
         );
-        let sfu = parse_sfu(Some("::1"), None, Some("10"), Some("8"), 10)
+        let sfu = parse_sfu(Some("::1"), None, Some("10"), Some("8"), None, 10)
             .unwrap()
             .unwrap();
         assert_eq!((sfu.thresholds.to_sfu, sfu.thresholds.to_mesh), (10, 8));
@@ -428,11 +451,25 @@ mod tests {
 
     #[test]
     fn sfu_rejects_typos_and_an_unlimited_channel() {
-        assert!(parse_sfu(Some("sfu.example"), None, None, None, 10).is_err());
-        assert!(parse_sfu(Some("::1"), Some("0"), None, None, 10).is_err());
-        assert!(parse_sfu(Some("::1"), None, Some("1"), None, 10).is_err());
-        assert!(parse_sfu(Some("::1"), None, Some("5"), Some("5"), 10).is_err());
-        assert!(parse_sfu(Some("::1"), None, None, Some("seven"), 10).is_err());
-        assert!(parse_sfu(Some("::1"), None, None, None, 0).is_err());
+        assert!(parse_sfu(Some("sfu.example"), None, None, None, None, 10).is_err());
+        assert!(parse_sfu(Some("::1"), Some("0"), None, None, None, 10).is_err());
+        assert!(parse_sfu(Some("::1"), None, Some("1"), None, None, 10).is_err());
+        assert!(parse_sfu(Some("::1"), None, Some("5"), Some("5"), None, 10).is_err());
+        assert!(parse_sfu(Some("::1"), None, None, Some("seven"), None, 10).is_err());
+        assert!(parse_sfu(Some("::1"), None, None, None, None, 0).is_err());
+    }
+
+    #[test]
+    fn sfu_only_needs_the_sfu_and_puts_every_call_on_it() {
+        assert!(parse_sfu(None, None, None, None, Some("true"), 10).is_err());
+        assert!(parse_sfu(Some("::1"), None, None, None, Some("yes"), 10).is_err());
+        let sfu = parse_sfu(Some("::1"), None, Some("9"), None, Some("true"), 10)
+            .unwrap()
+            .unwrap();
+        assert!(sfu.thresholds.always());
+        let sfu = parse_sfu(Some("::1"), None, None, None, Some("false"), 10)
+            .unwrap()
+            .unwrap();
+        assert!(!sfu.thresholds.always());
     }
 }
